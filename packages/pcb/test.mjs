@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders, mount, holes } from '@rulecad/pcb';
+import { grid, keyboard, hybridSwitch, do35, stripModel, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders, mount, holes } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 import { smoothCircuit } from '@rulecad/smooth';
@@ -792,4 +792,40 @@ test('smoothing keeps clear of a slot along its whole length', () => {
     { type: 'pcb_plated_hole', pcb_plated_hole_id: 'h', shape: 'pill_hole_with_rect_pad', x: 0, y: 0, hole_width: 0.6, hole_height: 1.8, rect_pad_width: 0.6, rect_pad_height: 1.8 }];
   // straight along y = 0.7 it would cross the slot's top end, which a circle at the narrow width wouldn't reach
   assert.equal(smoothCircuit(json, { clearance: 0.1 }).changed, 0);
+});
+
+test('a hybrid footprint takes an MX or a Choc v1 switch: both switches\' pins, a pair per pin, and holes that fit both', async () => {
+  const set = (n) => Object.fromEntries(Object.entries(loadRuleSet(n).rules).map(([k, r]) => [k, r.value])), m = set('mx'), c = set('choc');
+  const k = hybridSwitch('K1', 0, 0, m, c);
+  assert.equal(k.pads.length, 4);
+  assert.deepEqual(k.pads.map((q) => q.pin), ['pin1', 'pin1', 'pin2', 'pin2']);
+  // every pin of either switch has a hole of its own size at its own place
+  for (const [x, y, d] of [[m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill], [m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill], [c.pcb_pin1_x, c.pcb_pin1_y, c.pcb_pin_drill], [c.pcb_pin2_x, c.pcb_pin2_y, c.pcb_pin_drill]])
+    assert.ok(k.pads.some((q) => q.x === x && q.y === y && q.hole === d), `a pin hole at ${x}, ${y}`);
+  // pads of different pins keep apart; the centre hole takes either post; each peg hole takes both switches' pegs
+  for (const a of k.pads) for (const b of k.pads) if (a.pin !== b.pin) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) - (a.outer + b.outer) / 2 > 0.5, 'pins apart');
+  assert.equal(k.holes[0].d, Math.max(m.pcb_centre_hole, c.pcb_centre_hole));
+  for (const h of k.holes.slice(1)) for (const [px, d] of [[m.pcb_peg_x, m.pcb_peg_hole], [c.pcb_peg_x, c.pcb_peg_hole]])
+    assert.ok(Math.abs(Math.abs(h.x) - px) + d / 2 <= h.d / 2 + 1e-9, 'a peg hole round both pegs');
+  // and it draws as one switch in the schematic: two pins, each pin's second pad drawn as its first
+  const json = await render({ center: { x: 0, y: 0 }, width: 22, height: 22, parts: [k], traces: [] });
+  const sc = json.find((e) => e.type === 'schematic_component'), ports = json.filter((e) => e.type === 'schematic_port' && e.schematic_component_id === sc.schematic_component_id);
+  assert.equal(ports.length, 2);
+});
+
+test('a DO-35 diode: cathode and anode 0.3 in apart, the cathode square, a body and leads through the board in 3D', () => {
+  const d = Object.fromEntries(Object.entries(loadRuleSet('do35').rules).map(([k, r]) => [k, r.value]));
+  const D = do35('D1', 10, 5, d, { rotation: 90 });
+  assert.deepEqual(D.pads.map((q) => q.pin), ['cathode', 'anode']);
+  assert.equal(D.pads[1].x - D.pads[0].x, d.pitch);
+  assert.ok(D.pads[0].rect && !D.pads[1].rect, 'the cathode\'s pad is square');
+  const zs = D.model.boxes.flatMap((b) => [b.min[2], b.max[2]]);
+  assert.ok(Math.min(...zs) < -1.6 && Math.max(...zs) <= d.body_d + 1e-9, 'leads through the board, the body lying on it');
+  assert.equal(D.rotation, 90);
+});
+
+test('a strip\'s 3D model: a socket\'s body on the board, or a header\'s spacer with its pins', () => {
+  const s = stripModel(8, { height: 8.5 }), h = stripModel(4, { kind: 'pins' });
+  assert.equal(s.boxes.length, 9); assert.equal(s.boxes[0].max[2], 8.5);
+  assert.equal(h.boxes.length, 5); assert.ok(h.boxes[1].max[2] > h.boxes[0].max[2], 'pins above the spacer');
 });

@@ -751,8 +751,9 @@ async function assembly(cmd, ref) {
       marks = (await import('../lib/motorsvg.mjs')).workMarks(s);
     }
     const size = (await import('@rulecad/printcheck')).bounds(s.triangles).size.map((n) => fmt(n)).join(' × ');
-    const faint = [...new Set(s.parts.filter((p) => p.role !== 'part').map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
-    await preview([...s.parts, ...wireTubesOf(s)], { title: check ? `${title}: the motor at work` : title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode'), marks });
+    const built = s.a.show === 'built' // (show: built: references drawn solid, as the thing built)
+    const faint = [...new Set(s.parts.filter((p) => p.role !== 'part' && !(built && p.role === 'reference')).map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
+    await preview([...s.parts, ...wireTubesOf(s)], { title: check ? `${title}: the motor at work` : title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode'), marks, built });
     // each motor at work beside it: its curve with the working point, and the torque through its train (said before
     // the picture, which stays the last line, for whatever reads it)
     if (s.motion?.drives?.length && !pose && !opt('explode') && !check) {

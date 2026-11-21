@@ -1,0 +1,15 @@
+{
+  "title": "MX key on a board: switch and DSA keycap",
+  "kind": "fit",
+  "uses": ["mx", "x1c"],
+  "note": "One key as the macropad has it: an MX switch soldered to the board (no plate) and a DSA keycap on its stem. The board's top is z = 0.",
+  "requires": { "mx-switch": "^0.1.0", "keycap": "^0.6.0" },
+  "items": [
+    { "id": "switch", "object": "mx-switch" },
+    { "id": "cap", "object": "keycap:dsa", "at": [0, 0, "switch.housing_top - cap.lift"] }
+  ],
+  "fits": [
+    { "a": "cap.cap", "b": "switch.stem", "min": "-x1c.hole_comp", "max": "x1c.fit", "note": "Slot over the stem: snug, a light press at most", "label": "Stem in slot" },
+    { "a": "cap.cap", "b": "switch.housing", "min": 0, "note": "Cap doesn't press into the housing at rest", "label": "Cap on housing" }
+  ]
+}

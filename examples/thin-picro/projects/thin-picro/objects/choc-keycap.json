@@ -1,0 +1,15 @@
+{
+  "name": "choc-keycap",
+  "title": "Choc keycap, low profile (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "orientation": "Not printed here: a model of a bought low-profile Choc keycap. Its underside is z = 0.",
+  "parts": { "cap": { "label": "Keycap" } },
+  "variables": {
+    "width": { "value": 17.5, "unit": "mm", "rule": "Across the key", "source": "Kailh low-profile (MBK-style) keycaps: 17.5 x 16.5 mm; measure yours", "interface": true },
+    "depth": { "value": 16.5, "unit": "mm", "rule": "Front to back", "source": "Kailh low-profile (MBK-style) keycaps: 17.5 x 16.5 mm; measure yours", "interface": true },
+    "thickness": { "value": 3, "unit": "mm", "rule": "Thickness above the stem: estimate" },
+    "corner": { "value": 1, "unit": "mm", "rule": "Corner rounding" },
+    "smooth": { "value": 8, "rule": "Segments round a corner" }
+  }
+}

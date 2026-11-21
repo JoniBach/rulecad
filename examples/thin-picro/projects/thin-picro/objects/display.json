@@ -1,0 +1,17 @@
+{
+  "name": "display",
+  "title": "2.0 in ST7789 display (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "uses": ["st7789_2in"],
+  "orientation": "Not printed: a bought display breakout, plugged into a socket. The socket's top is z = 0; the board runs back along -x from its header.",
+  "parts": {
+    "board": { "label": "Display board" },
+    "panel": { "label": "Glass panel" },
+    "header": { "label": "Header spacer" }
+  },
+  "variables": {
+    "spacer": { "value": 2.5, "unit": "mm", "rule": "A male header's plastic spacer, between the socket's top and the display's board", "source": "Standard 0.1 in male headers (2.5 mm spacer)" },
+    "pitch": { "value": 2.54, "unit": "mm", "rule": "Header pitch, 0.1 in" }
+  }
+}

@@ -3,6 +3,17 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.18: Kailh Choc v1, DO-35 diodes
+
+### Added
+
+- `do35`: DO-35 axial diodes (the 1N4148): lead pitch, pads and drill from KiCad's footprint, body and lead sizes.
+- `choc`: the Kailh Choc v1 (PG1350) PCB footprint (pins, centre post, pegs) from ergogen's widely used footprint,
+  its housing and height from Kailh's drawing, and MX key spacing for boards that take both.
+
+### Values that changed
+
+None.
 ## 0.3.17: printed beams (Frames 3)
 
 ### Added

@@ -1,0 +1,18 @@
+{
+  "_doc": "OEM keycap profile: the sculpted profile on most prebuilt keyboards. Each row has its own height and top tilt; rows count from the top (R1, the number row) to R4 (the bottom two rows). Tilt is degrees, positive raising the top's front edge, about the top's centre. The values are KeyV2's (rsheldiii/KeyV2, src/key_profiles/oem.scad), a keycap library made for 3D printing; OEM varies a little between makers. kind as in x1c.json.",
+  "name": "oem",
+  "rules": {
+    "r1_height": { "value": 9.45, "unit": "mm", "rule": "Row 1 (number row) height at the top's centre", "kind": "community", "source": "https://github.com/rsheldiii/KeyV2/blob/master/src/key_profiles/oem.scad", "checked": "2026-10-13" },
+    "r1_tilt": { "value": 1, "unit": "°", "rule": "Row 1 top tilt", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "r2_height": { "value": 9, "unit": "mm", "rule": "Row 2 (Q row) height", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "r2_tilt": { "value": 6, "unit": "°", "rule": "Row 2 top tilt", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "r3_height": { "value": 9.25, "unit": "mm", "rule": "Row 3 (home row) height", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "r3_tilt": { "value": 9, "unit": "°", "rule": "Row 3 top tilt", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "r4_height": { "value": 9.25, "unit": "mm", "rule": "Row 4 (Shift and bottom rows) height", "kind": "community", "source": "KeyV2 oem.scad; modern boards use the row 4 profile on both bottom rows (https://deskthority.net/wiki/Keyboard_profile)", "checked": "2026-10-13" },
+    "r4_tilt": { "value": 10, "unit": "°", "rule": "Row 4 top tilt", "kind": "community", "source": "KeyV2 oem.scad", "checked": "2026-10-13" },
+    "top_narrower": { "value": 5.8, "unit": "mm", "rule": "The top is this much narrower than the base", "kind": "community", "source": "KeyV2 oem.scad ($width_difference)", "checked": "2026-10-13" },
+    "top_shorter": { "value": 4, "unit": "mm", "rule": "The top is this much shorter, front to back, than the base", "kind": "community", "source": "KeyV2 oem.scad ($height_difference)", "checked": "2026-10-13" },
+    "top_skew": { "value": 1.75, "unit": "mm", "rule": "The top sits this far back from the base's centre", "kind": "community", "source": "KeyV2 oem.scad ($top_skew)", "checked": "2026-10-13" },
+    "dish": { "value": 1, "unit": "mm", "rule": "Cylindrical dish depth: the top curves side to side, straight front to back", "kind": "community", "source": "KeyV2 oem.scad ($dish_type cylindrical, $dish_depth 1)", "checked": "2026-10-13" }
+  }
+}

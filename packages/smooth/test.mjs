@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { smooth, smoothCircuit } from '@rulecad/smooth';
+import { smooth, smoothCircuit, finishCircuit, unfinished } from '@rulecad/smooth';
 
 const wire = (x, y, layer = 'top', width = 0.15) => ({ route_type: 'wire', x, y, width, layer });
 const via = (x, y) => ({ route_type: 'via', x, y, from_layer: 'top', to_layer: 'bottom' });
@@ -88,4 +88,45 @@ test('Circuit JSON: only the tracks picked move; pads, vias and other tracks are
   assert.deepEqual([...routes.keys()], ['t2']); // t1 bends round the pad; t3 isn't picked
   assert.equal(out.find((e) => e.pcb_trace_id === 't2').route.length, 2);
   assert.equal(out.find((e) => e.pcb_trace_id === 't3'), json[4]);
+});
+
+// A board with one small part (two 0402-sized pads, 1 mm apart) and the tracks given, on one net per track
+const boardWith = (traces, pads = [[-0.5, 0], [0.5, 0]]) => [
+  { type: 'pcb_board', center: { x: 0, y: 0 }, width: 20, height: 20, min_trace_to_pad_edge_clearance: 0.1 },
+  ...pads.map(([x, y], i) => ({ type: 'pcb_smtpad', pcb_smtpad_id: `pad${i}`, pcb_port_id: `port${i}`, shape: 'rect', x, y, width: 0.5, height: 0.6, layer: 'top' })),
+  ...pads.map((_, i) => ({ type: 'pcb_port', pcb_port_id: `port${i}`, source_port_id: `sp${i}` })),
+  ...traces.map((route, i) => ({ type: 'source_trace', source_trace_id: `st${i}`, connected_source_port_ids: [`sp${i}`] })),
+  ...traces.map((route, i) => ({ type: 'pcb_trace', pcb_trace_id: `t${i}`, source_trace_id: `st${i}`, route })),
+];
+
+test('a track leaving a small pad at an angle is redrawn to leave square to the pad\'s edge, then turn', () => {
+  const json = boardWith([[wire(-0.5, 0), wire(-3, 2.5)]]); // out of the left pad at 45°, up and to the left
+  assert.equal(unfinished(json).exits.length, 1);
+  const { json: out, exits, left } = finishCircuit(json);
+  assert.equal(exits.length, 1); assert.equal(left.length, 0);
+  const r = out.find((e) => e.pcb_trace_id === 't0').route;
+  assert.deepEqual([r[0].x, r[0].y], [-0.5, 0]); assert.deepEqual([r.at(-1).x, r.at(-1).y], [-3, 2.5]); // the same ends
+  assert.ok(Math.abs(r[1].y) < 1e-9 && r[1].x < -0.75 - 0.1, 'straight out of the pad\'s outer end, past it');
+  assert.equal(unfinished(out).exits.length, 0);
+});
+
+test('an exit with no room square to the pad is left, and said', () => {
+  // a track leaving a pad at 45°, clear of everything; small pads of other nets just past the pad's right and top edges,
+  // where a square exit would run
+  const json = boardWith([[wire(0, 0), wire(2, 2)]], [[0, 0]]);
+  for (const [x, y, i] of [[0.55, 0, 1], [0, 0.6, 2]]) json.push({ type: 'pcb_smtpad', pcb_smtpad_id: `o${i}`, pcb_port_id: `op${i}`, shape: 'circle', x, y, radius: 0.1, layer: 'top' });
+  const { left, exits } = finishCircuit(json);
+  assert.equal(exits.length, 0);
+  assert.ok(left.some((l) => l.kind === 'exit'));
+});
+
+test('an acute corner between two tracks of a net is filled across, and counts as finished', () => {
+  const json = boardWith([[wire(5, 5), wire(8, 5), wire(5, 6.5)]], [[5, 5], [9, 9]]); // a hook back at about 27°
+  const before = unfinished(json);
+  assert.equal(before.acute.length, 1);
+  const { json: out, fills } = finishCircuit(json);
+  assert.equal(fills.length, 1);
+  assert.equal(unfinished(out).acute.length, 0);
+  const f = out.find((e) => e.rulecad_fill);
+  assert.ok(f && f.source_trace_id === 'st0', 'fill copper on the track\'s own net');
 });
