@@ -2,6 +2,24 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## Unreleased: the magnet catch's pocket from @rulecad/fixings (Fixings 4)
+
+### Changed
+
+- `magnetCatchModel` takes its magnet's pocket and pull from `@rulecad/fixings` `magnetSeatModel`: a glued pocket
+  (the magnet, `x1c.hole_comp` and `x1c.magnet_glue`, 10.2 mm for a 10 x 3 mm disc, as before), and the magnet's pull
+  across the 0.5 mm gap to its strike. The model gains `pocketDiameter` and `pull`, and a `fitting.magnet` finding
+  says both. The magnet on the shopping list is named as fixings names it, `disc magnet 10x3 N35`, with its grams. A
+  size the magnets set has no pull for still builds, its pull `null`.
+
+### Printed sizes that moved
+
+None. The catch was built for 10 x 3, 8 x 3 and 12 x 3 magnets before and after: the same solid each time.
+
+### What a workspace should change
+
+Nothing. A test that read the old shopping-list wording ("10 x 3 mm disc magnet") reads `disc magnet 10x3 N35` now.
+
 ## 0.1.9: squareness from cuts and joins' play, and printed beams (Frames 3)
 
 ### Added

@@ -5,6 +5,19 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## Unreleased: pins, magnets and printed bolts in the agent notes (Fixings 4)
+
+### Changed
+
+- The template's `AGENTS.md`, copied from `@rulecad/cad`, tells an agent to name pins and magnets in a fit's
+  `fastener` (`{ "pin": "snap pin 4x6", "count": 2 }`, `{ "magnet": "disc magnet 8x3", "count": 2 }`) with their holes
+  drawn by `v.fixings`, a printed bolt as a fasten's screw with the word printed, and that snap pins live in
+  `v.fixings` now.
+
+### Printed sizes that moved
+
+None: the template's designs are unchanged.
+
 ## 0.3.18: a frame to start from (Frames 3)
 
 ### Added
