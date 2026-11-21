@@ -114,8 +114,9 @@ async function worker(dir, names) {
 
 // ---------- a commit's files, built ----------
 const TMP = path.join(os.tmpdir(), 'rulecad-dimension-diff');
-// The slow results cad keeps by what decides them (an optimisation's densities: the problem, the solver's code and
-// the FE's; a lamina's stages: the flexures' and the FE's code and the stage's inputs), so the same in any commit
+// The slow results cad keeps by what decides them (an optimisation's densities: the problem, topopt's solver, the FE's
+// code with its threads backend and cad's own code that readies the problem, cad's densitiesKey; a lamina's stages:
+// every module of flexures and of the FE and the stage's inputs), so the same in any commit
 // that has the same of each: shared by every commit's copy, and kept between runs
 export const SHARED = ['densities', 'stages'];
 const linkShared = (dir, tree, slow) => {

@@ -105,15 +105,29 @@ function holdEmpty(spec) {
   for (let m = 0; m < g.nodes; m++) if (!on[m]) for (let a = 0; a < dim; a++) spec.fixed[dim * m + a] = 1;
   return spec;
 }
+const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
+/**
+ * The code an optimisation's densities are made by, each piece by name: this file's VERSION, topopt's solver (its file
+ * up to its shapes from results), the FE's code and its threads backend (the solver's products), and cad's own code
+ * that readies the problem for the solver (holdEmpty). Drawing a shape from the densities is not in it.
+ * @returns {{ version: number, solver: string, fea: string, threads: string, cad: string }}
+ */
+export const densityCode = () => ({ version: VERSION, solver: source('@rulecad/topopt').split('// ---------- shapes from results ----------')[0], fea: source('@rulecad/fea'), threads: source('@rulecad/fea/threads'), cad: holdEmpty.toString() });
+/**
+ * The key an optimisation's densities are kept by (.cache/densities/<key>.json): the problem and every piece of
+ * densityCode, so a change to any of them optimises again, in this checkout or in another commit's copy that shares
+ * the folder (scripts/dimension-diff.mjs).
+ * @param {object} problem readProblem's problem @param {ReturnType<typeof densityCode>} [code] @returns {string}
+ */
+export const densitiesKey = (problem, code = densityCode()) => digest([code.version, problem, code.solver, code.fea, code.threads, code.cad]);
 export async function optimised(project, ref, { onStep, onRun, fresh = false } = {}) {
-  const r = await readProblem(project, ref), topopt = source('@rulecad/topopt'), [solver] = topopt.split('// ---------- shapes from results ----------');
-  const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
+  const r = await readProblem(project, ref), topopt = source('@rulecad/topopt');
   // Two keeps: the densities, by the problem and the code that decides them (the slow part), and the shape drawn from
   // them, by everything: a change to how shapes are drawn redraws them without optimising again
   // The shape's key holds this file too, so a change to how cad draws a result (anchored below) redraws it
   const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
-  const spec = holdEmpty(discretise(r.problem)), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
+  const spec = holdEmpty(discretise(r.problem)), densities = paths.cache('densities', `${densitiesKey(r.problem)}.json`);
   // A mark that this problem has been optimised before (by any solver), so a run can say whether it's the solver that changed
   const seen = paths.cache('densities', `${digest([VERSION, r.problem])}.seen`);
   if (!fresh && !process.env.CAD_NO_CACHE && !host.exists(densities)) onRun?.(host.exists(seen) ? 'the solver has changed since its last result' : 'no result yet');

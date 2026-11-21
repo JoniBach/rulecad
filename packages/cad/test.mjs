@@ -1355,6 +1355,18 @@ test('host: the core builds and checks a design from a workspace in memory, writ
   assert.deepEqual(JSON.parse(out), { size: [16.8, 16.8, 16.8], onDisk: false, cached: true, rules: true });
 });
 
+test('an optimisation\'s densities are kept by everything that makes them: the problem, topopt\'s solver, the FE\'s code and its threads backend, and cad\'s own code that readies the problem, so a change in any is never read as the old result', async () => {
+  const { densitiesKey, densityCode } = await import('./lib/optimise.mjs');
+  const code = densityCode(), problem = { space: { size: [30, 12] } }, key = densitiesKey(problem, code);
+  assert.equal(densitiesKey(problem), key, 'the code read is the code that runs');
+  assert.match(code.cad, /^function holdEmpty\(spec\)/); assert.doesNotMatch(code.solver, /shapes from results/);
+  assert.equal(code.threads, fs.readFileSync(fileURLToPath(import.meta.resolve('@rulecad/fea/threads')), 'utf8'));
+  // a change to any one piece (cad's own holdEmpty among them, which the key once left out) moves the key, and so does
+  // the problem; scripts/dimension-diff.mjs shares the densities between commits on this key alone
+  for (const k of Object.keys(code)) assert.notEqual(densitiesKey(problem, { ...code, [k]: typeof code[k] === 'number' ? code[k] + 1 : `${code[k]}\n` }), key, k);
+  assert.notEqual(densitiesKey({ space: { size: [30, 13] } }, code), key);
+});
+
 test('optimising a problem: cad optimise draws it and caches it, a design builds from it, cad check analyses it', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -1373,6 +1385,13 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
       analysis: [{ problem: 'arm', max_deflection: 1, volume: 760, tolerance: 0.05 }] }));
     fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
     const first = cad('optimise', 'beam/arm');
+    // its densities are kept under densitiesKey of its problem
+    const kept = fs.readdirSync(path.join(ws, '.cache', 'densities')).filter((f) => f.endsWith('.json'));
+    const want = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem, densitiesKey } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      console.log(densitiesKey((await readProblem('beam', 'arm')).problem));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }).trim();
+    assert.deepEqual(kept, [`${want}.json`]);
     assert.match(first, /down: moves [\d.]+ mm along its load, [\d.]+ N\/mm/);
     assert.match(first, /settled/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-optimised.svg')));
