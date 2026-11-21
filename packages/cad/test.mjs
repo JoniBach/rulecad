@@ -5535,11 +5535,11 @@ test('a printed bolt in a fasten: an M8 printed bolt into a printed thread is li
   const { ws, cad, done } = workspace();
   try {
     // A base 40 × 20 × 24 mm with two M8 threads printed in it, 22 mm deep, and a bracket 6 mm thick with two clearance holes
-    object(ws, 'pb/base', { uses: ['x1c'], variables: { thread: { value: 'M8', choice: ['M8', 'M5'], rule: 'The thread' } } }, `import jscad from '@jscad/modeling'
+    object(ws, 'pb/base', { uses: ['x1c'], variables: { thread: { value: 'M8', choice: ['M8', 'M5'], rule: 'The thread' }, kind: { value: 'thread', choice: ['thread', 'pilot', 'insert', 'tap'], rule: 'The holes the bolts end in' } } }, `import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
 export function main (v) {
   const block = cuboid({ size: [40, 20, 24], center: [0, 0, 12] })
-  return v.ops.subtract(block, ...[-12, 12].map((x) => v.fixings.hole(v.thread, { kind: 'thread', depth: 22, at: [x, 0, 24] })))
+  return v.ops.subtract(block, ...[-12, 12].map((x) => v.fixings.hole(v.thread, { kind: v.kind, depth: 22, at: [x, 0, 24] })))
 }
 `);
     object(ws, 'pb/bracket', { uses: ['x1c'], anchors: { h1: { at: [-12, 0, 6], axis: [0, 0, 1] }, h2: { at: [12, 0, 6], axis: [0, 0, 1] } }, variables: { thread: { value: 'M8', choice: ['M8', 'M5'], rule: 'The thread' } } }, `import jscad from '@jscad/modeling'
@@ -5549,8 +5549,8 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
     fs.writeFileSync(path.join(ws, 'projects/pb/project.json'), JSON.stringify({ name: 'pb', material: 'PLA', objects: ['base', 'bracket'] }));
     const file = path.join(ws, 'projects/pb/assemblies/joint.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const write = (screw, kg, thread = 'M8') => fs.writeFileSync(file, JSON.stringify({ title: 'A bracket on printed bolts', kind: 'fit', gravity: [0, 0, 1], loads: [{ mass: kg, at: 'bracket.h2' }],
-      items: [{ id: 'base', object: 'base', set: { thread } }, { id: 'bracket', object: 'bracket', at: [0, 0, 24], set: { thread } }],
+    const write = (screw, kg, thread = 'M8', kind = 'thread') => fs.writeFileSync(file, JSON.stringify({ title: 'A bracket on printed bolts', kind: 'fit', gravity: [0, 0, 1], loads: [{ mass: kg, at: 'bracket.h2' }],
+      items: [{ id: 'base', object: 'base', set: { thread, kind } }, { id: 'bracket', object: 'bracket', at: [0, 0, 24], set: { thread } }],
       fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
       fasten: [{ screw, through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }] }));
     const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
@@ -5574,6 +5574,27 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
     const list = JSON.parse(cad('list', 'pb/joint', '--json')), bolt = list.printed.find((p) => /^M8x\d+ hex printed$/.test(p.id));
     assert.ok(bolt && bolt.count === 2 && bolt.grams > 2, JSON.stringify(list.printed)); assert.ok(!list.fasteners.some((f) => /M8/.test(f.fastener)), JSON.stringify(list.fasteners));
     assert.match(cad('list', 'pb/joint'), /M8x\d+ hex printed \(2 printed bolts, standing on their heads/);
+    // worded for a bolt that is printed and done up by hand: no tightening torque under its head, no wrench, no "sold" length
+    const said = (code) => found.filter((x) => x.code === code).map((x) => x.text).join(' | ');
+    assert.match(said('fasten.length'), /M8x\d+ hex printed chosen, the shortest that fits \(a printed bolt is printed to any whole millimetre\)/); assert.ok(!/sold/.test(said('fasten.length')), said('fasten.length'));
+    assert.match(said('fasten.seat'), /done up by hand, with no torque to tighten to/); assert.ok(!/tightening of|N m/.test(said('fasten.seat')), said('fasten.seat'));
+    assert.match(said('fasten.access'), /a 13 mm socket or spanner turned by hand reaches the head/);
+    // Into a pilot: a plastic bolt forms no thread in plastic, so the end is refused by name, pointing at a printed thread, a nut or an insert
+    write('M8 hex printed', 20, 'M8', 'pilot');
+    const pilot = check().filter((x) => x.code === 'fasten.end');
+    assert.ok(pilot.length && pilot.every((x) => x.level === 'fail'), JSON.stringify(pilot));
+    assert.match(pilot[0].text, /M8 hex printed is a printed bolt: a plastic thread cannot form its own thread in plastic\. Print the thread in base \(v\.fixings\.hole\('M8', \{ kind: 'thread' \}\)\), or end it in a nut or a heat-set insert/);
+    // Into a heat-set insert or a tapped hole: a standard thread, so the bolt takes the whole 0.2 mm x1c.thread_gap and not half.
+    // By hand: root radius 3.3234 - 0.2 = 3.1234 mm, 6.246 mm across; (π/4) 6.246² = 30.640 mm² × 39 MPa = 1195.0 N (not the
+    // 1272.7 N of a printed pair). Its teeth in the insert (0.75 π × 6.6467 × Le at 22.517 MPa) shear above 1195 N for any Le
+    // over 3.4 mm, so tension governs: 1195.0 / 196.1 = 6.09 times the pull
+    for (const kind of ['insert', 'tap']) {
+      write('M8 hex printed', 20, 'M8', kind);
+      const got = check(), l2 = got.find((x) => x.code === 'fasten.load' && x.values?.margin != null);
+      assert.ok(l2, `${kind}: ${JSON.stringify(got.filter((x) => /fasten/.test(x.code)).map((x) => x.text))}`);
+      assert.match(l2.text, /breaks along at about 1195 N \(tension\)/, `${kind}: ${l2.text}`);
+      assert.ok(Math.abs(l2.values.margin - 1195 / l2.values.tension) < 0.01, `${kind}: ${l2.values.margin}`);
+    }
     // 150 kg: about 1471 N, more than it breaks at
     write('M8 hex printed', 150);
     assert.equal(check().find((x) => x.code === 'fasten.load' && x.values?.margin != null).level, 'fail');

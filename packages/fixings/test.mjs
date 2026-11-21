@@ -1152,6 +1152,14 @@ test('a printed bolt: an M8 in PLA breaks at the load worked by hand, in a print
   assert.throws(() => printedBoltModel('M8 washer'), /not a bolt/);
   // lengthFor: a printed screw is any whole millimetre long
   assert.equal(lengthFor(6, 'M8 hex printed', { into: { kind: 'thread', depth: 22, material: 'pla' } }).length, 26, '6 mm of stack and 2.5 × 8 = 20 mm engaged');
+  assert.equal(lengthFor(6, 'M8 hex printed', { into: { kind: 'thread', depth: 22, material: 'pla' } }).name, 'M8x26 hex printed', 'named as printed, not as a sold screw');
+  // screwModel on a printed name: the printed bolt's outline, named printed and weighed in its plastic. The steel M8x20 hex
+  // weighs 12.46 g at 7.85 g/cm³, so its outline is 12.46 / 7.85 = 1.587 cm³: 1.587 × pla.density 1.26 = 2.0 g, × petg's 1.27 = 2.016 g
+  const ps = screwModel('M8x20 hex printed');
+  assert.deepEqual([ps.name, ps.printed, ps.material, ps.mass], ['M8x20 hex printed', true, 'pla', 2]); assert.equal(screwModel('M8x20 hex').mass, 12.46);
+  assert.equal(screwModel('M8x20 hex printed', { material: 'petg' }).mass, 2.016); assert.equal(printedBoltModel('M8x20 hex printed').grams, ps.mass, 'the grams printedBoltModel gives');
+  assert.match(ps.findings.map((f) => f.text).join(' '), /printedBoltModel\('M8x20 hex printed', \{ material: 'pla' \}\) gives its strength/);
+  assert.throws(() => screwModel('M8x20 hex printed', { material: 's275' }), /screw: M8x20 hex printed is printed, and s275 is no plastic/);
   // its solid: the screw with its thread drawn, standing on its head, which prints
   const g = printedBolt('M8x16 hex printed'); assert.equal(g.model.name, 'M8x16 hex printed'); prints(g, 'a printed M8 bolt on its head');
 });

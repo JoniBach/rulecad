@@ -15,7 +15,7 @@ const { translate, rotateX } = jscad.transforms;
 
 const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`; // (a plain word's article: model's a() is for thread names)
 const n1 = (x) => +x.toFixed(1), n2 = (x) => +x.toFixed(2);
-/** What a printed bolt can go in: a printed nut or a thread printed in the part (half the gap each), or a bought steel nut (the bolt takes it all). */
+/** What a printed bolt can go in: a printed nut or a thread printed in the part (half the gap each), or a standard thread, 'steel': a bought nut, a heat-set insert or a tapped hole (the bolt takes the whole gap). */
 export const BOLT_NUTS = ['printed', 'steel'];
 
 // The area of a circle of radius r less the segment past a chord f from its centre (a bolt lying on its side, on its flat)
@@ -39,7 +39,7 @@ const segmentless = (r, f) => (f == null || f >= r ? Math.PI * r * r : Math.PI *
  * @param {{ material?: string | object, printer?: object, nut?: 'printed' | 'steel', depth?: number, axis?: 'x' | 'y' | 'z', load?: number, length?: number, head?: string,
  *   gap?: number, sets?: object }} [o]
  *   material: the plastic (default PLA); nut: printed (a printed nut or a thread printed in the part, the default) or
- *   steel (a bought nut); depth: thread engaged in the nut, mm (default the thread's hex nut height); axis: how it
+ *   steel (a standard thread: a bought nut, a heat-set insert or a tapped hole); depth: thread engaged in the nut, mm (default the thread's hex nut height); axis: how it
  *   prints, z standing on its head (the default), or x or y lying on a flat; load: the pull along it, N, held to
  *   fixings.load_margin; gap: in place of the printer's thread_gap
  * @returns {PrintedBolt}
@@ -51,7 +51,7 @@ export function printedBoltModel(m, o = {}) {
   if (!['screw', 'thread'].includes(fx.item)) throw new Error(`${what}: ${fx.name} is ${an(fx.item)}, not a bolt: name a screw ('${fx.thread}x20 hex printed')`);
   const nut = oneOf(what, 'nut', o.nut ?? 'printed', BOLT_NUTS), axis = oneOf(what, 'axis', o.axis ?? 'z', ['x', 'y', 'z']), mat = materialOf(what, o.material ?? 'pla', o.sets);
   if (mat.cls !== 'plastic') throw new Error(`${what}: ${mat.name} is ${an(mat.cls)}, not a plastic: a printed bolt is printed in a plastic (pla, petg, or a plastic's rule set)`);
-  const form = o.head ?? fx.head?.form ?? (fx.made.heads.includes('hex') ? 'hex' : fx.made.heads[0]), sc = screwModel(fx, { length: o.length ?? fx.length ?? undefined, head: form, anyLength: true });
+  const form = o.head ?? fx.head?.form ?? (fx.made.heads.includes('hex') ? 'hex' : fx.made.heads[0]), sc = screwModel(fx, { length: o.length ?? fx.length ?? undefined, head: form, anyLength: true, ...(fx.printed ? { material: o.material ?? 'pla', sets: o.sets } : {}) }); // (a printed name is weighed in its plastic by screwModel)
   const out = [], rests = [];
   // Its thread, as it prints: refused where the printer cannot resolve the pitch, naming the smallest thread that prints
   const shank = r3(sc.length - sc.sink), t = threadModel(fx, { what, length: shank, printer: o.printer, sets: o.sets, mate: nut === 'printed' ? 'printed' : 'bought', gap: o.gap, top: '-z', axis, flat: axis !== 'z' ? true : undefined });
@@ -79,12 +79,12 @@ export function printedBoltModel(m, o = {}) {
     margin = n2(breaking / load); rests.push(rest('fixings.load_margin', DEFAULTS.load_margin));
     out.push(finding(margin >= want ? 'pass' : margin >= 1 ? 'warn' : 'fail', `a pull of ${mm(load)} N on the printed bolt is held ${mm(margin)} times over${margin >= want ? '' : margin >= 1 ? `, under the ${mm(want)} times fixings.load_margin asks` : ': it breaks'} (${governs} first). Do it up by hand: a printed thread takes no wrench's torque`, 'bolt.load', { values: { load, margin, breaking: n1(breaking) } }));
   }
-  if (nut === 'steel') out.push(finding('info', `in a bought steel nut, the printed bolt takes the whole of the thread's gap and the nut's teeth hold: the bolt's teeth shear first`, 'bolt.nut', { values: { nut } }));
+  if (nut === 'steel') out.push(finding('info', `in a standard thread (a bought steel nut, a heat-set insert or a tapped hole), the printed bolt takes the whole of the thread's gap and the nut's teeth hold: the bolt's teeth shear first`, 'bolt.nut', { values: { nut } }));
   // Its mass: the outline screwModel weighs, at the plastic's density
   if (!mat.density) throw new Error(`${what}: ${mat.name} has no density in its rule set, so the bolt cannot be weighed`);
-  const grams = r3((sc.mass / DEFAULTS.steel_density.value) * mat.density.value);
+  const grams = fx.printed ? sc.mass : r3((sc.mass / DEFAULTS.steel_density.value) * mat.density.value);
   rests.push(rest(mat.density.name, mat.density));
-  const name = `${sc.name} printed`;
+  const name = fx.printed ? sc.name : `${sc.name} printed`;
   out.push(finding('info', `${name} weighs ${mm(grams)} g of ${mat.name}, an estimate from its outline`, 'bolt.mass', { values: { grams } }));
   return { kind: 'printed-bolt', name, thread: fx.thread, head: form, length: sc.length, nut, axis, material: mat.name, root, rootArea: n2(rootArea), engaged: depth,
     tension: { strength: sTension.value, load: n1(tensionLoad), rule: sTension.name }, strip: { area: n2(stripArea), shear: n2(tau), load: n1(stripLoad), nutArea: nutArea != null ? n2(nutArea) : null },
