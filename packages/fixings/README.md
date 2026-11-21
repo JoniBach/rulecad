@@ -726,12 +726,13 @@ hole: depth is a number above 0, in mm (got -2)
 - **Measured**: the X1C's M3 pilot (`x1c.pilot_m3`, 2.9 mm, from the kit's fit bar). It is the only measured figure
   so far. The fixings coupon (`examples/bench/projects/benchmarks/objects/fixings-coupon`) measures the rest, per
   printer and plastic, and `cad measured` writes each result to the printer's rule set.
-- **Community**: heat-set inserts (CNC Kitchen's sheet), pilots for M2 to M4 (Bambu Lab's figures for PLA) and for
+- **Community**: magnets' pulls straight off steel (the seller's figures, supermagnete) and the grades' remanence, heat-set inserts (CNC Kitchen's sheet), pilots for M2 to M4 (Bambu Lab's figures for PLA) and for
   the PT screws (the maker's factor for ABS), the engagement rules, the printer's `hole_comp`, `fit` and `bridge`,
   the two layers a nut pocket is sunk, and the three quarters of proof load a fully tightened screw is taken to carry.
 - **Estimates**: pilots for M1.6, M5 and up, and every inch size (nobody has published one); the printer's `slip`,
-  `press`, `thread_gap`, `snap_clearance`, `pin_press` and `pin_slip`; a steel dowel's shear strength and the play a
-  snap pin's shaft may have; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
+  `press`, `thread_gap`, `snap_clearance`, `pin_press`, `pin_slip`, `magnet_press`, `magnet_glue` and `magnet_crush`; a steel dowel's shear strength and the play a
+  snap pin's shaft may have; a magnet's pull at a grade other than its seller's and across a gap, the grip of a press
+  or of crush ribs on a magnet, the three layers under a magnet's pocket, and every strength of a printed bolt; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
   a material's shear strength (its tensile strength over √3) and what it bears under a head (its strength); the nut
   factor K (0.2); the diameter of thread asked in an insert; the millimetre kept at a screw's tip; and every mass.
   A mass comes from the part's outline, with no socket and no knurls, and an insert's alloy is assumed.
@@ -779,6 +780,15 @@ with its `rule`, `kind` and `source`.
 | A pin's shear | F = τ π d² / 4 × planes, a snap pin's area less its slot (gap × d); τ = strength / √3, or `pins.dowel_shear` for steel | Von Mises; the dowel's figure is an estimate that understates a hardened pin |
 | The hole's bearing | F = strength × d × grip, the grip half the parts' thickness unless given | Projected area, as a screw's seat is taken; an estimate |
 | A pin's mass | m = ρ π d² / 4 L, a snap pin's from its drawn solid | Geometry, with the plastic's or steel's density |
+| A printed bolt in tension | F = strength × (π/4) dr², dr the root as drawn (the basic d - 1.0825 P less the bolt's share of thread_gap each side); strength across the layers standing (strength_z), along them lying; lying, the section less the segment past its flat | ISO 68-1 basic profile; the plastic's rule set. An estimate |
+| Its teeth sheared in the nut | the bolt's A = 0.75 π D1 Le, D1 = d - 1.0825 P (its tooth is 0.75 P wide where the nut's crest flat, P/4, ends); a printed nut's A = 0.875 π d Le; F = (strength / √3) × the lesser | The same derivation as the internal thread's shear area above, at basic sizes; an estimate |
+| Its head sheared off | F = (strength / √3) × π d k, k the head's height | Geometry; an estimate |
+| A magnet's pull at another grade | F = F_sold × (Br / Br_sold)², each Br the middle of its grade's range | The force on an iron face, F = B² A / 2μ0 (Wikipedia, Force between magnets), with B in proportion to Br; remanence from supermagnete's physical magnet data. An estimate |
+| A magnet's pull across a gap | F(z) = F(0) × (B(z) / B(0))²; a disc's B(z) = Br/2 [(D + z) / √(R² + (D + z)²) - z / √(R² + z²)], a block's Br/π [atan(LW / (2z √(4z² + L² + W²))) - atan(LW / (2(D + z) √(4(D + z)² + L² + W²)))] | supermagnete, How do you calculate the magnetic flux density? (the formulas); the square as above. An estimate |
+| A magnet's pocket | press: d + hole_comp - magnet_press; glue: d + hole_comp + magnet_glue; ribs: the glue pocket, three ribs' tips at d + hole_comp - magnet_crush | The printer's rules, estimates until the coupon measures them |
+| A press's grip on a magnet | p = E i / d / (1 + ν), i = magnet_press; hold = μ p π d h; the pocket's wall stretched round its hoop at p | A rigid disc pressed into a hole in a wide plate (Lamé's thick cylinder with an infinite outer radius); μ is clamp_friction. An estimate, which creep lowers |
+| Crush ribs' grip | hold = μ × strength × n w h, n ribs a line w wide, crushed to the plastic's strength | An estimate of this package |
+| A magnet's mass | m = 7.5 g/cm³ × its volume | magnets.density, worked from sellers' weights |
 
 VDI 2230 and Machinery's Handbook are named because the plan asked for them. Neither was read at first hand for
 this package: the handbook's thread shear area and stress area are applied as the pages above give them, and VDI
@@ -822,6 +832,7 @@ Each figure's own source is in its rule (`m.figures.<name>.source`, and `DEFAULT
 - [Bolted joint](https://en.wikipedia.org/wiki/Bolted_joint), Wikipedia: torque and preload, the nut factor, and how tightening methods scatter.
 - [Bolt group capacity](https://steelcalculator.pages.dev/reference/bolt-group-capacity/), the elastic method: direct and torsional shear in a group.
 - [Von Mises yield criterion](https://en.wikipedia.org/wiki/Von_Mises_yield_criterion), Wikipedia: shear yield from tensile yield.
+- [How do you calculate the magnetic flux density?](https://www.supermagnete.de/eng/faq/How-do-you-calculate-the-magnetic-flux-density), supermagnete: the field on a disc's and a block's axis; [Physical magnet data](https://www.supermagnete.de/eng/physical-magnet-data), supermagnete: each grade's remanence; and [Force between magnets](https://en.wikipedia.org/wiki/Force_between_magnets), Wikipedia: the force on an iron face, F = B² A / 2μ0. Read on 2026-11-21; each magnet's pull is its seller's page, named in its rule.
 
 All were read on 2026-11-15. The plan for this package is [issue 212](https://github.com/JoniBach/rulecad/issues/212),
 and its specification is `docs/fixings-and-frames.md` in the repository. In `@rulecad/cad` the package is to become
