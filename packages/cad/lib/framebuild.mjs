@@ -49,7 +49,9 @@ export function cutToleranceOf(s) {
   if (!(Number.isFinite(t) && t >= 0)) throw new Error(`frame.cut.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more (got ${JSON.stringify(c.tolerance)})`);
   return t;
 }
-function tolOf(s, p) {
+function tolOf(s, p, printed = false) {
+  // (a printed beam is not cut: its length comes off the printer, held here to a saw cut's tolerance, an estimate)
+  if (printed) return { tol: CUT_DEFAULTS.tolerance.value, tolKind: 'estimate', tolFrom: 'frames.cut.tolerance, taken for a printed length', printed: true };
   const given = cutToleranceOf(s);
   if (given != null) return { tol: given, tolKind: 'given', tolFrom: 'the assembly\'s frame.cut.tolerance' };
   if (p.supply?.cutTolerance != null) return { tol: p.supply.cutTolerance, tolKind: p.figures?.cut_tolerance?.kind ?? 'spec', tolFrom: `${p.name}.cut_tolerance` };
@@ -62,7 +64,7 @@ function linesOf(s) {
   for (const o of s.objects) {
     if (!o.beam || o.unplaced || !worlds[o.id]) continue;
     const W = worlds[o.id], p = o.beam.profile;
-    out.set(o.id, { id: o.id, O: [W[3], W[7], W[11]], d: norm([W[2], W[6], W[10]]), X: [W[0], W[4], W[8]], Y: [W[1], W[5], W[9]], w: p.width, h: p.height, L: o.beam.length, ...tolOf(s, p) });
+    out.set(o.id, { id: o.id, O: [W[3], W[7], W[11]], d: norm([W[2], W[6], W[10]]), X: [W[0], W[4], W[8]], Y: [W[1], W[5], W[9]], w: p.width, h: p.height, L: o.beam.length, ...tolOf(s, p, !!o.beam.printed) });
   }
   return out;
 }
@@ -97,7 +99,7 @@ export function baysOf(s) {
       // join of the bay's beams lets a's end sit off by its play along b (JOIN_PLAY), stacked worst case
       const bay = [A, B, C, D], ids4 = bay.map((x) => x.id), along = (x) => (par(x, C) ? 'width' : 'height');
       const inBay = (s.joins ?? []).filter((j) => ids4.includes(j.items[0]) && ids4.includes(j.items[1]) && j.items[0] !== j.items[1]);
-      const cuts = bay.filter((x) => inBay.some((j) => j.items[0] === x.id)).map((x) => ({ name: x.id, along: along(x), tolerance: x.tol, kind: x.tolKind }));
+      const cuts = bay.filter((x) => inBay.some((j) => j.items[0] === x.id)).map((x) => ({ name: x.id, along: along(x), tolerance: x.tol, kind: x.tolKind, ...(x.printed ? { printed: true } : {}) }));
       const plays = inBay.map((j) => { const r = JOIN_PLAY[j.kind]; return r ? { name: `join ${j.index + 1} (${j.kind})`, along: along(L.get(j.items[1])), slip: r.value, kind: r.kind } : null; }).filter(Boolean);
       const sq = squareness(width, height, { tolerance: Math.max(...bay.map((x) => x.tol)), cuts, plays });
       out.push({ beams: ids4, name: `${A.id}, ${B.id}, ${C.id} and ${D.id}`, width: +width.toFixed(2), height: +height.toFixed(2), square: sq, joins: inBay.map((j) => j.index), tolFrom: [...new Set(bay.map((x) => x.tolFrom))] });

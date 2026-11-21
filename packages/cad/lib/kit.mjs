@@ -25,6 +25,21 @@ import { companions } from './fittings.mjs';
 const mm = (x) => String(+Number(x).toFixed(2));
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const cell = (x) => String(x ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+// The upright beams (placed by their ends, running up z) and the corner each stands at, seen from above: left and right
+// by x, front and back by y (the front the side of least y), where the uprights stand in two rows that way
+function uprightPlan(s, marks) {
+  const isVec = (v) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === 'number' && Number.isFinite(x));
+  const ups = (s.items ?? []).filter((it) => it.beam && isVec(it.from) && isVec(it.to) && Math.abs(it.from[0] - it.to[0]) < 1e-6 && Math.abs(it.from[1] - it.to[1]) < 1e-6 && Math.abs(it.to[2] - it.from[2]) > 1e-6);
+  if (ups.length < 2) return null;
+  const xs = [...new Set(ups.map((u) => +u.from[0].toFixed(3)))].sort((a, b) => a - b), ys = [...new Set(ups.map((u) => +u.from[1].toFixed(3)))].sort((a, b) => a - b);
+  const side = (v, list, lo, hi) => (list.length === 2 ? (Math.abs(v - list[0]) < 1e-3 ? lo : hi) : null);
+  const rows = ups.map((u) => {
+    const fb = side(u.from[1], ys, 'front', 'back'), lr = side(u.from[0], xs, 'left', 'right');
+    return [u.id, [fb, lr].filter(Boolean).join(' ') || 'see x, y', `${mm(u.from[0])}, ${mm(u.from[1])}`, marks.find((m) => m.items.includes(u.id))?.mark ?? ''];
+  });
+  const down = ups.every((u) => u.from[2] < u.to[2]) ? ' Each upright stands with its end a down.' : '';
+  return { rows, said: `Seen from above, x to the right and y away from you: the front is the side nearest you (least y), the left the side of least x.${down}` };
+}
 const table = (heads, rows) => [`| ${heads.join(' | ')} |`, `|${heads.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)];
 const csv = (rows) => rows.map((r) => r.map((x) => { const t = String(x ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; }).join(',')).join('\n');
 
@@ -146,6 +161,10 @@ export async function writeKit(s, findings, { pictures = false, preview = null }
     out.push('## Drill and tap', '', 'Each mark\'s work, every hole dimensioned from end a on its sheet.', '');
     out.push(...table(['Mark', 'Work', 'Sheet'], list.cut.marks.map((m) => [m.mark, m.ops.length ? m.ops.join('; ') : 'cut square, nothing else', sheets.find((x) => x.mark === m.mark)?.kit ?? ''])), '');
   }
+
+  // where each upright stands: a plan of the frame's corners, so the build is followed without the pictures
+  const plan = uprightPlan(s, list.cut?.marks ?? []);
+  if (frame && plan) out.push('## Where the uprights stand', '', plan.said, '', ...table(['Upright', 'Corner', 'x, y (mm, its centre line)', 'Mark'], plan.rows), '');
 
   // the build
   const pads = companions(s);

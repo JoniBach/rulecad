@@ -31,11 +31,11 @@ const finding = (level, text, code, extra = {}) => ({ level, text, code, ...extr
  *   diagonal by s × span / d (span the opening along the beam it meets).
  * @param {number} width the bay's opening one way, inside face to inside face, mm
  * @param {number} height the opening the other way, mm
- * @param {{ tolerance?: number, cuts?: { name: string, along: 'width' | 'height', tolerance?: number }[], plays?: { name: string, along: 'width' | 'height', slip: number, kind?: string }[] }} [o]
+ * @param {{ tolerance?: number, cuts?: { name: string, along: 'width' | 'height', tolerance?: number, printed?: boolean }[], plays?: { name: string, along: 'width' | 'height', slip: number, kind?: string }[] }} [o]
  *   tolerance: how far a cut length may be from the length asked, either way, mm (CUT_DEFAULTS.tolerance where left
  *   out, an estimate; give the profile's cut_tolerance where its set has one); cuts: the beams whose cut lengths set
- *   the opening, each along the width or the height, with its own tolerance where it differs (left out: two beams
- *   along the larger side); plays: each join's play, along the side of the beam it meets, in mm (JOIN_PLAY's)
+ *   the opening, each along the width or the height, with its own tolerance where it differs, and printed: true for a
+ *   printed beam, whose length is printed, not cut (left out: two beams along the larger side); plays: each join's play, along the side of the beam it meets, in mm (JOIN_PLAY's)
  * @returns {{ width: number, height: number, diagonal: number, accept: number, rss: number, lean: number, tolerance: number, terms: { term: string, value: number, kind: string, note: string }[], text: string, rests: object[], findings: object[] }}
  *   diagonal: each diagonal's length as drawn; accept: the most the two may differ by (the terms summed); rss: their
  *   root-sum-square; lean: accept as an angle from square, degrees; terms: each one's share of the difference, mm
@@ -57,7 +57,8 @@ export function squareness(width, height, o = {}) {
     side(c, i, 'cuts');
     const ti = c.tolerance ?? t;
     if (!(isNum(ti) && ti >= 0)) throw new Error(`${what}: cuts ${i + 1}: tolerance is a number of mm, 0 or more (got ${shown(c.tolerance)})`);
-    return { term: `${c.name ?? `beam ${i + 1}`} cut`, value: (ti * span(c.along)) / d, kind: c.tolerance != null ? (c.kind ?? 'given') : tk, note: `cut to ±${mm(ti)} mm, setting the ${mm(span(c.along))} mm ${c.along}` };
+    const made = c.printed ? 'printed' : 'cut';
+    return { term: `${c.name ?? `beam ${i + 1}`} ${made}`, value: (ti * span(c.along)) / d, kind: c.tolerance != null ? (c.kind ?? 'given') : tk, note: `${made} to ±${mm(ti)} mm, setting the ${mm(span(c.along))} mm ${c.along}`, tolerance: ti, printed: !!c.printed };
   });
   (o.plays ?? []).forEach((p, i) => {
     side(p, i, 'plays');
@@ -66,7 +67,11 @@ export function squareness(width, height, o = {}) {
   });
   const worst = terms.reduce((a, x) => a + x.value, 0), rss = Math.sqrt(terms.reduce((a, x) => a + x.value * x.value, 0));
   const accept = worst, lean = ((accept * d) / (2 * width * height)) * (180 / Math.PI), plays = o.plays?.length ?? 0;
-  const why = plays ? `beams cut to ±${mm(t)} mm and the play of ${plays} join${plays > 1 ? 's' : ''}, stacked worst case, every corner square; ${mm(r2(rss))} mm root-sum-square` : `beams cut to ±${mm(t)} mm, every corner square`;
+  // (a printed beam is not cut: its length is as printed, said so)
+  const lengths = terms.filter((x) => x.tolerance != null), cutT = lengths.filter((x) => !x.printed).map((x) => x.tolerance), printT = lengths.filter((x) => x.printed).map((x) => x.tolerance);
+  const made = [...(cutT.length || !printT.length ? [`beams cut to ±${mm(cutT.length ? Math.max(...cutT) : t)} mm`] : []), ...(printT.length ? [`beams printed to ±${mm(Math.max(...printT))} mm`] : [])].join(' and ');
+  for (const x of terms) { delete x.tolerance; delete x.printed; }
+  const why = plays ? `${made} and the play of ${plays} join${plays > 1 ? 's' : ''}, stacked worst case, every corner square; ${mm(r2(rss))} mm root-sum-square` : `${made}, every corner square`;
   const text = `measure both diagonals, inside corner to inside corner: each ${mm(d)} mm across the ${mm(width)} × ${mm(height)} mm opening; accept a difference of up to ${mm(r2(accept))} mm (${why}), about ${mm(r3(lean))}° of lean`;
   const out = terms.map((x) => ({ ...x, value: r3(x.value) }));
   return { width, height, diagonal: r2(d), accept: r2(accept), rss: r2(rss), lean: r3(lean), tolerance: t, terms: out, text,

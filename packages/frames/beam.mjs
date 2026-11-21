@@ -129,7 +129,12 @@ export function beamModel(profile, o = {}) {
   try { done = opsOf(b, list, beamAnchor, { printed: !!pr }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
   for (const x of done.ops) if (x.op === 'tap') { ends[x.end] = { kind: 'tapped', thread: x.thread }; for (const bo of bores) if (x.bores.includes(bo.name)) bo.tapped = true; }
   if (!pr) for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
-  b.ops = done.ops.sort((p, q) => p.distance - q.distance); b.findings.push(...done.findings);
+  // in the order they are done: the ends cut (square or mitred) and deburred, the holes, pockets and notches across it
+  // from end a, then the taps in its end bores
+  // (each keeps its place along the beam as `along`, not listed, which the cut list's marks are keyed by)
+  const work = (x) => ({ cut: 0, mitre: 0, deburr: 1, tap: 3 })[x.op] ?? 2;
+  done.ops.sort((p, q) => p.distance - q.distance).forEach((x, i) => Object.defineProperty(x, 'along', { value: i, enumerable: false, configurable: true }));
+  b.ops = done.ops.sort((p, q) => work(p) - work(q) || p.distance - q.distance); b.findings.push(...done.findings);
   return pr ? printedOf(b, pr, { a: ends.a.kind, b: ends.b.kind }) : b;
 }
 

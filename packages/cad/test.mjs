@@ -2977,7 +2977,7 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
     assert.match(cad('beams', 'frame/box'), /mark D \(z1\), 1:2: exports[\\/]frame[\\/]box\.beam-D\.svg/);
     assert.deepEqual(fs.readdirSync(path.join(ws, 'exports/frame')).filter((f) => f.endsWith('.svg')).sort(), ['box.beam-A.svg', 'box.beam-B.svg', 'box.beam-C.svg', 'box.beam-D.svg']);
     const svg = fs.readFileSync(path.join(ws, 'exports/frame/box.beam-D.svg'), 'utf8');
-    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(1) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
+    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(4) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
     // each beam's mark in its label, the cut list's findings on cad check, and the sheets on the build page
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
@@ -3084,11 +3084,11 @@ test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a c
     assert.ok(fs.statSync(path.join(ws, 'exports/frame/box.jigs.3mf')).size > 1000);
     assert.deepEqual(r.findings, []);
     // the text form; a hole too far from both ends for one print is a warning in place of a guide
-    assert.match(cad('beams', 'frame/box', '--jigs'), /drill-guide-2020-misumi-hfs5-5\.3-at-30 \[ABCD\]: 11\.\d+ g, 6\.66× at its load, prints clean: for A3 \(p2: access hole Ø5\.3 mm in back\.1, 30 mm from end a/);
+    assert.match(cad('beams', 'frame/box', '--jigs'), /drill-guide-2020-misumi-hfs5-5\.3-at-30 \[ABCD\]: 11\.\d+ g, 6\.66× at its load, prints clean: for A4 \(p2: access hole Ø5\.3 mm in back\.1, 30 mm from end a/);
     fs.writeFileSync(at('assemblies/long.json'), JSON.stringify({ title: 'Long', kind: 'fit', items: [{ id: 'l1', beam: { ...P, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] }, from: [0, 0, 0], to: [1000, 0, 0] }] }));
     const l = JSON.parse(cad('beams', 'frame/long', '--jigs', '--json'));
     assert.deepEqual(l.jigs.map((x) => x.kind), ['length-stop']);
-    assert.match(l.findings[0].text, /mark A \(l1\), operation 2: no drill guide: .* is 500 mm from end a and 500 mm from end b: a guide that reaches it is [\d.]+ mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
+    assert.match(l.findings[0].text, /mark A \(l1\), operation 3: no drill guide: .* is 500 mm from end a and 500 mm from end b: a guide that reaches it is [\d.]+ mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
   } finally { done(); }
 });
 
@@ -4908,15 +4908,25 @@ test('cad plates and cad kit: plates by material, a frame\'s jigs and its feet\'
     assert.match(plates, /frame\/box: \d+ jigs for its beams, [\d.]+ g, on 1 plate of their own \(cad beams frame\/box --jigs says what each is for\)\n\s+exports[\\/]frame[\\/]box\.jigs\.3mf: pla, \d+ parts/, plates);
     assert.match(cad('list', 'frame/box'), /foot-z1-pad \(comes with foot-z1: printed beside it, screwed into it by hand\)/);
     assert.doesNotMatch(cad('plates', 'frame/box', '--no-jigs'), /jigs/);
-    // 3. The kit: one folder, written only for a design that checks clean
+    // 3. The kit: one folder, written only for a design that checks clean. Laying out its plates reads the printer's
+    // rule set: in a workspace without its own copy, the kit copies x1c into rules/ and says so (once)
+    fs.rmSync(path.join(ws, 'rules/x1c.json'), { force: true });
     const k = JSON.parse(cad('kit', 'frame/box', '--json')), dir = path.join(ws, k.dir);
+    assert.deepEqual(k.copied, ['rules/x1c.json']); assert.ok(fs.existsSync(path.join(ws, 'rules/x1c.json')));
+    assert.match(cad('kit', 'frame/box'), /frame\/box: the kit to build it from/); assert.doesNotMatch(cad('kit', 'frame/box'), /and copied rules/);
     assert.equal(k.dir.split(path.sep).join('/'), 'exports/frame/box-kit');
     assert.deepEqual(k.files, ['README.md', 'buy.csv', 'print/box-base-1.3mf', 'print/box.jigs.3mf', 'sheets/beam-A.svg', 'sheets/beam-B.svg', 'sheets/beam-C.svg', 'sheets/beam-D.svg', 'sheets/beam-E.svg']);
     for (const f of k.files.filter((x) => x.endsWith('.3mf'))) assert.equal(fs.readFileSync(path.join(dir, f)).subarray(0, 2).toString(), 'PK', `${f} is a 3MF (a zip)`);
     assert.match(fs.readFileSync(path.join(dir, 'sheets/beam-A.svg'), 'utf8'), /^<svg[^>]*width="[\d.]+mm"/, 'a sheet to scale');
     const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), buy = fs.readFileSync(path.join(dir, 'buy.csv'), 'utf8');
     for (const h of ['# box: the kit', '## In this folder', '## What the checks say', '## What to buy', '### Bars', '### Screws, nuts and inserts', '## What to print', '### Jigs', '## Cut', '## Drill and tap', '## Build', '### Tightening, by kind of join', '### Diagonals']) assert.ok(readme.includes(`\n${h}\n`) || readme.startsWith(`${h}\n`), h);
-    assert.match(readme, /`cad check frame\/box`: \d+ checks pass, none fail, none warn\./);
+    // it counts what cad check counts, the files' schema check included
+    const passing = JSON.parse(cad('check', 'frame/box', '--json')).findings.filter((f) => f.level === 'pass').length;
+    assert.match(readme, new RegExp(`\`cad check frame/box\`: ${passing} checks pass, none fail, none warn\\.`));
+    // where each upright stands, without the pictures: a plan of the corners. Hand: the box is 200 + 2 x 20 = 240 mm
+    // outside, so the uprights' centre lines stand 10 mm in from each side, at x and y of 10 and 230
+    assert.match(readme, /## Where the uprights stand\n\nSeen from above, x to the right and y away from you: the front is the side nearest you \(least y\), the left the side of least x\. Each upright stands with its end a down\./);
+    assert.match(readme, /\| z1 \| front left \| 10, 10 \| [A-Z] \|\n\| z2 \| front right \| 230, 10 \| [A-Z] \|\n\| z3 \| back left \| 10, 230 \| [A-Z] \|\n\| z4 \| back right \| 230, 230 \| [A-Z] \|/);
     assert.match(readme, /\| C \| 1 \| profile-2020-misumi-hfs5 \| 258\.5 \| z1 \|/);
     assert.match(readme, /\| C \| tap M5 x 18\.5 at a; access Ø5\.3 at front\.1@28\.5;[^|]*\| sheets\/beam-C\.svg \|/);
     assert.match(readme, /\| 4 \| M5x16 cap \| 1 pack of 10, 6 spare \| foot-z1 screwed into z1's end a;/);

@@ -722,17 +722,7 @@ async function assembly(cmd, ref) {
   if (cmd === 'check') {
     say(`${title} (${a.kind || 'fit'}: ${versions})`);
     // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
-    const poses = pose ? [pose] : Object.keys(s.motion.poses);
-    const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
-    const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
-      ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
-    let findings = checkAssembly(s);
-    if (poses.length > 1) {
-      const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
-      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
-        ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
-    }
-    findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
+    const findings = assemblyFindings(s, a, pose);
     if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24, progress: showProgress }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
@@ -1070,12 +1060,33 @@ async function platesCommand(what, ref) {
   process.exitCode = fails ? 1 : 0;
 }
 
+// An assembly's findings as cad check gives them: each pose (or the one asked for), what is the same in every pose
+// said once and the rest under the pose's name, after its files' schema check. cad kit counts the same list
+function assemblyFindings(s, a, pose) {
+  const poses = pose ? [pose] : Object.keys(s.motion.poses);
+  const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
+  const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
+    ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
+  let findings = checkAssembly(s);
+  if (poses.length > 1) {
+    const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
+    findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
+      ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
+  }
+  findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
+  return findings;
+}
+
 // cad kit: the folder to build an assembly from, without the model (lib/kit.mjs)
 async function kitCommand(ref) {
   if (!isAssembly(ref)) throw new Error(`cad kit works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  // (laying out its plates reads the printer's rule set: a fresh workspace gets its own copy in rules/, as cad plates
+  // gives it, and the kit says which it copied)
+  const rulesDir = path.join(WS, 'rules'), had = new Set(fs.existsSync(rulesDir) ? fs.readdirSync(rulesDir) : []);
   const s = await buildAssembly(ref), { writeKit } = await import('../lib/kit.mjs');
-  const r = await writeKit(s, checkAssembly(s), { pictures: !!opt('pictures'), preview });
-  const shown = { assembly: ref, dir: path.relative(WS, r.dir), files: r.files, plates: r.plates.map(({ name, material, filament, parts, grams, minutes, file, issues }) => ({ name, material, filament, parts: parts.length, grams, minutes, file, issues })), jigs: r.jigs, sheets: r.sheets, steps: r.steps, warnings: r.findings.map((f) => f.text) };
+  const r = await writeKit(s, assemblyFindings(s, s.a, undefined), { pictures: !!opt('pictures'), preview });
+  const copied = (fs.existsSync(rulesDir) ? fs.readdirSync(rulesDir) : []).filter((f) => f.endsWith('.json') && !had.has(f)).map((f) => `rules/${f}`);
+  const shown = { assembly: ref, dir: path.relative(WS, r.dir), files: r.files, copied, plates: r.plates.map(({ name, material, filament, parts, grams, minutes, file, issues }) => ({ name, material, filament, parts: parts.length, grams, minutes, file, issues })), jigs: r.jigs, sheets: r.sheets, steps: r.steps, warnings: r.findings.map((f) => f.text) };
   if (opt('json')) return console.log(JSON.stringify(shown, null, 2));
   say(`${ref}: the kit to build it from, in ${shown.dir}${path.sep}`);
   say(`  README.md: what the checks say, what to buy, what to print${r.sheets.length ? ', the cut list, the drilling and tapping' : ''}${r.steps ? `, and the build in ${r.steps} steps` : ''}`);
@@ -1086,6 +1097,7 @@ async function kitCommand(ref) {
   const pics = r.files.filter((f) => f.startsWith('pictures/'));
   if (pics.length) say(`  pictures/: ${pics.length} pictures (the whole, and the steps of the build)`);
   for (const w of shown.warnings) say(`  warning: ${w}`);
+  for (const f of copied) say(`and copied ${f} into this workspace: the rule set its plates were laid out by, yours to keep and edit (the next kit reads your copy)`);
 }
 
 // cad frame: a generated frame as it expands, and --expand writes the expansion into the assembly, to edit by hand

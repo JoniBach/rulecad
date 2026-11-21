@@ -310,8 +310,12 @@ const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [
   { op: 'tap', at: 'a', thread: 'M5' },          // M5 in end a's bore, 10 mm deep: 2 diameters for aluminium
   { op: 'access', at: 'top@-10', thread: 'M5' }, // a Ø5.3 mm hole 10 mm from end b, for an M5 cap screw's 4 mm key
 ] });
-b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm; the bore is Ø4.2)', 'cut end a square', ...
+b.ops.map((o) => o.line); // 'cut end a square', 'cut end b square', 'access hole Ø5.3 mm in top.1, ...', 'tap M5 in bore a.1, ...'
 ```
+
+`b.ops` lists the operations in the order they are done, and a beam's sheet numbers them so: each end cut (square or
+mitred) and deburred, then the holes, pockets and notches across it from end a, then the taps in its end bores. The cut
+list's summary of a mark lists them by their place along the beam, from end a.
 
 | Operation | What it is | Where | Takes |
 |---|---|---|---|
@@ -595,7 +599,7 @@ beam is drawn 1:1, 1:2, 1:5, 1:10 and on, the smallest that keeps it within 200 
 2:1 or 1:1. On it: the section seen from end a with top up and each face named, and each tapped bore with its thread
 and depth; a view of each face that has work on it, or a mitre seen from it, with that face up and end a on the left,
 every slot's centre line, and each operation numbered and dimensioned from end a to 0.1 mm; and the operations in
-order from end a, each with its full line. A face only a few mm wide at a small scale is drawn wider across, and the
+the order they are done (the ends cut, the holes from end a, the taps), each with its full line. A face only a few mm wide at a small scale is drawn wider across, and the
 view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
 the sheet prints it.
 

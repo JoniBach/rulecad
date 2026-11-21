@@ -104,9 +104,9 @@ export function beamSheet(b, o = {}) {
     }
     y = yd + 26;
   }
-  // the operations, in order from end a
+  // the operations, in the order they are done (beamModel's)
   y = Math.max(y, ty + 4);
-  text(10, y, 'Operations, in order from end a', { size: 3.4, weight: 'bold' }); y += 5.5;
+  text(10, y, 'Operations, in the order to do them: the ends cut, the holes from end a, the taps', { size: 3.4, weight: 'bold' }); y += 5.5;
   for (const x of ops) {
     const where = x.end ? `end ${x.end}` : `${x.place ?? x.face}, ${d1(x.distance)} from a`;
     text(10, y, `${x.n}.`, { size: 3 }); text(17, y, `${x.op}  ·  ${where}`, { size: 3, weight: 'bold' }); text(80, y, x.line, { size: 3 }); y += 5;

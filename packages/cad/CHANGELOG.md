@@ -9,6 +9,15 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **The kit counts as cad check does**: its README's pass count is cad check's, the files' schema check included (it
+  was one short), from one list both commands make. It says where each upright stands (a table of the corners, seen
+  from above, with each upright's mark), so the build is followed without `--pictures`. Laying out its plates copies
+  the printer's rule set into a fresh workspace's `rules/`, as any command that uses a tool's set does: the kit now
+  says which sets it copied (`copied` in `--json`).
+- **Sheets in work order**: a beam's sheet numbers its operations in the order they are done (the ends cut, the holes
+  from end a, the taps), and a jig's label follows (`A4` where it was `A3`); marks and the cut list keep their order.
+- **Printed beams said as printed**: a bay's squareness (`frame.square`) says "beams printed to ±0.5 mm" for printed
+  beams (the saw's tolerance taken for a printed length, an estimate), not "cut".
 - **A gusset's face**: a printed gusset join takes `"face"`, the face of b it lies on (one of the two square to a);
   the other one than its beams' directions give turns the L over. A generated frame names the face looking out of
   the frame, so its printed gussets no longer land where a corner's third beam butts (a box joined by printed

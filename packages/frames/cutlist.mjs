@@ -56,7 +56,8 @@ function beamsOf(list, what) {
 // A, B, ... Z, AA, AB, ...
 const letters = (n) => { let s = ''; for (let k = n + 1; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(65 + ((k - 1) % 26)) + s; return s; };
 // What makes two beams the same: profile, material, length and every operation's line (each says where and how big)
-const keyOf = (b) => JSON.stringify([b.profile.name, b.material?.name ?? null, +b.length.toFixed(2), b.ops.map((o) => o.line)]);
+// (the ops by their place along the beam, so a beam's mark does not hang on the order its sheet lists them in)
+const keyOf = (b) => JSON.stringify([b.profile.name, b.material?.name ?? null, +b.length.toFixed(2), b.ops.map((o, i) => [o.along ?? i, o.line]).sort((p, q) => p[0] - q[0]).map((x) => x[1])]);
 
 /**
  * The beams by mark: beams that are the same (one profile, one material, one length and the same operations at the
@@ -148,7 +149,7 @@ export function cutList(beams, o = {}) {
     const mitre = b.ops.find((x) => x.op === 'mitre' && x.shortLength != null), grams = b.weight?.sheet ?? b.mass;
     return { mark, profile: b.profile.name, material: b.material?.name ?? null, length: b.length, ...(mitre ? { shortLength: Math.min(...b.ops.filter((x) => x.op === 'mitre').map((x) => x.shortLength)) } : {}),
       count, items, grams: grams != null ? +grams.toFixed(1) : null, weighedBy: b.weight?.sheet != null ? 'sheet' : b.mass != null ? 'section' : null,
-      ops: b.ops.filter((x) => !x.implied).map(opWords), beam: b };
+      ops: b.ops.map((x, i) => [x.along ?? i, x]).sort((p, q) => p[0] - q[0]).map((x) => x[1]).filter((x) => !x.implied).map(opWords), beam: b }; // (along the beam, from end a)
   });
   const profiles = [...new Set(lines.map((l) => l.profile))], stock = [];
   for (const name of profiles) {

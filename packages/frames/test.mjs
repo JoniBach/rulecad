@@ -461,9 +461,10 @@ test('beams refuse bad input by name, with what would be accepted', () => {
 test('operations on a beam: an end tapped M5 and an access hole 10 mm from the other end, both in its solid', () => {
   const V = jscad.measurements.measureVolume;
   const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5' }] });
-  // dimensioned from end a, in order along the beam, with a square cut at each end that has no cut of its own
-  assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['tap a 0', 'cut a 0 implied', 'access top@-10 290', 'cut b 300 implied']);
-  const tap = b.ops[0], access = b.ops[2];
+  // dimensioned from end a, in the order they are done: a square cut at each end that has no cut of its own, the
+  // holes across from end a, then the taps in the ends
+  assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['cut a 0 implied', 'cut b 300 implied', 'access top@-10 290', 'tap a 0']);
+  const tap = b.ops[3], access = b.ops[2];
   // the tap through fixings: its tap drill, and 2 diameters of thread for aluminium (the engagement rule set)
   assert.deepEqual([tap.thread, tap.bores, tap.tapDrill, tap.major, tap.depth, tap.engagement.class, tap.engagement.enough], ['M5', ['a.1'], 4.2, 5, 10, 'aluminium', true]);
   assert.deepEqual(b.ends.a, { kind: 'tapped', thread: 'M5' }); assert.equal(b.bores.find((x) => x.name === 'a.1').tapped, true);
@@ -544,7 +545,7 @@ test('beam.op checks: a hole into a slot\'s lips or a bore\'s side, a tap deeper
   assert.deepEqual(say(thin), ['warn engagement.depth']); assert.match(thin[0].text, /tapped hole at top@100: an M5 screw 1\.897 mm into aluminium .* engagement\.aluminium asks 2 \(10 mm\)/);
   // the rest cut cleanly where they fit: a counterbore on a closed face, a pocket, a notch, deburring
   const t = beamModel('tube-al-40x20x2', { length: 300, ops: [{ op: 'counterbore', at: 'top@100', thread: 'M5' }, { op: 'pocket', at: 'front@200', size: [20, 8], depth: 2 }, { op: 'deburr', at: 'b' }] });
-  assert.deepEqual(t.ops.map((o) => o.line), ['cut end a square', 'counterbore Ø10 x 5 mm for M5 cap head in top.1, 100 mm from end a, with a Ø5.5 mm hole through the wall (5 mm)', 'pocket 20 x 8 mm, corners R1.5, 2 mm deep in front.1, centred 200 mm from end a', 'deburr end b', 'cut end b square']);
+  assert.deepEqual(t.ops.map((o) => o.line), ['cut end a square', 'cut end b square', 'deburr end b', 'counterbore Ø10 x 5 mm for M5 cap head in top.1, 100 mm from end a, with a Ø5.5 mm hole through the wall (5 mm)', 'pocket 20 x 8 mm, corners R1.5, 2 mm deep in front.1, centred 200 mm from end a']);
   const n = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'notch', at: 'top@50%', length: 12 }] });
   within(jscad.measurements.measureVolume(beam(beamModel('2020-misumi-hfs5', { length: 300 }))) - jscad.measurements.measureVolume(beam(n)), 2 * 12 * 3 * 2, 0.02, 'the notch takes both lips');
 });
@@ -634,7 +635,9 @@ test('a cut-and-drill sheet: to scale, each operation from end a to 0.1 mm, the 
   assert.deepEqual(sh.dimensions, [{ op: 3, distance: 207.5, text: '207.5' }]);
   assert.match(sh.svg, />207\.5</); assert.match(sh.svg, />top face up: seen from the top, end a on the left</);
   assert.match(sh.svg, />Mark D: profile-2020-misumi-hfs5 x 220\.0 mm</); assert.match(sh.svg, />1 off: z1/);
-  assert.match(sh.svg, />\(1\) a\.1: tap M5 x 10 deep</); assert.match(sh.svg, />tap M5 in bore a\.1, 10 mm deep/);
+  // in the order they are done: both ends cut (1, 2), the access hole (3), the tap last (4)
+  assert.match(sh.svg, />\(4\) a\.1: tap M5 x 10 deep</); assert.match(sh.svg, />Operations, in the order to do them: the ends cut, the holes from end a, the taps</);
+  assert.deepEqual([...sh.svg.matchAll(/>(\d)\.<\/text><text[^>]*>([a-z]+) {2}·/g)].map((x) => `${x[1]} ${x[2]}`), ['1 cut', '2 cut', '3 access', '4 tap']); assert.match(sh.svg, />tap M5 in bore a\.1, 10 mm deep/);
   assert.match(sh.svg, /width="297mm"/); assert.ok(!/NaN|undefined/.test(sh.svg), 'no NaN on the sheet');
   // a mitre about the top is seen from the top; a hole in the front gets the front's view; long beams drawn smaller
   const m = frames.beamSheet(beamModel('2020-misumi-hfs5', { length: 1200, ops: [{ op: 'mitre', at: 'b', angle: 45, about: 'top' }, { op: 'drill', at: 'front@100.25', diameter: 5 }] }));
@@ -783,7 +786,7 @@ test('joins: a blind join taps the end of a and puts an access hole across b in 
   assert.deepEqual([hole.key, hole.rule], [3, 'm5.clearance_close']);
   assert.match(hole.line, /access hole Ø5\.3 mm in front\.1, 120 mm from end a, 14 mm deep \(through to the far side\) for a 3 mm key/);
   assert.throws(() => beamModel(B.profile, { length: 300, ops: [{ op: 'access', at: 'front@120', thread: 'M5', head: 'pan' }] }), /head is the screw's head the key turns, cap, button, countersunk \(got "pan"\)/);
-  assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops[0].engagement.enough, true);
+  assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops.find((x) => x.op === 'tap').engagement.enough, true);
   // an end-tap join: a clearance hole right through b instead, and a cap screw
   const e = joinModel('end-tap', { beam: A, end: 'a' }, { beam: B, address: 'back@120' });
   assert.deepEqual([e.b.ops, e.screws[0].screw], [[{ op: 'drill', at: 'front.1@120', thread: 'M5', kind: 'clearance', through: 'beam' }], 'M5 cap']);
@@ -1466,7 +1469,7 @@ test('jigs: a drill guide\'s bush sits where the beam\'s sheet dimensions the ho
   assert.throws(() => drillGuideModel(b, 2, { from: 'c' }), /from is the end the stop goes on, a or b/);
   const long = beamModel('2020-misumi-hfs5', { length: 1000, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] });
   assert.throws(() => drillGuideModel(long, long.ops.findIndex((x) => x.op === 'access')), /is 500 mm from end a and 500 mm from end b: a guide that reaches it is \d+(\.\d+)? mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
-  assert.throws(() => tapGuideModel(b, 0, { shank: 4 }), /shank is the tap's shank across in mm, at least its 5 mm thread/);
+  assert.throws(() => tapGuideModel(b, b.ops.findIndex((x) => x.op === 'tap'), { shank: 4 }), /shank is the tap's shank across in mm, at least its 5 mm thread/);
   assert.throws(() => lengthStopModel('2020-misumi-hfs5', -1), /length is the cut in mm, above 0/);
   assert.throws(() => squareCornerModel({ profile: '2020-misumi-hfs5', face: 'side' }, { profile: '2020-misumi-hfs5' }), /a's profile-2020-misumi-hfs5 has no face "side"/);
   assert.throws(() => squareCornerModel({ profile: 'tube-al-20x20x2' }, { profile: '2020-misumi-hfs5' }), /top face is closed: a squaring corner keys into a slot on each beam/);
@@ -1487,6 +1490,12 @@ test('squareness: a bay\'s two diagonals and the difference to accept, what the 
   assert.throws(() => frames.squareness(0, 200), /squareness: width is the bay's opening, inside face to inside face, a number of mm above 0 \(got 0\)/);
   assert.throws(() => frames.squareness(260, 200, { kerf: 3 }), /squareness: no option "kerf": it takes tolerance/);
   assert.throws(() => frames.squareness(260, 200, { tolerance: -1 }), /tolerance is how far a cut may be from its length either way/);
+  // printed beams are not cut: said as printed, each term and the reason (the same 0.79 mm: 2 x 0.5 x 260 / 328.02)
+  const pr = frames.squareness(260, 200, { cuts: [{ name: 'p1', along: 'width', printed: true }, { name: 'p2', along: 'width', printed: true }] });
+  assert.equal(pr.accept, 0.79); assert.deepEqual(pr.terms.map((x) => x.term), ['p1 printed', 'p2 printed']);
+  assert.match(pr.text, /\(beams printed to ±0\.5 mm, every corner square\)/); assert.doesNotMatch(pr.text, /cut to/);
+  const mixed = frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'width', tolerance: 0.5 }, { name: 'p1', along: 'width', printed: true, tolerance: 0.3 }] });
+  assert.match(mixed.text, /\(beams cut to ±0\.5 mm and beams printed to ±0\.3 mm, every corner square\)/);
 });
 
 test('squareness stacks each cut and each join\'s play as an error budget stacks its joints: worst case summed, root-sum-square beside it', () => {
@@ -1949,9 +1958,9 @@ test('MISUMI\'s 3030 has five bores in each end and only the middle one is for M
   const m = frames.box({ inside: [300, 300, 200], profile: '3030-misumi-hfs6', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' });
   assert.deepEqual(m.ends.filter((e) => e.tap).map((e) => e.tap.at), ['a.1', 'a.1', 'a.1', 'a.1']);
   const b = beamModel('3030-misumi-hfs6', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] });
-  assert.equal(b.ops[0].line, 'tap M8 in bore a.1, 20 mm deep (tap drill Ø6.8 mm; the bore is Ø6.8)');
+  assert.equal(b.ops.find((x) => x.op === 'tap').line, 'tap M8 in bore a.1, 20 mm deep (tap drill Ø6.8 mm; the bore is Ø6.8)');
   // a profile whose end bores are all for a thread keeps tapping them all (MISUMI's 2040: two M5 bores)
-  assert.match(beamModel('2040-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] }).ops[0].line, /^tap M5 in end a's bores a\.1, a\.2, 20 mm deep/);
+  assert.match(beamModel('2040-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] }).ops.find((x) => x.op === 'tap').line, /^tap M5 in end a's bores a\.1, a\.2, 20 mm deep/);
   // a 2020 (one bore) keeps its plain address
   assert.deepEqual(frames.footModel('2020-misumi-hfs5').ops.map((o) => o.at), ['a']);
 });

@@ -13,6 +13,13 @@ What changed in each release, for someone upgrading a workspace.
   4040, where drop-in was asked and drawing the fitting threw), a kind the kit lacks is refused naming one it has,
   and a slot with none (item's 3030) is refused. A printed gusset join names the post's face that looks out of the
   frame (`face`), so it never lands where the corner's third beam butts.
+- A beam's `ops`, and its sheet's numbers, are in the order the work is done: the ends cut and deburred, the holes
+  across from end a, the taps last (they were in their order along the beam, a tap at end a before its square cut).
+  A drill or tap guide's operation index and a jig's label (`C4`) follow the sheet's numbers. Marks and the cut
+  list's summary still go by place along the beam, so no mark's letter moves.
+- A tap at a whole end goes in the bores made for a thread where the end has any (MISUMI's 3030: its M8 centre bore,
+  not its four 4.2 mm corner holes), and a foot taps its bore by number (`a.1`) where the end has several.
+- `squareness` takes `printed: true` on a cut: its term and its reason say the beam is printed, not cut.
 - `bracketModel` and `plateModel` asked for a nut kind the slot has none of name the kinds it has, where they said
   "thread is a thread as written (got nothing)".
 
