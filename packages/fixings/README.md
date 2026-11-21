@@ -5,8 +5,9 @@ a screw thread: the thread itself (`M3`), a whole screw (`M3x12 cap`), a nut, a 
 threaded brass bush melted into plastic). You name the fixing, and this package looks its dimensions up from rules and
 gives you the model, the hole, the seat and the solid. It also draws a real thread to print where one is worth it,
 and does the first sums on a joint: how much thread is engaged, the load that strips it, the clamp force from a
-tightening torque, the pressure under a head, and the sold length that fits. Every figure says how far to trust it
-and where it comes from.
+tightening torque, the pressure under a head, and the sold length that fits. It holds what fastens two parts with no
+steel screw as well: pins (a printed snap pin, a steel dowel, a length of filament), magnets in printed pockets, and
+bolts printed with their thread. Every figure says how far to trust it and where it comes from.
 The figures live in [`@rulecad/rules`](https://github.com/JoniBach/rulecad/tree/main/packages/rules) as open data,
 one rule set per thread, and this package holds no screw's numbers of its own. Needs JSCAD. Part of
 [rulecad](https://github.com/JoniBach/rulecad).
@@ -65,7 +66,27 @@ and stresses in MPa.
 | [Reference hardware](#reference-hardware) | `screw`, `nut`, `washer`, `insert` |
 | [Threads cut for printing](#threads-cut-for-printing) | `thread`, `threadModel` |
 | [Strength and length](#strength-and-length) | `engagement`, `stripping`, `preload`, `torqueFor`, `seating`, `lengthFor`, `screwGroup`, `screwLoad` |
+| [Pins](#pins) | `pinModel`, `pinHole`, `pin`, `snapPin`, `snapSocket`, `snapPinModel`, `parsePin`, `isPinName` |
+| [Printed bolts](#printed-bolts) | `printedBoltModel`, `printedBolt` |
+| [Magnets](#magnets) | `magnetModel`, `magnetSeatModel`, `magnetSeat`, `magnet`, `parseMagnet`, `isMagnetName`, `fieldShare` |
+| [Measuring the printer's fits](#measuring-the-printers-fits) | the fixings coupon and the holds coupon |
 | [Refusals and printability](#refusals-and-printability) | `printable` |
+
+## Where each thing lives
+
+Anything whose job is to hold two parts together is here, where it is sized, its hole takes its fit from the
+printer's rules, it goes on the shopping list and the build steps, and a coupon measures it. Some near neighbours
+live elsewhere, each for a reason:
+
+| Thing | Where | Why |
+|---|---|---|
+| Screws, nuts, washers, inserts, their holes and seats | here | they are the fixings |
+| Snap pins (`snapPin`, `snapSocket`, `snapPinModel`), plain pins | here | moved from `@rulecad/flexures`, which passes the three snap pin functions on unchanged |
+| Magnets and their pockets | here | `@rulecad/frames`' magnet catch takes its pocket and pull from `magnetSeatModel` |
+| Printed bolts | here | a screw named with the word printed |
+| Snap hooks, ratchets, pin joints printed in place, travel and angle stops | `@rulecad/flexures` | their bending is their job |
+| A countersink, a nut pocket and a nut trap from plain figures, crush ribs, a teardrop hole | `@rulecad/shapes` | shapes draws from plain numbers and reads no rule sets; this package calls the same shapes with a thread's figures, so moving them would make a cycle |
+| Slot nuts, carriers, brackets, hinges, latches, cable clips | `@rulecad/frames` | each is shaped to a beam's slot |
 
 ## Start here: a plate with four counterbored holes and an insert boss
 
@@ -501,7 +522,9 @@ hole to subtract (round standing up, a teardrop lying on its side) and `pin` the
 pressed in (`fit: 'press'`, the default: it grips) or slides in (`fit: 'slip'`: it turns, a hinge pin). Each hole
 takes its size from the printer's rules: a snap pin's socket is the peg plus `snap_clearance` each side, as drawn; a
 plain pin's hole is the pin plus `hole_comp`, less `pin_press` or plus `pin_slip`. All three are estimates until the
-fixings coupon measures them. Given the `thickness` it goes through, a pin that does not fit its part is refused by
+holds coupon measures them (see [Measuring the printer's fits](#measuring-the-printers-fits)). A snap pin's barb is
+0.4 mm past its peg unless its name says another; the holds coupon prints three, and `x1c.snap_barb` records the one
+that won. Given the `thickness` it goes through, a pin that does not fit its part is refused by
 name: a plain pin longer than the parts stands proud, and a snap pin's shaft must be as long as the parts and at most
 `snap_play` (0.5 mm) longer, or its barb never clicks out or rattles.
 
@@ -594,6 +617,10 @@ sums, and `cad list` lists it as a printed part, not a bought screw. `screwLoad`
 `seating` with no force given refuse a printed bolt by name and point here: each reads a steel screw's proof load,
 which a printed bolt does not have. A printed nut is read by them as usual, since the screw in it is a bought one.
 
+PLA's rule set has no strength across its layers, so a PLA bolt standing on its head is taken at its strength along
+them, 39 MPa, which overstates it. The holds coupon's pull bolt measures it: written back with `cad measured`, it
+becomes the plastic's `strength_z`, and every printed bolt standing in that plastic is worked out from it.
+
 ## Magnets
 
 A magnet holds two parts together with no screw: a lid, a door's catch, a tool on a board. `magnetModel(name,
@@ -608,7 +635,7 @@ when the steel is on that side) the pull is taken as the pull touching times the
 axis there, over the field at its face: an estimate. `count` magnets share a `load`, held to `load_margin`. For a size
 the set has no figure for, give its maker's pull (`{ pull: 12 }`, in N).
 
-**The pocket.** Each fit takes its size from the printer's rules, all estimates until the fixings coupon measures
+**The pocket.** Each fit takes its size from the printer's rules, all estimates until the holds coupon measures
 them: a press (`fit: 'press'`, the default) is the magnet plus `hole_comp` less `magnet_press`; a glued fit
 (`fit: 'glue'`) plus `magnet_glue`; crush ribs (`fit: 'ribs'`) are a glued pocket with three ribs a line wide whose
 tips stand `magnet_crush` inside the magnet, so a magnet anywhere in its ±0.1 mm goes in and grips. A block's pocket
@@ -661,6 +688,25 @@ if they are put in alike. `parseMagnet` reads a name, `isMagnetName` says whethe
 is the field on a magnet's axis at z from its face over the field at its face. In an assembly, a fit's `fastener` can
 name magnets (`{ "magnet": "disc magnet 8x3", "count": 2 }`): `cad check` finds their pockets and reports their pull,
 and `cad list` lists them as bought.
+
+## Measuring the printer's fits
+
+Every clearance a hole, a seat or a pocket is drawn with is a rule of the printer's, and most are estimates until two
+coupons measure them, printed together on one plate (`examples/bench/projects/benchmarks/MEASURE.md` says how to read
+each):
+
+- the **fixings coupon** (`objects/fixings-coupon`, rows 22 to 28): pilots, insert holes, nut pockets and slots, a
+  counterbore, and printed threads for bought bolts, writing `pilot_m3` and its kin, `insert_m3`, `nut_fit`,
+  `nut_slip`, `thread_gap` and `thread_flank`;
+- the **holds coupon** (`objects/holds-coupon`, rows 40 to 47): snap pin sockets and three barbs (`snap_clearance`,
+  `snap_barb`), a 3 mm dowel's and 1.75 mm filament's press and slip holes (`pin_press`, `pin_slip`), 6 x 3 and 8 x 3
+  magnet pockets pressed and ribbed (`magnet_press`, `magnet_crush`), printed nuts and bolts for M8 and M10 (a second
+  reading of `thread_gap`), and a pull bolt whose waist breaks across its layers (the plastic's `strength_z`).
+
+Each feature on a coupon is drawn by this package from the printer's rules, at the kit's figure and a step either side,
+and labelled with its figure. Write the best one back with `cad measured benchmarks/fixings-test x1c.pin_press=0.1`: it
+goes into the workspace's copy of the printer's set, marked measured with the date, and every design drawn after it
+uses it. `cad measured` refuses a figure no fit of its kind can be (a press of 3 mm), naming what it accepts.
 
 ## Refusals and printability
 
@@ -726,8 +772,8 @@ hole: depth is a number above 0, in mm (got -2)
 - **Standards** (`spec`): threads, clearance holes, heads, nuts, washers, lengths and proof stresses, each from its
   standard as tabulated on the pages its rule names. The thread profiles are ISO 68-1's and ISO 2904's formulas.
 - **Measured**: the X1C's M3 pilot (`x1c.pilot_m3`, 2.9 mm, from the kit's fit bar). It is the only measured figure
-  so far. The fixings coupon (`examples/bench/projects/benchmarks/objects/fixings-coupon`) measures the rest, per
-  printer and plastic, and `cad measured` writes each result to the printer's rule set.
+  so far. The fixings coupon and the holds coupon measure the rest, per printer and plastic, and `cad measured`
+  writes each result to the printer's rule set (see [Measuring the printer's fits](#measuring-the-printers-fits)).
 - **Community**: magnets' pulls straight off steel (the seller's figures, supermagnete) and the grades' remanence, heat-set inserts (CNC Kitchen's sheet), pilots for M2 to M4 (Bambu Lab's figures for PLA) and for
   the PT screws (the maker's factor for ABS), the engagement rules, the printer's `hole_comp`, `fit` and `bridge`,
   the two layers a nut pocket is sunk, and the three quarters of proof load a fully tightened screw is taken to carry.
