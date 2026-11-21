@@ -161,10 +161,11 @@ export function knownOf(a) {
 function entryProblems(what, entry, { ref, file, known, self }) {
   const items = known.items, ids = items.map((x) => x?.id), list = (xs) => xs.join(', ') || 'none';
   const guideMade = (n) => known.guides.some((g) => String(n).startsWith(`${g}-`)); // a guide's own parts: g1-carriage-1 ..
+  const made = (n) => guideMade(n) || ids.some((id) => String(n).startsWith(`${id}-`)); // and an item's: psu-mount, door-hinge, key-0-3
   if (what === 'fit') for (const side of ['a', 'b']) {
     const named = entry[side]; if (typeof named !== 'string') continue;
     const [item, part = 'body'] = named.split('@')[0].split('.'), it = items.find((x) => x?.id === item);
-    if (!it && guideMade(item)) continue;
+    if (!it && made(item)) continue; // a guide's part or a repeated item's copy (key-0-3)
     if (!it) throw new CadError('edit.part', `fit ${side}: no item "${item}" in ${ref} (items: ${list(ids)})`, { file });
     if (it.object) {
       const [project] = ref.split('/'), obj = path.join(paths.project(project), 'objects', `${String(it.object).split(/[@:]/)[0]}.json`);
@@ -206,9 +207,31 @@ function entryProblems(what, entry, { ref, file, known, self }) {
   // a pose gives values to joints by id (its keys with a dot in them are not joints); a guide's and an item's own
   // joints (g1-1, door-hinge) are made as it is built, so a name under one of theirs is taken as theirs
   if (what === 'pose') for (const k of Object.keys(entry.values || {})) {
-    if (k.includes('.') || known.joints.includes(k) || guideMade(k) || ids.some((id) => k.startsWith(`${id}-`))) continue;
+    if (k.includes('.') || known.joints.includes(k) || made(k)) continue;
     throw new CadError('edit.part', `pose ${entry.name}: no joint "${k}" in ${ref} (joints: ${list(known.joints)})`, { file });
   }
+  // a wire runs from an anchor to an anchor, by anchors, path joints and runs along a beam's slot (via); a loop closes
+  // between two anchors; a load is on a joint or carried at an anchor; a mounted item sits at an address on a beam.
+  // An anchor is <item>.<anchor> (or { item, at }): its item must be there, or be one a guide or an item makes (g1-carriage-1,
+  // psu-mount, key-0-3)
+  const anchorItem = (r) => (typeof r === 'string' ? rootOf(r) : r && typeof r === 'object' && r.item != null ? String(r.item) : null);
+  const noItem = (label, r) => { const item = anchorItem(r); if (item != null && !ids.includes(item) && !made(item)) throw new CadError('edit.part', `${label}: no item "${item}" in ${ref} (items: ${list(ids)})`, { file }); };
+  const noBeam = (label, r) => { const id = rootOf(r); if (!known.beams.includes(id)) throw new CadError('edit.part', `${label}: no beam "${id}" in ${ref} (beams: ${list(known.beams)})`, { file }); };
+  const name = entry.id != null ? ` ${entry.id}` : '';
+  if (what === 'wire') {
+    for (const side of ['from', 'to']) if (entry[side] != null) noItem(`wire${name} ${side}`, entry[side]);
+    for (const v of Array.isArray(entry.via) ? entry.via : []) {
+      if (typeof v === 'string' && v.includes('.')) noItem(`wire${name} via`, v);
+      else if (typeof v === 'string' && !known.joints.includes(v) && !made(v)) throw new CadError('edit.part', `wire${name} via: no joint "${v}" in ${ref}, and an anchor is <item>.<anchor> (joints: ${list(known.joints)})`, { file });
+      else if (v && typeof v === 'object' && v.along != null) noBeam(`wire${name} via along`, v.along);
+    }
+  }
+  if (what === 'loop') for (const side of ['a', 'b']) noItem(`loop ${side}`, entry[side]);
+  if (what === 'load') {
+    if (entry.joint != null && !known.joints.includes(String(entry.joint)) && !made(String(entry.joint))) throw new CadError('edit.part', `load joint: no joint "${entry.joint}" in ${ref} (joints: ${list(known.joints)})`, { file });
+    if (entry.at != null && typeof entry.at === 'object') noItem('load at', entry.at);
+  }
+  if (what === 'item' && entry.mount && typeof entry.mount === 'object' && entry.mount.on != null) noBeam(`item${name} mount on`, entry.mount.on);
 }
 
 // Every entry's names, checked as entryProblems checks one: [{ at, key, message }], where key is the same for the same
@@ -491,16 +514,20 @@ export function setProject(project, changes, { dryRun = false } = {}) {
 
 /**
  * Make an assembly: projects/<project>/assemblies/<name>.json, empty (items: []) or a generated frame, checked as it
- * is made; its project is made first where there is none. Refused by name: an assembly already there, a kind that is
- * not fit, a frame the generator refuses.
+ * is made; its project is made first where there is none, with the material and printer given for it (checked as cad new
+ * <project> checks them). Refused by name: an assembly already there, a kind that is not fit, a frame the generator
+ * refuses, a material or printer for a project that is already there (cad set <project> changes those).
  * @param {string} ref project/assembly
- * @param {{ title?: string, kind?: string, description?: string, frame?: object, dryRun?: boolean }} [fields]
+ * @param {{ title?: string, kind?: string, description?: string, frame?: object, fields?: Record<string, any>, project?: { material?: string, printer?: string }, dryRun?: boolean }} [fields]
  */
-export function newAssembly(ref, { title, kind = 'fit', description, frame, fields = {}, dryRun = false } = {}) {
+export function newAssembly(ref, { title, kind = 'fit', description, frame, fields = {}, project: forProject = {}, dryRun = false } = {}) {
   const [project, name] = String(ref || '').split('/');
   if (!NAME.test(project || '') || !NAME.test(name || '')) throw new CadError('edit.name', `an assembly is <project>/<name>, each lower case with dashes (got ${JSON.stringify(ref)})`);
   const file = path.join(paths.project(project), 'assemblies', `${name}.json`);
   if (fs.existsSync(file)) throw new CadError('assembly.exists', `projects/${project}/assemblies/${name}.json is already there: change it with cad set, cad add, cad move and cad remove`, { file });
+  const projectFields = Object.fromEntries(Object.entries(forProject || {}).filter(([, v]) => v != null)), hasProject = fs.existsSync(projectFile(project));
+  if (hasProject && Object.keys(projectFields).length) throw new CadError('project.exists', `projects/${project}/project.json is already there, so --${Object.keys(projectFields).join(' and --')} would make nothing: change ${Object.keys(projectFields).length === 1 ? 'it' : 'them'} with cad set ${project} ${Object.entries(projectFields).map(([k, v]) => `${k}=${v}`).join(' ')}`, { file: projectFile(project) });
+  if (!hasProject) newProject(project, { ...projectFields, dryRun: true }); // its material and printer refused before anything is written
   if (kind !== 'fit') throw new CadError('edit.kind', `an assembly's kind is fit (got ${JSON.stringify(kind)}): a mechanism is a fit with joints (cad add joint), a machine a fit with a task, and a plate is written by cad plates`, { file });
   const json = { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: title ?? name, kind, ...(description ? { description } : {}), ...(frame ? { frame } : { items: [] }) };
   // its other fields as cad set takes them, before it is checked: a portal's supports, its loads
@@ -514,7 +541,7 @@ export function newAssembly(ref, { title, kind = 'fit', description, frame, fiel
   const args = { ref, file, before: '', text, kind: 'assembly', changes: [{ op: 'make', path: `assemblies/${name}.json`, after: JSON.parse(text) }], touched: [] };
   try { finish({ ...args, dryRun: true }); } catch (e) { throw Object.assign(e, { message: e.message.replace(/^not changed: /, 'not made: ') }); } // checked before anything is written, the project too
   const made = [];
-  if (!fs.existsSync(projectFile(project))) made.push(newProject(project, { dryRun }));
+  if (!hasProject) made.push(newProject(project, { ...projectFields, dryRun }));
   const r = finish({ ...args, dryRun });
   return { ...r, changes: [...made.flatMap((m) => m.changes.map((c) => ({ ...c, path: `projects/${project}/${c.path}` }))), ...r.changes], findings: [...made.flatMap((m) => m.findings.filter((f) => f.code !== 'schema')), ...r.findings], made: [...made.map((m) => m.file), r.file] };
 }

@@ -1395,6 +1395,45 @@ test('workspace edits: an edit that leaves another entry naming what is gone is 
   } finally { done(); }
 });
 
+test('workspace edits: a wire\'s ends and route, a loop\'s anchors, a load\'s joint and a mount\'s beam are names checked as a join\'s are, and cad new <project>/<assembly> makes its project with the material and printer given', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8');
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    cad('new', 'q/m', '--assembly');
+    cad('add', 'beam', 'q/m', '--id', 'a1', '--profile', '2020-misumi-hfs5', '--from', '0,0,0', '--to', '200,0,0');
+    cad('add', 'beam', 'q/m', '--id', 'b2', '--profile', '2020-misumi-hfs5', '--from', '0,100,0', '--to', '200,100,0');
+    const m = read('q/assemblies/m.json');
+    // each kind of entry, added with a name that is not there: refused by name, nothing written
+    assert.equal(refused(cad('add', 'wire', 'q/m', 'id=w2', 'from=nope.a', 'to=b2.b', '--json'), 'edit.part').message, 'wire w2 from: no item "nope" in q/m (items: a1, b2)');
+    assert.equal(refused(cad('add', 'loop', 'q/m', 'a=ghost.a', 'b=b2.b', '--json'), 'edit.part').message, 'loop a: no item "ghost" in q/m (items: a1, b2)');
+    assert.equal(refused(cad('add', 'load', 'q/m', 'joint=nojoint', 'torque=2', '--json'), 'edit.part').message, 'load joint: no joint "nojoint" in q/m (joints: none)');
+    assert.equal(refused(cad('add', 'item', 'q/m', 'id=psu', 'bought=supply-24v', 'mount.on=nope.top@50', '--json'), 'edit.part').message, 'item psu mount on: no beam "nope" in q/m (beams: a1, b2)');
+    assert.equal(read('q/assemblies/m.json'), m, 'each refused: nothing written');
+    // a wire on a1, routed along b2's slot: its route's names are checked too
+    assert.match(cad('add', 'wire', 'q/m', 'id=w1', 'from=a1.a', 'to=b2.b'), /the names in wires\.0 are all in q\/m/);
+    assert.match(cad('set', 'q/m', 'wires.0.via=["ghost"]'), /wire w1 via: no joint "ghost" in q\/m, and an anchor is <item>\.<anchor>/);
+    assert.match(cad('set', 'q/m', 'wires.0.via=[{"along":"zz.top","from":10,"to":50}]'), /wire w1 via along: no beam "zz" in q\/m/);
+    cad('set', 'q/m', 'wires.0.via=[{"along":"b2.top","from":10,"to":50}]');
+    // renaming either beam leaves the wire naming what is gone
+    const w = read('q/assemblies/m.json');
+    assert.deepEqual(refused(cad('set', 'q/m', 'a1.id=a9', '--json'), 'edit.dangling').refs, ['wires.0']);
+    assert.match(refused(cad('set', 'q/m', 'b2.id=b9', '--json'), 'edit.dangling').message, /wires\.0 \(wire w1 to: no item "b2" in q\/m\)/);
+    assert.equal(read('q/assemblies/m.json'), w, 'refused: nothing written');
+    // a repeated item's copies (key-0, key-1) are names a fit can give, as a guide's own parts are
+    cad('add', 'item', 'q/m', '--id', 'key', '--object', 'nothing', 'repeat.x.count=2', 'repeat.x.step=20');
+    assert.match(cad('add', 'fit', 'q/m', '--a', 'key-1', '--b', 'a1', '--min', '0'), /the names in fits\.0 are all in q\/m/);
+    // the project an assembly makes takes the material and printer given, checked as cad new <project> checks them
+    cad('new', 'q5/a', '--assembly', '--material', 'PETG', '--printer', 'x1c');
+    const p5 = JSON.parse(read('q5/project.json'));
+    assert.deepEqual([p5.material, p5.printer], ['PETG', 'x1c']);
+    assert.equal(refused(cad('new', 'q6/a', '--assembly', '--material', 'nylon', '--json'), 'project.material').code, 'project.material');
+    assert.ok(!fs.existsSync(file('q6')), 'refused: no project made');
+    assert.equal(refused(cad('new', 'q5/b', '--assembly', '--printer', 'x1c', '--json'), 'project.exists').message, 'projects/q5/project.json is already there, so --printer would make nothing: change it with cad set q5 printer=x1c');
+    assert.ok(!fs.existsSync(file('q5/assemblies/b.json')), 'refused: no assembly made');
+  } finally { done(); }
+});
+
 test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
   const { ws, cad, done } = workspace();
   try {

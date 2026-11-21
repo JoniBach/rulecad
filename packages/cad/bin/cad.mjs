@@ -710,7 +710,7 @@ async function newCommand(ref) {
     frame = Object.fromEntries(Object.entries({ kind: str('frame'), inside: nums('inside'), outside: nums('outside'), profile: str('profile'), join, feet: str('feet'), caps: str('caps') != null ? parseSetting(str('caps')) : undefined }).filter(([, v]) => v !== undefined));
     if (opt('frame') === true || !frame.profile || (!frame.inside && !frame.outside)) throw new Error('usage: cad new <project>/<assembly> --assembly --frame box|portal|table|gantry|shelf --inside 300,300,350 (or --outside) --profile <set> [--join blind] [--feet levelling]');
   }
-  edited(newAssembly(ref, { title: str('title'), kind: str('kind'), description: str('description'), frame, fields: Object.fromEntries(pairsOf(positional().slice(2), 'cad new')), dryRun }), 'new');
+  edited(newAssembly(ref, { title: str('title'), kind: str('kind'), description: str('description'), frame, fields: Object.fromEntries(pairsOf(positional().slice(2), 'cad new')), project: { material: str('material'), printer: str('printer') }, dryRun }), 'new');
 }
 
 // cad set <project>/<assembly> <address>=<value> …
