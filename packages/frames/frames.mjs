@@ -25,7 +25,7 @@
 // origin; a beam runs along z from end a at z = 0. Its faces are top (+y), bottom (-y), front (-x) and back (+x).
 // Units: mm, grams, degrees.
 export * from './profile.mjs';
-export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
+export { beamModel, beam, beamAnchor, printable, workOrder } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
 export { JOINS, JOIN_STIFFNESS, JOIN_PLAY, JOIN_SCALE, JOIN_TAP, JOIN_SET, joinRuleSet, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
 export { BOUGHT_KINDS, boughtFittings, boughtFittingModel, boughtFitting, printedCost } from './bought.mjs';

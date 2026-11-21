@@ -2964,7 +2964,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
-    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, note/);
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, face, note/);
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'y1.back@120' }]; }, /join 1: a and b are on one beam, y1/);
     write({ ...a, joins: [] });
     assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120'), /added a join/);

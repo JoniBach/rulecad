@@ -310,12 +310,15 @@ const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [
   { op: 'tap', at: 'a', thread: 'M5' },          // M5 in end a's bore, 10 mm deep: 2 diameters for aluminium
   { op: 'access', at: 'top@-10', thread: 'M5' }, // a Ø5.3 mm hole 10 mm from end b, for an M5 cap screw's 4 mm key
 ] });
-b.ops.map((o) => o.line); // 'cut end a square', 'cut end b square', 'access hole Ø5.3 mm in top.1, ...', 'tap M5 in bore a.1, ...'
+b.ops.map((o) => o.line); // 'tap M5 in bore a.1, ...', 'cut end a square', 'access hole Ø5.3 mm in top.1, ...', 'cut end b square'
+workOrder(b);             // [1, 3, 2, 0]: the order they are done in, as the sheet numbers them
 ```
 
-`b.ops` lists the operations in the order they are done, and a beam's sheet numbers them so: each end cut (square or
-mitred) and deburred, then the holes, pockets and notches across it from end a, then the taps in its end bores. The cut
-list's summary of a mark lists them by their place along the beam, from end a.
+`b.ops` lists the operations in their place along the beam, from end a, and everything that reads a beam (the cut
+list's marks and summary, the joins, the checks) reads them so. `workOrder(b)` gives their indexes in the order they
+are done, and a beam's sheet numbers them so: each end cut (square or mitred) and deburred, then the holes, pockets and
+notches across it from end a, then the taps in its end bores. A jig's label (`C4`) and a guide's warnings use the
+sheet's number; `drillGuideModel` and `tapGuideModel` take the index into `b.ops`.
 
 | Operation | What it is | Where | Takes |
 |---|---|---|---|
@@ -1536,6 +1539,7 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
 | `packBars(pieces, lengths, { kerf?, trim? })`, `beamMarks(beams)` | The packing alone; the beams by mark |
 | `CUT_DEFAULTS` | The kerf, trim, cut tolerance and assumed stock length, each with what it rests on |
+| `workOrder(beam)` | A beam's operations' indexes in the order they are done, as its sheet numbers them |
 | `beamSheet(beam, { mark?, items?, grams? })` | A beam's cut-and-drill sheet, SVG to scale |
 | `printable(x)` | A printed beam's `beam.printable` findings; a bought beam or a profile, one failure |
 | `DEFAULTS` | The allowances a check uses, each with what it rests on |

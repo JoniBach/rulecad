@@ -57,6 +57,23 @@ function endsOf(what, ends, m, printed = null) {
   }));
 }
 
+// The order an operation is done in: the ends cut (square or mitred), then deburred, the holes, pockets and notches
+// across the beam, then the taps in its end bores
+const WORK = { cut: 0, mitre: 0, deburr: 1, tap: 3 };
+
+/**
+ * A beam's operations in the order they are done, as its sheet numbers them: the ends cut (square or mitred) and
+ * deburred, the holes, pockets and notches across it from end a, then the taps in its end bores. The model's own ops
+ * stay in their place along the beam from end a; this gives their indexes in work order, so an operation's number on
+ * the sheet is its place in this list plus one.
+ * @param {{ ops: { op: string, distance: number }[] }} b a beam's model (beamModel)
+ * @returns {number[]} the indexes into b.ops, in the order the operations are done
+ */
+export function workOrder(b) {
+  if (!Array.isArray(b?.ops)) throw new Error(`workOrder: give a beam's model (beamModel), with its ops (got ${shown(b)})`);
+  return b.ops.map((x, i) => i).sort((i, k) => (WORK[b.ops[i].op] ?? 2) - (WORK[b.ops[k].op] ?? 2) || b.ops[i].distance - b.ops[k].distance || i - k);
+}
+
 /**
  * A beam as numbers: a length of a profile, its mass and centre of mass from the section and the alloy, the figures to
  * design it with, and its anchors. A beam is bought: it is cut from stock, and its supply is checked.
@@ -129,12 +146,8 @@ export function beamModel(profile, o = {}) {
   try { done = opsOf(b, list, beamAnchor, { printed: !!pr }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
   for (const x of done.ops) if (x.op === 'tap') { ends[x.end] = { kind: 'tapped', thread: x.thread }; for (const bo of bores) if (x.bores.includes(bo.name)) bo.tapped = true; }
   if (!pr) for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
-  // in the order they are done: the ends cut (square or mitred) and deburred, the holes, pockets and notches across it
-  // from end a, then the taps in its end bores
-  // (each keeps its place along the beam as `along`, not listed, which the cut list's marks are keyed by)
-  const work = (x) => ({ cut: 0, mitre: 0, deburr: 1, tap: 3 })[x.op] ?? 2;
-  done.ops.sort((p, q) => p.distance - q.distance).forEach((x, i) => Object.defineProperty(x, 'along', { value: i, enumerable: false, configurable: true }));
-  b.ops = done.ops.sort((p, q) => work(p) - work(q) || p.distance - q.distance); b.findings.push(...done.findings);
+  // in their place along the beam from end a, as everything reads them (the sheet lists them in work order, workOrder)
+  b.ops = done.ops.sort((p, q) => p.distance - q.distance); b.findings.push(...done.findings);
   return pr ? printedOf(b, pr, { a: ends.a.kind, b: ends.b.kind }) : b;
 }
 

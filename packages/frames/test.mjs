@@ -461,10 +461,12 @@ test('beams refuse bad input by name, with what would be accepted', () => {
 test('operations on a beam: an end tapped M5 and an access hole 10 mm from the other end, both in its solid', () => {
   const V = jscad.measurements.measureVolume;
   const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5' }] });
-  // dimensioned from end a, in the order they are done: a square cut at each end that has no cut of its own, the
-  // holes across from end a, then the taps in the ends
-  assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['cut a 0 implied', 'cut b 300 implied', 'access top@-10 290', 'tap a 0']);
-  const tap = b.ops[3], access = b.ops[2];
+  // dimensioned from end a, in their place along the beam, with a square cut at each end that has no cut of its own
+  assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['tap a 0', 'cut a 0 implied', 'access top@-10 290', 'cut b 300 implied']);
+  // the order they are done in, as the sheet numbers them: the ends cut, the holes across from end a, the taps last
+  assert.deepEqual(frames.workOrder(b).map((i) => `${b.ops[i].op} ${b.ops[i].at}`), ['cut a', 'cut b', 'access top@-10', 'tap a']);
+  assert.throws(() => frames.workOrder({}), /workOrder: give a beam's model \(beamModel\), with its ops \(got \{\}\)/);
+  const tap = b.ops[0], access = b.ops[2];
   // the tap through fixings: its tap drill, and 2 diameters of thread for aluminium (the engagement rule set)
   assert.deepEqual([tap.thread, tap.bores, tap.tapDrill, tap.major, tap.depth, tap.engagement.class, tap.engagement.enough], ['M5', ['a.1'], 4.2, 5, 10, 'aluminium', true]);
   assert.deepEqual(b.ends.a, { kind: 'tapped', thread: 'M5' }); assert.equal(b.bores.find((x) => x.name === 'a.1').tapped, true);
@@ -545,7 +547,7 @@ test('beam.op checks: a hole into a slot\'s lips or a bore\'s side, a tap deeper
   assert.deepEqual(say(thin), ['warn engagement.depth']); assert.match(thin[0].text, /tapped hole at top@100: an M5 screw 1\.897 mm into aluminium .* engagement\.aluminium asks 2 \(10 mm\)/);
   // the rest cut cleanly where they fit: a counterbore on a closed face, a pocket, a notch, deburring
   const t = beamModel('tube-al-40x20x2', { length: 300, ops: [{ op: 'counterbore', at: 'top@100', thread: 'M5' }, { op: 'pocket', at: 'front@200', size: [20, 8], depth: 2 }, { op: 'deburr', at: 'b' }] });
-  assert.deepEqual(t.ops.map((o) => o.line), ['cut end a square', 'cut end b square', 'deburr end b', 'counterbore Ø10 x 5 mm for M5 cap head in top.1, 100 mm from end a, with a Ø5.5 mm hole through the wall (5 mm)', 'pocket 20 x 8 mm, corners R1.5, 2 mm deep in front.1, centred 200 mm from end a']);
+  assert.deepEqual(t.ops.map((o) => o.line), ['cut end a square', 'counterbore Ø10 x 5 mm for M5 cap head in top.1, 100 mm from end a, with a Ø5.5 mm hole through the wall (5 mm)', 'pocket 20 x 8 mm, corners R1.5, 2 mm deep in front.1, centred 200 mm from end a', 'deburr end b', 'cut end b square']);
   const n = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'notch', at: 'top@50%', length: 12 }] });
   within(jscad.measurements.measureVolume(beam(beamModel('2020-misumi-hfs5', { length: 300 }))) - jscad.measurements.measureVolume(beam(n)), 2 * 12 * 3 * 2, 0.02, 'the notch takes both lips');
 });

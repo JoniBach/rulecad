@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import jscad from '@jscad/modeling';
-import { JOINS, beamSheet, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, JIG_KINDS } from '@rulecad/frames';
+import { JOINS, beamSheet, workOrder, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, JIG_KINDS } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import { text } from '@rulecad/shapes';
 import { check as printCheck } from '@rulecad/printcheck';
@@ -87,20 +87,22 @@ export function jigsOf(s) {
   if (!c) return { jigs: [], findings };
   for (const mk of c.marks) {
     const b = mk.beam, sheet = beamSheet(b, { mark: mk.mark, items: mk.items });
+    // (each operation by its number on the sheet, the order it is done in; i is its index in the model's ops)
+    const order = workOrder(b), step = (i) => order.indexOf(i) + 1;
     b.ops.forEach((x, i) => {
-      const who = { mark: mk.mark, items: mk.items, op: i + 1, at: x.at, line: x.line };
+      const n = step(i), who = { mark: mk.mark, items: mk.items, op: n, at: x.at, line: x.line };
       if (HOLES.includes(x.op)) {
         try {
           const m = drillGuideModel(b, i, fx), z = r3(m.fit[6] * m.bush.at[1] + m.fit[14]); // (the bush's axis, fitted: its distance from end a)
-          const dim = sheet.dimensions.find((d) => d.op === i + 1);
-          add(`drill|${m.name}|${m.profile}|${m.plate.span.join(',')}`, 'drill-guide', m, { ...who, label: `${mk.mark}${i + 1}`, from: m.from, distance: m.bush.at[1], bush: z, sheet: dim ? dim.distance : null, sheetText: dim ? dim.text : null });
-        } catch (e) { warn('jig.drill', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no drill guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
+          const dim = sheet.dimensions.find((d) => d.op === n);
+          add(`drill|${m.name}|${m.profile}|${m.plate.span.join(',')}`, 'drill-guide', m, { ...who, label: `${mk.mark}${n}`, from: m.from, distance: m.bush.at[1], bush: z, sheet: dim ? dim.distance : null, sheetText: dim ? dim.text : null });
+        } catch (e) { warn('jig.drill', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${n}: no drill guide: ${strip(e)}`, { mark: mk.mark, op: n }); }
       }
       if (x.op === 'tap') {
         try {
           const m = tapGuideModel(b, i, fx);
-          add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${i + 1}`, end: x.end, bores: x.bores });
-        } catch (e) { warn('jig.tap', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no tap guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
+          add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${n}`, end: x.end, bores: x.bores });
+        } catch (e) { warn('jig.tap', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${n}: no tap guide: ${strip(e)}`, { mark: mk.mark, op: n }); }
       }
     });
     const m = lengthStopModel(b.profile, b.length, fx);

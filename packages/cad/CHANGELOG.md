@@ -15,7 +15,7 @@ and head, the parts it passes through and the part it ends in.
   the printer's rule set into a fresh workspace's `rules/`, as any command that uses a tool's set does: the kit now
   says which sets it copied (`copied` in `--json`).
 - **Sheets in work order**: a beam's sheet numbers its operations in the order they are done (the ends cut, the holes
-  from end a, the taps), and a jig's label follows (`A4` where it was `A3`); marks and the cut list keep their order.
+  from end a, the taps), and a jig's label follows (`A4` where it was `A3`); marks, the cut list and the beam's own `ops` keep their order along the beam, from end a.
 - **Printed beams said as printed**: a bay's squareness (`frame.square`) says "beams printed to ±0.5 mm" for printed
   beams (the saw's tolerance taken for a printed length, an estimate), not "cut".
 - **A gusset's face**: a printed gusset join takes `"face"`, the face of b it lies on (one of the two square to a);

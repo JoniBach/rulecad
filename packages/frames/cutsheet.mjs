@@ -4,6 +4,7 @@
 // thread and depth. Units: mm, the sheet drawn in mm too (it prints to scale at 100%).
 import { outline } from './profile.mjs';
 import { CUT_DEFAULTS } from './cutlist.mjs';
+import { workOrder } from './beam.mjs';
 
 const mm = (x) => String(+Number(x).toFixed(2));
 const d1 = (x) => Number(x).toFixed(1);
@@ -40,7 +41,7 @@ function pen() {
 export function beamSheet(b, o = {}) {
   if (b?.kind !== 'beam') throw new Error(`beamSheet: give a beam's model (beamModel) (got ${b === undefined ? 'nothing' : typeof b})`);
   const p = b.profile, L = b.length, mark = o.mark ?? null, items = o.items ?? [], grams = o.grams ?? b.weight?.sheet ?? b.mass;
-  const ops = b.ops.map((x, i) => ({ ...x, n: i + 1 }));
+  const ops = workOrder(b).map((i, k) => ({ ...b.ops[i], n: k + 1 })); // (numbered in the order they are done)
   // the views: each face with work on it or a mitre seen from it, else the top
   const faces = Object.keys(FACE_VIEW).filter((k) => ops.some((x) => x.face === k || (x.op === 'mitre' && x.about === k)));
   if (!faces.length) faces.push('top');
@@ -104,7 +105,7 @@ export function beamSheet(b, o = {}) {
     }
     y = yd + 26;
   }
-  // the operations, in the order they are done (beamModel's)
+  // the operations, in the order they are done (workOrder)
   y = Math.max(y, ty + 4);
   text(10, y, 'Operations, in the order to do them: the ends cut, the holes from end a, the taps', { size: 3.4, weight: 'bold' }); y += 5.5;
   for (const x of ops) {

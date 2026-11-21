@@ -18,10 +18,11 @@ What changed in each release, for someone upgrading a workspace.
   the screws from M3 to M12 that fit, and the joins the generator takes for that profile instead, never one it would
   refuse too: in MISUMI's and Bosch's 4040 that is a bracket or gusset with no fitting, or a slot nut set of your own
   with a printed fitting.
-- A beam's `ops`, and its sheet's numbers, are in the order the work is done: the ends cut and deburred, the holes
-  across from end a, the taps last (they were in their order along the beam, a tap at end a before its square cut).
-  A drill or tap guide's operation index and a jig's label (`C4`) follow the sheet's numbers. Marks and the cut
-  list's summary still go by place along the beam, so no mark's letter moves.
+- A beam's sheet numbers its operations in the order the work is done: the ends cut and deburred, the holes across
+  from end a, the taps last (it listed them in their order along the beam, a tap at end a before its square cut).
+  `workOrder(beam)` gives that order. A jig's label (`C4`) and a guide's warnings follow the sheet's numbers. The
+  beam's own `ops` stay in their place along the beam from end a, as everything else reads them, and so do marks
+  and the cut list's summary, so no mark's letter moves.
 - A tap at a whole end goes in the bores made for a thread where the end has any (MISUMI's 3030: its M8 centre bore,
   not its four 4.2 mm corner holes), and a foot taps its bore by number (`a.1`) where the end has several.
 - `squareness` takes `printed: true` on a cut: its term and its reason say the beam is printed, not cut.
