@@ -13,8 +13,15 @@ const { vec3 } = jscad.maths;
 const mm = (n) => String(Number(Number(n).toFixed(3))), r3 = (x) => +x.toFixed(3);
 const unit = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
 const top = (n) => String(n).split(/[.@]/)[0];
-/** How far a hole as drawn may be from the pin's hole and still be taken for it (mm across): fasten's own tolerance. */
+/** How far a hole as drawn may be from the pin's hole and still be taken for it (mm across): fasten's own tolerance, at most. */
 const TOL = FASTEN.size.value;
+/**
+ * The tolerance for one of a pin's holes: fasten's, or half the least step from that hole to the pin's bare diameter
+ * or to another of its holes where that is less, so a hole drawn at the bare diameter (no hole_comp) is never taken
+ * for a press hole only x1c.pin_press (0.05 mm) away from it.
+ * @param {number} d the hole's diameter @param {number[]} others the pin's bare diameter and its other holes' @returns {number} mm across
+ */
+const tolOf = (d, others) => Math.min(TOL, ...others.map((o) => Math.abs(o - d) / 2).filter((g) => g > 1e-9));
 /** How far off the pin's hole a round hole may be and still be looked at as one of its places, mm across. */
 const LOOK = 0.6;
 /** What a fit's pins may say: the assembly schema's $defs.pins. */
@@ -79,7 +86,7 @@ export function pinFit(x, s, f) {
     for (const [part, r] of [[x.a, ax.a], [x.b, ax.b]]) {
       const d = r.hole;
       if (d == null) { bad++; fail(`${where}: ${part} is solid on the pin's axis: it has no hole there for ${m0.name}`, `${label}: no hole in ${part}`, { at, values: { part } }); continue; }
-      const hit = (m0.snap ? [{ fit: 'snap', diameter: m0.hole.diameter, rule: m0.hole.rules.at(-1) }] : wanted).find((w) => Math.abs(d - w.diameter) <= TOL);
+      const hit = wanted.find((w) => Math.abs(d - w.diameter) <= w.tol);
       if (hit) continue;
       const w = m0.snap ? m0.hole : wanted.find((v) => v.fit === (p.fit ?? 'press')), small = d < Math.min(...(m0.snap ? [m0.hole.diameter] : wanted.map((v) => v.diameter)));
       bad++; fail(`${where}: ${part}'s hole is drawn ${mm(r3(d))} mm, and ${m0.name} wants ${m0.snap ? `${mm(m0.hole.diameter)} mm (${m0.hole.rules.join(' and ')})` : wanted.map((v) => `${mm(v.diameter)} mm for a ${v.fit} fit (${v.rule})`).join(' or ')}: ${small ? 'too small, it will not go in' : 'too big, it will be loose'}`,
@@ -102,8 +109,11 @@ export function pinFit(x, s, f) {
   if (worst.m) f(worst.s1.level, `${label}: ${worst.where}: ${worst.s1.text}`, worst.s1.level === 'pass' ? null : `${label}: pins weak`, { code: 'fit.pin.load', refs, values: worst.s1.values });
   else if (worst.s1) f('info', `${label}: ${worst.s1.text}`, null, { code: 'fit.pin.load', refs, values: worst.s1.values });
 }
-// The holes a plain pin may sit in: press and slip, or the one fit asked; a snap pin's is its socket's
+// The holes a plain pin may sit in: press and slip, or the one fit asked; a snap pin's is its socket's. Each carries
+// the tolerance it is matched to (tolOf)
 function plainHoles(F, name, material, m0, fit) {
-  if (m0.snap) return [{ fit: 'snap', diameter: m0.hole.diameter, rule: m0.hole.rules.join(', ') }];
-  return (fit ? [fit] : ['press', 'slip']).map((k) => { const h = F.pinModel(name, { material, fit: k }).hole; return { fit: k, diameter: h.diameter, rule: h.rules.join(', ') }; });
+  const all = m0.snap ? [{ fit: 'snap', diameter: m0.hole.diameter, rule: m0.hole.rules.join(', ') }]
+    : ['press', 'slip'].map((k) => { const h = F.pinModel(name, { material, fit: k }).hole; return { fit: k, diameter: h.diameter, rule: h.rules.join(', ') }; });
+  // each hole's tolerance from its step to the pin's bare diameter and to the other fit's hole, whichever fit is asked
+  return all.map((w) => ({ ...w, tol: tolOf(w.diameter, [m0.diameter, ...all.filter((o) => o !== w).map((o) => o.diameter)]) })).filter((w) => !fit || m0.snap || w.fit === fit);
 }

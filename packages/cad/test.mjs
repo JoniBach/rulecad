@@ -5364,14 +5364,20 @@ export function main (v) {
     write({ pin: 'snap pin 4x6', count: 3 });
     assert.match(pinsOf(check())[0].text, /3 × snap pin 4x6 wanted, and only 2 holes about its 4\.4 mm hole lead from lid into base/);
     // a 3 mm dowel in press-fit holes drawn for it (3 + 0.1 - 0.05 = 3.05 mm), 6 mm long in 6 mm of plates
-    const write3 = (fastener) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
-      items: [{ id: 'base', object: 'plate', set: { pin: 'dowel 3x6' } }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: { pin: 'dowel 3x6' } }],
+    const write3 = (fastener, lid = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
+      items: [{ id: 'base', object: 'plate', set: { pin: 'dowel 3x6' } }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: { pin: 'dowel 3x6', ...lid } }],
       fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
     write3({ pin: 'dowel 3x6', count: 2, fit: 'press' });
     p = pinsOf(check());
     assert.deepEqual(p.map((x) => x.level), ['pass'], JSON.stringify(p)); assert.match(p[0].text, /2 × dowel 3x6 in holes drawn to press 3\.05 mm/);
     const dowel = JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.find((x) => x.fastener === 'dowel 3x6');
     assert.deepEqual([dowel.kind, dowel.made, dowel.qty, dowel.packs], ['pin', 'bought', 2, 1], 'a bought dowel is bought in packs');
+    // a press hole drawn at the pin's bare 3 mm (hole_comp left out) is not the 3.05 mm press hole: it is 0.05 mm off,
+    // under fasten's 0.06 mm tolerance, so the press hole is matched to within half its step from the bare pin,
+    // |3.05 - 3| / 2 = 0.025 mm, and the 3 mm hole fails as too small
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'press' }, { bore: 3 });
+    p = pinsOf(check());
+    assert.ok(p.some((x) => x.level === 'fail' && /lid's hole is drawn 3 mm, and dowel 3x6 wants 3\.05 mm for a press fit .*: too small/.test(x.text)), JSON.stringify(p));
     write3({ pin: 'dowel 3x6', count: 2, fit: 'slip' });
     assert.match(pinsOf(check()).find((x) => x.level === 'fail').text, /drawn 3\.05 mm, and dowel 3x6 wants 3\.3 mm for a slip fit \(x1c\.hole_comp, x1c\.pin_slip\): too small/);
     // a pin the schema does not know is refused by name
