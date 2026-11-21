@@ -1,11 +1,20 @@
 {
-  "title": "Fixings coupon",
+  "title": "Fixings coupons",
   "kind": "fit",
-  "description": "The fixings coupon on its own, for cad measured: write each result back with cad measured benchmarks/fixings-test <rule>=<value> (MEASURE.md, rows 22 to 28), and the ledger keeps predicted against measured.",
+  "description": "The fixings coupon and, behind it on the same plate, the holds coupon, for cad measured: write each result back with cad measured benchmarks/fixings-test <rule>=<value> (MEASURE.md, rows 22 to 28 and 40 to 46), and the ledger keeps predicted against measured. Both fit the X1C's bed together, 195 by 204 mm.",
   "items": [
     {
       "id": "coupon",
       "object": "fixings-coupon"
+    },
+    {
+      "id": "holds",
+      "object": "holds-coupon",
+      "at": [
+        0,
+        117,
+        0
+      ]
     }
   ]
 }

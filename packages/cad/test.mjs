@@ -2330,6 +2330,57 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('cad measured from the holds coupon: each pin, socket and magnet fit, the snap pins\' barb and a plastic\'s strength across its layers round-trip, and a figure no fit can be is refused', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // a plate with a dowel's press hole and an 8x3 magnet's press pocket, drawn from the printer's rules
+    const js = `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const f = v.fixings, top = v.thick
+  return v.ops.subtract(cuboid({ size: [v.width, v.width, top], center: [0, 0, top / 2] }), f.pinHole('dowel 3x12', { fit: 'press', at: [-v.apart, 0, top], depth: v.deep }), f.magnetSeat('disc magnet 8x3', { fit: 'press', at: [v.apart, 0, top] }))
+}
+`;
+    object(ws, 'home/plate', { uses: ['x1c'], engine: 'manifold', variables: { width: { value: 30, unit: 'mm', rule: 'Room for both' }, thick: { value: 'x1c.layer * 40', unit: 'mm', rule: 'The holes and a floor' }, deep: { value: 6, unit: 'mm', rule: 'The dowel\'s hole' }, apart: { value: 7, unit: 'mm', rule: 'Each from the middle' } } }, js);
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['plate'] }));
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/coupon.json'), JSON.stringify({ title: 'Coupon', kind: 'fit', items: [{ id: 'plate', object: 'plate' }] }));
+    const drawn = () => JSON.parse(cad('check', 'home/plate', '--json')).findings;
+    const hole = (f) => f.find((x) => x.code === 'pin.hole').values.diameter;
+    // before: 3 + x1c.hole_comp 0.1 - x1c.pin_press 0.05 = 3.05 mm
+    assert.equal(hole(drawn()), 3.05);
+    const own = (n) => path.join(ws, `rules/${n}.json`), written = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
+    // refused by name, with what would be accepted, and nothing written: a diameter given for a clearance, and a strength
+    // across the layers above PLA's 39 MPa along them
+    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=3'), /x1c\.pin_press is from 0 to 0\.3 mm: how much smaller a hole is drawn than the pin it grips, .* \(got 3\)/);
+    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0'), /x1c\.snap_clearance is above 0 and up to 0\.5 mm: a socket with no clearance pinches the peg/);
+    assert.match(cad('measured', 'home/coupon', 'pla.strength_z=45'), /pla\.strength_z is above 0 and no more than pla\.strength, 39 MPa: a print holds less across its layers than along them/);
+    assert.ok(!written('x1c', 'snap_clearance') && !written('pla', 'strength_z'), 'nothing written');
+    const out = cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=0.1', 'x1c.pin_slip=0.25', 'x1c.magnet_press=0.05', 'x1c.magnet_glue=0.15', 'x1c.magnet_crush=0.3', 'x1c.snap_barb=0.5', 'pla.strength_z=21.5');
+    // each against what the kit drew it from
+    assert.match(out, /x1c\.snap_clearance: measured 0\.15 mm, predicted 0\.2 \(estimate\), ratio 0\.75/);
+    assert.match(out, /x1c\.pin_press: measured 0\.1 mm, predicted 0\.05 \(estimate\), ratio 2\n/);
+    assert.match(out, /x1c\.pin_slip: measured 0\.25 mm, predicted 0\.2/);
+    assert.match(out, /x1c\.magnet_press: measured 0\.05 mm, predicted 0\.1 \(estimate\)/);
+    assert.match(out, /x1c\.magnet_glue: measured 0\.15 mm, predicted 0\.1/);
+    assert.match(out, /x1c\.magnet_crush: measured 0\.3 mm, predicted 0\.2/);
+    assert.match(out, /x1c\.snap_barb: measured 0\.5 mm, predicted 0\.4 \(barb 0\.4, the default\)/);
+    assert.match(out, /pla\.strength_z: measured 21\.5 MPa, predicted 39 \(pla\.strength, along the layers: no figure across them\)/);
+    // in the workspace's copies of the printer's and the plastic's sets, each measured, dated, from the coupon
+    const x1c = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules, pla = JSON.parse(fs.readFileSync(own('pla'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    for (const [k, value] of [['snap_clearance', 0.15], ['pin_press', 0.1], ['pin_slip', 0.25], ['magnet_press', 0.05], ['magnet_glue', 0.15], ['magnet_crush', 0.3], ['snap_barb', 0.5]]) {
+      assert.deepEqual([x1c[k].value, x1c[k].unit, x1c[k].kind, x1c[k].checked], [value, 'mm', 'measured', today], k); assert.match(x1c[k].source, /holds coupon/, k); assert.doesNotMatch(x1c[k].rule, /estimate|until/, k);
+    }
+    assert.deepEqual([pla.strength_z.value, pla.strength_z.unit, pla.strength_z.kind], [21.5, 'MPa', 'measured']); assert.match(pla.strength_z.rule, /across its printed layers: the pull bolt/);
+    assert.equal(pla.strength.value, 39, 'the strength along the layers is untouched');
+    // and the plate is drawn from them: the dowel's press hole 3 + 0.1 - 0.1 = 3 mm, the magnet's pocket 8 + 0.1 - 0.05 = 8.05 mm
+    const after = drawn();
+    assert.equal(hole(after), 3);
+    assert.ok(after.some((x) => /8\.05 mm/.test(x.text) && /x1c\.magnet_press/.test(x.text)), 'the pocket from the measured press');
+    assert.match(cad('history', 'home/coupon'), /x1c\.pin_press: measured 0\.1 mm, predicted 0\.05/);
+  } finally { done(); }
+});
+
 test('cad measured from the joint rig: a drop read on the dial becomes the join\'s spring, measured, in the rule it came from, and the prediction moves to match; a slot nut\'s hold along its slot lands in its set', async () => {
   const { ws, cad, done } = workspace();
   try {

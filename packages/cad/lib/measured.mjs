@@ -8,7 +8,9 @@
 // out from it, to the rule the spring came from: the joins set (the workspace's copy, started from @rulecad/frames'
 // estimates), a bought fitting's set, or a printed fitting's share of its finite-element figure. The beam coupon's sag
 // and the mass it broke at (beam.coupon's <beam>.sag and <beam>.break) write the modulus and strength a printed beam has
-// to its plastic's set (beam_modulus, beam_strength; _z standing up).
+// to its plastic's set (beam_modulus, beam_strength; _z standing up). The holds coupon's fits (a snap pin's socket, a
+// plain pin's press and slip, a magnet's press, glue and crush ribs, and the snap pins' barb as a record) need no --rule
+// either, and each is refused outside what a fit of its kind can be; its pull bolt writes the plastic's strength_z.
 import fs from 'node:fs';
 import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
@@ -118,9 +120,48 @@ function fixingsRule(project, set, key) {
     rule: `Clearance across the flats of a nut pocket let in from a face, on top of hole_comp: the tightest on ${COUPON} a hex nut dropped into by hand and did not turn in as its screw was tightened. A nut pocket's snug fit` };
   if (key === 'nut_slip') { const t = f().nutTrapModel('M3', { depth: 1 }); return { unit: 'mm', predicted: t.clearance, was: t.rests.find((r) => /slip$/.test(r.name))?.name ?? 'slip', source: COUPON,
     rule: `Clearance across the flats of a nut slot a nut slides into from the side, on top of hole_comp: the tightest on ${COUPON} a hex nut slid into by hand, stayed in turned over, and did not turn as its screw was tightened. A nut slot's slip fit` }; }
+  // The holds coupon's fits (rows 40 to 45): each the printer's rule a pin, a snap pin's socket or a magnet's pocket is
+  // drawn from, read through the model that draws it, so the ledger's prediction is what the kit drew; and the snap
+  // pins' barb, a record as the flank form is. Each is held to what a fit of its kind can be, so a slip of the pen
+  // (a diameter for a clearance) is refused before anything is written
+  const fit = HOLDS[key];
+  if (fit) {
+    const r = fit.model(f()).rests.find((x) => x.name.endsWith(`.${key}`) || x.name.endsWith(`'s ${key}`));
+    return { unit: 'mm', predicted: r?.value ?? fit.kit, was: r ? `${r.name}, ${r.kind}` : fit.was, source: HOLDS_COUPON, measuredRule: fit.rule,
+      check: (x) => (x < fit.range[0] || x > fit.range[1] || (fit.above && x === 0) ? `is ${fit.above ? 'above' : 'from'} ${fit.range[0]}${fit.above ? ' and up' : ''} to ${fit.range[1]} mm: ${fit.why}` : null) };
+  }
   if (key === 'thread_flank') { const t = f().threadModel('M8', { length: f().holeModel('M8', { kind: 'thread' }).depth, internal: true }); return { unit: '°', predicted: t.overhang.drawn, was: 'flanks: printed, the default', source: COUPON, allowed: [t.overhang.drawn, t.overhang.standard],
     rule: `The down-facing flank of a printed thread standing upright, as an overhang from upright: ${t.overhang.drawn} is the form laid back to the printer's overhang (flanks: 'printed', the kit's default), ${t.overhang.standard} the standard's own form (flanks: 'standard'). The one on ${COUPON} that held, turned smoothly and printed clean. A record for choosing the default: designs still draw flanks: 'printed' unless they say otherwise` }; }
   return null;
+}
+// The holds coupon's fits: the rule each writes once measured, what bounds it, and the model that draws from it
+const HOLDS_COUPON = 'the holds coupon (examples/bench/projects/benchmarks/MEASURE.md)';
+const HOLDS = {
+  snap_clearance: { range: [0, 0.5], above: true, model: (f) => f.pinModel('snap pin 4x6'), why: 'a socket with no clearance pinches the peg so its halves cannot close, and past half a millimetre a pin rocks; the coupon prints 0.1 to 0.3',
+    rule: `Gap round a printed snap pin's peg in its socket, each side, as drawn (no hole compensation): the socket on ${HOLDS_COUPON} a snap pin clicked through by hand and then held without rocking` },
+  pin_press: { range: [0, 0.3], model: (f) => f.pinModel('dowel 3x12', { fit: 'press' }), why: 'how much smaller a hole is drawn than the pin it grips, past hole_comp, and more than 0.3 mm splits a printed boss; the coupon prints 0 to 0.1',
+    rule: `How much smaller across a printed hole is drawn than a plain pin pressed into it, past hole_comp: the hole on ${HOLDS_COUPON} a 3 mm dowel (or 1.75 mm filament) pressed into by hand or in a vice, stood straight, and could not be pulled out by hand` },
+  pin_slip: { range: [0, 0.6], above: true, model: (f) => f.pinModel('dowel 3x12', { fit: 'slip' }), why: 'how much larger a hole is drawn than the pin that turns in it, past hole_comp, and past 0.6 mm it is a loose hole; the coupon prints 0.1 to 0.3',
+    rule: `How much larger across a printed hole is drawn than a plain pin that turns in it, past hole_comp: the tightest hole on ${HOLDS_COUPON} a 3 mm dowel (or 1.75 mm filament) slid into by hand and turned freely in` },
+  magnet_press: { range: [0, 0.4], model: (f) => f.magnetSeatModel('disc magnet 8x3', { fit: 'press' }), why: 'how much smaller a pocket is drawn than the magnet it grips, past hole_comp, and more than 0.4 mm splits its wall; the coupon prints 0 to 0.2',
+    rule: `How much smaller across a printed pocket is drawn than a disc magnet pressed into it, past hole_comp: the pocket on ${HOLDS_COUPON} a 6x3 and an 8x3 magnet went into with a thumb or a vice, flush, without splitting the wall, and stayed in when the plate was turned over and tapped` },
+  magnet_glue: { range: [0, 0.6], model: (f) => f.magnetSeatModel('disc magnet 8x3', { fit: 'glue' }), why: 'room for a film of glue across the pocket, past hole_comp, and past 0.6 mm the magnet sits off centre; the coupon\'s press row shows where a magnet drops in',
+    rule: `How much larger across a printed pocket is drawn than a magnet glued into it, past hole_comp: the least on ${HOLDS_COUPON} a magnet dropped into freely, which leaves room for glue` },
+  magnet_crush: { range: [0, 0.6], above: true, model: (f) => f.magnetSeatModel('disc magnet 8x3', { fit: 'ribs' }), why: 'how far inside the magnet the crush ribs\' tips stand, past hole_comp, and past 0.6 mm a rib no longer crushes but splits; the coupon prints 0.1 to 0.3',
+    rule: `With crush ribs, how much smaller across the ribs' tips stand than the magnet, past hole_comp: the ribbed pocket on ${HOLDS_COUPON} an 8x3 magnet pressed into by hand, flush, and held when the plate was turned over and tapped` },
+  snap_barb: { range: [0, 1], above: true, kit: 0.4, was: 'barb 0.4, the default', model: () => ({ rests: [] }), why: 'a snap pin\'s barb past its peg, and past a millimetre the halves cannot close enough to let it through; the coupon prints 0.3 to 0.5',
+    rule: `A snap pin's barb past its peg: the one on ${HOLDS_COUPON} that clicked through its socket by hand and held when pulled. A record for choosing the default: pins are still drawn with a 0.4 mm barb unless their name says barb N` }
+};
+
+// The pull bolt on the holds coupon (row 46): an M8 printed bolt whose waist breaks across its layers, so it measures
+// how strongly a plastic holds across its layers, which PLA's data sheet does not give. It goes in the plastic's set
+// as strength_z, which a printed bolt standing on its head, and every part pulled across its layers, then reads
+function boltRule(set, key, data) {
+  if (key !== 'strength_z' || data.rules?.density == null || typeof data.rules?.strength?.value !== 'number') return null;
+  const along = data.rules.strength.value, z = data.rules.strength_z;
+  return { unit: 'MPa', predicted: z?.value ?? along, was: z ? `${set}.strength_z, ${z.kind}` : `${set}.strength, along the layers: no figure across them`, source: `${HOLDS_COUPON}, the pull bolt broken on a luggage scale`,
+    measuredRule: `Tensile strength of ${set.toUpperCase()} across its printed layers: the pull bolt on ${HOLDS_COUPON}, printed standing, broken on a luggage scale at its 3 mm waist (the kilograms × 9.81 over 7.07 mm²). A printed bolt standing on its head, and any part pulled across its layers, takes it before the along-layer strength`,
+    check: (x) => (!(x > 0) || x > along ? `is above 0 and no more than ${set}.strength, ${along} MPa: a print holds less across its layers than along them, so read the scale's peak again, and work it as kilograms × 9.81 over the waist's 7.07 mm²` : null) };
 }
 const printerName = (project) => { try { return fixingsContext({ project, dir: paths.project(project) }).context.printer?.name ?? 'x1c'; } catch { return 'x1c'; } };
 // A rule the workspace's copy lacks and the kit's own set of that name holds (a set copied before the rule was added)
@@ -142,8 +183,10 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   // a rule's new value, checked before anything is written (a refusal leaves the rule sets as they were)
   const writeRule = (k, value, { from = null, unit: u = unit } = {}) => {
     const { set, rule: key, data, file, text, copied } = ruleFile(k);
-    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? couponRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
+    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? couponRule(set, key, data) ?? boltRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
     if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
+    const wrong = known?.check?.(value);
+    if (wrong) throw new CadError('measured.value', `${k} ${wrong} (got ${value})`);
     if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
     const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
     if (u && had?.unit && u !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${u}: give it in ${had.unit}`);
