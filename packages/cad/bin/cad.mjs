@@ -671,7 +671,7 @@ async function editAssembly(what, ref) {
   // field=value pairs, for any field (nested by dots: motor.model=nema17), over the options
   if (what !== 'pose') for (const [k, v] of pairsOf(positional().slice(3), 'cad add')) { const keys = k.split('.'); let o = entry; for (const x of keys.slice(0, -1)) o = (o[x] ??= {}); o[keys.at(-1)] = v; }
   const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry, { dryRun: !!opt('dry-run') });
-  edited(r, 'add', { added: entry }, `added ${/^[aeiou]/.test(what) ? 'an' : 'a'} ${what} to ${rel(r.file)} (${r.changes[0].path})`);
+  edited(r, 'add', { added: entry }, `${opt('dry-run') ? 'would add' : 'added'} ${/^[aeiou]/.test(what) ? 'an' : 'a'} ${what} to ${rel(r.file)} (${r.changes[0].path})`);
 }
 
 // name=value pairs from the command line, each value as cad set takes it; refused by name where one has no =

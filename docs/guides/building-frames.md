@@ -8,7 +8,9 @@ together square.
 
 This guide adds a profile of your own from its maker's spec sheet, builds a box from it, reads what the checks say,
 and writes the kit to build it from. It needs Node.js and nothing else: no printer or saw until you build it. Each
-step was followed in a fresh workspace as written, and the figures quoted are what that gave. The worked examples go
+step was followed in a fresh workspace as written, and the figures quoted are what that gave. Every file the guide
+makes is written by a command (`cad new`, `cad add`, `cad set`), which checks the edit before it writes it, so the
+only file you fill in by hand is a profile's rule set, from its sheet (section 3). The worked examples go
 further: [chapter 16](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md#16-a-frame-beams-joins-and-an-axis)
 draws a frame by hand with a moving axis, and chapter 17 prints every beam of a small case.
 
@@ -117,33 +119,63 @@ them (the cad README, "A beam's profile from its maker's model").
 
 ## 4. A box from its size
 
-A frame for a size is asked for by what it must hold, and a generator works out the beams. Make a project with an
-assembly in it, `projects/frame/project.json`:
+A frame for a size is asked for by what it must hold, and a generator works out the beams. Make a project, an
+assembly in it that asks for a box, and the load it carries:
 
-```json
-{ "name": "frame", "description": "A box frame", "material": "PLA", "objects": [] }
+```sh
+npx cad new frame --title "A box frame"
+npx cad new frame/box --assembly --title "Box frame" --frame box --inside 300,300,350 --profile 2020-acme --join blind --feet levelling
+npx cad add load frame/box --mass 5 --at x3.top@50% --note "5 kg on the middle of the top front beam"
 ```
 
-and `projects/frame/assemblies/box.json`:
+- `--inside` is the clear space it encloses, width, depth and height in mm (`--outside` is the space it must fit in).
+- `--profile` names a set in your `rules/` or the kit's (`2020-misumi-hfs5` is the kit's own 2020, if you skipped
+  section 3).
+- `--join` is how its corners are held (section 5). `--feet levelling` puts printed levelling feet in the uprights'
+  ends.
+- A load says what the frame carries, at an address on a beam: `x3.top@50%` is the middle of beam x3's top face.
+
+`cad new frame` writes `projects/frame/project.json` (its name, title and plastic, PLA unless `--material` says
+otherwise). `cad new frame/box --assembly` writes `projects/frame/assemblies/box.json`, and before writing it expands
+the frame and says what it comes to, so a size the generator cannot build is refused there, by name, with nothing
+written. After the three commands the assembly reads:
 
 ```json
 {
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
   "title": "Box frame",
   "kind": "fit",
-  "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-acme", "join": "blind", "feet": "levelling" },
-  "loads": [{ "mass": 5, "at": "x3.top@50%", "note": "5 kg on the middle of the top front beam" }]
+  "frame": {
+    "kind": "box",
+    "inside": [300, 300, 350],
+    "profile": "2020-acme",
+    "join": "blind",
+    "feet": "levelling"
+  },
+  "loads": [
+    {
+      "mass": 5,
+      "at": "x3.top@50%",
+      "note": "5 kg on the middle of the top front beam"
+    }
+  ]
 }
 ```
 
-- `"inside"` is the clear space it encloses, width, depth and height in mm (`"outside"` is the space it must fit in).
-- `"profile"` names a set in your `rules/` or the kit's.
-- `"join"` is how its corners are held (section 5). `"feet"` are printed levelling feet screwed into the uprights' ends.
-- `"loads"` say what it carries, at an address on a beam: `x3.top@50%` is the middle of beam x3's top face.
+To change it later, `cad set` takes any field by its address: `npx cad set frame/box "frame.inside=[300,300,400]"`
+makes it taller (a value in brackets is a list; quote it, so the shell leaves the brackets alone), `npx cad set frame/box loads.0.mass=8` heavier. Each prints what changed from what to what, and
+`--dry-run` shows it without writing. A field of an entry with an id is addressed by the id (`g1.from`), any entry
+by its place in its list (`loads.0`), and `cad remove frame/box loads.0` takes one out. The beams a generated frame
+makes are not in the file, so `cad set` refuses them by name: change the frame's own fields, or write the beams out
+with `cad frame frame/box --expand` and change them there (`cad move frame/box x1 --at 0,0,40` moves a beam placed by
+its ends, both ends at once).
 
 Other kinds are `portal`, `table`, `gantry` and `shelf`. A portal is two legs and a beam across, in one plane: a
 foot stops a leg's end moving but lets it turn, so on its feet alone a portal tips over sideways. cad refuses it until
-its frame says the feet are held down, bolted to a bench or a wall: `"supports": { "z1.a": "fixed", "z2.a": "fixed" }`.
-To stand free, make a table or a box. `npx cad frame frame/box` says what it expands into:
+its frame says the feet are held down, bolted to a bench or a wall, which `cad new` takes as fields after the options:
+`npx cad new frame/portal --assembly --frame portal --inside 300,200 --profile 2020-acme 'frame.supports["z1.a"]=fixed'
+'frame.supports["z2.a"]=fixed'` (a key with a dot in it goes in brackets and quotes). To stand free, make a table or a
+box. `npx cad frame frame/box` says what it expands into:
 
 ```
 frame/box: a box of 2020-acme (20 mm), joined blind: the upright beams run through and the rest butt against their faces
@@ -155,7 +187,7 @@ inside 300 x 300 x 350 mm, outside 340 x 340 x 408.5 mm; the bottom ring stands 
 
 The uprights are 350 + 2 × 20 + 18.5 = 408.5 mm: the inside height, a beam's width at the top and at the bottom, and
 the depth of the feet's tapped ends, which the bottom ring rises clear of. `--expand` writes the beams and joins into
-the assembly, to edit by hand from there.
+the assembly, to change from there with `cad set`, `cad move`, `cad add` and `cad remove`.
 
 Then check it:
 
@@ -173,8 +205,9 @@ A join names the end of one beam (`a`) and the place on another where that end m
 "joins": [{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }]
 ```
 
-`npx cad add join frame/box --kind blind --a y1.a --b x1.back@120` writes one. Never draw a join's holes or screws
-yourself: the join puts its operations on both beams (on the cut list and each beam's sheet), its screws on the
+`npx cad add join frame/box --kind blind --a y1.a --b x1.back@120` writes one, and refuses a beam the assembly does
+not have, naming the beams it does (a generated frame's among them). `cad remove` will not take out a beam a join
+uses: it names the join, and `--with-refs` removes the two together. Never draw a join's holes or screws yourself: the join puts its operations on both beams (on the cut list and each beam's sheet), its screws on the
 shopping list and into the screw checks, and its stiffness into the frame's solution.
 
 | Kind | What it is | Use it when |
@@ -194,9 +227,15 @@ estimate (a blind join in 2020, 1.5 N·m per milliradian in bending; a printed b
 elements, is far softer) until the joint rig measures one (`cad measured`). Every check that rests on one says so;
 pass that on when you report a figure.
 
-Try `"join": { "kind": "bracket", "fitting": "printed" }` (and `"feet": "foot"`) in the box above: it checks, but warns
-that it racks 3.407 mm under a 20 N push at the top, against 0.95 mm, and works out what would cure it. The cheapest
-is one diagonal brace, which brings it to 0.825 mm.
+Try printed brackets and plain feet on the box above:
+
+```sh
+npx cad set frame/box frame.join.kind=bracket frame.join.fitting=printed frame.feet=foot
+```
+
+(`"join": "blind"` stands for `{ "kind": "blind" }`, so it becomes `{ "kind": "bracket", "fitting": "printed" }`.) It
+checks, but warns that it racks 3.407 mm under a 20 N push at the top, against 0.95 mm, and works out what would cure
+it. The cheapest is one diagonal brace, which brings it to 0.825 mm.
 
 ## 6. What the checks say
 
@@ -225,17 +264,29 @@ P L³ / (48 E I) = 49.03 × 300³ / (48 × 69972 × 7420) = 0.053 mm with its en
 with them fixed (Roark's Formulas for Stress and Strain, table 8.1). The check's 0.046 mm from the load alone lies
 between, near the pinned figure, because a blind join holds the end only a little.
 
-To let the kit choose the size, give it a list: `"frame": { ..., "size": { "profiles": ["1515-openbeam",
-"2020-misumi-hfs5", "3030-misumi-hfs6"] } }`, then `npx cad frame frame/box --size` says the lightest that meets each
-limit, beam group by beam group, and the limit that set it; `--size --write` writes it in.
+To let the kit choose the size, give it a list, then ask:
+
+```sh
+npx cad set frame/box "frame.size.profiles=[1515-openbeam, 2020-misumi-hfs5, 3030-misumi-hfs6]"
+npx cad frame frame/box --size
+```
+
+It says the lightest that meets each limit, beam group by beam group, and the limit that set it (for the box above,
+1515-openbeam everywhere, 1.198 kg of beams against the 2.017 kg drawn, the beams along x the nearest their limit
+at a margin of 6.48 times); `--size --write` writes it in.
 
 ## 7. Nuts, and parts on a beam
 
-A part screwed onto a beam is a `fasten` into a slot:
+A part screwed onto a beam is a `fasten` into a slot. With a printed plate (an object called `plate`) placed on the
+middle of x1's top face:
 
-```json
-"fasten": [{ "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in" }]
+```sh
+npx cad add item frame/box --id plate --object plate --at x1.top@50%
+npx cad add fasten frame/box --screw "M4 button" --through plate --into x1.top --holes plate.body --nut drop-in
 ```
+
+which writes `{ "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in" }`
+into the assembly's `"fasten"` list.
 
 The screw ends in a slot nut under the slot's lips, chosen for that slot and thread. The kinds are `slide-in` (in
 from an open end), `drop-in`, `roll-in` and `hammer` (in through the opening, anywhere), `t-bolt`, and a plain
@@ -254,14 +305,20 @@ slots on a profile with 30.
 A guide puts linear motion on a beam: `rail` (a miniature rail and carriage), `wheels` (V-wheels in a V-slot),
 `rods` (two smooth rods and bearings), `slider` (a printed slider in the slot) and `screw` (a lead screw and its
 motor, driving another guide). Each places its parts by address, picks its slot nuts, and gives its carriage a sliding
-joint with its true travel:
+joint with its true travel. A guide's fields differ by kind, so `cad add guide` takes them as `field=value`:
 
-```json
-"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x3.top", "from": 25, "length": 250, "nut": "drop-in" }]
+```sh
+npx cad add guide frame/box --kind rail rail=rail-mgn12 carriage=MGN12H on=x3.top from=25 length=250 nut=drop-in
+npx cad check frame/box --sweep
 ```
 
-Run `npx cad check frame/box --sweep` to slide it through its travel. On the box above, this rail's MGN12H carriage
-travels 204.2 mm, and the sweep finds nothing in its way. Putting a whole machine on a frame (a task, its
+The first refuses a beam the frame does not have; `cad move frame/box g1 --at 40` slides the guide along its face, and
+`--to x4.top` puts it on another. The check slides the carriage through its travel: on the box above, this rail's
+MGN12H carriage travels 204.2 mm, and the sweep finds nothing in its way. It also holds the beam under the rail to the
+rail's own parallelism, and with section 4's 5 kg still on the middle of x3 it fails there (`frame.deflection`): x3
+sags 0.0494 mm under the rail, against the 0.016 mm an MGN12 rail of 250 mm may be out. Take the load off x3
+(`cad remove frame/box loads.0`) and it checks clean; to carry it there, a deeper beam, a shorter span or stiffer joins
+would. Putting a whole machine on a frame (a task, its
 error budget and the frequencies its moves excite) is in [the machines guide](../machines/).
 
 ## 9. Building it square
@@ -294,6 +351,8 @@ mark's sheet. It refuses a design whose check fails.
 
 ## Where this stops
 
+- A profile's rule set (section 3) is the one file filled in by hand: its figures come from the maker's sheet, and
+  `cad rules check` holds each to its source. Every other file here is written by a command.
 - Every join's stiffness and play is an estimate until the joint rig measures it: the sway, the frequencies and the
   diagonals to accept all rest on them, and say so.
 - A spec sheet's section figures are taken as printed; the outline the kit draws is from the interface dimensions, so

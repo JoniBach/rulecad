@@ -6417,19 +6417,18 @@ carriage, driven by a lead screw from a NEMA 17. A printed plate for a board is 
 cut, drilled and printed from what the check worked out: the cut list, a sheet for each beam, the jigs, one plate of
 printed parts and the order to build it in. Two mistakes follow, each caught by name.
 
-```json projects/frame/project.json
-{
-  "name": "frame",
-  "title": "A frame with a moving axis",
-  "printer": "x1c",
-  "material": "PLA",
-  "objects": ["plate"]
-}
+The project, and the one object in it, are made by commands: `cad new frame` writes `projects/frame/project.json`
+(its title, the printer its parts are checked against, PLA), and `cad new frame/plate` starts the plate from the
+template and lists it in the project.
+
+```sh
+npx cad new frame --title "A frame with a moving axis" --printer x1c --material PLA
+npx cad new frame/plate
 ```
 
 ### The plate
 
-The board plate is the one part drawn by hand. It lies on a beam's slotted face, two M4 holes from `v.fixings` along
+The board plate is the one part drawn by hand: its two files replace the template's. It lies on a beam's slotted face, two M4 holes from `v.fixings` along
 its middle, so both screws go into one slot's nuts. Its thickness is chosen with its screws: 3 mm of plate and the
 slot's 2 mm lip leave an M4x8 a hex nut's height of thread in a slot nut without reaching the slot's floor.
 
@@ -6691,27 +6690,22 @@ joins to 0.68 N m (what the PLA under each head takes).
 ### Two mistakes, caught
 
 A trapped nut. The board plate on its rail between two posts, its nuts `slide-in`, which go into a slot only from an
-open end:
+open end. This one is built by commands, each checked as it is written: an empty assembly, three beams placed by
+their ends, the plate at the middle of x1's top face, the two joins and the fasten.
 
-```json projects/frame/assemblies/trapped.json
-{
-  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
-  "title": "The board plate on slide-in nuts",
-  "kind": "fit",
-  "items": [
-    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 10, 0], "to": [10, 10, 200] },
-    { "id": "p2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [290, 10, 0], "to": [290, 10, 200] },
-    { "id": "x1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 30], "to": [280, 10, 30] },
-    { "id": "plate", "object": "plate", "at": "x1.top@50%" }
-  ],
-  "joins": [
-    { "kind": "blind", "a": "x1.a", "b": "p1.back@30" }, { "kind": "blind", "a": "x1.b", "b": "p2.front@30" }
-  ],
-  "fasten": [
-    { "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "slide-in", "note": "The board plate" }
-  ]
-}
+```sh
+npx cad new frame/trapped --assembly --title "The board plate on slide-in nuts"
+npx cad add beam frame/trapped --id p1 --profile 2020-misumi-hfs5 --from 10,10,0 --to 10,10,200
+npx cad add beam frame/trapped --id p2 --profile 2020-misumi-hfs5 --from 290,10,0 --to 290,10,200
+npx cad add beam frame/trapped --id x1 --profile 2020-misumi-hfs5 --from 20,10,30 --to 280,10,30
+npx cad add item frame/trapped --id plate --object plate --at x1.top@50%
+npx cad add join frame/trapped --kind blind --a x1.a --b p1.back@30
+npx cad add join frame/trapped --kind blind --a x1.b --b p2.front@30
+npx cad add fasten frame/trapped --screw "M4 button" --through plate --into x1.top --holes plate.body --nut slide-in --note "The board plate"
 ```
+
+`projects/frame/assemblies/trapped.json` is then the file a person would have written: the four items, the two joins
+and the fasten.
 
 `npx cad check frame/trapped` fails on `frame.nut`, and names the nut that would do:
 
@@ -6728,19 +6722,11 @@ frame/trapped: x1's top slot: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) fo
 A plate drawn for the wrong slot spacing. The same plate turned across a wider rail, a 2040 whose top face has two
 slots 20 mm apart, with its holes drawn 30 mm apart, as a 30 series beam's slots are:
 
-```json projects/frame/assemblies/spacing.json
-{
-  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
-  "title": "A plate drawn for 30 mm slots on a 2040",
-  "kind": "fit",
-  "items": [
-    { "id": "x1", "beam": { "profile": "2040-misumi-hfs5" }, "from": [0, 0, 10], "to": [260, 0, 10] },
-    { "id": "plate", "object": "plate", "at": [130, 0, 20], "rotate": [0, 0, 90], "set": { "pitch": 30, "long": 44 } }
-  ],
-  "fasten": [
-    { "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in", "note": "The board plate" }
-  ]
-}
+```sh
+npx cad new frame/spacing --assembly --title "A plate drawn for 30 mm slots on a 2040"
+npx cad add beam frame/spacing --id x1 --profile 2040-misumi-hfs5 --from 0,0,10 --to 260,0,10
+npx cad add item frame/spacing --id plate --object plate --at 130,0,20 --rotate 0,0,90 --set pitch=30,long=44
+npx cad add fasten frame/spacing --screw "M4 button" --through plate --into x1.top --holes plate.body --nut drop-in --note "The board plate"
 ```
 
 `npx cad check frame/spacing` fails on `fasten.slot`, for each screw:
@@ -6784,14 +6770,8 @@ fan mount all come from the kit's fittings. The frame's sag under the board is r
 longer than the printer's bed is spliced, a foot drawn for the aluminium post is caught, and the whole case is written
 out as a kit: one plate to print and a page to build it from.
 
-```json projects/case/project.json
-{
-  "name": "case",
-  "title": "A printed case for a small computer board",
-  "printer": "x1c",
-  "material": "PETG",
-  "objects": []
-}
+```sh
+npx cad new case --title "A printed case for a small computer board" --printer x1c --material PETG
 ```
 
 PETG rather than PLA: a board in a closed case runs warm, and PETG softens later.

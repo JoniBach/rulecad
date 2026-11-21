@@ -297,7 +297,7 @@ export function setInAssembly(ref, changes, { dryRun = false } = {}) {
   for (const [address, value] of Object.entries(changes)) {
     const { path: p, entry } = addressPath(JSON.parse(text), address, { ref, file });
     if (entry && p.length === 2) throw new CadError('edit.address', `${address} is a whole ${entry[0].replace(/s$/, '')}: set one of its fields (${address}.<field>), or cad remove it and cad add another`, { file });
-    const was = getAt(text, p);
+    const up = p.length > 1 ? getAt(text, p.slice(0, -1)) : undefined, was = typeof up === 'string' && p.at(-1) === 'kind' ? up : getAt(text, p); // ("join": "blind" is a kind of blind)
     try { text = setDeep(text, p, value); } catch (e) { throw e instanceof CadError ? Object.assign(e, { file }) : new CadError('edit.address', `${address}: ${e.message}`, { file }); }
     done.push({ op: 'set', path: shownPath(p), ...(was !== undefined ? { before: was } : {}), after: value });
     if (entry) touched.push(entry);
