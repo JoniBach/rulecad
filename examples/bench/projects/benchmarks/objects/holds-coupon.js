@@ -72,8 +72,8 @@ export function main (v) {
 
 
   const n8 = nuts('M8'), n10 = nuts('M10')
-  const rows = [[sockets(v.small_pin), sockets(v.large_pin)], [pins('dowel 3x12', 'D3P', 'press'), pins('dowel 3x12', 'D3S', 'slip')],
-    [pins('filament pin 1.75x12', 'FP', 'press'), pins('filament pin 1.75x12', 'FS', 'slip')],
+  const rows = [[sockets(v.small_pin), sockets(v.large_pin), pins('dowel 3x12', 'D3P', 'press')],
+    [pins('filament pin 1.75x12', 'FP', 'press'), pins('filament pin 1.75x12', 'FS', 'slip'), pins('dowel 3x12', 'D3S', 'slip')],
     [magnets('6x3', '6x3', 'press'), magnets('8x3', '8x3', 'press'), magnets('8x3', '8x3R', 'ribs')], [n8, n10]]
   const solids = [], cuts = [], labels = []
   let y = v.gap, length = 0
