@@ -4,7 +4,7 @@
 // pressed in (6x3, 8x3) and held by crush ribs (8x3R), and printed nuts for printed M8 and M10 bolts (M8N, M10N). Beside
 // it, loose: the printed bolts for those nuts, one for each thread gap, a pull bolt to break, and snap pins at three barb
 // depths for each socket row. Every size comes from v.fixings and the printer's rules, so the coupon prints round the
-// figures the kit draws today, and again round yours once they are measured (MEASURE.md, rows 40 to 46).
+// figures the kit draws today, and again round yours once they are measured (MEASURE.md, rows 40 to 47).
 // The plate's first layer is one rectangle with a few round holes (the sockets go through it, and each magnet pocket has
 // a hole under it to push the magnet out); every loose piece stands on a plain round or hexagonal foot. Nothing needs a support.
 import jscad from '@jscad/modeling'
