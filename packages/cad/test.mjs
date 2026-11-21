@@ -4415,25 +4415,28 @@ test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carr
   const { ws, cad, done } = workspace();
   try {
     const run = (...a) => { const out = cad(...a); assert.doesNotMatch(out, /✗|exit 1|Error/, `cad ${a.join(' ')}: ${out}`); return out; };
-    run('new', 'axis', '--material', 'PLA', '--printer', 'x1c');
-    run('new', 'axis/x-belt', '--assembly', '--title', 'A belt X axis on a 2020');
-    run('add', 'item', 'axis/x-belt', 'id=x1', 'beam.profile=2020-misumi-hfs5', 'from=[0,0,0]', 'to=[400,0,0]');
-    run('add', 'guide', 'axis/x-belt', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x1.top', 'from=30', 'length=300');
-    run('add', 'guide', 'axis/x-belt', '--kind', 'belt', 'guide=g1', 'motor.model=nema17', 'motor.microsteps=16', 'motor.current=1.2', 'accel=3000');
-    run('add', 'load', 'axis/x-belt', 'mass=0.5', 'at=g1-carriage-1.top');
+    run('new', 'axes', '--material', 'PLA', '--printer', 'x1c');
+    run('new', 'axes/x-belt', '--assembly', '--title', 'A belt X axis on a 2020');
+    run('add', 'item', 'axes/x-belt', 'id=x1', 'beam.profile=2020-misumi-hfs5', 'from=[0,0,0]', 'to=[400,0,0]');
+    run('add', 'guide', 'axes/x-belt', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x1.top', 'from=30', 'length=300');
+    run('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g1', 'motor.model=nema17', 'motor.microsteps=16', 'motor.current=1.2', 'accel=3000');
+    run('add', 'load', 'axes/x-belt', 'mass=0.5', 'at=g1-carriage-1.top');
+    // the commands write the bench example's file (examples/bench axes/x-belt), byte for byte
+    const benchFile = path.join(path.dirname(ROOT_MODULES), 'examples/bench/projects/axes/assemblies/x-belt.json');
+    assert.equal(fs.readFileSync(path.join(ws, 'projects/axes/assemblies/x-belt.json'), 'utf8'), fs.readFileSync(benchFile, 'utf8'));
     // the same axis with its idler moved 12 mm across, and with its belt cut 22 mm long
-    const dir = path.join(ws, 'projects/axis/assemblies');
+    const dir = path.join(ws, 'projects/axes/assemblies');
     for (const n of ['x-moved', 'x-long']) fs.copyFileSync(path.join(dir, 'x-belt.json'), path.join(dir, `${n}.json`));
-    run('set', 'axis/x-moved', 'g2.across=12'); run('set', 'axis/x-long', 'g2.cut=830');
+    run('set', 'axes/x-moved', 'g2.across=12'); run('set', 'axes/x-long', 'g2.cut=830');
     // a belt names a rail guide by its id: refused by name, nothing written
     const before = fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8');
-    assert.match(cad('add', 'guide', 'axis/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17'), /no guide "g9"/);
+    assert.match(cad('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17'), /no guide "g9"/);
     assert.equal(fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8'), before);
     // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
     const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
       const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
       const { buildAssembly, checkAssembly } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs'), { terms } = await lib('task.mjs'), { motorModel, performance } = await import('@rulecad/motors');
-      const s = await buildAssembly('axis/${name}'), findings = checkAssembly(s), l = shoppingList(s);
+      const s = await buildAssembly('axes/${name}'), findings = checkAssembly(s), l = shoppingList(s);
       console.log(JSON.stringify({ bought: l.bought.map((b) => [b.qty, b.set, b.part, b.length ?? null]), printed: l.printed.map((p) => [p.id, p.grams]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]),
         terms: terms(s, { names: ['g1-1'] })[0].terms.map((x) => [x.term, x.kind, x.value]), torque600: performance(motorModel('nema17'), { speed: 600 }).motor.torque,
         findings: findings.map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));

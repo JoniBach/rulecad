@@ -1,0 +1,9 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/project.schema.json",
+  "name": "axes",
+  "title": "Linear axes on a beam",
+  "description": "A belt-driven X axis on a 2020: an MGN12H rail's carriage on a GT2 belt from a NEMA 17, every part placed by addresses and written by the edit commands",
+  "material": "PLA",
+  "printer": "x1c",
+  "objects": []
+}

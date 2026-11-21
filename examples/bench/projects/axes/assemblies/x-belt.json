@@ -1,0 +1,41 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A belt X axis on a 2020",
+  "kind": "fit",
+  "items": [
+    {
+      "id": "x1",
+      "beam": {
+        "profile": "2020-misumi-hfs5"
+      },
+      "from": [0, 0, 0],
+      "to": [400, 0, 0]
+    }
+  ],
+  "guides": [
+    {
+      "kind": "rail",
+      "rail": "rail-mgn12",
+      "carriage": "MGN12H",
+      "on": "x1.top",
+      "from": 30,
+      "length": 300
+    },
+    {
+      "kind": "belt",
+      "guide": "g1",
+      "motor": {
+        "model": "nema17",
+        "microsteps": 16,
+        "current": 1.2
+      },
+      "accel": 3000
+    }
+  ],
+  "loads": [
+    {
+      "mass": 0.5,
+      "at": "g1-carriage-1.top"
+    }
+  ]
+}

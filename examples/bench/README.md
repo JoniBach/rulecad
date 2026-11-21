@@ -217,3 +217,36 @@ what you print to keep beside the bars. Each is drawn from the profile's own rul
 PLA, about 100 minutes); `npx cad kit fittings/kit-2020` writes the folder to hand on: the plate's 3MF, the list and a
 page saying what each is. The screws for the brackets, feet and clips depend on what they join, so a frame's own kit
 lists them with its joins; the carriers' nuts are listed here, since the carriers hold them.
+
+## A belt X axis on a 2020
+
+`axes/x-belt` is one linear axis: a 400 mm MISUMI 2020 (HFS5), an MGN12H rail 300 mm long on its top face from 30 mm,
+and the rail's carriage driven by a GT2 belt from a NEMA 17. Every line of its assembly was written by a command:
+
+```
+npx cad new axes --material PLA --printer x1c
+npx cad new axes/x-belt --assembly --title "A belt X axis on a 2020"
+npx cad add item axes/x-belt id=x1 beam.profile=2020-misumi-hfs5 'from=[0,0,0]' 'to=[400,0,0]'
+npx cad add guide axes/x-belt --kind rail rail=rail-mgn12 carriage=MGN12H on=x1.top from=30 length=300
+npx cad add guide axes/x-belt --kind belt guide=g1 motor.model=nema17 motor.microsteps=16 motor.current=1.2 accel=3000
+npx cad add load axes/x-belt mass=0.5 at=g1-carriage-1.top
+```
+
+The belt guide places the rest by addresses: the motor under a printed plate past the beam's end a (17.4 g), the
+pulley on its shaft, a printed clamp for both belt ends on the carriage (4.4 g, two M3x6 into the carriage's own
+threads), and the idler on a printed block past the rail's end (18.6 g), which is the tensioner: its two M5 screws go
+into slot nuts in the beam's slot, so loosened it slides along the slot. `npx cad check axes/x-belt` passes with no
+warning. What it reports, and what each figure rests on:
+
+| Finding | Figure | Rests on |
+|---|---|---|
+| `guide.drive`, `motor.speed` | 20 teeth × 2 mm = 40 mm a turn; 400 mm/s at the motor's 600 rpm | the pulley's set (Gates's sprocket table) |
+| `motor.torque` | 37.4 N at the belt against 1.68 N to push 558 g at 3000 mm/s², 22.3 times over | the NEMA 17's set, the belt's 0.95 (an estimate) |
+| `belt.length` | a path of 810.3 mm; cut 808 mm (404 teeth), buy 1 m | the pitch circles; open belt sold by the metre (an estimate) |
+| `belt.tension` | each span at 25 N, from 24.2 to 25.8 N while it pushes | 25 N is an estimate; Gates's 9.3 N least and 173 N rated |
+| `belt.rub` | the runs clear the carriage by 3.4 mm through the travel | the belt's 1.38 mm thickness (an estimate) |
+| `belt.tensioner` | the block 0.55 mm toward the rail to tension the belt, 21.45 mm of slot left | the belt's stiffness (Gates) |
+| `belt.stretch` | 1.68 N stretches 184.5 mm of belt 0.018 mm | the belt's stiffness (Gates) |
+
+Set the driver's current from `cad check` once a driver is named: at 1.2 A the motor's case stays under PLA's softening
+point (`motor.heat`).
