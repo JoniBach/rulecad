@@ -19,12 +19,13 @@ and head, the parts it passes through and the part it ends in.
   field as `field=value`. Each keeps the file's layout, checks the edit against the schema and what it could break (a
   generated frame must still expand, the names an entry gives must be there, and every other entry's names that were
   there before must still be: a beam renamed or removed, a frame changed or removed, a joint's parent and child, a
-  pose's joints) before it writes, refuses a bad one by name with nothing written (`project.exists`,
+  pose's joints, a wire's ends and route, a loop's anchors, a load's joint, a mount's beam) before it writes, refuses a bad one by name with nothing written (`project.exists`,
   `assembly.exists`, `project.printer`, `project.material`, `edit.kind`, `frame.refused`, `edit.address`,
   `edit.ambiguous`, `edit.generated`, `edit.referenced`, `edit.dangling`, `edit.renumber`, `edit.move`), takes
   `--dry-run`, and with `--json` says what changed and the checks. `cad remove` of a beam a join uses is refused,
   naming the join; so is `cad remove frame` where a join uses the frame's beams, and the removal of any guide before
-  one with no id of its own, which is named by place.
+  one with no id of its own, which is named by place. `cad new <project>/<assembly> --assembly --material PETG
+  --printer x1c` makes the project with them where it is not there, and refuses them by name where it is.
 - `schemas/project.schema.json`: the project file's fields.
 
 ### Changed

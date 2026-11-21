@@ -103,7 +103,8 @@ shell. A text standing where an object is asked for is its kind: `"join": "blind
 
 Each command keeps the file's layout, checks the edit against the schema and against what it could break (a
 generated frame must still expand; a join's beams, a fit's parts, a fasten's items, a guide's beam, a joint's parent
-and child, a pose's joints and a placed item's address must be there, in the entry changed and in every other entry
+and child, a pose's joints, a wire's ends and route (its anchors, path joints and runs along a beam's slot), a loop's
+anchors, a load's joint and anchor, and a placed or mounted item's address must be there, in the entry changed and in every other entry
 that had them before), and refuses a bad one by name with nothing written: `--json` gives the refusal as `{ "error": {
 "code", "message", "file", "path", "refs" } }`. `--dry-run` does it all and writes nothing. Done, it prints each change
 (`set frame.feet: "levelling" → "foot"`) and the checks; `--json` gives `{ "command", "file", "written", "dryRun",
@@ -113,7 +114,7 @@ frame's own fields, or write it out with `cad frame <ref> --expand` first.
 
 | Refusal | When |
 |---|---|
-| `project.exists`, `assembly.exists` | `cad new` of one that is there |
+| `project.exists`, `assembly.exists` | `cad new` of one that is there, or `--material` or `--printer` with `cad new <project>/<assembly> --assembly` where the project is there (they are the project's: `cad set <project> material=PETG`). Where the project is not there, the assembly makes it with them, each checked as `cad new <project>` checks it |
 | `project.printer` | A printer with no rule set |
 | `project.material` | A material printed fittings cannot be sized from: anything but PLA, PETG or a rule set in `rules/` giving strength, modulus and density. Every frame command reads the project's material as it builds the joins, guides and panels, so one it cannot read would stop them all |
 | `edit.kind` | An assembly kind other than `fit` |
@@ -122,7 +123,7 @@ frame's own fields, or write it out with `cad frame <ref> --expand` first.
 | `edit.part`, `edit.incomplete`, `edit.duplicate` | A name that is not in the assembly, an entry missing what it needs, an id already taken |
 | `edit.referenced` | `cad remove` of what other entries name (each listed in `refs`) |
 | `edit.renumber` | `cad remove` of a guide while guides after it have no id of their own: they are named g1, g2 .. by place, so they would be renamed |
-| `edit.dangling` | An edit that leaves another entry naming what is no longer there: a beam renamed or removed that a join or a load names, a frame changed or removed whose beams a join or a guide uses (each listed in `refs`). A name that was already missing before the edit is left to `cad check` |
+| `edit.dangling` | An edit that leaves another entry naming what is no longer there: a beam renamed or removed that a join, a load, a wire or a mount names, a frame changed or removed whose beams a join or a guide uses (each listed in `refs`). A name that was already missing before the edit is left to `cad check` |
 | `edit.move` | A move its entry cannot take (a beam placed by its ends sent to an address) |
 | `schema` | The edit leaves the file outside its schema |
 
