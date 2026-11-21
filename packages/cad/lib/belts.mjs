@@ -18,12 +18,12 @@ export function beltLoads(s, helpers) {
     if (!j) continue;
     let kg = 0;
     for (const q of masses) if (beyond(motion, j, q.item)) kg += q.kg;
-    for (const l of motion.loads ?? []) if (l.mass != null) { const k = typeof l.item === 'number' ? l.item : ids.indexOf(l.item); if (beyond(motion, j, k)) kg += l.mass; }
+    for (const l of motion.loads ?? []) if (l.mass != null && !l.belt) { const k = typeof l.item === 'number' ? l.item : ids.indexOf(l.item); if (beyond(motion, j, k)) kg += l.mass; }
     const tool = s.task?.item != null ? ids.indexOf(s.task.item) : -1;
     if (s.task?.payload && tool >= 0 && beyond(motion, j, tool)) kg += s.task.payload;
     const accel = r.accel ?? s.task?.accel ?? BELT_DEFAULTS.accel.value, force = (kg * accel) / 1000;
     Object.assign(r, { carried: kg, accelUsed: accel, accelFrom: r.accel != null ? 'the guide' : s.task?.accel != null ? 'the task' : 'BELT_DEFAULTS.accel', force });
-    motion.loads = [...(motion.loads ?? []), { joint: j.id, value: force, note: `${r.id}: ${(kg * 1000).toFixed(0)} g pushed at ${accel} mm/s²`, belt: r.id }];
+    motion.loads = [...(motion.loads ?? []).filter((l) => l.belt !== r.id), { joint: j.id, value: force, note: `${r.id}: ${(kg * 1000).toFixed(0)} g pushed at ${accel} mm/s²`, belt: r.id }];
     if (j.slide?.stretch) Object.assign(j.slide.stretch, { load: force, length: r.layout.span });
   }
 }
