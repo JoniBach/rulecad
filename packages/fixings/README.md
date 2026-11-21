@@ -118,6 +118,7 @@ word    = "cap" | "button" | "countersunk" | "hex" | "set" | "pan"      a screw'
         | [ "hex" | "square" | "lock" ] "nut"                           a nut (hex if not said)
         | "washer" | "insert"                                           a plain washer, a heat-set insert
         | a variant of the thread's rule set                            torx, on a PT screw
+        | "printed"                                                     a screw or nut printed with its thread, not bought
 ```
 
 | You write | You get |
@@ -543,6 +544,121 @@ them unchanged, so `v.flexures.snapPin` draws the same pin it always has. `parse
 says whether a text is one. In an assembly, a fit's `fastener` can name pins (`{ "pin": "snap pin 4x6", "count": 2 }`):
 `cad check` finds their holes, checks them against these figures and the pins' length against the parts, and `cad
 list` and `cad order` name them.
+
+## Printed bolts
+
+A printed bolt is a screw printed with its thread, standing on its head, where a bought one will not do or is not to
+hand. Name it as a screw with the word printed, `'M8x20 hex printed'`: it is then printed at any length, not held to
+the lengths screws are sold in. `printedBoltModel(name, options)` gives its strength in the plastic it is printed in,
+and `printedBolt` its solid (the screw with its thread drawn, as `screw(m, { display: 'thread' })` draws it).
+
+It breaks at the least of three loads:
+
+- **in tension across its root**, its root diameter as drawn, at the plastic's strength across its layers when it
+  stands on its head (`strength_z`; a plastic with none, as PLA's set, uses its strength along them and says so) or
+  along them when it lies on a flat (`axis: 'x'` or `'y'`, its section less the flat);
+- **its teeth sheared off in the nut**, over 0.75 π D1 Le (the bolt's teeth at the nut's minor diameter) and, in a
+  printed nut, the nut's own 0.875 π d Le, whichever is less, at the plastic's shear strength (its strength over √3);
+- **its head sheared off its shank**, over π d k, k the head's height.
+
+A printed bolt goes in a printed nut or a thread printed in the part (`nut: 'printed'`, the default), each taking half
+the printer's `thread_gap`, or in a bought steel nut (`nut: 'steel'`), the bolt then taking the whole gap, so its
+root is smaller. `depth` is the thread engaged (default the thread's hex nut height), and `load`, the pull along it, is
+held to `load_margin`. Below the smallest pitch the printer resolves it is refused by name, as a thread is, naming the
+smallest thread that prints: M6 at 0.2 mm layers.
+
+```js
+import { printedBoltModel, printedBolt } from '@rulecad/fixings';
+
+const pair = printedBoltModel('M8x20 hex printed', { load: 200 });
+console.log(pair.root, pair.rootArea, pair.tension.load, pair.strip.load, pair.breaking, pair.governs, pair.margin);
+const inSteel = printedBoltModel('M8x20 hex printed', { nut: 'steel' }), lying = printedBoltModel('M8x20 hex printed', { axis: 'x' });
+console.log(inSteel.root, inSteel.breaking, lying.rootArea, lying.tension.rule);
+const solid = printedBolt('M10x30 hex printed');     // its thread drawn: print it standing on its head
+console.log(solid.model.name, solid.model.grams);
+try { printedBoltModel('M5x20 hex printed'); } catch (e) { console.log(e.message.split('. ')[1]); }
+```
+
+```text
+6.446 32.63 1272.7 2397.9 1272.7 tension 6.36
+6.246 1195 29.67 pla.strength
+M10x30 hex printed 4.206
+The smallest metric thread that would print is M6 (1 mm pitch)
+```
+
+The first line reads: an M8 printed bolt in PLA, in a printed nut, has a 6.446 mm root drawn (the basic 6.646 mm less
+its half of the 0.2 mm gap each side), 32.63 mm² of section, which breaks at 39 MPa × 32.63 mm² = 1272.7 N before its
+teeth shear (2397.9 N): 6.36 times a 200 N pull. Do a printed bolt up by hand: its thread takes no wrench's torque.
+In an assembly, a fasten's `screw` can name one (`"M8x20 hex printed"`): `cad check` holds it to its load with these
+sums, and `cad list` lists it as a printed part, not a bought screw.
+
+## Magnets
+
+A magnet holds two parts together with no screw: a lid, a door's catch, a tool on a board. `magnetModel(name,
+options)` gives a disc or block neodymium magnet's pull straight off steel and its mass; `magnetSeatModel` its pocket
+in a printed part; `magnetSeat` the pocket to subtract, and `magnet` the magnet's solid for an assembly.
+
+**The pull.** The kit's `magnets` rule set holds six discs (6 x 2, 6 x 3, 8 x 3, 10 x 2, 10 x 3 and 12 x 3 mm) and
+two blocks (10 x 5 x 2 and 20 x 10 x 2 mm), each with its seller's pull straight off thick mild steel and the grade
+it was sold in. Another grade is scaled from it by the square of the middle of the two grades' remanence; with no
+grade named, N35, the weakest sold, so a pull is not overstated. Across a gap (`gap`, or the floor under the pocket
+when the steel is on that side) the pull is taken as the pull touching times the square of the field on the magnet's
+axis there, over the field at its face: an estimate. `count` magnets share a `load`, held to `load_margin`. For a size
+the set has no figure for, give its maker's pull (`{ pull: 12 }`, in N).
+
+**The pocket.** Each fit takes its size from the printer's rules, all estimates until the fixings coupon measures
+them: a press (`fit: 'press'`, the default) is the magnet plus `hole_comp` less `magnet_press`; a glued fit
+(`fit: 'glue'`) plus `magnet_glue`; crush ribs (`fit: 'ribs'`) are a glued pocket with three ribs a line wide whose
+tips stand `magnet_crush` inside the magnet, so a magnet anywhere in its ±0.1 mm goes in and grips. A block's pocket
+has its corners relieved by round cuts, so no inside corner is square. Given the part's `thickness`, the floor left
+under the pocket is held to `magnet_floor` (three layers). The magnet's own pull draws it out of a pocket that faces its
+steel: a press grips by its interference (p = E i / d / (1 + ν), with friction over its wall), crush ribs by the
+plastic's strength over the ribs, and glue by the glue, which is not checked here. A press also stretches the pocket's
+wall at that pressure, which a magnet at the top of its tolerance can split.
+
+Refused by name: a size the set has no pull for, a floor too thin to print, a pocket opening on the bed wider than
+the printer bridges, a block's pocket or crush ribs lying on their side.
+
+A magnet's name is read by this grammar:
+
+```
+magnet = shape size [ grade ]                       disc magnet 8x3, disc magnet 10x3 N52, block magnet 10x5x2
+shape  = "disc magnet" | "block magnet" | "magnet"  (a magnet alone is a disc; "magnets" is read too)
+size   = diameter "x" thickness                     a disc, in mm, magnetised through its thickness
+       | length "x" width "x" thickness             a block, in mm, magnetised through its thickness
+grade  = "N35" | "N38" | "N40" | "N42" | "N45" | "N48" | "N50" | "N52"   (default magnets.grade, N35)
+```
+
+```js
+import { magnetModel, magnetSeatModel, magnetSeat, magnet } from '@rulecad/fixings';
+
+const lid = magnetModel('disc magnet 8x3', { count: 2, load: 10 });
+console.log(lid.name, lid.touching, lid.total, lid.margin, lid.grams);
+for (const fit of ['press', 'glue', 'ribs']) { const s = magnetSeatModel('disc magnet 8x3', { fit, thickness: 5 }); console.log(fit, s.pocket.diameter, s.floor, s.hold); }
+const through = magnetSeatModel('disc magnet 8x3 N52', { thickness: 4, recess: 0.4, facing: 'floor' });
+console.log(through.magnet.gap, through.magnet.pull);
+const cut = magnetSeat('block magnet 10x5x2', { at: [0, 0, 4] }), solid = magnet('disc magnet 8x3');
+console.log(cut.model.pocket.size, solid.model.thickness);
+try { magnetSeatModel('disc magnet 8x3', { thickness: 3.4 }); } catch (e) { console.log(e.message.slice(0, 98)); }
+```
+
+```text
+disc magnet 8x3 N35 11.51 23.01 2.3 1.131
+press 8 2 557.2
+glue 8.2 2 null
+ribs 8.2 2 44.2
+0.6 12.77
+[ 10, 5 ] 3
+magnetSeatModel: a pocket 3 mm deep in a part 3.4 mm thick there leaves a floor of 0.4 mm under th
+```
+
+The first line reads: a lid held by two 8 x 3 mm discs. The seller's N45 disc pulls 14.7 N; as N35 it pulls 14.7 ×
+(1.19 / 1.345)² = 11.51 N, and two pull 23.01 N, 2.3 times a 10 N pull. A 5 mm thick lid leaves a 2 mm floor under
+each 3 mm pocket. Put the magnets' poles the right way round before they go in: two magnets facing each other repel
+if they are put in alike. `parseMagnet` reads a name, `isMagnetName` says whether a text is one, and `fieldShare(m, z)`
+is the field on a magnet's axis at z from its face over the field at its face. In an assembly, a fit's `fastener` can
+name magnets (`{ "magnet": "disc magnet 8x3", "count": 2 }`): `cad check` finds their pockets and reports their pull,
+and `cad list` lists them as bought.
 
 ## Refusals and printability
 

@@ -11,7 +11,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | Set | What | Values |
 |---|---|---|
 | `wire` | Hook-up wire by gauge: current density, service loop | 4 |
-| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), hole compensation, the gap a printed screw thread leaves its mate (`thread_gap`, an estimate), the fits of pins (`snap_clearance` round a snap pin's peg, `pin_press` and `pin_slip` for a plain pin, estimates until the fixings coupon measures them), and the measured pilot for an M3 screw in PLA (`pilot_m3`) | 21 |
+| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), hole compensation, the gap a printed screw thread leaves its mate (`thread_gap`, an estimate), the fits of pins (`snap_clearance` round a snap pin's peg, `pin_press` and `pin_slip` for a plain pin, estimates until the fixings coupon measures them), the fits of magnets in their pockets (`magnet_press`, `magnet_glue`, and `magnet_crush` for crush ribs, estimates too), and the measured pilot for an M3 screw in PLA (`pilot_m3`) | 24 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `pico` | Raspberry Pi Pico: outline, headers, the GPIO on each pin | 18 |
@@ -31,6 +31,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `unc_4_40`, `unc_6_32`, `unc_8_32`, `unc_10_24`, `unf_10_32`, `unc_1_4_20`, `unc_5_16_18`, `unc_3_8_16` | Unified inch threads 4-40 to 3/8-16 to the same names, in millimetres, each rule's text giving its inch figure: ASME B1.1 threads, ASME B18.3 socket screws, with holes, nuts, washers and lengths | 39 to 49 each |
 | `pt_k22`, `pt_k25`, `pt_k30`, `pt_k35`, `pt_k40`, `pt_k50` | Thread-forming screws for plastic (the PT type, WN 1412), 2.2 to 5 mm: thread, pan head with a Torx variant, and the maker's pilot, depth and boss for ABS. Community until measured in printed plastic | 11 each |
 | `engagement` | How much thread a screw needs in what it screws into, in screw diameters: steel, aluminium, plastic | 3 |
+| `magnets` | Disc and block neodymium magnets: six common discs (6 x 2 to 12 x 3 mm) and two blocks, each with its seller's pull straight off thick steel and its grade, the remanence of each grade from N35 to N52 to scale a pull between them, the size tolerance, the density, and the formula a pull across a gap is estimated by | 28 |
 | `pins` | Plain pins for joining printed parts: the diameters and lengths an ISO 8734 steel dowel is sold in, its m6 tolerance, the shear strength a steel pin is taken to have (an estimate), and 1.75 mm filament as a pin with its tolerance | 6 |
 | `hexkey` | Hex keys (ISO 2936): sizes, width across corners, long and short arms, how far a ball end tilts, and a socket's wall: what a key needs to reach a screw's head | 6 |
 | `packs` | How small fixings are bought: the pack a shopping list rounds a count up to (an estimate) | 1 |

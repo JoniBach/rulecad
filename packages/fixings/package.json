@@ -20,6 +20,8 @@
     "strength.mjs",
     "draw.mjs",
     "pins.mjs",
+    "magnets.mjs",
+    "bolts.mjs",
     "fixings.d.mts",
     "model.d.mts",
     "holes.d.mts",
@@ -29,6 +31,8 @@
     "strength.d.mts",
     "draw.d.mts",
     "pins.d.mts",
+    "magnets.d.mts",
+    "bolts.d.mts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

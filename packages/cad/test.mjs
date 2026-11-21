@@ -3645,7 +3645,7 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
     assert.match(swept, /sweep door-hinge, 0 to 120° in 24 steps: nothing collides/);
     assert.doesNotMatch(swept, /✗/);
     const dl = cad('list', 'frame/door');
-    assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+10 x 3 mm disc magnet/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
+    assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+disc magnet 10x3 N35/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
     // with its turn-button latch shut over the door, the sweep finds the door can't open: it lifts into the tab within
     // its first degree, so the sweep also tries it 0.5° off shut, finer than its 5° steps (which jump past the tab)
     write('door', { door: { hinge: 'z1', latch: true } });

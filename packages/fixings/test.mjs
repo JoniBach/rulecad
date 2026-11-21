@@ -13,7 +13,7 @@ const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeMod
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 // Pins name no thread: their own refusals are held in the pins tests
-const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName'];
+const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare']; // (pins and magnets name no thread)
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -850,7 +850,7 @@ test('refused by name before any geometry: a pocket, a seat or a blind hole deep
     ['stripping depth', () => stripping('M3', { depth: -6, material: 'pla' })], ['a stack', () => lengthFor(-6, 'M3', { into: 'insert' })], ['a depth as text', () => holeModel('M3', { depth: '6' })]]) assert.throws(f, /is a number above 0|each above 0 mm/, what);
   // every function that takes a fixing refuses an unknown thread, and what is no fixing, by name
   const every = { holeModel, hole, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket, nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss,
-    screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, threadModel, thread, engagement, stripping, preload, torqueFor, seating, screwLoad };
+    screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, threadModel, thread, engagement, stripping, preload, torqueFor, seating, screwLoad, printedBoltModel: fixings.printedBoltModel, printedBolt: fixings.printedBolt };
   for (const [name, f] of Object.entries(every)) {
     const o = { depth: 6, length: 10, material: 'pla', ...(name === 'torqueFor' ? { force: 100 } : { torque: 1 }) };
     assert.throws(() => f('M7', o), /no thread "M7"\. There are: M1\.6, M2/, `${name}: an unknown thread`);

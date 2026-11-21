@@ -162,6 +162,30 @@
       "source": "A reasoned guess, the same as fit, the gap between parts that slide together; the fixings coupon's pin row prints three slip fits round it to measure it",
       "checked": "2026-11-21"
     },
+    "magnet_press": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much smaller across a printed pocket is drawn than a disc or block magnet pressed into it, so it grips with no glue. hole_comp is added as well, as for any printed hole. A magnet is sold within ±0.1 mm (magnets.tolerance), so a press is a close call: crush ribs (magnet_crush) take up the spread",
+      "kind": "estimate",
+      "source": "A reasoned guess, twice x1c.press since a magnet is sold to ±0.1 mm where a bearing is ground to microns; the fixings coupon's magnet row prints three press fits round it to measure it",
+      "checked": "2026-11-21"
+    },
+    "magnet_glue": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much larger across a printed pocket is drawn than a magnet glued into it: room for a film of glue, a twentieth of a millimetre each side. hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess: the magnet catch of @rulecad/frames has drawn its pocket the magnet and x1c.fit (0.2 mm) across since 0.1, which is hole_comp and this. To be measured on the fixings coupon",
+      "checked": "2026-11-21"
+    },
+    "magnet_crush": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "With crush ribs, how much smaller across the ribs' tips stand than the magnet, past hole_comp: the ribs are a line wide and give, so a magnet anywhere in its ±0.1 mm goes in and grips",
+      "kind": "estimate",
+      "source": "A reasoned guess, twice magnets.tolerance; the fixings coupon is to measure it",
+      "checked": "2026-11-21"
+    },
     "pilot_m3": {
       "value": 2.9,
       "unit": "mm",

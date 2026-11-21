@@ -36,10 +36,10 @@ export function materialOf(what, material, sets) {
     if (!set) throw new Error(`${what}: no material "${material}". There are: ${MATERIALS.join(', ')}. For another, hand in its rule set ({ name, rules: { strength, modulus } }), or the workspace's sets with it in`);
   } else throw new Error(`${what}: material is a material's name (${MATERIALS.join(', ')}) or its rule set ({ name, rules }), not ${shown(material)}`);
   const name = set.name ?? 'the material', num = (k) => { const f = set.rules[k]; if (f && !(isNum(f.value) && f.value > 0)) throw new Error(`${what}: ${name}.${k} is a number above 0 (got ${shown(f.value)})`); return f ? { ...f, name: `${name}.${k}` } : null; };
-  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus'), density = num('density');
+  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus'), density = num('density'), poisson = num('poisson');
   if (!strength) throw new Error(`${what}: ${name} has no strength in its rule set: a tensile or yield strength in MPa is needed`);
   if (!modulus) throw new Error(`${what}: ${name} has no modulus in its rule set, which tells a plastic from a metal`);
-  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus, density };
+  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus, density, poisson };
 }
 // The class of material an engagement rule is read by: a class by name, or a material's
 function classOf(what, material, sets) {
