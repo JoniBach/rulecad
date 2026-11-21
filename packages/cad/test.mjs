@@ -1962,7 +1962,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.deepEqual(fs.readdirSync(kit).sort(), ['README.md', 'buy.csv', 'print']); assert.deepEqual(fs.readdirSync(path.join(kit, 'print')), ['printed-base-1.3mf']);
     const page = fs.readFileSync(path.join(kit, 'README.md'), 'utf8');
     const row = page.split('\n').find((l) => l.startsWith('| print/printed-base-1.3mf | PETG |'));
-    assert.equal(row.split(' | ')[2].split(', ').length, 73, 'every printed part on the one plate'); assert.match(row, /\| \d+ \| \d+ \| clean \|$/);
+    assert.equal(row.split(' | ')[2].split(', ').length, 73, 'every printed part on the one plate'); assert.match(row, /\| [\d.]+ \| [\d.]+ \| clean \|$/);
     assert.match(page, /^\| 1 \| rpi4 \| board \|/m);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
