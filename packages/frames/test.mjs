@@ -1990,8 +1990,11 @@ test('a generated frame\'s joins against its profile: a blind or end-tap screw t
   assert.equal(box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M5 button' } }).joins.length, 16);
   // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips.
   // No other thread cuts in 5.5 mm and passes its 6 mm opening, so blind is out: end-tap (M6 across the post) and a
-  // printed fitting (the kit has a drop-in nut for slot-6-bosch) are the joins left
-  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
+  // printed fitting (the kit has a drop-in nut for slot-6-bosch) are the joins left. End-tap's M6 passes a 6.6 mm
+  // clearance hole (ISO 273 medium) across the post, wider than the 6 mm opening: the remedy says beam.op warns of it
+  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with end-tap \(its M6 screw's Ø6\.6 mm hole across the post is wider than the 6 mm slot opening, so beam\.op warns that it breaks the lips\), or a printed bracket or gusset \(fitting printed\)$/);
+  // MISUMI's 2020 end-tap: M5's 5.5 mm hole within the 6 mm opening, said plainly
+  assert.throws(() => box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'blind', screw: 'M8 button' } }), /or join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
   assert.equal(box({ ...ask, profile: '2020-bosch', join: 'end-tap' }).joins.length, 16);
   // ones that fit pass: MISUMI's 2020 (M5 in 6 mm, its button head 2.75 high), item's 4040 (M8 in 8 mm)
   for (const profile of ['2020-misumi-hfs5', '4040-item-8', '3030-misumi-hfs6']) assert.equal(box({ ...ask, profile, join: 'blind' }).joins.length, 16, profile);

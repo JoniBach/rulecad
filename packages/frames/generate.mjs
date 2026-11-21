@@ -294,6 +294,16 @@ function screwFault(P, kind, thread, head, profile, from = 'join.screw') {
   return null;
 }
 
+// An end-tap join's screw passes a clearance hole drilled across the post, through the slot on either side: where the
+// hole is wider than a slot's opening it breaks the lips, which cad's beam.op warns of (said with the join, so a remedy
+// never passes it off as clean)
+function lipsBroken(P, thread) {
+  let d;
+  try { d = fixingModel(thread).figures.clearance?.value; } catch { return ''; }
+  const open = Math.min(...Object.values(P.faces).flat().filter((q) => q.slot).map((q) => P.slots[q.slot].opening));
+  return d != null && d > open + 1e-9 ? ` (its ${thread} screw's Ø${mm(d)} mm hole across the post is wider than the ${mm(open)} mm slot opening, so beam.op warns that it breaks the lips)` : '';
+}
+
 // The screws (as join.screw takes them) a blind or end-tap join could take in this profile, none where it has no bore
 const endScrews = (P, kind, profile) => (P.bores.length ? END_THREADS.filter((t) => !screwFault(P, kind, t, headOf(kind), profile)).map((t) => `${t} ${headOf(kind)}`) : []);
 
@@ -306,7 +316,9 @@ function joinsInstead(P, but, profile, slotNames, printedNut) {
   for (const kind of ['blind', 'end-tap']) {
     if (kind === but) continue;
     const s = endScrews(P, kind, profile);
-    if (s.length) ok.push(bore?.thread && s.includes(`${bore.thread} ${headOf(kind)}`) ? kind : `${kind} with join.screw ${s.join(' or ')}`);
+    if (!s.length) continue;
+    const plain = bore?.thread && s.includes(`${bore.thread} ${headOf(kind)}`), thread = plain ? bore.thread : s[0].split(' ')[0];
+    ok.push(`${plain ? kind : `${kind} with join.screw ${s.join(' or ')}`}${kind === 'end-tap' ? lipsBroken(P, thread) : ''}`);
   }
   if (but !== 'printed' && printedNut) ok.push('a printed bracket or gusset (fitting printed)');
   if (ok.length) return `join it with ${ok.join(', or ')}`;
