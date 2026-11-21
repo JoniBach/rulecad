@@ -4276,7 +4276,9 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
     // refused by name
     write('bad', { items: [x1], guides: [{ kind: 'belt', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or screw .*; a belt is not built yet|guides\/0\/kind/);
+    assert.match(cad('check', 'slide/bad'), /guide 1: a belt guide has no "rail": it takes id, kind, guide, motor|guides\/0/);
+    write('bad', { items: [x1], guides: [{ kind: 'chain', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or belt .*|guides\/0\/kind/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
     assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
@@ -4541,7 +4543,7 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
     const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [0, 0, 300] }), bad = (guides, profile = '2020-misumi-hfs5') => { fs.writeFileSync(path.join(ws, 'projects/arm/assemblies/bad.json'), JSON.stringify({ title: 'bad', kind: 'fit', items: [beam(profile)], guides })); return cad('check', 'arm/bad'); };
     assert.match(bad([{ kind: 'wheels', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }], '2040-openbuilds'), /guide 2: a screw drives a rods guide's carriage, and g1 is a wheels guide/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g9', motor: { model: '28byj48' } }]), /guide 2: guide names the rods guide whose carriage the screw drives, by its id \(got "g9"; guides: g1, g2\)/);
-    assert.match(bad([{ kind: 'belt', on: 'x1.top', length: 200 }]), /a belt is not built yet|guides\/0/);
+    assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'belt', guide: 'g1', motor: { model: 'nema17' } }]), /guide 2: a belt drives a rail guide's carriage, and g1 is a rods guide; a rods guide is driven by a screw|guides\/1/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }]), /guide 2: the motor plate and coupler-5-8 take 29\.5 mm before the stretch, and it starts 0 mm along x1: give the rods guide a "from" of at least 29\.5/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', from: 40, length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48', drives: 'z' } }]), /guide 2: motor\.drives comes from the guide: leave it out|guides\/1/);
   } finally { done(); }
