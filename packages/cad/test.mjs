@@ -5496,6 +5496,9 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
     assert.equal(load.level, 'pass', load.text); assert.match(load.text, /M8x\d+ hex printed in pla, done up by hand, with 196\.\d N of pull and 0 N of shear: it breaks along at about 1272\.7 N \(tension\)/);
     assert.ok(Math.abs(load.values.margin - 1272.7 / load.values.tension) < 0.01 && load.values.margin > 6.4 && load.values.margin < 6.6, `${load.values.margin}`);
     assert.ok(!/Tighten to/.test(load.text), 'a printed bolt is done up by hand: no torque');
+    // its head's seat is still read against the plastic it sits on (seating at a force given, not a steel screw's proof load)
+    const seat = found.find((x) => x.code === 'fasten.seat' && /hex printed|flat seat/.test(x.text));
+    assert.ok(seat && /on pla \(\d+ MPa\)/.test(seat.text) && !/no strength is known/.test(seat.text), seat?.text);
     // listed with the printed parts, by name, and not as a bought screw
     const list = JSON.parse(cad('list', 'pb/joint', '--json')), bolt = list.printed.find((p) => /^M8x\d+ hex printed$/.test(p.id));
     assert.ok(bolt && bolt.count === 2 && bolt.grams > 2, JSON.stringify(list.printed)); assert.ok(!list.fasteners.some((f) => /M8/.test(f.fastener)), JSON.stringify(list.fasteners));

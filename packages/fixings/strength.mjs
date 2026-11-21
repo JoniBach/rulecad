@@ -55,7 +55,14 @@ export function weakest(mat) {
 }
 
 // A screw's own strength: its tensile stress area, and its proof load from its property class
+// A printed bolt (a screw named with the word printed) is refused by name: it has no property class, so no proof load,
+// preload or torque. A printed nut is let through: the screw in it is a bought one
+function notPrinted(what, fx) {
+  if (fx.printed && fx.item !== 'nut') throw new Error(`${what}: ${fx.name} is a printed bolt, with no property class and no proof load: it is plastic, done up by hand, and breaks at its plastic's strength. Its breaking load and the margin on a pull are printedBoltModel('${fx.name}', { material, load })${what === 'seating' ? '; the pressure under its head is seating with a force (N) given' : ''}`);
+  return fx;
+}
 function proofOf(what, fx, o) {
+  notPrinted(what, fx);
   if (fx.form === 'plastic') throw new Error(`${what}: ${fx.thread} is a thread-forming screw for plastic, with no property class in its rule set (${fx.set}): its maker's sheet gives what it holds`);
   const kind = oneOf(what, 'screw', o.screw ?? 'steel', ['steel', 'stainless']), name = kind === 'steel' ? 'proof_stress' : 'stainless_proof_stress';
   if (o.proof != null) positive(what, 'proof (the screw\'s proof stress, in MPa)', o.proof);
@@ -141,6 +148,7 @@ export function preload(m, o = {}) {
 export function torqueFor(m, o = {}) {
   options('torqueFor', o, '{ force: 500 }');
   if (o.torque != null) throw new Error('torqueFor: give force (N), the clamp force wanted: for the force a torque gives, use preload');
+  notPrinted('torqueFor', fixingOf('torqueFor', m, o));
   return preload(m, o);
 }
 
@@ -163,7 +171,7 @@ export function seating(m, o = {}) {
   if (form === 'set') throw new Error(`${what}: a set screw has no head to bear on anything: it presses with its point`);
   const head = headOf(what, fx, form), mat = materialOf(what, o.material, o.sets), kind = oneOf(what, 'hole', o.hole ?? 'clearance', ['clearance', 'close', 'loose']), h = holeModel(fx, { kind, printer: o.printer });
   if (o.force != null && o.torque != null) throw new Error(`${what}: give force (N) or torque (N·m), not both`);
-  const K = o.K ?? DEFAULTS.nut_factor.value, screw = proofOf(what, fx, o), given = o.force != null || o.torque != null;
+  const K = o.K ?? DEFAULTS.nut_factor.value, given = o.force != null || o.torque != null, screw = given ? null : proofOf(what, fx, o); // (the screw's proof load sets the force only when none is given)
   if (!(isNum(K) && K > 0)) throw new Error(`${what}: K is the nut factor, a number above 0 (got ${shown(o.K)})`);
   const force = o.force != null ? positive(what, 'force (in N)', o.force) : o.torque != null ? (positive(what, 'torque (in N·m)', o.torque) * 1000) / (K * fx.major) : DEFAULTS.preload_share.value * screw.load;
   const across = head.flats ?? head.diameter, ring = (D) => (Math.PI / 4) * (D * D - h.diameter ** 2), area = ring(across), { f } = weakest(mat), limit = f.value, pressure = force / area, within = pressure <= limit + 1e-9;
@@ -326,7 +334,7 @@ export function screwGroup(places, o = {}) {
 export function screwLoad(m, o = {}) {
   const what = 'screwLoad';
   options(what, o, '{ tension: 20, depth: 5, material: \'pla\' }');
-  const fx = fixingOf(what, m, o), num = (k, v) => { if (v != null && !(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is a number of N, 0 or more (got ${shown(v)})`); return v ?? 0; };
+  const fx = notPrinted(what, fixingOf(what, m, o)), num = (k, v) => { if (v != null && !(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is a number of N, 0 or more (got ${shown(v)})`); return v ?? 0; };
   const T = Math.max(0, isNum(o.tension) ? o.tension : num('tension', o.tension)), S = num('shear', o.shear), mu = o.friction ?? DEFAULTS.clamp_friction.value;
   if (!(isNum(mu) && mu > 0)) throw new Error(`${what}: friction is a number above 0 (got ${shown(o.friction)})`);
   if (o.most != null) positive(what, 'most (the clamp force the seat takes, in N)', o.most);

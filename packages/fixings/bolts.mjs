@@ -13,6 +13,7 @@ import { screwModel, screw } from './hardware.mjs';
 
 const { translate, rotateX } = jscad.transforms;
 
+const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`; // (a plain word's article: model's a() is for thread names)
 const n1 = (x) => +x.toFixed(1), n2 = (x) => +x.toFixed(2);
 /** What a printed bolt can go in: a printed nut or a thread printed in the part (half the gap each), or a bought steel nut (the bolt takes it all). */
 export const BOLT_NUTS = ['printed', 'steel'];
@@ -47,9 +48,9 @@ export function printedBoltModel(m, o = {}) {
   const what = 'printedBoltModel';
   optionsOf(what, o, '{ material: \'pla\', load: 100 }');
   const fx = fixingOf(what, m, { ...o, anyLength: true });
-  if (!['screw', 'thread'].includes(fx.item)) throw new Error(`${what}: ${fx.name} is ${a(fx.item)}, not a bolt: name a screw ('${fx.thread}x20 hex printed')`);
+  if (!['screw', 'thread'].includes(fx.item)) throw new Error(`${what}: ${fx.name} is ${an(fx.item)}, not a bolt: name a screw ('${fx.thread}x20 hex printed')`);
   const nut = oneOf(what, 'nut', o.nut ?? 'printed', BOLT_NUTS), axis = oneOf(what, 'axis', o.axis ?? 'z', ['x', 'y', 'z']), mat = materialOf(what, o.material ?? 'pla', o.sets);
-  if (mat.cls !== 'plastic') throw new Error(`${what}: ${mat.name} is ${a(mat.cls)}, not a plastic: a printed bolt is printed in a plastic (pla, petg, or a plastic's rule set)`);
+  if (mat.cls !== 'plastic') throw new Error(`${what}: ${mat.name} is ${an(mat.cls)}, not a plastic: a printed bolt is printed in a plastic (pla, petg, or a plastic's rule set)`);
   const form = o.head ?? fx.head?.form ?? (fx.made.heads.includes('hex') ? 'hex' : fx.made.heads[0]), sc = screwModel(fx, { length: o.length ?? fx.length ?? undefined, head: form, anyLength: true });
   const out = [], rests = [];
   // Its thread, as it prints: refused where the printer cannot resolve the pitch, naming the smallest thread that prints

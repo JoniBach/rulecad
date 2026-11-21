@@ -590,7 +590,9 @@ The first line reads: an M8 printed bolt in PLA, in a printed nut, has a 6.446 m
 its half of the 0.2 mm gap each side), 32.63 mm² of section, which breaks at 39 MPa × 32.63 mm² = 1272.7 N before its
 teeth shear (2397.9 N): 6.36 times a 200 N pull. Do a printed bolt up by hand: its thread takes no wrench's torque.
 In an assembly, a fasten's `screw` can name one (`"M8x20 hex printed"`): `cad check` holds it to its load with these
-sums, and `cad list` lists it as a printed part, not a bought screw.
+sums, and `cad list` lists it as a printed part, not a bought screw. `screwLoad`, `preload`, `torqueFor`, `stripping` and
+`seating` with no force given refuse a printed bolt by name and point here: each reads a steel screw's proof load,
+which a printed bolt does not have. A printed nut is read by them as usual, since the screw in it is a bought one.
 
 ## Magnets
 

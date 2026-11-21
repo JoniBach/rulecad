@@ -1150,3 +1150,24 @@ test('a printed bolt: an M8 in PLA breaks at the load worked by hand, in a print
   // its solid: the screw with its thread drawn, standing on its head, which prints
   const g = printedBolt('M8x16 hex printed'); assert.equal(g.model.name, 'M8x16 hex printed'); prints(g, 'a printed M8 bolt on its head');
 });
+
+test('a printed bolt has no proof load: screwLoad, preload, torqueFor, stripping and seating refuse it by name, pointing to printedBoltModel; a printed nut is let through', () => {
+  const { screwLoad, preload, torqueFor, stripping, seating, printedBoltModel } = fixings;
+  // Read as steel, an M8 printed bolt "held" 2000 N with margin 2.66 and was told to tighten to 25.47 N m (class 8.8
+  // proof: pi/4 (8 - 0.9382 x 1.25)² = 36.61 mm² at 580 MPa, 21233 N). In PLA it breaks at 1272.7 N (printedBoltModel), so each is refused
+  const says = (fn) => new RegExp(`${fn}: M8x20 hex printed is a printed bolt, with no property class and no proof load.*printedBoltModel\\('M8x20 hex printed'`);
+  assert.throws(() => screwLoad('M8x20 hex printed', { tension: 2000 }), says('screwLoad'));
+  assert.throws(() => screwLoad('M8x20 hex printed', { tension: 200, depth: 20, material: 'pla' }), says('screwLoad'));
+  assert.throws(() => torqueFor('M8x20 hex printed', { force: 1000 }), says('torqueFor'));
+  assert.throws(() => preload('M8x20 hex printed', { torque: 1 }), says('preload'));
+  assert.throws(() => stripping('M8x20 hex printed', { depth: 20, material: 'pla' }), says('stripping'));
+  assert.throws(() => seating('M8x20 hex printed', { material: 'pla' }), /seating: .*printed bolt.*seating with a force \(N\) given/);
+  assert.equal(printedBoltModel('M8x20 hex printed').breaking, 1272.7, 'where its strength is read');
+  // the pressure under a printed head at a force given needs no proof load: 500 N on the hex's ring
+  assert.ok(seating('M8x20 hex printed', { material: 'pla', force: 500 }).pressure > 0);
+  // a printed nut takes a bought screw, whose proof load stands: the steel screw is still read
+  assert.equal(stripping('M8 nut printed', { depth: 8, material: 'pla' }).proof, stripping('M8', { depth: 8, material: 'pla' }).proof);
+  // refusals read with a plain word's article: an aluminium, an insert
+  assert.throws(() => printedBoltModel('M8x20 hex printed', { material: 'al6061' }), /al6061 is an aluminium, not a plastic/);
+  assert.throws(() => printedBoltModel('M8 insert'), /M8x12\.7 insert is an insert, not a bolt/);
+});

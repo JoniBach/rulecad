@@ -865,7 +865,7 @@ export function fastenOf(s, worlds, opts = {}) {
           else {
             // what the seat takes: the ring under the head as drawn, against the strength of what it sits on
             let st = null;
-            if (seatMat.name && seatMat.known) { try { st = F.seating(fx, { head: form, material: seatMat.name, ...(torque != null ? { torque } : {}) }); } catch { st = null; } }
+            if (seatMat.name && seatMat.known) { try { st = F.seating(fx, { head: form, material: seatMat.name, ...(torque != null ? { torque } : fx.printed ? { force: 1 } : {}) }); } catch { st = null; } } // (a printed bolt has no proof load to tighten to: only what the seat takes is read)
             const sunk = zSeat - A.reach[0], where = `a flat seat on ${A.name}${sunk > 0.01 ? `, ${mm(sunk)} mm down its counterbore` : ''}, whole out to the ${washer ? 'washer' : 'head'}'s ${mm(2 * bearR)} mm`;
             if (!st) say('fasten.seat', 'pass', `${where}${seatMat.name ? ` (no strength is known for ${seatMat.name}, so the pressure under it is not checked)` : ''}`, values);
             else {
