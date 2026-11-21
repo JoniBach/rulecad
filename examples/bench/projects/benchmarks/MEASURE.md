@@ -15,7 +15,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 4. Servo stand (when you need servos) | `servo-stand`, `servo-arm` | 18 g | 19, 20 |
 | 5. Mesh rig | `mesh-rig`, `rig-pinion`, `rig-wheel`, `rig-lever` (the stand from 3) | 42 g | 12, part one |
 | 6. Shoulder | `shoulder-housing`, `shoulder-sun`, `shoulder-planet` × 3, `shoulder-output`, `shoulder-clip` × 3, `shoulder-arm`, `input-lever` | 117 g | 12 to 18 |
-| 7. Fixings coupons (once in PLA, once in PETG) | `fixings-coupon`, and `holds-coupon` behind it on the same plate: a plate and 13 loose pieces (`cad plates benchmarks/fixings-test` lays out both) | 55 g and 40 g, about two hours together | 22 to 28, 40 to 47 |
+| 7. Fixings coupons (once in PLA, once in PETG) | `fixings-coupon`, and `holds-coupon` behind it on the same plate: a plate and 13 loose pieces (`cad plates benchmarks/fixings-test` lays out both) | 55 g and 40 g, 94 g on one plate, about 105 minutes (`cad plates` estimate) | 22 to 28, 40 to 47 |
 | 8. Slot coupon (when you build with aluminium beams) | `slot-coupon` (26 loose pieces) | 40 g, about 45 minutes | 29 to 33 |
 | 9. Joint rig (when you build frames of beams) | `joint-hanger` × 3, `joint-gauge`, `nut-puller`, and the rig's printed corner bracket (`cad plates benchmarks/joint-test` lays out all six) | 82 g, about 90 minutes | 34 to 37 |
 | 10. Beam coupon (when you print beams for a frame; once in each plastic) | `k1`, a printed 1515 beam lying down, and `k2`, the same standing up (`cad plates benchmarks/beam-test` lays out both) | 79 g, about 2 hours | 38, 39 |
