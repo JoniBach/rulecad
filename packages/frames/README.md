@@ -1299,11 +1299,19 @@ the whole block's, up to 12 % heavy.
 
 Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
 square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, a blind or
-end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), a blind join's
-head that does not go into the slot's cavity or under its lips (Bosch's 2020: an M6 button head 3.3 mm high under
-3 mm lips; give `join.screw`, or another join), a printed fitting or braces on a slot the kit has no nut for that goes
+end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), a `join.screw`
+whose thread is no wider than the end bore it is cut in (M8 in MISUMI's 10.5 mm bore, M4 in item's 4.3 mm one), a
+blind join's head that does not go into the slot's cavity or under its lips (Bosch's 2020: an M6 button head 3.3 mm
+high under 3 mm lips), a printed fitting or braces on a slot the kit has no nut for that goes
 in through its opening (item's 3030), feet on a box, shelf or gantry with cube corners (no upright end reaches the
 floor), braces with cube corners, and a side with no bay.
+
+Each refusal names what is left: the screws from M3 to M12 that would fit (as `join.screw`), and the other joins the
+generator takes for that profile. Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
+the end bore (10.5 and 10 mm) and passes the 10 mm opening, so they take no blind or end-tap join, and the kit has no
+slot nut for their 10 mm slots, so no printed fitting either. What is left there: a bracket or gusset with no fitting,
+taken and checked by its estimate (`join.fitting` warns that no fitting is drawn for it), or a slot nut set of your own
+in `given.sets` with a printed bracket or gusset.
 
 ### Profiles as choices for sizing
 

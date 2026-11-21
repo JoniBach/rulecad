@@ -108,11 +108,11 @@ export function frameModel(kind, o = {}) {
   const throughNut = () => THROUGH.find(nutKinds) ?? null, slotNames = [...new Set(slotted.flatMap((f) => P.faces[f].filter((q) => q.slot).map((q) => q.slot)))].join(', ');
   if (join.fitting === 'printed' && join.nut == null) {
     join.nut = throughNut();
-    if (!join.nut) throw new Error(`${w}: a printed ${join.kind} is held by slot nuts that go in through the slot's opening (${THROUGH.join(', ')}), and the kit has none for ${o.profile}'s slot (${slotNames}): give a nut set of your own in given.sets, or join it with blind or end-tap`);
+    if (!join.nut) throw new Error(`${w}: a printed ${join.kind} is held by slot nuts that go in through the slot's opening (${THROUGH.join(', ')}), and the kit has none for ${o.profile}'s slot (${slotNames}): give a nut set of your own in given.sets, or ${joinsInstead(P, 'printed', o.profile, slotNames, null)}`);
   }
-  if (join.fitting === 'printed' && join.nut != null && !nutKinds(join.nut)) throw new Error(`${w}: the kit has no ${join.nut} slot nut for ${o.profile}'s slot (${slotNames})${throughNut() ? `: ${throughNut()} has one` : ': give a nut set of your own in given.sets, or join it with blind or end-tap'}`);
+  if (join.fitting === 'printed' && join.nut != null && !nutKinds(join.nut)) throw new Error(`${w}: the kit has no ${join.nut} slot nut for ${o.profile}'s slot (${slotNames})${throughNut() ? `: ${throughNut()} has one` : `: give a nut set of your own in given.sets, or ${joinsInstead(P, 'printed', o.profile, slotNames, null)}`}`);
   if (['blind', 'end-tap'].includes(join.kind) && !P.bores.length) throw new Error(`${w}: a ${join.kind} join screws into the bore in a beam's end, and ${o.profile} has none: join it with bracket or gusset`);
-  if (['blind', 'end-tap'].includes(join.kind)) screwFits(w, P, join, o.profile, slotNames);
+  if (['blind', 'end-tap'].includes(join.kind)) screwFits(w, P, join, o.profile, slotNames, throughNut());
   if (arrangement === 'node' && o.feet != null && !['table', 'portal'].includes(kind)) throw new Error(`${w}: feet stand under an upright beam's end, and with a cube join every end of a ${kind}'s goes into a corner node: leave feet out (the node's own foot comes with the cube's fitting), or join with blind`);
   if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
   if (o.feet != null && (typeof o.feet !== 'string' || (!FRAME_FEET[o.feet] && !o.feet.startsWith('fitting-')))) throw new Error(`${w}: feet is ${Object.keys(FRAME_FEET).join(', ')}, or a bought foot's set by name (fitting-motedis-foot-m6-d19) (got ${shown(o.feet)})`);
@@ -268,23 +268,63 @@ export function frameModel(kind, o = {}) {
   return { kind, profile: o.profile, width: p, join, arrangement, by, lift, inside: inside.map(r3), outside: outside.map(r3), ...(kind === 'shelf' ? { shelves, bay: r3(bay) } : {}), beams, joins, ends, panels, moving, lengths };
 }
 
-// A blind or end-tap join's screw against the profile's slots, refused by name where the check would fail it: the
-// screw passes between a slot's lips (blind: into its cavity; end-tap: right across the post), and a blind join's
-// button head goes into the cavity under the lips, as cad's fasten.clearance and fasten.seat read them
-function screwFits(w, P, join, profile, slotNames) {
-  const bores = P.bores.filter((b) => b.thread), bore = bores.sort((u, v) => Math.hypot(...(u.at ?? [0, 0])) - Math.hypot(...(v.at ?? [0, 0])))[0];
-  const [thread, head = join.kind === 'blind' ? 'button' : 'cap'] = join.screw ? String(join.screw).trim().split(/\s+/) : [bore?.thread];
-  if (!thread) return;
+// The bore a blind or end-tap join screws into: where the end has several, the threaded one nearest the middle (any,
+// where none names a thread)
+const endBore = (P) => [...P.bores].sort((u, v) => !!v.thread - !!u.thread || Math.hypot(...(u.at ?? [0, 0])) - Math.hypot(...(v.at ?? [0, 0])))[0] ?? null;
+// the threads a generator tries in an end bore when it says which screw would do
+const END_THREADS = ['M3', 'M4', 'M5', 'M6', 'M8', 'M10', 'M12'];
+const headOf = (kind) => (kind === 'blind' ? 'button' : 'cap');
+
+// What stops a blind or end-tap join's screw in this profile, as cad's check would find it, or null where it fits: its
+// thread is cut in the end bore (so wider than the bore), it passes between the lips of the post's slot (blind: into
+// its cavity; end-tap: right across the post), and a blind join's head goes into the cavity under the lips (cad's
+// beam.op, fasten.clearance and fasten.seat)
+function screwFault(P, kind, thread, head, profile, from = 'join.screw') {
   let fx;
-  try { fx = fixingModel(thread.replace(/x\d+(\.\d+)?$/, '')); } catch { return; } // (joinModel refuses a screw it cannot read)
+  try { fx = fixingModel(thread.replace(/x\d+(\.\d+)?$/, '')); } catch { return null; } // (joinModel refuses a screw it cannot read)
   const f = fx.figures, val = (k) => f[k]?.value ?? null, across = head === 'button' ? val('button_head') : val('head'), high = head === 'button' ? val('button_head_height') : val('head_height');
-  const others = () => `join it with ${join.kind === 'blind' ? 'end-tap or ' : ''}bracket (or gusset)${join.kind === 'blind' ? ', or give a screw whose head fits (join.screw)' : ''}`;
+  const bore = endBore(P), a = `${kind === 'end-tap' ? 'an' : 'a'} ${kind} join's ${thread} screw (${from})`;
+  if (bore && bore.diameter >= fx.major - 1e-9) return { why: 'tap', text: `${a} is cut in ${profile}'s end bore, and the bore is Ø${mm(bore.diameter)} mm, as wide as its ${mm(fx.major)} mm thread, so no thread can be cut in it` };
   for (const name of new Set(Object.values(P.faces).flat().filter((q) => q.slot).map((q) => q.slot))) {
     const sl = P.slots[name], room = sl.straight > 0 ? sl.straight : sl.cavityDepth - sl.lip;
-    if (fx.major > sl.opening + 1e-9) throw new Error(`${w}: ${join.kind === 'end-tap' ? 'an' : 'a'} ${join.kind} join's ${thread} screw (${profile}'s end thread) passes between the lips of the post's slot, and ${name} opens ${mm(sl.opening)} mm, narrower than its ${mm(fx.major)} mm: ${others()}`);
-    if (join.kind === 'blind' && across != null && across > sl.cavityWidth + 1e-9) throw new Error(`${w}: a blind join's ${thread} ${head} head, ${mm(across)} mm across, goes into the post's slot, and ${name} is ${mm(sl.cavityWidth)} mm wide under its lips: ${others()}`);
-    if (join.kind === 'blind' && high != null && high > room + 1e-9) throw new Error(`${w}: a blind join's ${thread} ${head} head, ${mm(high)} mm high, goes under the lips of the post's slot, and ${name} has ${mm(room)} mm there: ${others()}`);
+    if (fx.major > sl.opening + 1e-9) return { why: 'opening', text: `${a} passes between the lips of the post's slot, and ${name} opens ${mm(sl.opening)} mm, narrower than its ${mm(fx.major)} mm` };
+    if (kind === 'blind' && across != null && across > sl.cavityWidth + 1e-9) return { why: 'head', text: `${a}: its ${head} head, ${mm(across)} mm across, goes into the post's slot, and ${name} is ${mm(sl.cavityWidth)} mm wide under its lips` };
+    if (kind === 'blind' && high != null && high > room + 1e-9) return { why: 'head', text: `${a}: its ${head} head, ${mm(high)} mm high, goes under the lips of the post's slot, and ${name} has ${mm(room)} mm there` };
   }
+  return null;
+}
+
+// The screws (as join.screw takes them) a blind or end-tap join could take in this profile, none where it has no bore
+const endScrews = (P, kind, profile) => (P.bores.length ? END_THREADS.filter((t) => !screwFault(P, kind, t, headOf(kind), profile)).map((t) => `${t} ${headOf(kind)}`) : []);
+
+// The joins a generator takes in this profile, other than the one refused (blind, end-tap or printed), each as the
+// remedy says it: the end joins with the screw they would need where their default does not fit, a printed bracket or
+// gusset where the kit has a nut that goes in through the slot's opening. Where none is left, it says the two ways that
+// remain, neither checked clean by the kit's own sets alone
+function joinsInstead(P, but, profile, slotNames, printedNut) {
+  const ok = [], bore = endBore(P);
+  for (const kind of ['blind', 'end-tap']) {
+    if (kind === but) continue;
+    const s = endScrews(P, kind, profile);
+    if (s.length) ok.push(bore?.thread && s.includes(`${bore.thread} ${headOf(kind)}`) ? kind : `${kind} with join.screw ${s.join(' or ')}`);
+  }
+  if (but !== 'printed' && printedNut) ok.push('a printed bracket or gusset (fitting printed)');
+  if (ok.length) return `join it with ${ok.join(', or ')}`;
+  const nut = but === 'printed' ? '' : `, or give a slot nut set of your own for ${slotNames} in given.sets and join with a printed bracket or gusset`;
+  return `join it with a bracket or gusset with no fitting (taken, and checked by its estimate: join.fitting warns that no fitting is drawn for it)${nut}. The kit has no other join for ${profile} that checks clean`;
+}
+
+// A blind or end-tap join's screw against the profile's end bore and slots, refused by name where the check would fail
+// it, with the screws that would fit or, where none does, the joins that are left
+function screwFits(w, P, join, profile, slotNames, printedNut) {
+  const [given, givenHead] = join.screw ? String(join.screw).trim().split(/\s+/) : [];
+  const thread = given ?? endBore(P)?.thread, head = givenHead ?? headOf(join.kind);
+  if (!thread) return;
+  const fault = screwFault(P, join.kind, thread, head, profile, join.screw ? 'join.screw' : `${profile}'s end thread`);
+  if (!fault) return;
+  const fits = endScrews(P, join.kind, profile), instead = joinsInstead(P, join.kind, profile, slotNames, printedNut), bore = endBore(P);
+  const what = join.kind === 'blind' ? `cuts a thread in the Ø${mm(bore.diameter)} mm end bore, passes between the slot's lips and has a button head that fits under them` : `cuts a thread in the Ø${mm(bore.diameter)} mm end bore and passes between the slot's lips`;
+  throw new Error(`${w}: ${fault.text}: ${fits.length ? `give join.screw ${fits.join(' or ')}, which fit, or ${instead}` : `no screw from ${END_THREADS[0]} to ${END_THREADS.at(-1)} ${what}, so ${profile} takes no ${join.kind} join. ${instead[0].toUpperCase()}${instead.slice(1)}`}`);
 }
 
 const sub = (a, b) => a.map((v, k) => v - b[k]);

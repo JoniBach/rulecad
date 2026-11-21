@@ -1968,11 +1968,31 @@ test('MISUMI\'s 3030 has five bores in each end and only the middle one is for M
 test('a generated frame\'s joins against its profile: a blind or end-tap screw the slot cannot take is refused by name, a printed fitting takes a nut the kit has for the slot, and a printed gusset lies on the face looking out', () => {
   const { box } = frames, ask = { inside: [300, 250, 350] };
   // MISUMI's 4040 ends are tapped M12 (bore 10.5) and its slot opens 10 mm: an M12 screw, 12 mm, does not pass between
-  // the lips, blind (into the cavity) or end-tap (right across the post). Bosch's 4040 L the same (10 mm, M12)
-  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: 'blind' }), /a blind join's M12 screw \(4040-misumi-hfs8's end thread\) passes between the lips of the post's slot, and slot-10-misumi opens 10 mm, narrower than its 12 mm: join it with end-tap or bracket \(or gusset\)/);
-  assert.throws(() => box({ ...ask, profile: '4040-bosch-l', join: 'end-tap' }), /an end-tap join's M12 screw .* slot-10-bosch opens 10 mm, narrower than its 12 mm: join it with bracket \(or gusset\)/);
-  // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips
-  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there/);
+  // the lips, blind (into the cavity) or end-tap (right across the post). Bosch's 4040 L the same (bore 10, M12). A
+  // thread cut in the bore must be wider than it (over 10.5 mm: M12 of M3 to M12) and pass the 10 mm opening (M10 at
+  // most): none does both, so neither profile takes a blind or an end-tap join. The kit has no slot-10 nut that goes in
+  // through the opening, so no printed fitting either: the refusals say the two ways left, and never send the user to a
+  // join that is itself refused
+  const left = /Join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\), or give a slot nut set of your own for slot-10-\w+ in given\.sets and join with a printed bracket or gusset\. The kit has no other join for 4040-\S+ that checks clean$/;
+  for (const profile of ['4040-misumi-hfs8', '4040-bosch-l']) for (const kind of ['blind', 'end-tap']) {
+    assert.throws(() => box({ ...ask, profile, join: kind }), (x) => (assert.match(x.message, left), assert.match(x.message, new RegExp(`no screw from M3 to M12 cuts a thread in the Ø10(\\.5)? mm end bore.*, so ${profile} takes no ${kind} join`)), true));
+  }
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: 'blind' }), /a blind join's M12 screw \(4040-misumi-hfs8's end thread\) passes between the lips of the post's slot, and slot-10-misumi opens 10 mm, narrower than its 12 mm/);
+  for (const kind of ['bracket', 'gusset']) assert.throws(() => box({ ...ask, profile: '4040-bosch-l', join: { kind, fitting: 'printed' } }), /the kit has none for 4040-bosch-l's slot \(slot-10-bosch\): give a nut set of your own in given\.sets, or join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\)\. The kit has no other join for 4040-bosch-l that checks clean$/);
+  // the way left is taken, as the refusals say
+  assert.equal(box({ ...ask, profile: '4040-misumi-hfs8', join: 'bracket' }).joins.length, 16);
+  // a screw given in join.screw is cut in the end bore, so its thread must be wider than the bore: M8 (8 mm) in
+  // MISUMI's 10.5 mm bore, and M4 in item's 2020 (bore 4.3), cut nothing. Refused before the build, naming the screws
+  // that fit (item's 2020: M5, 5 mm, over 4.3 and within the 5 mm opening, its button head 2.75 high under 3 mm)
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'blind', screw: 'M8 button' } }), /a blind join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore, and the bore is Ø10\.5 mm, as wide as its 8 mm thread, so no thread can be cut in it: no screw from M3 to M12/);
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'end-tap', screw: 'M8 cap' } }), /an end-tap join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore/);
+  assert.throws(() => box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M4 button' } }), /a blind join's M4 screw \(join\.screw\) is cut in 2020-item-5's end bore, and the bore is Ø4\.3 mm, as wide as its 4 mm thread, so no thread can be cut in it: give join\.screw M5 button, which fit, or join it with end-tap/);
+  assert.equal(box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M5 button' } }).joins.length, 16);
+  // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips.
+  // No other thread cuts in 5.5 mm and passes its 6 mm opening, so blind is out: end-tap (M6 across the post) and a
+  // printed fitting (the kit has a drop-in nut for slot-6-bosch) are the joins left
+  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
+  assert.equal(box({ ...ask, profile: '2020-bosch', join: 'end-tap' }).joins.length, 16);
   // ones that fit pass: MISUMI's 2020 (M5 in 6 mm, its button head 2.75 high), item's 4040 (M8 in 8 mm)
   for (const profile of ['2020-misumi-hfs5', '4040-item-8', '3030-misumi-hfs6']) assert.equal(box({ ...ask, profile, join: 'blind' }).joins.length, 16, profile);
   // a printed fitting's nuts go in through the slot's opening: item's 4040 has no drop-in in the kit, so roll-in, the

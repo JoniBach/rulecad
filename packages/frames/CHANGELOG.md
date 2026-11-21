@@ -13,6 +13,11 @@ What changed in each release, for someone upgrading a workspace.
   4040, where drop-in was asked and drawing the fitting threw), a kind the kit lacks is refused naming one it has,
   and a slot with none (item's 3030) is refused. A printed gusset join names the post's face that looks out of the
   frame (`face`), so it never lands where the corner's third beam butts.
+- A `join.screw` whose thread is no wider than the end bore it is cut in (M8 in MISUMI's 4040, M4 in item's 2020) is
+  refused by the generator, where the build threw after it was taken. Each refusal of a blind or end-tap screw names
+  the screws from M3 to M12 that fit, and the joins the generator takes for that profile instead, never one it would
+  refuse too: in MISUMI's and Bosch's 4040 that is a bracket or gusset with no fitting, or a slot nut set of your own
+  with a printed fitting.
 - A beam's `ops`, and its sheet's numbers, are in the order the work is done: the ends cut and deburred, the holes
   across from end a, the taps last (they were in their order along the beam, a tap at end a before its square cut).
   A drill or tap guide's operation index and a jig's label (`C4`) follow the sheet's numbers. Marks and the cut
