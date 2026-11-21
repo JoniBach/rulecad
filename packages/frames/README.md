@@ -1307,7 +1307,9 @@ in through its opening (item's 3030), feet on a box, shelf or gantry with cube c
 floor), braces with cube corners, and a side with no bay.
 
 Each refusal names what is left: the screws from M3 to M12 that would fit (as `join.screw`), and the other joins the
-generator takes for that profile. Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
+generator takes for that profile. An end-tap join among them carries a note where its screw's clearance hole across the
+post is wider than the slot's opening (`beam.op` warns that it breaks the lips: Bosch's 2020, M6 in a 6.6 mm hole
+against a 6 mm opening). Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
 the end bore (10.5 and 10 mm) and passes the 10 mm opening, so they take no blind or end-tap join, and the kit has no
 slot nut for their 10 mm slots, so no printed fitting either. What is left there: a bracket or gusset with no fitting,
 taken and checked by its estimate (`join.fitting` warns that no fitting is drawn for it), or a slot nut set of your own
