@@ -313,7 +313,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   }
   if (a.fits?.some((x) => x.fastener && typeof x.fastener === 'object')) pinning ||= await import('./pins.mjs');
   for (let x of a.fits || []) {
-    if (x.fastener && typeof x.fastener === 'object') x = pinning.pinOfFit(x); // (pins by the schema's form: the fit's pin, and the fastener's name)
+    if (x.fastener && typeof x.fastener === 'object') x = pinning.pinOfFit(x, project); // (pins or magnets by the schema's form: the fit's pin or magnet, and the fastener's name)
     if (x.seat != null && x.min == null) x = { ...x, min: -1000 }; // a seat presses, so the pair may overlap
     if (x.holes) x = { ...x, a: x.holes, b: x.into }; // a holes fit: a board's holes (a) over what its screws go into (b)
     const star = [x.a, x.b].find((n) => n.includes('*'));
@@ -852,6 +852,7 @@ export function checkAssembly(s) {
     if (x.engage != null) { engageFit(x); continue; }
     if (x.seat != null) { seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }); continue; }
     if (x.pin && pinning) pinFit(x); // (and its gap, as any fit's)
+    if (x.magnet && pinning) magnetFit(x);
     if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project) }); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
@@ -911,6 +912,8 @@ export function checkAssembly(s) {
 
   // Pin fits: the pins a fit names, their holes found in the parts and held to the pins' models (lib/pins.mjs)
   function pinFit(x) { try { pinning.pinFit(x, s, f); } catch (e) { f('fail', `${x.note || `${x.a} to ${x.b}`}: ${e.message}`, null, { code: 'fit.pin', refs: { a: x.a, b: x.b, pin: x.fastener } }); } }
+  // Magnet fits: the magnets a fit names, their pockets found in the parts and held to the magnet's seat (lib/magnets.mjs)
+  function magnetFit(x) { try { pinning.magnetFit(x, s, f); } catch (e) { f('fail', `${x.note || `${x.a} to ${x.b}`}: ${e.message}`, null, { code: 'fit.magnet', refs: { a: x.a, b: x.b, magnet: x.fastener } }); } }
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {
     const A = pick(x.a), B = pick(x.b), label = x.label || `${x.a} into ${x.b}`;

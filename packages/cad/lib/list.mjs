@@ -4,7 +4,7 @@
 // grams and an estimate of the minutes, and the beams' cut list (each mark, the bars to buy and the cuts on each:
 // @rulecad/frames' cutList).
 import { placeItems, jointValues } from '@rulecad/model-link';
-import { screwModel, pinModel } from '@rulecad/fixings';
+import { screwModel, pinModel, magnetModel } from '@rulecad/fixings';
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
 import { motorScrews } from './motors.mjs';
 import { paths } from './workspace.mjs';
@@ -53,22 +53,28 @@ export function shoppingList(s) {
   // fasten.count: the hardware a fasten placed (a component's too), one part a piece; a motor's mounting screws; and a fit
   // that names its fastener by hand. Summed by name, which is the thread, length and head, or the nut's kind
   const add = (name, n, from, more = {}) => { const line = fasteners.get(name) ?? { fastener: name, qty: 0, from: [], ...more }; line.qty += n; if (!line.from.includes(from)) line.from.push(from); fasteners.set(name, line); };
-  for (const p of s.parts) if (p.hardware) { const h = p.hardware; add(h.name, 1, h.from ?? h.name, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: h.grams ?? null }); }
+  // (a printed bolt is no bought screw: it goes with the printed parts, by its name, with its grams and minutes)
+  const bolts = new Map();
+  for (const p of s.parts) if (p.hardware?.printed) { const h = p.hardware, b = bolts.get(h.name) ?? { id: h.name, object: null, count: 0, grams: 0, bolt: true, from: [] }; b.count++; b.grams += h.grams ?? 0; if (!b.from.includes(h.from)) b.from.push(h.from); bolts.set(h.name, b); }
+  let flow = 12; try { flow = loadRuleSet('x1c').rules.print_flow?.value ?? flow; } catch {}
+  for (const b of bolts.values()) { const mm3 = (b.grams / mat.density) * 1000; printed.push({ id: b.id, object: null, volume: n(mm3, 0), grams: n(b.grams), minutes: n(mm3 / flow / 60, 0), count: b.count, bolt: true, from: b.from }); }
+  for (const p of s.parts) if (p.hardware && !p.hardware.printed) { const h = p.hardware; add(h.name, 1, h.from ?? h.name, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: h.grams ?? null }); }
   for (const m of motorScrews(s, { placeItems, jointValues })) {
     let grams = null; try { grams = screwModel(m.thread, { length: m.length, head: m.head, anyLength: true }).mass; } catch {}
     add(m.name, m.count, `${m.item} on ${m.other} (its mount, a fit that fastens)`, { kind: 'screw', thread: m.thread, length: m.length, head: m.head, grams });
   }
   // what a printed fitting takes besides its screws: a hinge's pin and its nut, a catch's magnet and strike (lib/fittings.mjs)
   for (const o of s.objects) if (o.fitting?.hardware && !o.unplaced) for (const h of o.fitting.hardware) add(h.name, h.count ?? 1, `${o.id} (${h.why ?? 'its fitting'})`, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: null });
-  // (pins a fit names by the schema's form: by name, with their mass and whether they are bought, cut from filament or printed)
+  // (pins and magnets a fit names by the schema's form: by name, with their mass and whether they are bought, cut from filament or printed)
   for (const x of s.fits) if (x.fastener && x.fasten == null) {
     let more = {}; if (x.pin) try { const m = pinModel(x.fastener, { material: mat.name }); more = { kind: 'pin', made: m.made, thread: null, length: m.length, grams: m.grams }; } catch {}
+    if (x.magnet) try { more = { kind: 'magnet', made: 'bought', thread: null, length: null, grams: magnetModel(x.fastener).grams }; } catch {}
     add(x.fastener, x.count != null ? x.num(x.count) : 1, x.note || `${x.a} / ${x.b}`, more);
   }
   // Rounded up to whole packs (packs.pack), the spares said
   let pack = null; try { const r = loadRuleSet('packs').rules.pack; pack = { size: r.value, rule: 'packs.pack', kind: r.kind }; } catch {}
   const fixings = [...fasteners.values()].map((l) => ({ ...l, ...(l.grams != null ? { grams: n(l.grams, 3), mass: n(l.grams * l.qty, 2) } : {}), ...(l.kind && pack && (l.kind !== 'pin' || l.made === 'bought') ? { packs: Math.ceil(l.qty / pack.size), buy: Math.ceil(l.qty / pack.size) * pack.size, spare: Math.ceil(l.qty / pack.size) * pack.size - l.qty } : {}) }))
-    .sort((a, b) => (a.kind ? 0 : 1) - (b.kind ? 0 : 1) || ['screw', 'nut', 'washer', 'insert', 'pin'].indexOf(a.kind) - ['screw', 'nut', 'washer', 'insert', 'pin'].indexOf(b.kind) || String(a.thread).localeCompare(String(b.thread)) || (a.length ?? 0) - (b.length ?? 0) || a.fastener.localeCompare(b.fastener));
+    .sort((a, b) => (a.kind ? 0 : 1) - (b.kind ? 0 : 1) || ['screw', 'nut', 'washer', 'insert', 'pin', 'magnet'].indexOf(a.kind) - ['screw', 'nut', 'washer', 'insert', 'pin', 'magnet'].indexOf(b.kind) || String(a.thread).localeCompare(String(b.thread)) || (a.length ?? 0) - (b.length ?? 0) || a.fastener.localeCompare(b.fastener));
   const rows = s.wires?.length ? wiresFor(s) : [], wires = new Map();
   for (const w of rows) { const key = w.gauge ?? 'gauge not given', l = wires.get(key) ?? { gauge: w.gauge, conductors: 0, length: 0, runs: [] }; l.length += w.length * w.conductors; l.conductors += w.conductors; l.runs.push(w.id); wires.set(key, l); }
   const boughtList = [...bought.values()].map((b) => ({ ...b, grams: b.grams != null ? n(b.grams) : null })).sort((a, b) => a.part.localeCompare(b.part) || a.set.localeCompare(b.set) || (b.length ?? 0) - (a.length ?? 0));
@@ -95,7 +101,7 @@ export function listText(ref, l) {
     if (l.totals.pack) out.push(`  (packs of ${l.totals.pack.size}: ${l.totals.pack.rule}, ${/^[aeiou]/.test(l.totals.pack.kind) ? 'an' : 'a'} ${l.totals.pack.kind}; masses are estimates from each piece's outline)`);
   }
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
-  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}`]); }
+  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}${p.bolt ? ` (${p.count} printed bolt${p.count > 1 ? 's' : ''}, standing on ${p.count > 1 ? 'their heads' : 'its head'}: ${p.from.join('; ')})` : ''}`]); }
   out.push('', `Total: ${l.totals.printedGrams} g printed, about ${l.totals.minutes} min of printing (an estimate from volume and the printer's flow), ${l.totals.fixingsGrams ? `${l.totals.fixingsGrams} g of fixings, ` : ''}${l.totals.machineGrams} g as a machine${l.totals.noMassFor ? ` (no mass given for ${l.totals.noMassFor.join(', ')})` : ''}`);
   if (l.cost) {
     const c = l.cost, parts = [];

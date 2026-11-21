@@ -241,9 +241,9 @@ export function lengthFor(stack, m, o = {}) {
   let washer = 0; if (o.washer) { if (!fx.made.washer) throw new Error(`${what}: ${fx.thread} has no washer in its rule set (${fx.set})`); washer = figure(what, fx, 'washer_thickness'); rests.push(rest(cite(fx, 'washer_thickness'), fx.figures.washer_thickness)); }
   const total = parts.reduce((s, t) => s + t, 0), grip = r3(total + washer - (o.sunk ?? 0));
   if (!(grip > 0)) throw new Error(`${what}: a seat sunk ${mm(o.sunk)} mm is deeper than the ${mm(total)} mm stack it is in: nothing is left under the head`);
-  const sold = fx.figures.lengths?.value;
+  const sold = fx.printed ? Array.from({ length: 300 }, (_, i) => i + 1) : fx.figures.lengths?.value; // (a printed screw is printed to any whole millimetre)
   if (!Array.isArray(sold) || !sold.every(isNum)) throw new Error(`${what}: ${fx.thread} lists no lengths in its rule set (${fx.set}), so none can be chosen: the length wanted is between ${mm(r3(grip + end.need))} mm${Number.isFinite(end.room) ? ` and ${mm(r3(grip + end.room - end.tip))} mm` : ' and as long as you like'}`);
-  rests.push(rest(cite(fx, 'lengths'), fx.figures.lengths));
+  if (!fx.printed) rests.push(rest(cite(fx, 'lengths'), fx.figures.lengths));
   const most = end.room - end.tip, verdict = (L) => (L - grip < end.need - 1e-9 ? 'short' : L - grip > most + 1e-9 ? 'long' : 'fits'), name = (L) => screwName(fx, L, form);
   const lengths = sold.map((L) => ({ length: L, name: name(L), engaged: r3(Math.max(L - grip, 0)), fits: verdict(L) })), pick = lengths.find((l) => l.fits === 'fits'), below = lengths.filter((l) => l.fits === 'short').at(-1), above = lengths.find((l) => l.fits === 'long');
   if (most < end.need - 1e-9) throw new Error(`${what}: ${end.says} leaves ${mm(r3(most))} mm of room for the screw (${end.why}) where ${mm(end.need)} mm of thread is asked: no length can do both. Deepen the far end to ${mm(r3(end.need + end.tip))} mm or more`);

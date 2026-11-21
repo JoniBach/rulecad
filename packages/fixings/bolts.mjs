@@ -4,11 +4,14 @@
 // head shears off its shank, whichever comes first. A printed bolt goes in a printed nut (or a thread printed in the
 // part), each taking half the printer's thread_gap, or in a bought steel nut, the bolt then taking the whole gap. It is
 // named as a screw with the word printed: 'M8x20 hex printed'. Units: mm, N, MPa, grams.
+import jscad from '@jscad/modeling';
 import { DEFAULTS, fixingOf, nutOf, cite, rest, finding, positive, oneOf, mm, r3, a } from './model.mjs';
 import { optionsOf } from './holes.mjs';
 import { materialOf, weakest } from './strength.mjs';
 import { threadModel } from './threads.mjs';
 import { screwModel, screw } from './hardware.mjs';
+
+const { translate, rotateX } = jscad.transforms;
 
 const n1 = (x) => +x.toFixed(1), n2 = (x) => +x.toFixed(2);
 /** What a printed bolt can go in: a printed nut or a thread printed in the part (half the gap each), or a bought steel nut (the bolt takes it all). */
@@ -88,7 +91,8 @@ export function printedBoltModel(m, o = {}) {
 }
 
 /**
- * A printed bolt's solid: the screw with its thread drawn, standing on its head as it prints (screw's display: 'thread').
+ * A printed bolt's solid: the screw with its thread drawn (screw's display: 'thread'), turned over to stand on its head
+ * as it prints: the head's top on the bed at z = 0, its tip up.
  * @param {string | object} m as printedBoltModel @param {object} [o] as printedBoltModel @param {{ union: Function, subtract: Function }} [ops]
  * @returns {object} a JSCAD geom3 with .model holding printedBoltModel's numbers
  */
@@ -96,5 +100,6 @@ export function printedBolt(m, o = {}, ops) {
   const b = printedBoltModel(m, o), fx = fixingOf('printedBolt', m, { ...o, anyLength: true });
   if (b.axis !== 'z') throw new Error('printedBolt: the solid is drawn standing on its head (axis z); a bolt lying on its flat is thread(..., { axis, flat: true }) with a head of your own');
   const g = screw(fx, { length: b.length, head: b.head, anyLength: true, display: 'thread', printer: o.printer, sets: o.sets, mate: b.nut === 'printed' ? 'printed' : 'bought', gap: o.gap }, ...(ops ? [ops] : []));
-  return Object.assign(g, { model: b });
+  // (turned over onto its head, the head's top on the bed at z = 0 and its tip up)
+  return Object.assign(translate([0, 0, g.model.top], rotateX(Math.PI, g)), { model: b, screw: g.model });
 }

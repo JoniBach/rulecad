@@ -59,7 +59,7 @@ export function screwModel(m, o = {}) {
   if (!['screw', 'thread'].includes(fx.item)) throw new Error(`${what}: ${fx.name} is ${a(fx.item)}, not a screw: use ${fx.item}()`);
   const form = o.head ?? fx.head?.form ?? (fx.made.heads.includes('cap') ? 'cap' : fx.made.heads[0]), head = headOf(what, fx, form);
   if (o.length == null && fx.length == null) throw new Error(`${what}: give a length, in the name ('${fx.thread}x12 ${form}') or as { length: 12 }`);
-  const { length, sold } = o.length == null ? fx : form === 'set' ? { length: positive(what, 'length', o.length), sold: null } : lengthOf(what, fx, o.length, !!o.anyLength);
+  const { length, sold } = o.length == null ? fx : form === 'set' ? { length: positive(what, 'length', o.length), sold: null } : lengthOf(what, fx, o.length, !!o.anyLength || !!fx.printed); // (a printed screw is printed at any length)
   const r = fx.major / 2, R = head.across / 2, k = head.height, L = length;
   // The outline, turned about z: from the tip up the thread, out under the head and over it
   const sink = form === 'countersunk' ? Math.min(r3((R - r) / Math.tan((((head.angle ?? 90) / 2) * Math.PI) / 180)), L) : 0;

@@ -7,6 +7,9 @@
 // (lib/order.mjs) by their names.
 import { jscad } from './design.mjs';
 import { profile, holesIn, fixingsOf, FASTEN } from './fasten.mjs';
+import { magnetOfFit } from './magnets.mjs';
+
+export { magnetFit } from './magnets.mjs';
 
 const { vec3 } = jscad.maths;
 
@@ -29,12 +32,13 @@ const PIN_KEYS = ['pin', 'count', 'fit', 'load', 'pull'];
 
 /**
  * A fit's fastener as the assembly reads it: a name in words ("Two push pins"), kept as it is, or pins by the schema's
- * form ({ pin, count, load, fit }), which become the fit's pin and its fastener's name. Pins fasten the two parts
- * (fastens: true) unless the fit says otherwise.
- * @param {object} x a fit as written @returns {object} the fit, with pin and a fastener's name where it names pins
+ * form ({ pin, count, load, fit }), which become the fit's pin and its fastener's name, or magnets ({ magnet, count,
+ * load }: lib/magnets.mjs). Pins fasten the two parts (fastens: true) unless the fit says otherwise.
+ * @param {object} x a fit as written @param {string} [project] the project, for its printer (magnets) @returns {object} the fit, with pin and a fastener's name where it names pins
  */
-export function pinOfFit(x) {
+export function pinOfFit(x, project) {
   if (!x.fastener || typeof x.fastener !== 'object') return x;
+  if ('magnet' in x.fastener) return magnetOfFit(x, fixingsOf(project).F); // (magnets: lib/magnets.mjs)
   const p = x.fastener, label = x.note || x.label || `${x.a} / ${x.b}`;
   if (typeof p.pin !== 'string' || !p.pin.trim()) throw new Error(`fit ${label}: fastener as an object names pins: { "pin": "snap pin 4x6", "count": 2 } (got ${JSON.stringify(p)})`);
   const stray = Object.keys(p).filter((k) => !PIN_KEYS.includes(k));

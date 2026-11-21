@@ -1029,6 +1029,11 @@ test('a door\'s hinge swings the door out and away from the frame; its handle, l
   const c = magnetCatchModel('2020-misumi-hfs5', { standoff: h.standoff });
   assert.ok(c.top < h.standoff && c.step + 2.75 < h.standoff); await prints(magnetCatch(c), 'a magnet catch on its side');
   assert.throws(() => magnetCatchModel('2020-misumi-hfs5', { standoff: 3 }), /a 3 mm standoff leaves/);
+  // its magnet's seat is @rulecad/fixings': a glued pocket, 10 + x1c.hole_comp 0.1 + x1c.magnet_glue 0.1 = 10.2 mm, the figure
+  // the catch has drawn since 0.1 (the magnet and x1c.fit 0.2); its magnet listed by name, and its pull across the 0.5 mm to the strike
+  assert.equal(c.pocketDiameter, 10.2); assert.equal(c.hardware[0].name, 'disc magnet 10x3 N35'); assert.ok(c.pull > 10 && c.pull < 14.72, `${c.pull} N`);
+  assert.match(c.findings.find((f) => f.code === 'fitting.magnet').text, /disc magnet 10x3 N35 pulls 14\.72 N touching steel.*across a 0\.5 mm gap/);
+  assert.equal(magnetCatchModel('2020-misumi-hfs5', { standoff: h.standoff, magnet: [9, 3] }).pull, null, 'a size with no seller\'s figure: its pull is not checked, and it still builds');
   assert.throws(() => hingeModel('2020-misumi-hfs5', { sheet: 3, pin: 'Q9' }), /hingeModel: pin and screw are threads/);
 });
 

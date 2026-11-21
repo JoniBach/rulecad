@@ -1020,3 +1020,133 @@ test('the README names pins with the grammar the code reads, word for word', () 
   const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(readme.includes('\n## Pins\n'), 'a section on pins'); assert.ok(readme.includes(PIN_GRAMMAR), 'the pin grammar, word for word');
 });
+
+// ---------- magnets ----------
+const { magnetModel, magnetSeatModel, magnetSeat, magnet, parseMagnet, isMagnetName, fieldShare, MAGNET_GRAMMAR, MAGNET_GRADES, MAGNET_SIZES } = fixings;
+const magnets = json('../rules/magnets.json');
+
+test('a magnet by name: its pull from its seller\'s figure, scaled to its grade by the remanence squared and across a gap by the field on its axis squared', () => {
+  assert.deepEqual(parseMagnet('disc magnet 8x3'), { shape: 'disc', diameter: 8, length: null, width: null, thickness: 3, grade: null });
+  assert.deepEqual(parseMagnet('block magnet 10x5x2 n52'), { shape: 'block', diameter: null, length: 10, width: 5, thickness: 2, grade: 'N52' });
+  assert.equal(parseMagnet('magnet 6x2').shape, 'disc'); assert.ok(isMagnetName('disc magnet 12x3 N45')); assert.ok(!isMagnetName('M3x12 cap'));
+  for (const bad of ['disc magnet 8', 'block magnet 8x3', 'disc magnet 8x3x2', 'disc magnet 8x3 N99', 'disc magnet 8x3 strong', 'magnet']) assert.throws(() => parseMagnet(bad), /magnet name/, bad);
+  assert.deepEqual(MAGNET_SIZES.disc, ['6x2', '6x3', '8x3', '10x2', '10x3', '12x3']); assert.deepEqual(MAGNET_GRADES, ['N35', 'N38', 'N40', 'N42', 'N45', 'N48', 'N50', 'N52']);
+  for (const [k, r] of Object.entries(magnets.rules)) { assert.ok(r.rule && r.kind && r.source && r.checked, k); }
+  // The seller's 8 x 3 disc is N45 and pulls 14.7 N (supermagnete S-08-03-N): as sold, that figure itself
+  const n45 = magnetModel('disc magnet 8x3 N45');
+  assert.deepEqual([n45.name, n45.touching, n45.pull, n45.grams], ['disc magnet 8x3 N45', 14.7, 14.7, 1.131]); // 8² π/4 × 3 = 150.80 mm³ × 7.5 g/cm³ = 1.131 g
+  // N35, the default: middles of remanence N35 (1.17 + 1.21) / 2 = 1.19 T, N45 (1.32 + 1.37) / 2 = 1.345 T;
+  // 14.7 × (1.19 / 1.345)² = 14.7 × 0.782789 = 11.507 N. N52: (1.42 + 1.47) / 2 = 1.445 T, 14.7 × (1.445 / 1.345)² = 16.967 N
+  const n35 = magnetModel('disc magnet 8x3');
+  assert.equal(n35.grade, 'N35'); near(n35.touching, 11.507, 0.005, 'N35 by hand'); near(magnetModel('disc magnet 8x3 N52').touching, 16.967, 0.005, 'N52 by hand');
+  assert.ok(n35.rests.some((r) => r.name === 'magnets.grade') && n35.rests.some((r) => r.name === 'magnets.remanence_N35'));
+  // Across 1 mm: B(z) / Br = ½ [(D + z) / √(R² + (D + z)²) - z / √(R² + z²)], R 4, D 3: at 0, 3 / 5 = 0.6; at 1,
+  // 4 / √32 - 1 / √17 = 0.707107 - 0.242536 = 0.464571; (0.464571 / 0.6)² = 0.599514, × 14.7 = 8.813 N
+  near(fieldShare(parseMagnet('disc magnet 8x3'), 1), 0.774285, 1e-5, 'the field share by hand');
+  const far = magnetModel('disc magnet 8x3 N45', { gap: 1 }); near(far.pull, 8.813, 0.005, 'across 1 mm'); assert.ok(far.rests.some((r) => r.name === 'magnets.field_formula'));
+  // a block's field: at its face atan(∞) = π/2 less the far face's, so the share there is 1
+  near(fieldShare(parseMagnet('block magnet 10x5x2'), 0), 1, 1e-12, 'a block at its face'); assert.ok(fieldShare(parseMagnet('block magnet 10x5x2'), 1) < 1);
+  // two of them on a lid, a 10 N pull: 23.01 N together, 2.3 times over, a pass; 15 N: 1.53 times, a warning under load_margin
+  const lid = magnetModel('disc magnet 8x3', { count: 2, load: 10 });
+  assert.deepEqual([lid.total, lid.margin], [23.01, 2.3]); assert.equal(lid.findings.find((f) => f.code === 'magnet.hold').level, 'pass');
+  assert.equal(magnetModel('disc magnet 8x3', { count: 2, load: 15 }).findings.find((f) => f.code === 'magnet.hold').level, 'warn');
+  assert.equal(magnetModel('disc magnet 8x3', { count: 2, load: 30 }).findings.find((f) => f.code === 'magnet.hold').level, 'fail');
+  // refused by name: a size with no seller's figure (unless its pull is given), a gap less than nothing, a grade not made
+  assert.throws(() => magnetModel('disc magnet 7x3'), /magnetModel: there is no seller's pull for a disc magnet 7x3: the kit holds 6x2, 6x3, 8x3, 10x2, 10x3, 12x3 \(magnets\.disc_<size>_pull\)\. For another size, give its maker's pull/);
+  assert.equal(magnetModel('disc magnet 7x3', { pull: 12 }).touching, 12);
+  assert.throws(() => magnetModel('disc magnet 8x3', { gap: -1 }), /gap is what lies between/); assert.throws(() => magnetModel('disc magnet 8x3', { grade: 'N60' }), /grade is one of/);
+  assert.throws(() => magnetModel('disc magnet 8x3', { count: 1.5 }), /count is how many magnets/);
+});
+
+test('a magnet\'s seat: a press, glue or crush-rib pocket from the printer\'s rules, its floor held to what prints, and the pull out of it against the fit', () => {
+  const x1 = x1c.rules;
+  assert.deepEqual([x1.magnet_press.value, x1.magnet_glue.value, x1.magnet_crush.value].map(Number), [0.1, 0.1, 0.2]);
+  for (const k of ['magnet_press', 'magnet_glue', 'magnet_crush']) assert.equal(x1[k].kind, 'estimate', k);
+  // press: 8 + hole_comp 0.1 - magnet_press 0.1 = 8 mm; glue: 8 + 0.1 + magnet_glue 0.1 = 8.2 mm; ribs: a glue pocket with
+  // its ribs' tips at 8 + 0.1 - magnet_crush 0.2 = 7.9 mm, standing (8.2 - 7.9) / 2 = 0.15 mm off its wall
+  const press = magnetSeatModel('disc magnet 8x3', { thickness: 5 }), glue = magnetSeatModel('disc magnet 8x3', { fit: 'glue', thickness: 5 }), ribs = magnetSeatModel('disc magnet 8x3', { fit: 'ribs', thickness: 5 });
+  assert.deepEqual([press.pocket.diameter, press.pocket.depth, press.floor, press.pocket.rules], [8, 3, 2, ['x1c.hole_comp', 'x1c.magnet_press']]);
+  assert.deepEqual([glue.pocket.diameter, glue.pocket.lead], [8.2, 0]); assert.deepEqual(ribs.pocket.ribs, { count: 3, tips: 7.9, radius: 0.21, protrude: 0.15 });
+  assert.equal(fixingsFor({ printer: { name: 'mine', rules: { magnet_press: { value: 0.05, unit: 'mm', kind: 'measured', source: 'my coupon' } } } }).magnetSeatModel('disc magnet 8x3').pocket.diameter, 8.05, 'a measured press moves the pocket');
+  // the pull out of the pocket, facing its steel. Press: p = E i / d / (1 + ν) = 2680 × 0.1 / 8 / 1.36 = 24.632 MPa;
+  // over the wall π × 8 × 3 = 75.398 mm² at clamp_friction 0.3: 0.3 × 24.632 × 75.398 = 557.2 N, 48.4 times its 11.51 N
+  assert.equal(press.hold, 557.2); near(press.holdMargin, 557.2 / 11.507, 0.02, 'the press margin');
+  assert.equal(press.findings.find((f) => f.code === 'magnet.wall').level, 'warn', '24.6 MPa round the hoop is past half of PLA\'s 39 MPa');
+  // ribs crushed press at the plastic's strength over three lines 0.42 mm wide by 3 mm: 0.3 × 39 × 3 × 0.42 × 3 = 44.2 N
+  assert.equal(ribs.hold, 44.2); assert.equal(ribs.findings.find((f) => f.code === 'magnet.pullout').level, 'pass');
+  assert.equal(glue.hold, null); assert.equal(glue.findings.find((f) => f.code === 'magnet.pullout').level, 'info');
+  // facing the floor: the steel past a 0.6 mm floor (3.6 mm thick, 3 mm pocket) is the gap, and the magnet cannot pull out
+  const through = magnetSeatModel('disc magnet 8x3 N45', { thickness: 3.6, facing: 'floor' });
+  near(through.magnet.gap, 0.6, 1e-9, 'the floor is the gap'); assert.ok(through.magnet.pull < 14.7); assert.equal(through.findings.find((f) => f.code === 'magnet.pullout').level, 'pass');
+  // a block's pocket: press 10 x 5 mm, its corners relieved by a line's radius so none is square
+  assert.deepEqual(magnetSeatModel('block magnet 10x5x2').pocket.size, [10, 5]); assert.equal(magnetSeatModel('block magnet 10x5x2').pocket.relief, 0.42);
+  // refused by name: a floor under three layers (0.6 mm), a pocket opening on the bed wider than x1c.bridge 5 mm, ribs
+  // or a block lying on their side, facing the floor with no thickness
+  assert.throws(() => magnetSeatModel('disc magnet 8x3', { thickness: 3.5 }), /a pocket 3 mm deep in a part 3\.5 mm thick there leaves a floor of 0\.5 mm under the magnet, under fixings\.magnet_floor's 3 layers \(0\.6 mm at x1c\.layer 0\.2 mm\)/);
+  assert.equal(magnetSeatModel('disc magnet 8x3', { thickness: 3.6 }).floor, 0.6);
+  assert.throws(() => magnetSeatModel('disc magnet 8x3', { into: '+z' }), /going up from the bed 8 mm across has its floor printed over it as a bridge, wider than x1c\.bridge 5 mm/);
+  assert.throws(() => magnetSeatModel('disc magnet 8x3', { fit: 'ribs', into: '+x' }), /crush ribs lying on their side/);
+  assert.throws(() => magnetSeatModel('block magnet 10x5x2', { into: '+y' }), /a block magnet's pocket lying on its side/);
+  assert.throws(() => magnetSeatModel('disc magnet 8x3', { facing: 'floor' }), /give thickness/);
+  assert.throws(() => magnetSeatModel('disc magnet 8x3', { fit: 'tape' }), /fit is press, glue or ribs/);
+  assert.equal(magnetSeatModel('disc magnet 8x3', { into: '+x' }).pocket.teardrop, true, 'lying on its side, a teardrop');
+});
+
+test('a magnet\'s pocket and its solid: each prints, a ribbed pocket holds its ribs, and the magnet says it is bought', () => {
+  const plate = (g, h) => subtract(cuboid({ size: [20, 20, h], center: [0, 0, h / 2] }), g);
+  for (const fit of ['press', 'glue', 'ribs']) { const g = magnetSeat('disc magnet 8x3', { fit, at: [0, 0, 5] }); assert.equal(printable(g)[0].level, 'pass', fit); prints(plate(g, 5), `a ${fit} pocket in a plate`); }
+  // a slice 1 mm thick at mid-depth, under the ribbed pocket's lead-in: the glue pocket's is a 8.2 mm circle, the ribbed one less its three ribs
+  const slab = cuboid({ size: [20, 20, 1], center: [0, 0, -2] }), plain = vol(intersect(magnetSeat('disc magnet 8x3', { fit: 'glue' }), slab)), ribbed = vol(intersect(magnetSeat('disc magnet 8x3', { fit: 'ribs' }), slab));
+  assert.ok(ribbed < plain - 0.1 && ribbed > plain - 1, `the ribs stand in the pocket: ${ribbed} against ${plain} mm³`);
+  prints(plate(magnetSeat('block magnet 10x5x2', { at: [0, 0, 4] }), 4), 'a block\'s pocket, its corners relieved');
+  const side = magnetSeat('disc magnet 8x3', { into: '+x', at: [-10, 0, 6] }); prints(subtract(cuboid({ size: [20, 20, 12], center: [0, 0, 6] }), side), 'a pocket on its side, a teardrop');
+  const m = magnet('disc magnet 8x3'); near(vol(m), 150.8, 1.5, 'the disc\'s volume'); assert.equal(printable(m)[0].level, 'fail'); assert.match(printable(m)[0].text, /bought and fitted, not printed/);
+});
+
+test('the README names magnets with the grammar the code reads, word for word', () => {
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(readme.includes('\n## Magnets\n') && readme.includes('\n## Printed bolts\n')); assert.ok(readme.includes(MAGNET_GRAMMAR), 'the magnet grammar, word for word');
+});
+
+// ---------- printed bolts ----------
+const { printedBoltModel, printedBolt } = fixings;
+
+test('a printed bolt: an M8 in PLA breaks at the load worked by hand, in a printed or a steel nut, standing or lying; an M5 is refused at 0.2 mm layers naming M6', () => {
+  // the name: the word printed makes it printed, at any length
+  assert.equal(parseName('M8x20 hex printed').printed, true); assert.equal(parseName('M8x20 hex').printed, undefined);
+  const fx = fixingModel('M8x23 hex printed'); assert.deepEqual([fx.name, fx.printed, fx.sold], ['M8x23 hex printed', true, false]);
+  assert.throws(() => fixingModel('M8x23 hex'), /not sold 23 mm long/, 'a bought one is held to the sold lengths');
+  assert.equal(fixingModel('M8 nut printed').name, 'M8 hex nut printed'); assert.throws(() => parseName('M3 insert printed'), /only a screw or a nut is printed/);
+  assert.equal(printable(fx)[0].code, 'fixing.printable'); assert.match(printable(fx)[0].text, /is printed with its thread/);
+  // By hand, an M8 (1.25 mm pitch) in a printed nut. The basic root: 8 - 2 × (5/8)(√3/2)(1.25) = 6.6467 mm; drawn, less its half
+  // of x1c.thread_gap (0.1 mm) each side: radius 3.3234 - 0.1 = 3.223 mm, 6.446 mm across.
+  //   Tension: (π/4) × 6.446² = 32.634 mm² × pla.strength 39 MPa (PLA has no strength_z: the strength along the layers stands
+  //   for it, and the finding says so) = 1272.7 N.
+  //   Teeth in the nut, 6.8 mm deep (m8.nut_height): the bolt's, 0.75 π D1 Le with D1 = 8 - 1.0825 × 1.25 = 6.6468 mm, is
+  //   0.75 × π × 6.6468 × 6.8 = 106.50 mm²; the nut's, 0.875 π d Le = 0.875 × π × 8 × 6.8 = 149.54 mm²; at 39 / √3 = 22.517 MPa,
+  //   the lesser shears at 2397.9 N.
+  //   The head, 5.3 mm high (m8.hex_head_height): 22.517 × π × 8 × 5.3 = 2999.3 N.
+  //   So it breaks at 1272.7 N, pulled apart across its root: 6.36 times a 200 N pull.
+  const b = printedBoltModel('M8x20 hex printed', { load: 200 });
+  assert.deepEqual([b.root, b.rootArea, b.tension.load, b.strip.area, b.strip.nutArea, b.strip.shear, b.strip.load, b.headShear, b.breaking, b.governs, b.margin],
+    [6.446, 32.63, 1272.7, 106.5, 149.54, 22.52, 2397.9, 2999.3, 1272.7, 'tension', 6.36]);
+  near(b.breaking, (Math.PI / 4) * 6.446 ** 2 * 39, 0.05, 'the breaking load worked by hand');
+  assert.match(b.findings.find((f) => f.code === 'bolt.strength').text, /pla has no strength across its layers, strength_z/);
+  assert.equal(b.findings.find((f) => f.code === 'bolt.load').level, 'pass'); assert.equal(printedBoltModel('M8x20 hex printed', { load: 1000 }).findings.find((f) => f.code === 'bolt.load').level, 'warn');
+  assert.equal(printedBoltModel('M8x20 hex printed', { load: 1500 }).findings.find((f) => f.code === 'bolt.load').level, 'fail');
+  // in a steel nut it takes the whole 0.2 mm gap: radius 3.3234 - 0.2 = 3.123, 6.246 mm; (π/4) 6.246² × 39 = 1195.0 N
+  const steel = printedBoltModel('M8x20 hex printed', { nut: 'steel' }); assert.deepEqual([steel.root, steel.breaking, steel.strip.nutArea], [6.246, 1195, null]);
+  // PETG standing pulls across its layers at petg.strength_z 23 MPa: 23 × 32.634 = 750.6 N; lying on a flat, along them
+  const petg = printedBoltModel('M8x20 hex printed', { material: 'petg' }); assert.deepEqual([petg.tension.rule, petg.breaking], ['petg.strength_z', 750.6]);
+  const lying = printedBoltModel('M8x20 hex printed', { material: 'petg', axis: 'x' }); assert.equal(lying.tension.rule, 'petg.strength');
+  assert.ok(lying.rootArea < b.rootArea, 'lying, its flat takes some of the root away');
+  // too fine to print: M5's 0.8 mm pitch is under five 0.2 mm layers; the smallest that prints is M6
+  assert.throws(() => printedBoltModel('M5x20 hex printed'), /printedBoltModel: M5 has a 0\.8 mm pitch, finer than x1c prints: a thread needs 5 layers to a pitch \(1 mm at x1c\.layer 0\.2 mm\).*The smallest metric thread that would print is M6 \(1 mm pitch\)/);
+  assert.equal(printedBoltModel('M5x20 hex printed', { printer: { name: 'fine', layer: 0.12 } }).thread, 'M5', 'at 0.12 mm layers an M5 prints');
+  assert.throws(() => printedBoltModel('M8x20 hex printed', { material: 's275' }), /not a plastic/);
+  assert.throws(() => printedBoltModel('M8 washer'), /not a bolt/);
+  // lengthFor: a printed screw is any whole millimetre long
+  assert.equal(lengthFor(6, 'M8 hex printed', { into: { kind: 'thread', depth: 22, material: 'pla' } }).length, 26, '6 mm of stack and 2.5 × 8 = 20 mm engaged');
+  // its solid: the screw with its thread drawn, standing on its head, which prints
+  const g = printedBolt('M8x16 hex printed'); assert.equal(g.model.name, 'M8x16 hex printed'); prints(g, 'a printed M8 bolt on its head');
+});
