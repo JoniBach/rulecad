@@ -95,6 +95,6 @@
   "dependencies": {
     "@rulecad/fea": "^0.2.11",
     "@rulecad/fixings": "^0.1.5",
-    "@rulecad/rules": "^0.3.18"
+    "@rulecad/rules": "^0.3.19"
   }
 }

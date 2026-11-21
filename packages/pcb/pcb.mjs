@@ -124,6 +124,43 @@ export const part = (name, footprint, x, y, o = {}) => chip(name, x, y, o, { foo
  * A pin header from rules (r: pitch, drill, pad; row_spacing for two rows): o.pins pins per row, o.rows 1 or 2.
  * Two rows are numbered as a DIP: 1 to n down the left, n + 1 to 2n up the right.
  */
+// A footprint that takes either switch: a Cherry MX (m: the mx rules) or a Kailh Choc v1 (c: the choc rules), soldered.
+// The centre hole is the wider of the two (MX's: a Choc's post sits in it); each side's two locating pegs, 0.42 mm
+// apart, share one hole round both of theirs. Each switch's two pins keep their own holes: pin1 is MX's pin 1 and
+// Choc's pin 1 (2.7 mm apart, behind the centre), pin2 MX's pin 2 and Choc's pin 2, each pair one pin, joined by a track
+export function hybridSwitch(name, x, y, m, c, sch = {}) {
+  const pegX = (m.pcb_peg_x + c.pcb_peg_x) / 2, pegD = Math.abs(m.pcb_peg_x - c.pcb_peg_x) + Math.max(m.pcb_peg_hole, c.pcb_peg_hole); // round both pegs' holes
+  return { name, ftype: 'simple_switch', mpn: 'Cherry MX or Kailh Choc v1 (PCB mount)', package: 'Cherry MX / Kailh Choc v1 hybrid, PCB mount', x, y, layer: 'top', sch,
+    pads: [pad('pin1', m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin1', c.pcb_pin1_x, c.pcb_pin1_y, c.pcb_pin_drill, c.pcb_pin_pad),
+      pad('pin2', m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin2', c.pcb_pin2_x, c.pcb_pin2_y, c.pcb_pin_drill, c.pcb_pin_pad)],
+    holes: [hole(0, 0, Math.max(m.pcb_centre_hole, c.pcb_centre_hole)), hole(-pegX, 0, pegD), hole(pegX, 0, pegD)],
+    courtyard: { w: Math.max(m.pcb_body, c.pcb_body), h: Math.max(m.pcb_body, c.pcb_body) } };
+}
+// A DO-35 axial diode (a 1N4148: d, the do35 rules) lying flat between its two leads, bent down 0.3 in apart: cathode
+// on the left (a square pad, and the band on its body), anode on the right, turned by rotation. Its 3D model is the body
+// and the leads, through the board (thickness) and trimmed below it
+export function do35(name, x, y, d, { rotation = 0, thickness = 1.6, sch = {}, mpn = '1N4148', layer = 'top' } = {}) {
+  const h = d.pitch / 2, bl = d.body_length / 2, r = d.body_d / 2, l = d.lead_d / 2, axis = r; // the body's axis, a radius up
+  return { name, ftype: 'simple_diode', mpn, package: 'DO-35, axial, 0.3 in', x, y, layer, rotation, sch, bom: false, place: false,
+    pads: [{ pin: 'cathode', x: -h, y: 0, hole: d.drill, outer: d.pad, rect: { w: d.pad, h: d.pad, offset: [0, 0] } }, pad('anode', h, 0, d.drill, d.pad)],
+    courtyard: null,
+    model: { boxes: [
+      { min: [-bl, -r, 0], max: [bl, r, 2 * r] }, // the glass body (a box round it)
+      ...[-1, 1].flatMap((s) => [
+        { min: [Math.min(s * bl, s * h) - (s > 0 ? 0 : l), -l, axis - l], max: [Math.max(s * bl, s * h) + (s > 0 ? l : 0), l, axis + l] }, // out along the axis
+        { min: [s * h - l, -l, -thickness - d.lead_out], max: [s * h + l, l, axis + l] }]) ] } }; // bent down through the board
+}
+
+// A single-row 0.1 in strip's 3D model, for header() parts (its pins along the part's y, as header() lays them):
+// kind 'socket', a female socket's body (height tall) on the board; 'pins', a male header's spacer on the board and its
+// pins above it (pin_above past the spacer) and through it
+export function stripModel(n, { pitch = 2.54, kind = 'socket', height = 8.5, spacer = 2.5, pin = 0.64, pin_above = 6, thickness = 1.6, below = 3 } = {}) {
+  const half = (n * pitch) / 2, ys = Array.from({ length: n }, (_, i) => ((n - 1) / 2 - i) * pitch);
+  if (kind === 'socket') return { boxes: [{ min: [-pitch / 2, -half, 0], max: [pitch / 2, half, height] },
+    ...ys.map((y) => ({ min: [-pin / 2, y - pin / 2, -thickness - below], max: [pin / 2, y + pin / 2, 0] }))] };
+  return { boxes: [{ min: [-pitch / 2, -half, 0], max: [pitch / 2, half, spacer] }, ...ys.map((y) => ({ min: [-pin / 2, y - pin / 2, -thickness - below], max: [pin / 2, y + pin / 2, spacer + pin_above] }))] };
+}
+
 export function header(name, x, y, r, o = {}) {
   const n = o.pins, two = (o.rows ?? 1) === 2, pads = [];
   for (let i = 0; i < n; i++) {
@@ -1113,7 +1150,8 @@ export function solids(json, { thickness, smooth = 16, models }) { // models: { 
 // size, mm, in the layout's frame) and, with the Pico under it, the Pico's centre
 export function outputs(json, matrix) {
   const b = json.find((e) => e.type === 'pcb_board');
-  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(b.outline ? { board_outline: b.outline } : {}), ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
+  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(b.outline ? { board_outline: b.outline } : {}), ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}),
+    ...Object.fromEntries(Object.entries(matrix?.place || {}).filter(([, n]) => typeof n === 'number')) }; // (where a board puts what an assembly mounts on it: matrix.place, numbers by name)
 }
 
 /**
@@ -1215,10 +1253,13 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     const theirs = (layer, width, a, b) => tracksAt.has(seg(layer, width, a, b));
     const laid = traces.filter((t) => t.rulecad_kept), isVia = (t) => t.route[1]?.route_type === 'via';
     const along = (o, p) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = Math.hypot(dx, dy); return Math.abs((p.x - o.a.x) * dy - (p.y - o.a.y) * dx) / l < 1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l > -1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l < l + 1e-4; };
+    let squared = 0;
     const cutBy = [], moved = laid.filter((t) => {
       if (isVia(t)) return !viasAt.has(key(t.route[0].x, t.route[0].y));
       const [p, q] = t.route, w = p.width, layer = p.layer;
       if (t.route.length === 2 && theirs(layer, w, p, q)) return false;
+      const sq = t.rulecad_squared; // the source's segment, redrawn to leave its pad square: the same ends
+      if (sq && theirs(sq.a.layer ?? layer, sq.a.width ?? w, sq.a, sq.b)) { squared++; return false; } // (its pad end left square, or joined to the next square, by the finish)
       const o = t.rulecad_shortened; // a piece of the source's segment, from one of its ends
       if (o && t.route.length === 2 && theirs(layer, w, o.a, o.b) && along(o, p) && along(o, q) && [p, q].some((r) => [o.a, o.b].some((e) => key(e.x, e.y) === key(r.x, r.y)))) {
         cutBy.push(Math.hypot(o.b.x - o.a.x, o.b.y - o.a.y) - Math.hypot(q.x - p.x, q.y - p.y)); return false;
@@ -1231,7 +1272,19 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     const escapes = traces.reduce((n, t) => n + (t.rulecad_cut || 0), 0);
     const vias = laid.filter(isVia).length, short = laid.filter((t) => t.rulecad_shortened).length, total = cutBy.reduce((n, d) => n + d, 0);
     out.push(moved.length || strays.length ? { level: 'fail', text: `${moved.length + strays.length} of the source's own tracks and vias aren't where the source has them` }
-      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} (only the router's tracks are tidied)` });
+      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} ${squared ? `; ${squared} of them redrawn by the finish (to leave a pad square, or rejoined)` : ''} (only the router's tracks are tidied)` });
+  }
+  // What a fab's engineer flags in tracks: one leaving a surface-mount pad at an angle (a small part can tombstone, drawn
+  // up on one end as its solder melts) and acute corners between tracks of a net (acid traps). A board that asks for
+  // finishing (finish: true) fails on any left; others are told
+  {
+    const { unfinished } = await import('@rulecad/smooth');
+    const u = unfinished(json), asked = !!json.find((e) => e.type === 'pcb_board')?.rulecad_finish, at = (l) => l.slice(0, 4).map((x) => `${mm(x.at.x)}, ${mm(x.at.y)}`).join('; ');
+    const ours = { exits: u.exits.filter((l) => !l.kept), acute: u.acute.filter((l) => !l.kept) }, theirs = { exits: u.exits.filter((l) => l.kept), acute: u.acute.filter((l) => l.kept) };
+    const say = (x) => [x.exits.length && `${x.exits.length} tracks leave an SMD pad at an angle (${at(x.exits)})`, x.acute.length && `${x.acute.length} acute corners between tracks (${at(x.acute)})`].filter(Boolean).join('; ');
+    out.push(!ours.exits.length && !ours.acute.length ? { level: 'pass', text: `finish: every track leaves its SMD pad square to the pad's edge, and no tracks meet at an acute angle${theirs.exits.length || theirs.acute.length ? ', but where the source\'s own routing has them' : ''}` }
+      : { level: asked ? 'fail' : 'warn', text: `finish: ${say(ours)}${asked ? '' : ' (finish: true on the board squares and fills them)'}` });
+    if (theirs.exits.length || theirs.acute.length) out.push({ level: 'warn', text: `finish, as the source's own routing has them (no room to change without moving other copper): ${say(theirs)}` });
   }
   // Tracks and the gaps between them, measured from the board as drawn (not the design's variables): the narrowest
   // track, and the nearest two tracks of different connections come on one layer, edge to edge
@@ -1319,7 +1372,12 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
       : { level: 'pass', text: `${castellated.length} castellated holes on the edge, ${mm(Math.min(...castellated.map((e) => e.hole_diameter)))} mm or more, ${mm(gap)} mm apart (JLCPCB: ${j.castellated_drill_min ?? 0.6} / ${j.castellated_gap_min ?? 0.6} mm). Order with castellated holes` });
   }
   out.push(Math.max(b.width, b.height) <= j.cheap_size ? { level: 'pass', text: `${size}: within JLCPCB's lowest price (${j.cheap_size} × ${j.cheap_size} mm)` } : { level: 'info', text: `${size}: over ${j.cheap_size} × ${j.cheap_size} mm, priced by quote` });
-  if (matrix) {
+  if (matrix?.direct) { // keys wired straight to a GPIO each, no matrix: every key its own pin
+    const gpio = Object.values(matrix.direct);
+    out.push(new Set(gpio).size === gpio.length
+      ? { level: 'pass', text: `direct wiring: ${gpio.length} keys, each on a GPIO of its own (${Object.entries(matrix.direct).map(([k, g]) => `${k} ${g}`).join(', ')})` }
+      : { level: 'fail', text: 'direct wiring: two keys share a GPIO' });
+  } else if (matrix) {
     const cells = new Set(matrix.keys.map((k) => `${k.row},${k.col}`)), gpio = [...Object.values(matrix.rows), ...Object.values(matrix.cols)];
     out.push(cells.size === matrix.keys.length && new Set(gpio).size === gpio.length
       ? { level: 'pass', text: `matrix: ${matrix.keys.length} keys on ${Object.keys(matrix.rows).length} rows × ${Object.keys(matrix.cols).length} columns, ${gpio.length} GPIO (rows ${Object.values(matrix.rows).join(' ')}; columns ${Object.values(matrix.cols).join(' ')})` }

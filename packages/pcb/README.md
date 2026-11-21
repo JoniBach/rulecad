@@ -89,6 +89,13 @@ export function main(v) {
   `neck` (mm, the fab's smallest track), a track still a little too close to another is straightened where the router
   doubled back, moved in where it hugs the board's edge, or narrowed where they pass. Existing vias reach the router at
   their real size. `effort` asks the router to search harder, at more time.
+- **Finishing:** with `finish: true`, once routed (and smoothed), every track leaves a surface-mount pad square to the
+  pad's edge, and every acute corner between tracks of a net is filled ([@rulecad/smooth](../smooth)'s
+  `finishCircuit`), kept tracks too: a fab's engineer flags both (a small part can tombstone when its tracks pull off
+  its pads at an angle; an acute corner traps etchant). If the design checks then find a new error, the board goes
+  back as it was. A check lists anything left, and fails the board if it asked for finishing.
+- **Route cache:** set `RULECAD_ROUTE_CACHE` to a folder (cad sets `.cache/routes`) and a route the router has found
+  for an identical input is read back instead of searched again.
 - **Smoothing:** with `smooth: true`, the router's tracks are pulled tight once routed
   ([@rulecad/smooth](../smooth)): wiggles, detours and doubling-backs straightened wherever the straight run keeps
   `clearance`, sharp bends cut across. Only the router's tracks move, and drawn tracks never do. A clone's kept

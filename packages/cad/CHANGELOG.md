@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## 0.7.59: pins, magnets and printed bolts in assemblies, and the holds coupon (Fixings 4)
+## 0.7.60: pins, magnets and printed bolts in assemblies, and the holds coupon (Fixings 4)
 
 ### Added
 
@@ -41,6 +41,19 @@ None. The frames door's magnet pocket is drawn 10.2 mm as before; only its line 
 Nothing is required. An assembly that names pins or magnets in a fit's note can name them in `fastener` instead, so
 they are found, checked and counted.
 
+## 0.7.59: routes kept between builds, assemblies shown as built
+
+### Added
+
+- `"show": "built"` on an assembly draws its references (bought parts, boards, a module) solid in `cad preview`
+  and on the model page, as the thing built; they still aren't printed or downloaded.
+- The autorouter's results are kept in the workspace's `.cache/routes`, by their exact input (@rulecad/pcb's route
+  cache): a board rebuilt for anything but its routing (a change to the library, its finish or its checks) reuses its
+  route instead of searching again. `CAD_NO_CACHE` turns it off with the rest of the cache.
+
+### Printed sizes that moved
+
+None.
 ## 0.7.58: frame checks (Frames 3)
 
 ### Added

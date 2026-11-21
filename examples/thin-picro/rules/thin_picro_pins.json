@@ -1,0 +1,714 @@
+{
+ "_doc": "The thin RP2040 module's edge pins, for boards that carry it: each pin's signal (GP12 is GPIO12), its half hole on the board's edge and its 0.1 in header hole, in mm from the module's centre, seen from above with USB-C at the top. Generated; do not edit by hand.",
+ "name": "thin_picro_pins",
+ "rules": {
+  "length": {
+   "value": 59.67,
+   "unit": "mm",
+   "rule": "Module length, end to end",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "height": {
+   "value": 21.04,
+   "unit": "mm",
+   "rule": "Module height, bottom edge to top edge",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "half_hole": {
+   "value": 1.3,
+   "unit": "mm",
+   "rule": "Castellated half hole: drill",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "half_pad": {
+   "value": 1.7,
+   "unit": "mm",
+   "rule": "Castellated half hole: its round pad",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "header_hole": {
+   "value": 1,
+   "unit": "mm",
+   "rule": "Header hole: drill (a 0.64 mm square pin)",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "header_pad_w": {
+   "value": 3,
+   "unit": "mm",
+   "rule": "Header pad: long side, from the half hole inwards",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "header_pad_h": {
+   "value": 1.7,
+   "unit": "mm",
+   "rule": "Header pad: short side",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  },
+  "pitch": {
+   "value": 2.54,
+   "unit": "mm",
+   "rule": "Pin pitch",
+   "kind": "design",
+   "source": "thin-picro/module@0.7.1, read from its KiCad board (cad export) by scripts/module-pins.mjs"
+  }
+ },
+ "footprints": {
+  "module": {
+   "pins": [
+    {
+     "pin": "1",
+     "signal": "D+",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": 3.39
+     },
+     "hole": {
+      "x": -28.575,
+      "y": 3.39
+     },
+     "pad": {
+      "x": -29.275,
+      "y": 3.39,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "31",
+     "signal": "D-",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": 0.85
+     },
+     "hole": {
+      "x": -28.575,
+      "y": 0.85
+     },
+     "pad": {
+      "x": -29.275,
+      "y": 0.85,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "29",
+     "signal": "GND",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": -1.69
+     },
+     "hole": {
+      "x": -28.575,
+      "y": -1.69
+     },
+     "pad": {
+      "x": -29.275,
+      "y": -1.69,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "5",
+     "signal": "GND",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": -4.23
+     },
+     "hole": {
+      "x": -28.575,
+      "y": -4.23
+     },
+     "pad": {
+      "x": -29.275,
+      "y": -4.23,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "35",
+     "signal": "3V3",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": -6.77
+     },
+     "hole": {
+      "x": -28.575,
+      "y": -6.77
+     },
+     "pad": {
+      "x": -29.275,
+      "y": -6.77,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "30",
+     "signal": "5V",
+     "side": "left",
+     "half": {
+      "x": -29.975,
+      "y": -9.31
+     },
+     "hole": {
+      "x": -28.575,
+      "y": -9.31
+     },
+     "pad": {
+      "x": -29.275,
+      "y": -9.31,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "39",
+     "signal": "GND",
+     "side": "bottom",
+     "half": {
+      "x": -24.13,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -24.13,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -24.13,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "28",
+     "signal": "SWITCH",
+     "side": "bottom",
+     "half": {
+      "x": -21.59,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -21.59,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -21.59,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "21",
+     "signal": "GP20",
+     "side": "bottom",
+     "half": {
+      "x": -19.05,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -19.05,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -19.05,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "19",
+     "signal": "GP21",
+     "side": "bottom",
+     "half": {
+      "x": -16.51,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -16.51,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -16.51,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "22",
+     "signal": "GP22",
+     "side": "bottom",
+     "half": {
+      "x": -13.97,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -13.97,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -13.97,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "20",
+     "signal": "GP23",
+     "side": "bottom",
+     "half": {
+      "x": -11.43,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -11.43,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -11.43,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "23",
+     "signal": "GP26",
+     "side": "bottom",
+     "half": {
+      "x": -8.89,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -8.89,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -8.89,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "24",
+     "signal": "GP27",
+     "side": "bottom",
+     "half": {
+      "x": -6.35,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -6.35,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -6.35,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "25",
+     "signal": "GP28",
+     "side": "bottom",
+     "half": {
+      "x": -3.81,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -3.81,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -3.81,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "26",
+     "signal": "GP29",
+     "side": "bottom",
+     "half": {
+      "x": -1.27,
+      "y": -10.66
+     },
+     "hole": {
+      "x": -1.27,
+      "y": -9.26
+     },
+     "pad": {
+      "x": -1.27,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "2",
+     "signal": "GP0",
+     "side": "bottom",
+     "half": {
+      "x": 1.27,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 1.27,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 1.27,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "3",
+     "signal": "GP1",
+     "side": "bottom",
+     "half": {
+      "x": 3.81,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 3.81,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 3.81,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "6",
+     "signal": "GP2",
+     "side": "bottom",
+     "half": {
+      "x": 6.35,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 6.35,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 6.35,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "7",
+     "signal": "GP3",
+     "side": "bottom",
+     "half": {
+      "x": 8.89,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 8.89,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 8.89,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "8",
+     "signal": "GP4",
+     "side": "bottom",
+     "half": {
+      "x": 11.43,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 11.43,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 11.43,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "9",
+     "signal": "GP5",
+     "side": "bottom",
+     "half": {
+      "x": 13.97,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 13.97,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 13.97,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "10",
+     "signal": "GP6",
+     "side": "bottom",
+     "half": {
+      "x": 16.51,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 16.51,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 16.51,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "11",
+     "signal": "GP7",
+     "side": "bottom",
+     "half": {
+      "x": 19.05,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 19.05,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 19.05,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "12",
+     "signal": "GP8",
+     "side": "bottom",
+     "half": {
+      "x": 21.59,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 21.59,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 21.59,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "40",
+     "signal": "GND",
+     "side": "bottom",
+     "half": {
+      "x": 24.13,
+      "y": -10.66
+     },
+     "hole": {
+      "x": 24.13,
+      "y": -9.26
+     },
+     "pad": {
+      "x": 24.13,
+      "y": -9.96,
+      "w": 1.7,
+      "h": 3
+     }
+    },
+    {
+     "pin": "4",
+     "signal": "GND",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": -9.31
+     },
+     "hole": {
+      "x": 28.575,
+      "y": -9.31
+     },
+     "pad": {
+      "x": 29.275,
+      "y": -9.31,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "27",
+     "signal": "3V3",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": -6.77
+     },
+     "hole": {
+      "x": 28.575,
+      "y": -6.77
+     },
+     "pad": {
+      "x": 29.275,
+      "y": -6.77,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "16",
+     "signal": "GP14",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": -4.23
+     },
+     "hole": {
+      "x": 28.575,
+      "y": -4.23
+     },
+     "pad": {
+      "x": 29.275,
+      "y": -4.23,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "17",
+     "signal": "GP15",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": -1.69
+     },
+     "hole": {
+      "x": 28.575,
+      "y": -1.69
+     },
+     "pad": {
+      "x": 29.275,
+      "y": -1.69,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "18",
+     "signal": "GP16",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": 0.85
+     },
+     "hole": {
+      "x": 28.575,
+      "y": 0.85
+     },
+     "pad": {
+      "x": 29.275,
+      "y": 0.85,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "14",
+     "signal": "GP12",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": 3.39
+     },
+     "hole": {
+      "x": 28.575,
+      "y": 3.39
+     },
+     "pad": {
+      "x": 29.275,
+      "y": 3.39,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "15",
+     "signal": "GP13",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": 5.93
+     },
+     "hole": {
+      "x": 28.575,
+      "y": 5.93
+     },
+     "pad": {
+      "x": 29.275,
+      "y": 5.93,
+      "w": 3,
+      "h": 1.7
+     }
+    },
+    {
+     "pin": "13",
+     "signal": "GP9",
+     "side": "right",
+     "half": {
+      "x": 29.975,
+      "y": 8.47
+     },
+     "hole": {
+      "x": 28.575,
+      "y": 8.47
+     },
+     "pad": {
+      "x": 29.275,
+      "y": 8.47,
+      "w": 3,
+      "h": 1.7
+     }
+    }
+   ]
+  }
+ }
+}

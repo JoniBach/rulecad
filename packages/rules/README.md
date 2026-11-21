@@ -13,9 +13,11 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `wire` | Hook-up wire by gauge: current density, service loop | 4 |
 | `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), hole compensation, the gap a printed screw thread leaves its mate (`thread_gap`, an estimate), the fits of pins (`snap_clearance` round a snap pin's peg, `pin_press` and `pin_slip` for a plain pin, estimates until the fixings coupon measures them), the fits of magnets in their pockets (`magnet_press`, `magnet_glue`, and `magnet_crush` for crush ribs, estimates too), and the measured pilot for an M3 screw in PLA (`pilot_m3`) | 24 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
+| `choc` | Kailh Choc v1 (PG1350) switches: the PCB footprint (pins, centre post, pegs), housing, height | 13 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `pico` | Raspberry Pi Pico: outline, headers, the GPIO on each pin | 18 |
 | `promicro` | Pro Micro controller | 9 |
+| `do35` | DO-35 axial diodes (1N4148): lead pitch, pads and drill, body size, for through-hole keyboard matrices | 7 |
 | `sod123` | SOD-123 diode footprint | 3 |
 | `xiao` | Seeed Studio XIAO modules: outline, headers, the pin on each pad | 8 |
 | `qwiic` | Qwiic / STEMMA QT sockets (JST SH, 4 pins): land pattern and pinout | 10 |

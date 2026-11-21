@@ -5,7 +5,7 @@ other long edge. It can sit along a keyboard's back edge, with the cable straigh
 board behind a row of keys, its end columns of pins coming up between switches.
 
 It is [Sea-Picro](https://github.com/joshajohnson/sea-picro) by Josh Johnson, redrawn: the same circuit, a new shape.
-Sea-Picro is a keyboard controller with an RP2040, 16 MB of flash, USB-C, and its pins brought out as castellated
+Sea-Picro is a keyboard controller with an RP2040, flash, USB-C, and its pins brought out as castellated
 holes with 0.1 in header holes beside them.
 
 ## How it's made
@@ -84,7 +84,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-59.7 × 21.0 mm. It routes in about 40 minutes, and `cad check` passes everything:
+59.7 × 21.0 mm. It routes in about 40 minutes (a route is cached once found), and `cad check` passes everything but the finish (below):
 - the circuit is Sea-Picro's, plus the added 3V3 and two GND pins
 - Sea-Picro's own routing, kept exactly as it was (but for 7 escapes cut back, and its VBUS bridge moved with the socket)
 - the placement
@@ -96,6 +96,12 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 One warning stays: the 34 half holes' copper ring is 0.2 mm, Sea-Picro's, over JLCPCB's least and under the 0.25 mm
 it recommends.
 
+0.7.2 is finished for the fab (`finish: true`), after an engineer's review of 0.7.1 flagged sharp track angles and
+tracks leaving pads at an angle: tracks crossing an SMD pad's edge at an angle went from 75 to 15 (measured from the
+KiCad files), acute corners from 13 to 4. What's left has no room to change without moving other nets' copper: 12
+exits and 1 corner in Sea-Picro's own layout round the RP2040 (reported as the source's), and 4 exits and 3 corners on
+routed tracks at vias and the USB-C pad, which the finish check fails on and names.
+
 The autorouter is sensitive here: a shift of a tenth of a millimetre can take a layout from passing to dozens of
 clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the first hole
 at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm); if you change the layout, expect to try a few nearby values.
@@ -105,6 +111,9 @@ Anything new the router has to fit changes the whole route: that's why the VBUS 
 needs KiCad installed: KiCad plots the Gerbers and drill files from the board its design-rule check has just passed,
 because this board's rounded pads beside its planes, and the USB-C socket's slotted legs, are more than the other
 Gerber writer can draw. Before ordering, **check the pinout** below against your keyboard's wiring.
+
+**Flash:** 8 MB. The board file this module is read from fits a GD25Q64 (64 Mbit, LCSC C395511); the Sea-Picro EXT
+sold ready-made has 16 MB.
 
 ## Pinout
 
@@ -175,6 +184,42 @@ npx cad export thin-picro/module     # Gerbers, drill files, BOM and placement f
 ```
 
 When ordering, choose 4 layers and castellated holes. The BOM carries Sea-Picro's LCSC part numbers.
+
+## Macropads to test it on
+
+`thin-picro/macropad` is a 3 × 4 macropad for trying the module out, a through-hole build, in two variants, each with
+an assembly (`assemblies/macropad-front.json`, `macropad-rear.json`) showing it built. Both have twelve keys on a
+footprint that takes either a Cherry MX or a Kailh Choc v1 switch (soldered: `hybridSwitch` in @rulecad/pcb, Choc's
+holes from `rules/choc.json`), in a 4-row × 3-column matrix with a 1N4148 (DO-35, `rules/do35.json`) per key, lying in
+the gap beside its switch on the front, its cathode down. M2 holes sit where four keys meet, below rows 1 and 2. The
+module's pins come from `rules/thin_picro_pins.json`, read from the module's KiCad board by `scripts/module-pins.mjs`,
+so the macropads build without routing the module. Nothing on them is for JLCPCB to place: order bare boards and
+solder the switches, diodes, sockets and module yourself. Both are finished for the fab: every track leaves its pad
+square, no tracks meet at an acute angle.
+
+- **`macropad:front`**, 67.6 × 105.7 mm: the module on top, above the keys, on one long pad per pin. Each pad takes the
+  module either way: soldered flat by its castellated edges (the pad reaches 1 mm past the module's edge for the
+  fillet), or on 0.1 in pin headers in sockets, so one module can move between boards. At the module's right end, an
+  8-pin socket in its display order (GND VCC SCL SDA RES DC CS BLK, GPIO 14 15 16 12 13 9), set so a 2.0 in ST7789
+  display (`rules/st7789_2in.json`, sellers' sizes: measure yours) plugs in and lies flat over the module, clear of
+  the keys; it reaches up past the board's top edge, so the board has a tab there for the socket. At the left end, a
+  4-pin I2C socket (GND VCC SCL SDA on GPIO 3 and 2: SSD1306 OLEDs). The assembly shows MX switches with DSA keycaps
+  and the display plugged in.
+- **`macropad:rear`**, 59.7 × 76.9 mm, no bigger than the keys and the module: the module under the top row of keys,
+  parts facing down, on pin headers. Its bottom row of pins comes up through the gap between the top two rows of keys,
+  and its end columns up the board's two sides (three key widths apart: what `span` is for). The top row's outer
+  gaps hold those pins, so one of its diodes sits in the row below. Trim the switches' legs and the diodes' leads
+  before fitting the module (MX legs reach about 1.7 mm below a 1.6 mm board, Choc's about 1.4 mm, against a standard
+  header's 2.5 mm spacer). The assembly shows Choc switches with low-profile keycaps.
+
+Matrix (both boards, `-matrix.json` in the export for firmware): rows GP26 27 28 29 (top to bottom), columns GP20 21
+22 (left to right as seen on the front board), diodes from each switch to its row (COL2ROW).
+
+```sh
+npx cad check thin-picro/macropad:front    # and :rear
+npx cad check thin-picro/macropad-front    # the assembly: switches, keycaps, module, display
+npx cad export thin-picro/macropad:front
+```
 
 ## Licence
 

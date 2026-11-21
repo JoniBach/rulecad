@@ -228,6 +228,24 @@ export function smoothCircuit(json, { movable = () => true, clearance, leads = (
   const outline = board.outline?.length ? board.outline : board.center ? [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: board.center.x + (sx * board.width) / 2, y: board.center.y + (sy * board.height) / 2 })) : null;
   const moving = json.filter((e) => e.type === 'pcb_trace' && movable(e));
   const still = new Set(moving);
+  const obstacles = copperOf(json, net, still, holeGap);
+  const tracks = moving.map((e) => ({ route: e.route, net: net(e), leads: leads(e) }));
+  const routes = smooth(tracks, obstacles, { clearance: gap, outline, edge: board.min_board_edge_clearance ?? 0.2 });
+  const by = new Map(moving.map((e, k) => [e, routes[k]]));
+  const changes = new Map(), out = json.map((e) => {
+    const r = by.get(e);
+    if (!r || (r.length === e.route.length && r.every((p, i) => p === e.route[i]))) return e;
+    changes.set(e.pcb_trace_id, r);
+    return { ...e, route: r };
+  });
+  const trimmed = new Map(moving.map((e, k) => [e.pcb_trace_id, tracks[k].trimmed]).filter(([, t]) => t && (t.start || t.end)));
+  return { json: out, routes: changes, trimmed, changed: changes.size, dropped: [...by].reduce((n, [e, r]) => n + e.route.length - r.length, 0) };
+}
+
+// Everything on a board a track keeps clear of, as smooth()'s obstacles: pads, plated holes and their copper, vias and
+// their holes, unplated holes (and a screw head's room round one), and every track not in skip (each segment a capsule).
+// net: netsOf(json); holeGap: the clearance a hole's edge keeps
+export function copperOf(json, net, skip = new Set(), holeGap = 0.2) {
   const obstacles = [];
   for (const e of json) {
     if (e.type === 'pcb_smtpad') obstacles.push({ layer: e.layer, net: net(e), shape: padShape(e) });
@@ -245,26 +263,16 @@ export function smoothCircuit(json, { movable = () => true, clearance, leads = (
       const r = (e.hole_diameter ?? Math.max(e.hole_width ?? 0, e.hole_height ?? 0)) / 2;
       obstacles.push({ layer: '*', net: null, clear: holeGap, shape: { circle: { x: e.x, y: e.y, r } } });
       if (e.rulecad_keepout) obstacles.push({ layer: '*', net: null, clear: 0, shape: { circle: { x: e.x, y: e.y, r: e.rulecad_keepout } } });
-    } else if (e.type === 'pcb_trace' && !still.has(e)) {
-      for (const s of segmentsOf(e.route)) obstacles.push({ layer: s.layer, net: net(e), shape: { capsule: { a: s.a, b: s.b, r: s.w / 2 } } });
+    } else if (e.type === 'pcb_trace' && !skip.has(e)) {
+      for (const s of segmentsOf(e.route)) obstacles.push({ layer: s.layer, net: net(e), trace: e, shape: { capsule: { a: s.a, b: s.b, r: s.w / 2 } } });
     }
   }
-  const tracks = moving.map((e) => ({ route: e.route, net: net(e), leads: leads(e) }));
-  const routes = smooth(tracks, obstacles, { clearance: gap, outline, edge: board.min_board_edge_clearance ?? 0.2 });
-  const by = new Map(moving.map((e, k) => [e, routes[k]]));
-  const changes = new Map(), out = json.map((e) => {
-    const r = by.get(e);
-    if (!r || (r.length === e.route.length && r.every((p, i) => p === e.route[i]))) return e;
-    changes.set(e.pcb_trace_id, r);
-    return { ...e, route: r };
-  });
-  const trimmed = new Map(moving.map((e, k) => [e.pcb_trace_id, tracks[k].trimmed]).filter(([, t]) => t && (t.start || t.end)));
-  return { json: out, routes: changes, trimmed, changed: changes.size, dropped: [...by].reduce((n, [e, r]) => n + e.route.length - r.length, 0) };
+  return obstacles;
 }
 
 // Each pad's, track's and via's net: the ports its source traces join (and their source nets), followed through
 // pcb_port, so copper of one net is one id. null for copper on no net
-function netsOf(json) {
+export function netsOf(json) {
   const up = new Map(), find = (a) => { while (up.get(a) !== a) { up.set(a, up.get(up.get(a))); a = up.get(a); } return a; };
   const join = (a, b) => { for (const x of [a, b]) if (!up.has(x)) up.set(x, x); up.set(find(a), find(b)); };
   for (const e of json) if (e.type === 'source_trace') {
@@ -278,7 +286,7 @@ function netsOf(json) {
   return (e) => e.type === 'pcb_trace' ? of(e.source_trace_id) : e.type === 'pcb_via' ? of(traceSource.get(e.pcb_trace_id)) : of(portSource.get(e.pcb_port_id));
 }
 
-function padShape(e) {
+export function padShape(e) {
   if (e.shape === 'circle') return { circle: { x: e.x, y: e.y, r: e.radius } };
   if (e.shape === 'polygon') return { polygon: e.points };
   if (e.shape === 'pill' || e.shape === 'rotated_pill') return pill(e.x, e.y, e.width, e.height, e.ccw_rotation ?? 0);
@@ -296,3 +304,4 @@ function pill(x, y, w, h, deg) {
   const r = Math.min(w, h) / 2, along = Math.max(w, h) / 2 - r, wide = w >= h;
   return { capsule: { a: turn(x, y, wide ? -along : 0, wide ? 0 : -along, deg), b: turn(x, y, wide ? along : 0, wide ? 0 : along, deg), r } };
 }
+export { finishCircuit, unfinished } from './finish.mjs'; // (finish.mjs: square exits, acute corners filled)

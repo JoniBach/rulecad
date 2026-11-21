@@ -126,6 +126,9 @@ export function variantSet(d, object, set = {}) {
 }
 
 const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
+// The autorouter's results too, by its exact input (@rulecad/pcb reads RULECAD_ROUTE_CACHE): a board rebuilt for anything
+// but its routing (a change to the library, its finish, its checks) reuses its route instead of searching again
+if (!process.env.CAD_NO_CACHE) process.env.RULECAD_ROUTE_CACHE ||= paths.cache('routes');
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards

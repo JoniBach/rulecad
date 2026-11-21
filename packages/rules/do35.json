@@ -1,0 +1,62 @@
+{
+  "_doc": "DO-35 axial diodes (the 1N4148, a keyboard's matrix diode, through-hole), lying flat on the board with their leads bent down at 0.3 in. kind as in x1c.json.",
+  "name": "do35",
+  "rules": {
+    "pitch": {
+      "value": 7.62,
+      "unit": "mm",
+      "rule": "Lead holes this far apart: the leads bent down at 0.3 in",
+      "kind": "community",
+      "source": "KiCad footprint library, Diode_THT.pretty/D_DO-35_SOD27_P7.62mm_Horizontal.kicad_mod (from Diodes Inc.'s DO-35 drawing, http://www.diodes.com/_files/packages/DO-35.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-11-20"
+    },
+    "drill": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "Lead hole drill (a 0.5 mm lead)",
+      "kind": "community",
+      "source": "KiCad footprint library, Diode_THT.pretty/D_DO-35_SOD27_P7.62mm_Horizontal.kicad_mod (from Diodes Inc.'s DO-35 drawing, http://www.diodes.com/_files/packages/DO-35.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-11-20"
+    },
+    "pad": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "Round copper pad round each lead",
+      "kind": "community",
+      "source": "KiCad footprint library, Diode_THT.pretty/D_DO-35_SOD27_P7.62mm_Horizontal.kicad_mod (from Diodes Inc.'s DO-35 drawing, http://www.diodes.com/_files/packages/DO-35.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-11-20"
+    },
+    "body_length": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The glass body's length",
+      "kind": "community",
+      "source": "KiCad footprint library, Diode_THT.pretty/D_DO-35_SOD27_P7.62mm_Horizontal.kicad_mod (from Diodes Inc.'s DO-35 drawing, http://www.diodes.com/_files/packages/DO-35.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-11-20"
+    },
+    "body_d": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The glass body's diameter",
+      "kind": "community",
+      "source": "KiCad footprint library, Diode_THT.pretty/D_DO-35_SOD27_P7.62mm_Horizontal.kicad_mod (from Diodes Inc.'s DO-35 drawing, http://www.diodes.com/_files/packages/DO-35.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-11-20"
+    },
+    "lead_d": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Lead wire diameter",
+      "kind": "spec",
+      "source": "Vishay 1N4148 datasheet, DO-35 package drawing (0.45 to 0.55 mm leads), https://www.vishay.com/docs/81857/1n4148.pdf",
+      "checked": "2026-11-20"
+    },
+    "lead_out": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Leads left below the board once trimmed",
+      "kind": "estimate",
+      "source": "Common practice: trim leads to about 1.5 mm after soldering",
+      "checked": "2026-11-20"
+    }
+  }
+}

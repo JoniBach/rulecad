@@ -11,6 +11,7 @@
     "title": { "type": "string" },
     "description": { "type": "string" },
     "note": { "type": "string" },
+    "show": { "enum": ["built"], "description": "built: the assembly is a picture of the thing built, so its references (bought parts, boards, a module) are drawn solid in previews and on the model page, as its printed parts are; they still aren't printed or downloaded" },
     "kind": { "enum": ["fit", "plate"] },
     "packed": { "type": "object", "description": "Written by cad plates: which assembly this plate is for, its filament, its material (each plate is one plastic: the project's, or a printed beam's own) and gap, and each part's build hash, so a changed part re-packs only its plate", "required": ["of", "filament", "gap", "parts"], "additionalProperties": false, "properties": { "of": { "type": "string" }, "filament": { "type": "string" }, "material": { "type": "string" }, "gap": { "type": "number" }, "parts": { "type": "object" } } },
     "uses": { "type": "array", "items": { "type": "string" } },

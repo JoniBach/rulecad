@@ -59,7 +59,7 @@
     "@jscad/modeling": "^2.12.0"
   },
   "dependencies": {
-    "@rulecad/rules": "^0.3.18",
+    "@rulecad/rules": "^0.3.19",
     "@rulecad/shapes": "^0.4.4"
   }
 }

@@ -1,0 +1,26 @@
+{
+  "name": "choc-switch",
+  "title": "Kailh Choc v1 switch on a board (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "uses": ["choc"],
+  "orientation": "Not printed: a model of the switch to check fits against, soldered to a board without a plate. The board's top is z = 0.",
+  "parts": {
+    "housing": { "label": "Housing" },
+    "stem": { "label": "Stem" },
+    "post": { "label": "Centre post, in its hole" }
+  },
+  "variables": {
+    "bottom": { "value": 13.8, "unit": "mm", "rule": "Bottom housing, square (it passes a 14 mm plate cut-out)", "source": "Kailh PG1350 drawing, as quoted by low-profile keyboard guides (13.8 mm bottom housing); measure a switch" },
+    "bottom_h": { "value": 2.2, "unit": "mm", "rule": "Bottom housing's height, the board to the plate's underside: estimate, measure a switch" },
+    "housing_top": { "value": "choc.height_pcb - stem_h", "unit": "mm", "rule": "Top of the housing, where the stem comes out", "interface": true },
+    "stem_h": { "value": 3, "unit": "mm", "rule": "The stem's posts above the housing: its 3 mm of travel, estimate" },
+    "stem_top": { "value": "choc.height_pcb", "unit": "mm", "rule": "Top of the stem above the board", "interface": true },
+    "post_x": { "value": 2.85, "unit": "mm", "rule": "Each stem post from the centre (5.7 mm apart, as Choc keycaps' sockets): estimate" },
+    "post_w": { "value": 1.2, "unit": "mm", "rule": "A stem post's width: estimate" },
+    "post_d": { "value": 3, "unit": "mm", "rule": "A stem post's depth: estimate" },
+    "centre_d": { "value": "choc.pcb_centre_hole - 0.2", "unit": "mm", "rule": "The centre post, a little under its hole" },
+    "post_below": { "value": 1.6, "unit": "mm", "rule": "The centre post's length into the board" },
+    "smooth": { "value": 16, "rule": "Segments round the post" }
+  }
+}
