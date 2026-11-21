@@ -196,7 +196,7 @@ export function pinModel(p, o = {}) {
   if (n.kind === 'snap') {
     const c = pr.n('snap_clearance'); rests.push(pr.rest('snap_clearance'));
     hole = { diameter: r3(d + 2 * c), nominal: d, comp: 0, clearance: r3(2 * c), rules: [pr.cite('snap_clearance')] };
-    out.push(finding('info', `${pinName(n)}'s socket drawn ${mm(hole.diameter)} mm: the ${mm(d)} mm peg plus ${pr.cite('snap_clearance')} ${mm(c)} mm each side (an estimate until the fixings coupon measures it), as drawn, so the split halves close to let the barb through`, 'pin.hole', { values: { diameter: hole.diameter, nominal: d, clearance: hole.clearance }, refs: { pin: pinName(n), rule: pr.cite('snap_clearance') } }));
+    out.push(finding('info', `${pinName(n)}'s socket drawn ${mm(hole.diameter)} mm: the ${mm(d)} mm peg plus ${pr.cite('snap_clearance')} ${mm(c)} mm each side (${pr.rest('snap_clearance').kind === 'estimate' ? 'an estimate until the holds coupon measures it' : `${pr.rest('snap_clearance').kind}`}), as drawn, so the split halves close to let the barb through`, 'pin.hole', { values: { diameter: hole.diameter, nominal: d, clearance: hole.clearance }, refs: { pin: pinName(n), rule: pr.cite('snap_clearance') } }));
   } else {
     const comp = pr.n('hole_comp'), k = fit === 'press' ? 'pin_press' : 'pin_slip', c = pr.n(k), clearance = fit === 'press' ? -c : c;
     rests.push(pr.rest('hole_comp'), pr.rest(k));

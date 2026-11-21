@@ -931,7 +931,12 @@ test('a snap pin by name: its socket from the printer\'s snap_clearance, its for
   // the socket: the 4 mm peg plus x1c.snap_clearance (0.2 mm) each side, as drawn: 4 + 2 × 0.2 = 4.4 mm
   assert.equal(x1c.rules.snap_clearance.value, 0.2); assert.equal(x1c.rules.snap_clearance.kind, 'estimate');
   assert.deepEqual([m.hole.diameter, m.hole.comp, m.hole.rules], [4.4, 0, ['x1c.snap_clearance']]);
-  assert.equal(fixingsFor({ printer: { name: 'mine', rules: { snap_clearance: { value: 0.25, unit: 'mm', kind: 'measured', source: 'my coupon' } } } }).pinModel('snap pin 4x6').hole.diameter, 4.5, 'a measured clearance moves the socket');
+  const mine = fixingsFor({ printer: { name: 'mine', rules: { snap_clearance: { value: 0.25, unit: 'mm', kind: 'measured', source: 'my coupon' } } } }).pinModel('snap pin 4x6');
+  assert.equal(mine.hole.diameter, 4.5, 'a measured clearance moves the socket');
+  // and the socket's finding says which: an estimate until the holds coupon measures it, then measured
+  const socket = (x) => x.findings.find((f) => f.code === 'pin.hole').text;
+  assert.match(socket(m), /x1c\.snap_clearance 0\.2 mm each side \(an estimate until the holds coupon measures it\)/);
+  assert.match(socket(mine), /mine\.snap_clearance 0\.25 mm each side \(measured\), as drawn/); assert.doesNotMatch(socket(mine), /estimate/);
   // Each half is a snap hook: L = slot = 3 × 4 = 12 mm, t = (4 - gap 1) / 2 = 1.5 mm, w = 0.8 × 4 = 3.2 mm, E = pla.modulus 2680 MPa.
   //   k = E w t³ / 4L³ = 2680 × 3.2 × 3.375 / (4 × 1728) = 4.1875 N/mm; P = k × barb 0.4 = 1.675 N per half
   //   insertion at a 45° lead, μ 0.3: W = P (μ + tan 45) / (1 - μ tan 45) = 1.675 × 1.3 / 0.7 = 3.1107 N per half, 6.22 N for both
