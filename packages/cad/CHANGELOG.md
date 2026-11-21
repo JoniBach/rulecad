@@ -5,6 +5,33 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Added
+
+- Commands that write a workspace's projects and assemblies, so neither file need be written by hand: `cad new
+  <project>` (its `project.json`), `cad set <project> field=value` (title, description, material, printer,
+  `filaments.<name>.slot`), `cad new <project>/<assembly> --assembly` (empty, or a generated frame with `--frame box
+  --inside 300,300,350 --profile … --join … --feet …`, and any field as `field=value`), `cad set <project>/<assembly>
+  <address>=<value>` (an entry's field by its id or its place, `x1.at`, `joins.3.kind`, or the assembly's own,
+  `frame.join.fitting`), `cad move <project>/<assembly> <id> --at | --to [--rotate]` and `cad remove
+  <project>/<assembly> <id | list.n | id.field> [--with-refs]`. `cad add` also takes `guide`, `load` and `wire`, and any
+  field as `field=value`. Each keeps the file's layout, checks the edit against the schema and what it could break (a
+  generated frame must still expand, the names an entry gives must be there) before it writes, refuses a bad one by
+  name with nothing written (`project.exists`, `assembly.exists`, `project.printer`, `edit.kind`, `frame.refused`,
+  `edit.address`, `edit.ambiguous`, `edit.generated`, `edit.referenced`, `edit.renumber`, `edit.move`), takes
+  `--dry-run`, and with `--json` says what changed and the checks. `cad remove` of a beam a join uses is refused,
+  naming the join.
+- `schemas/project.schema.json`: the project file's fields.
+
+### Changed
+
+- `cad add join`, `cad add fasten` and `cad add fit` accept a generated frame's beams (they were refused as not in the
+  assembly), and `cad add item` and `cad add load` refuse an address on an item the assembly does not have.
+- `cad add` prints the place it added at (`added a join to … (joins.3)`), and its `--json` is `{ command, file,
+  written, changes, findings, added }`; the `file` is relative to the workspace.
+- No printed size or figure moves.
+
 ## 0.7.60: pins, magnets and printed bolts in assemblies, and the holds coupon (Fixings 4)
 
 ### Added

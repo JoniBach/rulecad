@@ -40,8 +40,14 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 1. `npx cad history <project>/<object>` first: read the print log. A failed print is the reason for most changes:
    fix the rule or variable it points at (a measured fit beats a community rule).
 2. Change, then check, preview and look, as for a new part. Change values with `npx cad set <project>/<object>
-   name=value` and assemblies with `npx cad add fit|joint|item|pose|fasten …`: they keep the file's layout and refuse an edit
-   that breaks it. `npx cad values` lists an object's numbers; `npx cad why <project>/<object>.<name>` shows what a
+   name=value` and assemblies with `npx cad add fit|joint|item|beam|pose|fasten|join|guide|load …`, `npx cad set
+   <project>/<assembly> x1.at=… joins.0.kind=…`, `npx cad move` and `npx cad remove`: they keep the file's layout and
+   refuse an edit that breaks it, naming why and writing nothing. Make a project with `npx cad new <project>` and an
+   assembly with `npx cad new <project>/<assembly> --assembly` (`--frame box --inside … --profile …` for a frame), and
+   change a project's own fields with `npx cad set <project> material=PETG`. Write project and assembly files with
+   these commands, not by hand: each checks its edit first, `--dry-run` shows it, and `--json` gives what changed and
+   the checks. `cad remove` refuses to take out what other entries name and lists them; add `--with-refs` only once
+   the person agrees those go too. `npx cad values` lists an object's numbers; `npx cad why <project>/<object>.<name>` shows what a
    value depends on, down to the rules (estimates marked). `--json` on check, values and why gives data to act on:
    each finding has a code, its numbers and where it is.
 3. `npx cad release <project>/<object> -m "what changed, for the person" --dry-run` shows the bump and why. If it's
@@ -142,8 +148,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - **A frame for a size starts from a generator**: `"frame": { "kind": "box", "inside": [w, d, h], "profile",
   "join": "blind" }` (also portal, table, gantry, shelf) expands into beams, joins, feet and caps before anything is
   checked. Ask by `inside` for what it must enclose, `outside` for what it must fit in; never work the lengths out by
-  hand. Read `frame.generated` for what it made, and `npx cad frame <project>/<assembly> --expand` to write it out
-  when it needs changes a generator cannot make, then edit the beams and joins as a hand-drawn frame.
+  hand. Make it with `npx cad new <project>/<assembly> --assembly --frame box --inside 300,300,350 --profile …
+  --join blind`, which says what it expands into before it writes. Read `frame.generated` for what it made, and
+  `npx cad frame <project>/<assembly> --expand` to write it out when it needs changes a generator cannot make, then
+  change the beams and joins with `cad set`, `cad move`, `cad add` and `cad remove` as a hand-drawn frame's.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),
@@ -161,7 +169,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   wire along a beam is a run in its `via`, `{ "along": "rail.front", "from": 300, "to": 60 }`: report its length and
   its clips from `wire.length` and `wire.run`.
 - **Linear motion on a beam is a guide**: `"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H",
-  "on": "x1.top", "from": 50, "length": 300 }]`. Never draw a rail or carriage yourself, nor type its screws: the
+  "on": "x1.top", "from": 50, "length": 300 }]`, written by `npx cad add guide <project>/<assembly> --kind rail
+  rail=rail-mgn12 carriage=MGN12H on=x1.top from=50 length=300`. Never draw a rail or carriage yourself, nor type its screws: the
   guide places the rail, its screws into the slot at its pitch and each carriage on a sliding joint with its true
   travel. Fix a table on a carriage with a fixed joint at `g1-carriage-1.top`. Run `cad check --sweep`, and report
   `guide.fit`, the travel and each carriage's `joint.moment` margin; a fail there means a longer carriage
