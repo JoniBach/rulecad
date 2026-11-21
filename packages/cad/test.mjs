@@ -5314,3 +5314,77 @@ test('cad measured from the beam coupon: its sag becomes the modulus a printed b
     assert.match(cad('history', 'benchmarks/beam-test'), /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
   } finally { done(); }
 });
+
+test('pins in an assembly: a lid on two snap pins is listed, its sockets checked, and a pin too long for its part refused by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // A plate 30 × 20 mm, its thickness and its two holes set: the holes drawn with v.fixings.pinHole for the pin named,
+    // or a plain cylinder of a given size (bore) to try a wrong one
+    object(ws, 'pins/plate', { uses: ['x1c'], variables: {
+      thick: { value: 3, unit: 'mm', rule: 'The plate', tweak: { min: 1, max: 20 } },
+      bore: { value: 0, unit: 'mm', rule: 'A hole typed by hand (0: the pin\'s own)', tweak: { min: 0, max: 8 } },
+      pin: { value: 'snap pin 4x6', choice: ['snap pin 4x6', 'dowel 3x6'], rule: 'The pin its holes are drawn for' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [30, 20, v.thick], center: [0, 0, v.thick / 2] })
+  const cut = (x) => (v.bore ? cylinder({ radius: v.bore / 2, height: v.thick * 3, center: [x, 0, v.thick / 2], segments: 48 }) : v.fixings.pinHole(v.pin, { at: [x, 0, v.thick], depth: v.thick, through: true }))
+  return v.ops.subtract(plate, cut(-10), cut(10))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/pins/project.json'), JSON.stringify({ name: 'pins', material: 'PLA', objects: ['plate'] }));
+    const file = path.join(ws, 'projects/pins/assemblies/lid.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (fastener, lid = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
+      items: [{ id: 'base', object: 'plate' }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: lid }],
+      fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pins/lid', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const pinsOf = (all) => all.filter((x) => x.code === 'fit.pin');
+    // Two snap pins 4x6 through 3 + 3 mm of plates, in sockets drawn 4 + 2 × x1c.snap_clearance 0.2 = 4.4 mm
+    write({ pin: 'snap pin 4x6', count: 2, load: 20 });
+    let found = check(), p = pinsOf(found);
+    assert.deepEqual(p.map((x) => x.level), ['pass'], JSON.stringify(p));
+    assert.match(p[0].text, /The lid, pinned to the base: 2 × snap pin 4x6 in sockets drawn 4\.4 mm \(x1c\.snap_clearance\), each the right length for lid and base/);
+    const load = found.find((x) => x.code === 'fit.pin.load'); assert.ok(load && /carries .* N in shear/.test(load.text), JSON.stringify(load));
+    // listed, by name, as a printed pin with its grams (no packs: it is printed), and named in its build step
+    const l = JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.find((x) => x.fastener === 'snap pin 4x6');
+    assert.deepEqual([l.qty, l.kind, l.made, l.packs], [2, 'pin', 'printed', undefined], JSON.stringify(l)); assert.ok(l.grams > 0.1 && l.grams < 0.3, `${l.grams} g`);
+    const order = JSON.parse(cad('order', 'pins/lid', '--json'));
+    assert.ok(order.steps.some((st) => /The lid, pinned to the base \(2 × snap pin 4x6\)/.test(st.text)), JSON.stringify(order.steps));
+    // a pin too long for its part: an 8 mm shaft through 6 mm of plates rattles 2 mm past the far face
+    write({ pin: 'snap pin 4x8', count: 2 });
+    p = pinsOf(check());
+    assert.ok(p.length === 2 && p.every((x) => x.level === 'fail'), JSON.stringify(p));
+    assert.match(p[0].text, /The lid, pinned to the base: pin 1 at .* in lid and base: snap pin 4x8's shaft is 8 mm long, and the parts it goes through are 6 mm thick: it is too long for its part/);
+    assert.equal(p[0].card, 'The lid, pinned to the base: pin too long'); assert.deepEqual(p[0].values, { length: 8, room: 6 });
+    // a socket drawn by hand too small: 4.2 mm, where the pin wants 4.4
+    write({ pin: 'snap pin 4x6', count: 2 }, { bore: 4.2 });
+    p = pinsOf(check());
+    assert.ok(p.some((x) => x.level === 'fail' && /lid's hole is drawn 4\.2 mm, and snap pin 4x6 wants 4\.4 mm \(x1c\.snap_clearance\): too small, it will not go in/.test(x.text)), JSON.stringify(p));
+    // more pins named than holes drawn
+    write({ pin: 'snap pin 4x6', count: 3 });
+    assert.match(pinsOf(check())[0].text, /3 × snap pin 4x6 wanted, and only 2 holes about its 4\.4 mm hole lead from lid into base/);
+    // a 3 mm dowel in press-fit holes drawn for it (3 + 0.1 - 0.05 = 3.05 mm), 6 mm long in 6 mm of plates
+    const write3 = (fastener) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
+      items: [{ id: 'base', object: 'plate', set: { pin: 'dowel 3x6' } }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: { pin: 'dowel 3x6' } }],
+      fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'press' });
+    p = pinsOf(check());
+    assert.deepEqual(p.map((x) => x.level), ['pass'], JSON.stringify(p)); assert.match(p[0].text, /2 × dowel 3x6 in holes drawn to press 3\.05 mm/);
+    const dowel = JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.find((x) => x.fastener === 'dowel 3x6');
+    assert.deepEqual([dowel.kind, dowel.made, dowel.qty, dowel.packs], ['pin', 'bought', 2, 1], 'a bought dowel is bought in packs');
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'slip' });
+    assert.match(pinsOf(check()).find((x) => x.level === 'fail').text, /drawn 3\.05 mm, and dowel 3x6 wants 3\.3 mm for a slip fit \(x1c\.hole_comp, x1c\.pin_slip\): too small/);
+    // a pin the schema does not know is refused by name
+    write({ pin: 'snap pin 4x6', colour: 'red' });
+    const r = spawnSync(process.execPath, [BIN, 'check', 'pins/lid', '--json'], { cwd: ws, encoding: 'utf8' });
+    assert.match(`${r.stdout}${r.stderr}`, /pins have no \\?"colour\\?": a fastener naming pins takes pin, count, fit, load, pull/);
+    const { schema, validate } = await import('./lib/schema.mjs'), asm = (fastener) => ({ title: 't', kind: 'fit', items: [], fits: [{ a: 'lid', b: 'base', fastener }] });
+    assert.deepEqual(validate(asm({ pin: 'snap pin 4x6', count: 2, fit: 'press', load: 20, pull: 5 }), schema('assembly')), [], 'the schema takes pins');
+    assert.ok(validate(asm({ pin: 'snap pin 4x6', colour: 'red' }), schema('assembly')).some((x) => /colour/.test(`${x.path} ${x.message}`)), 'and names what it does not');
+    assert.deepEqual(validate(asm('Two push pins'), schema('assembly')), [], 'words still do');
+    // the free-text form keeps working: named as written, not checked
+    write('Two push pins');
+    assert.equal(pinsOf(check()).length, 0);
+    assert.ok(JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.some((x) => x.fastener === 'Two push pins' && x.qty === 1));
+  } finally { done(); }
+});

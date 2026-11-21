@@ -1,10 +1,10 @@
 // What a machine takes to build, in numbers: the bought items by rule set with quantities, every screw, nut, washer and
-// insert (fasten.count: from the fasten relations, a motor's mounting screws, and fits that name a fastener), each by
+// insert (fasten.count: from the fasten relations, a motor's mounting screws, and fits that name a fastener or pins), each by
 // thread, length and head with its mass and the packs it is bought in, wires by gauge, the printed parts with their
 // grams and an estimate of the minutes, and the beams' cut list (each mark, the bars to buy and the cuts on each:
 // @rulecad/frames' cutList).
 import { placeItems, jointValues } from '@rulecad/model-link';
-import { screwModel } from '@rulecad/fixings';
+import { screwModel, pinModel } from '@rulecad/fixings';
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
 import { motorScrews } from './motors.mjs';
 import { paths } from './workspace.mjs';
@@ -60,11 +60,15 @@ export function shoppingList(s) {
   }
   // what a printed fitting takes besides its screws: a hinge's pin and its nut, a catch's magnet and strike (lib/fittings.mjs)
   for (const o of s.objects) if (o.fitting?.hardware && !o.unplaced) for (const h of o.fitting.hardware) add(h.name, h.count ?? 1, `${o.id} (${h.why ?? 'its fitting'})`, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: null });
-  for (const x of s.fits) if (x.fastener && x.fasten == null) add(x.fastener, x.count != null ? x.num(x.count) : 1, x.note || `${x.a} / ${x.b}`);
+  // (pins a fit names by the schema's form: by name, with their mass and whether they are bought, cut from filament or printed)
+  for (const x of s.fits) if (x.fastener && x.fasten == null) {
+    let more = {}; if (x.pin) try { const m = pinModel(x.fastener, { material: mat.name }); more = { kind: 'pin', made: m.made, thread: null, length: m.length, grams: m.grams }; } catch {}
+    add(x.fastener, x.count != null ? x.num(x.count) : 1, x.note || `${x.a} / ${x.b}`, more);
+  }
   // Rounded up to whole packs (packs.pack), the spares said
   let pack = null; try { const r = loadRuleSet('packs').rules.pack; pack = { size: r.value, rule: 'packs.pack', kind: r.kind }; } catch {}
-  const fixings = [...fasteners.values()].map((l) => ({ ...l, ...(l.grams != null ? { grams: n(l.grams, 3), mass: n(l.grams * l.qty, 2) } : {}), ...(l.kind && pack ? { packs: Math.ceil(l.qty / pack.size), buy: Math.ceil(l.qty / pack.size) * pack.size, spare: Math.ceil(l.qty / pack.size) * pack.size - l.qty } : {}) }))
-    .sort((a, b) => (a.kind ? 0 : 1) - (b.kind ? 0 : 1) || ['screw', 'nut', 'washer', 'insert'].indexOf(a.kind) - ['screw', 'nut', 'washer', 'insert'].indexOf(b.kind) || String(a.thread).localeCompare(String(b.thread)) || (a.length ?? 0) - (b.length ?? 0) || a.fastener.localeCompare(b.fastener));
+  const fixings = [...fasteners.values()].map((l) => ({ ...l, ...(l.grams != null ? { grams: n(l.grams, 3), mass: n(l.grams * l.qty, 2) } : {}), ...(l.kind && pack && (l.kind !== 'pin' || l.made === 'bought') ? { packs: Math.ceil(l.qty / pack.size), buy: Math.ceil(l.qty / pack.size) * pack.size, spare: Math.ceil(l.qty / pack.size) * pack.size - l.qty } : {}) }))
+    .sort((a, b) => (a.kind ? 0 : 1) - (b.kind ? 0 : 1) || ['screw', 'nut', 'washer', 'insert', 'pin'].indexOf(a.kind) - ['screw', 'nut', 'washer', 'insert', 'pin'].indexOf(b.kind) || String(a.thread).localeCompare(String(b.thread)) || (a.length ?? 0) - (b.length ?? 0) || a.fastener.localeCompare(b.fastener));
   const rows = s.wires?.length ? wiresFor(s) : [], wires = new Map();
   for (const w of rows) { const key = w.gauge ?? 'gauge not given', l = wires.get(key) ?? { gauge: w.gauge, conductors: 0, length: 0, runs: [] }; l.length += w.length * w.conductors; l.conductors += w.conductors; l.runs.push(w.id); wires.set(key, l); }
   const boughtList = [...bought.values()].map((b) => ({ ...b, grams: b.grams != null ? n(b.grams) : null })).sort((a, b) => a.part.localeCompare(b.part) || a.set.localeCompare(b.set) || (b.length ?? 0) - (a.length ?? 0));

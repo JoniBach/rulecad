@@ -60,6 +60,7 @@ import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 import { frameSquareChecks, frameBuild } from './framebuild.mjs';
+let pinning = null; // lib/pins.mjs, loaded with the first assembly whose fits name pins
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -310,7 +311,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   for (const x of a.fits || []) for (const n of [x.a, x.b, x.access].flat()) {
     if (typeof n === 'string' && beamIds.has(n.split('.')[0]) && n.includes('.') && !/\.body$/.test(n)) motion.address(n, `fit ${x.note || x.label || `${x.a} / ${x.b}`}`);
   }
+  if (a.fits?.some((x) => x.fastener && typeof x.fastener === 'object')) pinning ||= await import('./pins.mjs');
   for (let x of a.fits || []) {
+    if (x.fastener && typeof x.fastener === 'object') x = pinning.pinOfFit(x); // (pins by the schema's form: the fit's pin, and the fastener's name)
     if (x.seat != null && x.min == null) x = { ...x, min: -1000 }; // a seat presses, so the pair may overlap
     if (x.holes) x = { ...x, a: x.holes, b: x.into }; // a holes fit: a board's holes (a) over what its screws go into (b)
     const star = [x.a, x.b].find((n) => n.includes('*'));
@@ -848,6 +851,7 @@ export function checkAssembly(s) {
     if (x.silent) continue; // lets a pair overlap, and has nothing to report
     if (x.engage != null) { engageFit(x); continue; }
     if (x.seat != null) { seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }); continue; }
+    if (x.pin && pinning) pinFit(x); // (and its gap, as any fit's)
     if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project) }); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
@@ -905,6 +909,8 @@ export function checkAssembly(s) {
     f(ok ? 'pass' : 'fail', `${label}: ${on > 1e-3 ? `${mm(on)} mm on` : `not on at all (${Math.max(la, lb) - Math.min(ha, hb) < 1e-3 ? 'end to end' : 'apart'})`} along their joint${ok ? '' : `, where it should go ${mm(need)} mm on: its anchor is on the wrong face, or the shaft too short`}`, ok ? null : `${a}: not on ${b}`, { code: 'fit.engage', values: { engaged: on, need }, refs: { a: x.a, b: x.b, joint: j.id } });
   }
 
+  // Pin fits: the pins a fit names, their holes found in the parts and held to the pins' models (lib/pins.mjs)
+  function pinFit(x) { try { pinning.pinFit(x, s, f); } catch (e) { f('fail', `${x.note || `${x.a} to ${x.b}`}: ${e.message}`, null, { code: 'fit.pin', refs: { a: x.a, b: x.b, pin: x.fastener } }); } }
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {
     const A = pick(x.a), B = pick(x.b), label = x.label || `${x.a} into ${x.b}`;

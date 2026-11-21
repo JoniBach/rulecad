@@ -235,7 +235,7 @@ function ring(near, z, radius, from, n = 24) {
 // Round holes found in a part as drawn, along each of its own three axes: walls that stand along the axis, joined
 // where they share a corner, kept where their corners lie on one circle and the walls face its centre.
 const found = new Map();
-function holesIn(p) {
+export function holesIn(p) {
   const key = p.hash ?? p.shape;
   if (found.has(key)) return found.get(key);
   const out = [], tris = (p.localTriangles ?? p.triangles).flatMap(fan);
@@ -308,7 +308,7 @@ function accessOf(parts, tool, P, U) {
 
 // ---------- the project's fixings ----------
 const bound = new Map();
-function fixingsOf(project) {
+export function fixingsOf(project) {
   const { context, hash } = fixingsContext({ project, dir: paths.project(project) });
   if (bound.get(project)?.hash !== hash) bound.set(project, { hash, F: fixingsFor({ ...(Object.keys(context.sets).length ? { sets: context.sets } : {}), ...(context.printer ? { printer: context.printer } : {}) }), material: context.material, printer: context.printer?.name ?? 'x1c' });
   return bound.get(project);
