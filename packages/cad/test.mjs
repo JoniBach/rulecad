@@ -1261,7 +1261,12 @@ test('workspace edits: cad new makes a project and an assembly, cad set, cad mov
     assert.equal(read('frame/project.json').split('\n').slice(0, 4).join('\n'), before.split('\n').slice(0, 4).join('\n'), 'the lines it did not change are as they were');
     refused(cad('set', 'frame', 'objects=[a]', '--json'), 'edit.address');
     assert.match(cad('set', 'frame', 'colour=red'), /a project has no field "colour" \(fields: title, description, material, printer, filaments\)/);
-    assert.match(cad('set', 'frame', 'material=nylon'), /! project frame: its material is "nylon", and printed fittings are sized from their plastic's strength, modulus and density/, 'a plastic no fitting could be sized from is said, not refused: only printed fittings need it');
+    // a plastic no fitting could be sized from is refused: every frame command reads it as it builds the joins
+    const petg = read('frame/project.json');
+    assert.match(refused(cad('set', 'frame', 'material=nylon', '--json'), 'project.material').message, /^project frame: its material is "nylon", and printed fittings are sized from their plastic's strength, modulus and density/);
+    assert.equal(read('frame/project.json'), petg, 'refused: nothing written');
+    refused(cad('new', 'nyl', '--material', 'nylon', '--json'), 'project.material');
+    assert.ok(!fs.existsSync(file('nyl')), 'a refused project is not made');
     // an empty assembly that checks
     const e = json('new', 'frame/empty', '--assembly', '--title', 'Nothing yet');
     assert.deepEqual([e.file, e.written, e.changes[0].after], ['projects/frame/assemblies/empty.json', true, { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: 'Nothing yet', kind: 'fit', items: [] }]);
@@ -1317,7 +1322,7 @@ test('workspace edits: cad new makes a project and an assembly, cad set, cad mov
     assert.deepEqual(json('remove', 'frame/tee', 'x2.roll').changes.map((c) => [c.op, c.path, c.before]), [['remove', 'items.1.roll', 90]]);
     cad('add', 'guide', 'frame/tee', '--kind', 'rods', 'on=x2.top', 'from=100', 'length=150');
     cad('add', 'guide', 'frame/tee', '--kind', 'screw', 'guide=g1', 'screw=t8-screw', 'motor.model=nema17');
-    assert.match(cad('remove', 'frame/tee', 'guides.0', '--with-refs'), /guides\.0 has no id of its own, so it is g1 by its place, and the guides after it would each be renamed \(g2 would become g1\)/);
+    assert.match(cad('remove', 'frame/tee', 'guides.0', '--with-refs'), /guides\.0 goes before guides\.1, which has no id of its own and so is named by place: g2 would become g1/);
     cad('set', 'frame/tee', 'guides.0.id=rods', 'guides.1.id=drive', 'guides.1.guide=rods');
     assert.match(cad('remove', 'frame/tee', 'rods'), /rods is named by guides\.1 \(screw\): remove it first/, 'the screw guide drives the rods');
     // cad move: a beam placed by its ends moves both; an item to an address; a beam is not put at an address
@@ -1328,6 +1333,65 @@ test('workspace edits: cad new makes a project and an assembly, cad set, cad mov
     assert.match(cad('move', 'frame/tee', 'cap', '--to', 'q1.b'), /item at: no item "q1" in frame\/tee/);
     assert.match(cad('move', 'frame/tee', 'y1', '--to', 'x2.top@50%'), /y1 is a beam placed by its two ends: move it with --at x,y,z/);
     assert.match(cad('move', 'frame/tee', 'rods', '--at', '120'), /set guides\.0\.from: 100 → 120/, 'a guide along its face');
+  } finally { done(); }
+});
+
+test('workspace edits: an edit that leaves another entry naming what is gone is refused by name (a beam renamed or removed, a frame changed or removed, guides renumbered), as are a joint\'s and a pose\'s missing names and frame options that would be dropped', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8');
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    cad('new', 'frm');
+    // a table with a beam of its own, a join from it to a generated leg and a load on it
+    cad('new', 'frm/tbl', '--assembly', '--frame', 'table', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'beam', 'frm/tbl', '--id', 'brace-1', '--profile', '2020-misumi-hfs5', '--from', '0,20,100', '--to', '300,20,100');
+    cad('add', 'join', 'frm/tbl', '--kind', 'blind', '--a', 'brace-1.a', '--b', 'z1.front@50');
+    cad('add', 'load', 'frm/tbl', '--mass', '1', '--at', 'brace-1.top@50%');
+    const tbl = read('frm/assemblies/tbl.json');
+    // the beam renamed: the join and the load still name brace-1
+    const a = refused(cad('set', 'frm/tbl', 'brace-1.id=brace-2', '--json'), 'edit.dangling');
+    assert.equal(a.message, 'not changed: the edit leaves joins.0 (join a: no beam "brace-1" in frm/tbl), loads.0 (load at: no item "brace-1" in frm/tbl) naming what is no longer there: change or remove them first');
+    assert.deepEqual(a.refs, ['joins.0', 'loads.0']);
+    // no longer a beam: the join needs one
+    assert.deepEqual(refused(cad('remove', 'frm/tbl', 'brace-1.beam', '--json'), 'edit.dangling').refs, ['joins.0']);
+    // the frame taken out: its leg z1 goes with it
+    assert.match(refused(cad('remove', 'frm/tbl', 'frame', '--json'), 'edit.dangling').message, /joins\.0 \(join b: no beam "z1" in frm\/tbl\)/);
+    assert.equal(read('frm/assemblies/tbl.json'), tbl, 'each refused: nothing written');
+    // a box's guide on its top beam x3; a table has no x3
+    cad('new', 'frm/bx', '--assembly', '--frame', 'box', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'guide', 'frm/bx', '--kind', 'rail', 'id=rr', 'rail=rail-mgn12', 'on=x3.top', 'length=200');
+    assert.match(refused(cad('set', 'frm/bx', 'frame.kind=table', '--json'), 'edit.dangling').message, /guides\.0 \(guide on: no beam "x3" in frm\/bx\)/);
+    assert.match(cad('set', 'frm/bx', 'frame.kind=shelf'), /set frame\.kind: "box" → "shelf"/, 'a shelf keeps x3: the edit goes through');
+    // a name already missing before the edit is left to cad check, and does not stop an edit elsewhere
+    const bx = JSON.parse(read('frm/assemblies/bx.json'));
+    fs.writeFileSync(file('frm/assemblies/bx.json'), JSON.stringify({ ...bx, loads: [{ mass: 1, at: 'q9.top@50%' }] }, null, 2));
+    assert.match(cad('set', 'frm/bx', 'title=Shelf'), /set title/);
+    // guides by place: taking out r1 (it has an id) renames the rods (g2 to g1) and the screw (g3 to g2), which then
+    // names itself as the guide it drives
+    cad('new', 'frm/gd', '--assembly', '--frame', 'table', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'guide', 'frm/gd', '--kind', 'rail', 'id=r1', 'rail=rail-mgn12', 'on=x1.top', 'length=200');
+    cad('add', 'guide', 'frm/gd', '--kind', 'rods', 'on=x2.top', 'from=60', 'length=150');
+    cad('add', 'guide', 'frm/gd', '--kind', 'screw', 'guide=g2', 'screw=t8-screw', 'motor.model=28byj48');
+    const gd = read('frm/assemblies/gd.json');
+    assert.equal(refused(cad('remove', 'frm/gd', 'r1', '--json'), 'edit.renumber').message, 'r1 goes before guides.1, guides.2, which have no id of their own and so are named by place: g2 would become g1, g3 would become g2. Give them ids first (cad set frm/gd guides.1.id=g2)');
+    assert.match(cad('set', 'frm/gd', 'guides.2.guide=g3'), /guide g3: it names itself as the guide it drives/);
+    assert.equal(read('frm/assemblies/gd.json'), gd, 'refused: nothing written');
+    // a joint's parent and child, and a pose's joints, are names in the assembly too
+    cad('new', 'frm/odd', '--assembly');
+    cad('add', 'item', 'frm/odd', '--id', 'b', '--object', 'nothing');
+    assert.match(cad('add', 'joint', 'frm/odd', '--id', 'ghostj', '--type', 'revolute', '--parent', 'nope.x', '--child', 'b.a'), /joint ghostj parent: no item "nope" in frm\/odd \(items: b\)/);
+    assert.match(cad('add', 'joint', 'frm/odd', '--id', 'j2', '--type', 'revolute', '--parent', 'b.x', '--child', 'b.a', '--follow', 'nope'), /joint j2 follow: no joint "nope" in frm\/odd \(joints: none\)/);
+    assert.match(cad('add', 'pose', 'frm/odd', '--name', 'bad', 'nope=45'), /pose bad: no joint "nope" in frm\/odd \(joints: none\)/);
+    assert.equal(JSON.parse(read('frm/assemblies/odd.json')).joints, undefined, 'refused: nothing written');
+    // field=value straight after --assembly is a field, not --assembly's value
+    cad('new', 'frm/a1', '--assembly', 'title=Hello');
+    assert.equal(JSON.parse(read('frm/assemblies/a1.json')).title, 'Hello');
+    // frame options are applied or refused, never dropped
+    const box = ['--assembly', '--frame', 'box', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5'];
+    assert.match(cad('new', 'frm/f6', ...box, '--fitting', 'printed'), /--fitting says how the join is made: give the join's kind with it, as --join blind/);
+    assert.deepEqual(JSON.parse(cad('new', 'frm/f7', ...box, '--join', 'bracket', '--screw', 'M5', '--dry-run', '--json')).changes.at(-1).after.frame.join, { kind: 'bracket', screw: 'M5' });
+    assert.match(cad('new', 'frm/f8', '--assembly', '--inside', '300,300,300'), /--inside is a frame option: give --frame box\|portal\|table\|gantry\|shelf with it/);
+    assert.deepEqual(fs.readdirSync(file('frm/assemblies')).sort(), ['a1.json', 'bx.json', 'gd.json', 'odd.json', 'tbl.json']);
   } finally { done(); }
 });
 

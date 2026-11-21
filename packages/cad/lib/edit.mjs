@@ -70,6 +70,7 @@ export function addToAssembly(ref, what, entry, { dryRun = false } = {}) {
   const file = assemblyFile(ref), before = fs.readFileSync(file, 'utf8'), list = LIST_OF[what];
   let text = before, at;
   if (what === 'pose') {
+    entryProblems('pose', entry, { ref, file, known: knownOf(JSON.parse(text)) });
     if (getAt(text, ['poses']) === undefined) text = setAt(text, ['poses'], {});
     text = setAt(text, ['poses', entry.name], entry.values);
     at = `poses.${entry.name}`;
@@ -80,7 +81,7 @@ export function addToAssembly(ref, what, entry, { dryRun = false } = {}) {
     if (entry.id && ids.includes(entry.id)) throw new CadError('edit.duplicate', `${ref} already has a ${what} "${entry.id}"`, { file });
     const known = knownOf(json);
     if (entry.id && what === 'item' && known.generated.includes(entry.id)) throw new CadError('edit.duplicate', `${ref}'s generated frame already names a part "${entry.id}": give the item another id`, { file });
-    entryProblems(what, entry, { ref, file, known });
+    entryProblems(what, entry, { ref, file, known, self: idOf(list, entry, (json[list] || []).length) });
     text = appendAt(text, [list], entry);
     at = `${list}.${(json[list] || []).length}`;
   }
@@ -145,18 +146,19 @@ function numFor(a) {
  * What an assembly names, its generated frame expanded: its items (with the frame's beams, ends and panels), the beams
  * among them, the ids the generator gives, its guides' ids, and the frame's model (or why it did not expand).
  * @param {object} a the assembly as read
- * @returns {{ items: object[], beams: string[], generated: string[], guides: string[], frame: object | null, refused: Error | null }}
+ * @returns {{ items: object[], beams: string[], generated: string[], guides: string[], joints: string[], frame: object | null, refused: Error | null }}
  */
 export function knownOf(a) {
-  let items = a.items || [], frame = null, refused = null, generated = [];
+  let items = a.items || [], joints = a.joints || [], frame = null, refused = null, generated = [];
   if (a.frame && typeof a.frame === 'object' && a.frame.kind != null) {
-    try { const x = expandFrame(a, numFor(a), framesContext()); frame = x.frame; generated = x.a.items.slice(0, x.a.items.length - items.length).map((it) => it.id); items = x.a.items; } catch (e) { refused = e; }
+    try { const x = expandFrame(a, numFor(a), framesContext()); frame = x.frame; generated = x.a.items.slice(0, x.a.items.length - items.length).map((it) => it.id); items = x.a.items; joints = x.a.joints || joints; } catch (e) { refused = e; }
   }
-  return { items, beams: items.filter((x) => x?.beam).map((x) => x.id), generated, guides: (a.guides || []).map((g, i) => idOf('guides', g, i)), frame, refused };
+  return { items, beams: items.filter((x) => x?.beam).map((x) => x.id), generated, guides: (a.guides || []).map((g, i) => idOf('guides', g, i)), joints: joints.map((j) => j?.id).filter(Boolean), frame, refused };
 }
 
-// The names an entry gives must be there: a fit's parts, a fasten's, a join's beams, a guide's beam and the guide it drives
-function entryProblems(what, entry, { ref, file, known }) {
+// The names an entry gives must be there: a fit's parts, a fasten's, a join's beams, a guide's beam and the guide it
+// drives, a joint's parent and child items and the joint it follows, a pose's joints. self is the entry's own id.
+function entryProblems(what, entry, { ref, file, known, self }) {
   const items = known.items, ids = items.map((x) => x?.id), list = (xs) => xs.join(', ') || 'none';
   const guideMade = (n) => known.guides.some((g) => String(n).startsWith(`${g}-`)); // a guide's own parts: g1-carriage-1 ..
   if (what === 'fit') for (const side of ['a', 'b']) {
@@ -190,11 +192,38 @@ function entryProblems(what, entry, { ref, file, known }) {
   if (what === 'guide') {
     if (entry.on != null && !known.beams.includes(rootOf(entry.on))) throw new CadError('edit.part', `guide on: no beam "${rootOf(entry.on)}" in ${ref} (beams: ${list(known.beams)})`, { file });
     if (entry.guide != null && !known.guides.includes(String(entry.guide))) throw new CadError('edit.part', `guide: no guide "${entry.guide}" in ${ref} for it to drive (guides: ${list(known.guides)})`, { file });
+    if (entry.guide != null && self != null && String(entry.guide) === self) throw new CadError('edit.part', `guide ${self}: it names itself as the guide it drives (guides: ${list(known.guides)})`, { file });
+  }
+  // a joint ties an anchor on its child item to one on its parent (an anchor by item.anchor, or { item, at }), and may
+  // follow another joint
+  if (what === 'joint') {
+    for (const side of ['parent', 'child']) {
+      const r = entry[side], item = typeof r === 'string' ? rootOf(r) : r && typeof r === 'object' && r.item != null ? String(r.item) : null;
+      if (item != null && !ids.includes(item) && !guideMade(item)) throw new CadError('edit.part', `joint ${entry.id ?? ''} ${side}: no item "${item}" in ${ref} (items: ${list(ids)})`.replace('  ', ' '), { file });
+    }
+    if (entry.follow != null && !known.joints.includes(String(entry.follow))) throw new CadError('edit.part', `joint ${entry.id ?? ''} follow: no joint "${entry.follow}" in ${ref} (joints: ${list(known.joints)})`.replace('  ', ' '), { file });
+  }
+  // a pose gives values to joints by id (its keys with a dot in them are not joints); a guide's and an item's own
+  // joints (g1-1, door-hinge) are made as it is built, so a name under one of theirs is taken as theirs
+  if (what === 'pose') for (const k of Object.keys(entry.values || {})) {
+    if (k.includes('.') || known.joints.includes(k) || guideMade(k) || ids.some((id) => k.startsWith(`${id}-`))) continue;
+    throw new CadError('edit.part', `pose ${entry.name}: no joint "${k}" in ${ref} (joints: ${list(known.joints)})`, { file });
   }
 }
 
+// Every entry's names, checked as entryProblems checks one: [{ at, key, message }], where key is the same for the same
+// problem in the same entry before and after an edit (its place may move, and the lists in its message change)
+function namesProblems(json, known, { ref, file }) {
+  const out = [], one = (at, what, entry, self) => {
+    try { entryProblems(what, entry, { ref, file, known, self }); } catch (e) { out.push({ at, key: `${what}|${JSON.stringify(entry)}|${String(e.message).replace(/ \(.*$/s, '')}`, message: e.message }); }
+  };
+  for (const [what, list] of Object.entries(LIST_OF)) (Array.isArray(json[list]) ? json[list] : []).forEach((e, i) => { if (e && typeof e === 'object') one(`${list}.${i}`, what, e, idOf(list, e, i)); });
+  for (const [name, values] of Object.entries(json.poses && typeof json.poses === 'object' ? json.poses : {})) if (values && typeof values === 'object') one(`poses.${name}`, 'pose', { name, values });
+  return out;
+}
+
 // A changed assembly, checked: its schema, its generated frame still expanding, and the names in each entry it touched
-function assemblyFindings(json, { ref, file, touched = [] }) {
+function assemblyFindings(json, { ref, file, touched = [], before = '' }) {
   const problems = validate(json, schema('assembly'));
   if (problems.length) throw new CadError('schema', `not changed: ${path.basename(file)}: ${problems[0].path}: ${problems[0].message}`, { file, path: problems[0].path });
   const out = [{ level: 'pass', text: 'matches the assembly schema', code: 'schema' }], known = knownOf(json);
@@ -207,7 +236,15 @@ function assemblyFindings(json, { ref, file, touched = [] }) {
     out.push({ level: 'pass', text: `the frame expands: ${what}; ${size}`, code: 'frame.generated', values: { inside: known.frame.inside, outside: known.frame.outside, beams: known.frame.beams.length, joins: known.frame.joins.length } });
   }
   const kinds = Object.fromEntries(Object.entries(LIST_OF).map(([k, v]) => [v, k]));
-  for (const [list, i] of touched) if (kinds[list] && json[list]?.[i]) entryProblems(kinds[list], json[list][i], { ref, file, known });
+  for (const [list, i] of touched) if (kinds[list] && json[list]?.[i]) entryProblems(kinds[list], json[list][i], { ref, file, known, self: idOf(list, json[list][i], i) });
+  // and every other entry: a name it gave that was there before the edit must still be there (a beam renamed or
+  // removed, a frame changed or taken out, a guide renumbered). What was already missing is left to cad check
+  if (!known.refused) {
+    let was = [];
+    if (before) { try { const b = JSON.parse(before), bk = knownOf(b); if (!bk.refused) was = namesProblems(b, bk, { ref, file }); } catch {} }
+    const old = new Set(was.map((p) => p.key)), fresh = namesProblems(json, known, { ref, file }).filter((p) => !old.has(p.key));
+    if (fresh.length) throw Object.assign(new CadError('edit.dangling', `not changed: the edit leaves ${fresh.map((p) => `${p.at} (${p.message.replace(/ \(.*$/s, '')})`).join(', ')} naming what is no longer there: change or remove ${fresh.length === 1 ? 'it' : 'them'} first`, { file, path: fresh[0].at }), { refs: fresh.map((p) => p.at) });
+  }
   if (touched.length) out.push({ level: 'pass', text: `the names in ${touched.map(([l, i]) => `${l}.${i}`).join(', ')} are all in ${ref}`, code: 'edit.refs' });
   return out;
 }
@@ -216,7 +253,7 @@ function assemblyFindings(json, { ref, file, touched = [] }) {
 function finish({ ref, file, before, text, kind, changes, dryRun, touched, findings: extra = [] }) {
   let json;
   try { json = JSON.parse(text); } catch (e) { throw new CadError('edit.broken', `the edit would break ${file}'s JSON: ${e.message}`, { file }); }
-  const findings = kind === 'assembly' ? assemblyFindings(json, { ref, file, touched: touched ?? changes.map((c) => entryAt(c.path)).filter(Boolean) }) : [];
+  const findings = kind === 'assembly' ? assemblyFindings(json, { ref, file, before, touched: touched ?? changes.map((c) => entryAt(c.path)).filter(Boolean) }) : [];
   if (kind !== 'assembly') {
     const problems = validate(json, schema(kind));
     if (problems.length) throw new CadError('schema', `not changed: ${path.basename(file)}: ${problems[0].path}: ${problems[0].message}`, { file, path: problems[0].path });
@@ -339,8 +376,11 @@ export function removeFromAssembly(ref, address, { withRefs = false, dryRun = fa
   const changes = [{ op: 'remove', path: shownPath(p), before: was }], drop = [p];
   if (entry && p.length === 2) {
     const [list, i] = entry, id = idOf(list, json[list][i], i);
-    if (list === 'guides' && json[list][i].id == null && json[list].slice(i + 1).some((g) => g.id == null))
-      throw new CadError('edit.renumber', `${address} has no id of its own, so it is ${id} by its place, and the guides after it would each be renamed (g${i + 2} would become g${i + 1}): give them ids first (cad set ${ref} guides.${i + 1}.id=…)`, { file });
+    // a guide with no id is g1, g2 .. by its place, so taking out any guide before one renames it, whether the guide
+    // taken out has an id or not
+    const renamed = list === 'guides' ? json[list].map((g, k) => (k > i && g?.id == null ? k : -1)).filter((k) => k >= 0) : [];
+    if (renamed.length)
+      throw new CadError('edit.renumber', `${address} goes before ${renamed.map((k) => `guides.${k}`).join(', ')}, which ${renamed.length === 1 ? 'has' : 'have'} no id of ${renamed.length === 1 ? 'its' : 'their'} own and so ${renamed.length === 1 ? 'is' : 'are'} named by place: ${renamed.map((k) => `g${k + 1} would become g${k}`).join(', ')}. Give ${renamed.length === 1 ? 'it an id' : 'them ids'} first (cad set ${ref} guides.${renamed[0]}.id=g${renamed[0] + 1})`, { file });
     const refs = id ? namesOf({ ...json, [list]: json[list].map((x, k) => (k === i ? null : x)) }, id, { prefix: list === 'guides' }) : [];
     if (refs.length) {
       // each name as what holds it: a list entry, or a pose's or a support's key
@@ -395,8 +435,9 @@ const NAME = /^[a-z][a-z0-9-]*$/;
 // A new file laid out as cad's edits lay one out: two spaces, short lists of numbers on one line
 const laidOut = (json) => Object.entries(json).reduce((t, [k, v]) => setAt(t, [k], v), '{}\n');
 const projectFile = (project) => path.join(paths.project(project), 'project.json');
-// A project's own fields checked beyond the schema: its printer must be a rule set; a plastic no fitting could be sized
-// from is said, since only printed fittings need its strength
+// A project's own fields checked beyond the schema: its printer must be a rule set, and its material a plastic printed
+// fittings can be sized from (pla, petg, or a rule set with strength, modulus and density), as its schema says: every
+// frame command reads it (lib/fittings.mjs's plasticOf) as it builds the assembly's joins, guides and panels
 function projectFindings(json, project) {
   const out = [];
   if (json.printer != null) {
@@ -406,7 +447,7 @@ function projectFindings(json, project) {
   }
   if (json.material != null) {
     try { const m = plasticNamed(json.material, `project ${project}`); out.push({ level: 'pass', text: `printed fittings are sized from ${typeof m === 'string' ? m.toUpperCase() : json.material}`, code: 'project.material' }); }
-    catch (e) { out.push({ level: 'warn', text: e.message, code: 'project.material', refs: { path: 'material' } }); }
+    catch (e) { throw new CadError('project.material', e.message, { path: 'material' }); }
   }
   return out;
 }

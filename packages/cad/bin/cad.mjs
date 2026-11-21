@@ -178,17 +178,20 @@ const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
 const FLAGS = ['with-refs', 'table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'no-jigs', 'pictures', 'expand', 'size', 'write'];
+// The options whose value may be left out; a field=value after one is a field to set, not its value (cad new
+// frame/box --assembly title=Box)
+const OPTIONAL = ['sweep', 'watch', 'nut', 'assembly'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
   if (FLAGS.includes(k)) return true;
-  if (args[i + 1] && !args[i + 1].startsWith('--')) return args[i + 1];
-  if (['sweep', 'watch', 'nut', 'assembly'].includes(k)) return true;
+  if (args[i + 1] && !args[i + 1].startsWith('--') && !(OPTIONAL.includes(k) && args[i + 1].includes('='))) return args[i + 1];
+  if (OPTIONAL.includes(k)) return true;
   throw new Error(`${args[i]} needs a value after it`);
 };
 // The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
-const takesValue = (a) => a === '-m' || (a.startsWith('--') && !FLAGS.includes(a.slice(2)));
-const positional = () => args.filter((a, i) => !a.startsWith('--') && a !== '-m' && !(i > 0 && takesValue(args[i - 1])));
+const takesValue = (a, next) => a === '-m' || (a.startsWith('--') && !FLAGS.includes(a.slice(2)) && !(OPTIONAL.includes(a.slice(2)) && String(next).includes('=')));
+const positional = () => args.filter((a, i) => !a.startsWith('--') && a !== '-m' && !(i > 0 && takesValue(args[i - 1], a)));
 // --set name=value,name=value (a value may hold an = of its own)
 const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => { const i = p.indexOf('='); return i < 0 ? [p.trim(), undefined] : [p.slice(0, i).trim(), p.slice(i + 1).trim()]; }));
 const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('').replace(/[^\w.=+-]/g, '_'); // in file names: nothing that could name another folder
@@ -697,9 +700,13 @@ async function newCommand(ref) {
   if (!ref) throw new Error('usage: cad new <project>/<object>, cad new <project>, or cad new <project>/<assembly> --assembly');
   if (!ref.includes('/')) return edited(newProject(ref, { title: str('title'), description: str('description'), material: str('material'), printer: str('printer'), dryRun }), 'new');
   let frame;
+  // the frame's options go with --frame, and a join's fitting and screw with --join: none is dropped unsaid
+  const FRAME_OPTS = ['inside', 'outside', 'profile', 'join', 'fitting', 'screw', 'feet', 'caps'], loose = FRAME_OPTS.filter((k) => opt(k) !== undefined);
+  if (!opt('frame') && loose.length) throw new Error(`--${loose.join(', --')} ${loose.length === 1 ? 'is a frame option' : 'are frame options'}: give --frame box|portal|table|gantry|shelf with ${loose.length === 1 ? 'it' : 'them'}, or set the fields after with cad set ${ref} frame.<field>=…`);
+  if (opt('frame') && !str('join') && (str('fitting') || str('screw'))) throw new Error(`--${['fitting', 'screw'].filter((k) => str(k)).join(' and --')} ${str('fitting') && str('screw') ? 'say' : 'says'} how the join is made: give the join's kind with ${str('fitting') && str('screw') ? 'them' : 'it'}, as --join blind`);
   if (opt('frame')) {
     const nums = (k) => (str(k) ? str(k).split(',').map((x) => parseValue(x.trim())) : undefined);
-    const join = str('join') && str('fitting') ? { kind: str('join'), fitting: str('fitting'), ...(str('screw') ? { screw: str('screw') } : {}) } : str('join');
+    const join = str('join') && (str('fitting') || str('screw')) ? { kind: str('join'), ...(str('fitting') ? { fitting: str('fitting') } : {}), ...(str('screw') ? { screw: str('screw') } : {}) } : str('join');
     frame = Object.fromEntries(Object.entries({ kind: str('frame'), inside: nums('inside'), outside: nums('outside'), profile: str('profile'), join, feet: str('feet'), caps: str('caps') != null ? parseSetting(str('caps')) : undefined }).filter(([, v]) => v !== undefined));
     if (opt('frame') === true || !frame.profile || (!frame.inside && !frame.outside)) throw new Error('usage: cad new <project>/<assembly> --assembly --frame box|portal|table|gantry|shelf --inside 300,300,350 (or --outside) --profile <set> [--join blind] [--feet levelling]');
   }
