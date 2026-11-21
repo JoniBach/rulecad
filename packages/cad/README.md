@@ -982,7 +982,8 @@ screws, the cut list, the frame checks, the build page) sees a hand-drawn frame.
 - Refused by name, before anything is built: no size or both, a size that leaves no room for the beams, a profile
   that is not square, a join no generator arranges (mitre, splice, pivot, a printed node), a blind join on a profile
   with no bore in its ends, a blind or end-tap screw that does not pass between the slot's lips (M12 in the 10 mm
-  slots of MISUMI's and Bosch's 4040) or a blind join's head that does not fit under them (Bosch's 2020: an M6 button
+  slots of MISUMI's and Bosch's 4040), an end-tap join whose clearance hole across the post is wider than the slot's
+  opening (below), or a blind join's head that does not fit under them (Bosch's 2020: an M6 button
   head 3.3 mm high under 3 mm lips), a printed fitting or a brace on a slot the kit has no nut for that goes in
   through its opening (item's 3030, MISUMI's and Bosch's 4040), feet with cube corners on a box, a side with no bay,
   and an item of the assembly's own with a name the frame gives.
@@ -994,10 +995,13 @@ has the generators on their own: `box`, `portal`, `table`, `gantry`, `shelf` and
 
 What a generated box checks to, joined three ways in MISUMI's, Bosch's and item's 2020, 3030 and 4040 (each taken
 or refused as above): `blind` checks clean wherever it is taken. `end-tap` takes each ring's beams along y one width
-above its beams across x, so no two screws cross inside an upright; its screws' clearance holes cross the upright's
-slots, and wherever that hole is wider than the slot's opening (every one of these but MISUMI's 2020: M5's 5.5 mm in
-item's 5 mm, M6's 6.6 mm in Bosch's 6 mm, M8's 9 mm in an 8 mm slot) `beam.op` warns that the lips are cut there,
-twice for each join. `bracket` with a printed fitting checks clean or warns only `frame.rack`, the frame's sway.
+above its beams across x, so no two screws cross inside an upright. Its screw passes a clearance hole drilled across
+the upright (ISO 273's medium series for the end thread), through the slot on both sides, and where that hole is wider
+than the slot's opening it would break the lips (`beam.op` warns twice a join). So the generator takes end-tap only
+where the hole fits: MISUMI's 2020 (M5, 5.5 mm in a 6 mm opening) and OpenBuilds' 2020 (5.5 mm in 6.25 mm), both
+clean. It refuses it by name, with both figures and what to use instead, in item's 2020 (5.5 in 5), Bosch's 2020 (M6,
+6.6 in 6), item's 3030 (6.6 in 6.2), MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8), and MISUMI's and
+Bosch's 4040 (M12, 13.5 in 10); no smaller thread cuts in those end bores. `bracket` with a printed fitting checks clean or warns only `frame.rack`, the frame's sway.
 Bosch's 2020 and 4040 L sections also warn `beam.mass`: their drawn outlines leave out hollows the sheet's mass counts, and the frame
 is weighed by the sheet's figure.
 

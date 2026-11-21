@@ -1988,16 +1988,17 @@ test('a generated frame\'s joins against its profile: a blind or end-tap screw t
   // that fit (item's 2020: M5, 5 mm, over 4.3 and within the 5 mm opening, its button head 2.75 high under 3 mm)
   assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'blind', screw: 'M8 button' } }), /a blind join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore, and the bore is Ø10\.5 mm, as wide as its 8 mm thread, so no thread can be cut in it: no screw from M3 to M12/);
   assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'end-tap', screw: 'M8 cap' } }), /an end-tap join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore/);
-  assert.throws(() => box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M4 button' } }), /a blind join's M4 screw \(join\.screw\) is cut in 2020-item-5's end bore, and the bore is Ø4\.3 mm, as wide as its 4 mm thread, so no thread can be cut in it: give join\.screw M5 button, which fit, or join it with end-tap/);
+  assert.throws(() => box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M4 button' } }), /a blind join's M4 screw \(join\.screw\) is cut in 2020-item-5's end bore, and the bore is Ø4\.3 mm, as wide as its 4 mm thread, so no thread can be cut in it: give join\.screw M5 button, which fit, or join it with a bracket or gusset with no fitting/);
   assert.equal(box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M5 button' } }).joins.length, 16);
   // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips.
   // No other thread cuts in 5.5 mm and passes its 6 mm opening, so blind is out: end-tap (M6 across the post) and a
-  // printed fitting (the kit has a drop-in nut for slot-6-bosch) are the joins left. End-tap's M6 passes a 6.6 mm
-  // clearance hole (ISO 273 medium) across the post, wider than the 6 mm opening: the remedy says beam.op warns of it
-  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with end-tap \(its M6 screw's Ø6\.6 mm hole across the post is wider than the 6 mm slot opening, so beam\.op warns that it breaks the lips\), or a printed bracket or gusset \(fitting printed\)$/);
+  // printed fitting (the kit has a drop-in nut for slot-6-bosch) would be the joins left. End-tap's M6 passes a 6.6 mm
+  // clearance hole (ISO 273 medium) across the post, wider than the 6 mm opening, so it is refused too (beam.op would
+  // warn), and the remedy offers only the printed fitting
+  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with a printed bracket or gusset \(fitting printed\)$/);
   // MISUMI's 2020 end-tap: M5's 5.5 mm hole within the 6 mm opening, said plainly
   assert.throws(() => box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'blind', screw: 'M8 button' } }), /or join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
-  assert.equal(box({ ...ask, profile: '2020-bosch', join: 'end-tap' }).joins.length, 16);
+  assert.equal(box({ ...ask, profile: '2020-misumi-hfs5', join: 'end-tap' }).joins.length, 16);
   // ones that fit pass: MISUMI's 2020 (M5 in 6 mm, its button head 2.75 high), item's 4040 (M8 in 8 mm)
   for (const profile of ['2020-misumi-hfs5', '4040-item-8', '3030-misumi-hfs6']) assert.equal(box({ ...ask, profile, join: 'blind' }).joins.length, 16, profile);
   // a printed fitting's nuts go in through the slot's opening: item's 4040 has no drop-in in the kit, so roll-in, the
@@ -2017,6 +2018,29 @@ test('a generated frame\'s joins against its profile: a blind or end-tap screw t
   assert.ok(box({ ...ask, profile: '2020-misumi-hfs5', join: 'blind' }).joins.every((j) => j.face === undefined), 'a face only on a printed gusset');
 });
 
+test('a generated frame\'s end-tap join is refused by name where its clearance hole across the post is wider than the slot\'s opening, and its remedies offer only screws that check clean', () => {
+  const { box } = frames, ask = { inside: [300, 250, 350] };
+  // ISO 273's medium clearance for the end thread against the slot's opening. Clean: MISUMI's 2020 (M5, 5.5 in 6) and
+  // OpenBuilds' 2020 (M5, 5.5 in 6.25). Wider: item's 2020 (M5, 5.5 in 5), Bosch's 2020 (M6, 6.6 in 6), item's 3030
+  // (M6, 6.6 in 6.2), MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8). No smaller thread cuts in those bores
+  for (const profile of ['2020-misumi-hfs5', '2020-openbuilds']) assert.equal(box({ ...ask, profile, join: 'end-tap' }).joins.length, 16, profile);
+  const wide = [['2020-item-5', 'M5', 5.5, 'slot-5-item', 5, 'blind'], ['2020-bosch', 'M6', 6.6, 'slot-6-bosch', 6, 'a printed bracket or gusset \\(fitting printed\\)'], ['3030-item-6', 'M6', 6.6, 'slot-6-item', 6.2, 'blind'],
+    ['3030-misumi-hfs6', 'M8', 9, 'slot-8-misumi', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)'], ['3030-bosch', 'M8', 9, 'slot-8-bosch', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)'], ['4040-item-8', 'M8', 9, 'slot-8-item', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)']];
+  for (const [profile, thread, hole, slot, open, instead] of wide) {
+    const re = new RegExp(`an end-tap join's ${thread} screw \\(${profile}'s end thread\\) passes a Ø${String(hole).replace('.', '\\.')} mm clearance hole drilled across the post \\(ISO 273's medium series\\), and ${slot} opens ${String(open).replace('.', '\\.')} mm, so the hole breaks into the slot's lips.*so ${profile} takes no end-tap join\\. Join it with ${instead}$`);
+    assert.throws(() => box({ ...ask, profile, join: 'end-tap' }), re, profile);
+  }
+  // a given screw too, and a remedy names only the screws whose hole fits: M6 cap (6.6 mm) is never offered in a 6 mm
+  // or 6.25 mm opening
+  for (const profile of ['2020-misumi-hfs5', '2020-openbuilds']) {
+    assert.throws(() => box({ ...ask, profile, join: { kind: 'end-tap', screw: 'M6 cap' } }), /an end-tap join's M6 screw \(join\.screw\) passes a Ø6\.6 mm clearance hole .*: give join\.screw M5 cap, which fit, or join it with blind/, profile);
+    assert.throws(() => box({ ...ask, profile, join: { kind: 'end-tap', screw: 'M8 cap' } }), /: give join\.screw M5 cap, which fit,/, profile);
+  }
+  // and a blind refusal offers end-tap only where it would check clean: plainly on MISUMI's 2020, never on Bosch's
+  assert.throws(() => box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'blind', screw: 'M8 button' } }), /or join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', join: { kind: 'blind', screw: 'M8 button' } }), (x) => (assert.doesNotMatch(x.message, /end-tap/), true));
+});
+
 test('a generated frame on a 30 series profile: levelling feet on a stud whose bore passes the M8 head, end-tap screws apart, access holes inside the slot', async () => {
   const { box, table, levellingFootModel, levellingFoot, beamModel } = frames;
   // levelling feet: the body's M8 cap screw goes in through the printed stud's bore. Hand: an M8 cap head is 13 mm
@@ -2029,11 +2053,12 @@ test('a generated frame on a 30 series profile: levelling feet on a stud whose b
   assert.throws(() => levellingFootModel('3030-bosch', { stud: 'Tr16x4' }), /a printed Tr16x4 stud's bore \(12 mm\) is too small for M8's 13 mm head to pass: give stud "Tr20x4", or leave stud out and the foot takes it/);
   const footed = box({ inside: [400, 250, 300], profile: '3030-bosch', feet: 'levelling' });
   assert.equal(footed.ends.find((e) => e.role === 'foot').screw, 'M8 cap');
-  // end-tap: each screw runs right across the upright it meets, so a ring's beams along y stand one width (30 mm) above
-  // its beams across x, and no two screws share a height on an upright. Hand: outside height 300 + 2 x 30 (the rings)
-  // + 2 x 30 (the stagger) = 420 mm; the bottom ring's x beams at 15 mm, its y beams at 45
-  for (const p of ['2020-misumi-hfs5', '3030-bosch']) {
-    const w = p.startsWith('30') ? 30 : 20, f = box({ inside: [400, 250, 300], profile: p, join: 'end-tap' });
+  // end-tap: each screw runs right across the upright it meets, so a ring's beams along y stand one width (20 mm) above
+  // its beams across x, and no two screws share a height on an upright. Hand: outside height 300 + 2 x 20 (the rings)
+  // + 2 x 20 (the stagger) = 380 mm; the bottom ring's x beams at 10 mm, its y beams at 30. (No 30 series profile of the
+  // kit's takes end-tap: M8's 9 mm hole across the post is wider than its 8 mm opening, and item's M6 6.6 in 6.2)
+  for (const p of ['2020-misumi-hfs5', '2020-openbuilds']) {
+    const w = 20, f = box({ inside: [400, 250, 300], profile: p, join: 'end-tap' });
     assert.equal(f.outside[2], 300 + 4 * w, p);
     const y1 = f.beams.find((b) => b.id === 'y1'), x1 = f.beams.find((b) => b.id === 'x1');
     assert.deepEqual([x1.from[2], y1.from[2]], [w / 2, 1.5 * w], p);
@@ -2041,7 +2066,7 @@ test('a generated frame on a 30 series profile: levelling feet on a stud whose b
       const at = f.joins.filter((j) => j.b.startsWith(`${z.id}.`)).map((j) => j.b.split('@')[1]);
       assert.equal(new Set(at).size, at.length, `${p}: ${z.id}'s end-tap screws each at a height of their own (${at})`);
     }
-    // the clear inside: from the bottom y beams' top (45 + 15 = 60 on 3030) to the top x beams' bottom
+    // the clear inside: from the bottom y beams' top (30 + 10 = 40) to the top x beams' bottom
     const x3 = f.beams.find((b) => b.id === 'x3');
     assert.equal(x3.from[2] - w / 2 - (y1.from[2] + w / 2), 300, p);
   }

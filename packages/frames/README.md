@@ -1265,8 +1265,14 @@ The corners follow the join (`FRAME_JOINS`):
   `inside + 2p`, and a butting beam is its outside span less `p` at each end, the inside. A box round 300 x 300 x 350
   in 2020 has uprights of 350 + 2 x 20 = 390 mm and butting beams of 300 mm; in 3030, 410 and 300 mm. Each join meets
   its upright's face on the beam's centre line, `p / 2` from the frame's outside.
-- An end-tap join: its screw runs right across the upright, so two at one height (one from a beam across, one from a
-  beam along) would cross inside it. Each ring's beams along y stand one width above its beams across x (a table's one
+- An end-tap join: its screw passes a clearance hole drilled right across the upright (ISO 273's medium series for the
+  end thread), which comes out through the slot on both sides. Where the hole is wider than the slot's opening it
+  breaks the lips (`beam.op` warns twice a join), so the generators refuse end-tap there by name, with both figures
+  and the joins to use instead. Of the kit's profiles, MISUMI's 2020 (M5, 5.5 mm in a 6 mm opening) and OpenBuilds'
+  2020 (5.5 mm in 6.25 mm) take it; item's 2020 (5.5 in 5), Bosch's 2020 (M6, 6.6 in 6), item's 3030 (6.6 in 6.2),
+  MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8), and MISUMI's and Bosch's 4040 (M12, 13.5 in 10) do not, and
+  no smaller thread cuts in their end bores. Its screw runs right across the upright, so two at one height (one from
+  a beam across, one from a beam along) would cross inside it. Each ring's beams along y stand one width above its beams across x (a table's one
   width below), and each ring takes `2p` of the height: a box round 400 x 250 x 300 in 2020 stands 300 + 4 x 20 = 380
   mm high.
 - A cube join: every beam butts into a corner node, so each is as long as the inside it bounds, and the node takes
@@ -1302,7 +1308,9 @@ the whole block's, up to 12 % heavy.
 
 Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
 square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, a blind or
-end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), a `join.screw`
+end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), an end-tap
+screw whose clearance hole across the post (ISO 273's medium series) is wider than the slot's opening (see below), a
+`join.screw`
 whose thread is no wider than the end bore it is cut in (M8 in MISUMI's 10.5 mm bore, M4 in item's 4.3 mm one), a
 blind join's head that does not go into the slot's cavity or under its lips (Bosch's 2020: an M6 button head 3.3 mm
 high under 3 mm lips), a printed fitting or braces on a slot the kit has no nut for that goes
@@ -1310,9 +1318,8 @@ in through its opening (item's 3030), feet on a box, shelf or gantry with cube c
 floor), braces with cube corners, and a side with no bay.
 
 Each refusal names what is left: the screws from M3 to M12 that would fit (as `join.screw`), and the other joins the
-generator takes for that profile. An end-tap join among them carries a note where its screw's clearance hole across the
-post is wider than the slot's opening (`beam.op` warns that it breaks the lips: Bosch's 2020, M6 in a 6.6 mm hole
-against a 6 mm opening). Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
+generator takes for that profile, each one that checks clean: a screw or an end-tap join is named only where its
+clearance hole across the post fits the slot's opening. Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
 the end bore (10.5 and 10 mm) and passes the 10 mm opening, so they take no blind or end-tap join, and the kit has no
 slot nut for their 10 mm slots, so no printed fitting either. What is left there: a bracket or gusset with no fitting,
 taken and checked by its estimate (`join.fitting` warns that no fitting is drawn for it), or a slot nut set of your own
