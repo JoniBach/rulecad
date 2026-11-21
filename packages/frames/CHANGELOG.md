@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: the magnet catch's pocket from @rulecad/fixings (Fixings 4)
+## 0.1.10: the magnet catch's pocket from @rulecad/fixings (Fixings 4)
 
 ### Changed
 

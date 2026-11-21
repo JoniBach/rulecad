@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## Unreleased: pins, magnets and the printer's new fits (Fixings 4)
+## 0.3.18: pins, magnets and the printer's new fits (Fixings 4)
 
 ### Added
 
