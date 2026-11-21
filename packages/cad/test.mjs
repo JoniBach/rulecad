@@ -2561,10 +2561,10 @@ test('docs: the key a joint support takes to refine link.deflection is the one t
   const advice = read('./EXAMPLES.md').split('\n').filter((l) => /link\.deflection/.test(l) && /finer cells/.test(l));
   assert.ok(advice.length >= 1, 'the upright arm chapter says how to refine link.deflection');
   for (const l of advice) { assert.match(l, new RegExp(`\`"${key}": [\\d.]+\` on the joint's \`support\``)); assert.doesNotMatch(l, /`"cell": [\d.]+` on the joint's `support`/); }
-  // the changelog's newest section (Unreleased until a version is set, then that version) says the support's "cell"
-  // stopped refining the link, and names the new key
-  const log = read('./CHANGELOG.md'), top = log.indexOf('\n## ') + 1, newest = log.slice(top, log.indexOf('\n## ', top + 1));
-  assert.match(newest, new RegExp(`"cell"\`? is its clips' alone\\*\\*[\\s\\S]*\`"${key}"\``));
+  // the changelog's section for the release that made the change (a later release's section may come above it) says
+  // the support's "cell" stopped refining the link, and names the new key, in that one section
+  const log = read('./CHANGELOG.md'), said = new RegExp(`"cell"\`? is its clips' alone\\*\\*[\\s\\S]*\`"${key}"\``);
+  assert.ok(log.split('\n## ').slice(1).some((section) => said.test(section)), 'a release\'s section says "cell" is its clips\' alone and names the new key');
 });
 
 test('a gait in an assembly: a crawl checked through its cycle, motors against its torque, and legs that collide found', async () => {
