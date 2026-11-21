@@ -5,6 +5,42 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.60: pins, magnets and printed bolts in assemblies, and the holds coupon (Fixings 4)
+
+### Added
+
+- An assembly fit's `fastener` may name pins, `{ "pin": "snap pin 4x6", "count": 2, "fit", "load", "pull" }`, or
+  magnets, `{ "magnet": "disc magnet 8x3", "count": 2, "fit", "load", "gap" }` (the schema's `$defs.pins` and
+  `$defs.magnets`). `cad check` finds their holes or pockets (`fit.pin`, `fit.magnet`), checks each against the size
+  `@rulecad/fixings` draws it from the printer's rules, refuses by name a pin too long or too short for its part, a
+  pocket too shallow or with too thin a floor, or fewer holes than the count, and holds their load. `cad list` lists
+  pins (printed, cut or bought) and magnets (bought) with their grams; `cad order` names them on their step. The
+  free-text form (`"fastener": "push pin"`) works as before.
+- A fasten's `screw` may name a printed bolt, `"M8x20 hex printed"`: it is refused below the printer's smallest
+  thread, checked against its load with `printedBoltModel` (no wrench torque is given), and listed as a printed part.
+  Into a thread printed in the part it takes half the printer's `thread_gap`; into a nut, a heat-set insert or a
+  tapped hole, a standard thread, it takes the whole gap (an M8 in PLA breaks at about 1195 N there, not 1272.7 N).
+  Into a pilot it is refused by name: a plastic thread forms no thread in plastic. Its findings say it is printed:
+  the length is the shortest that fits (not the shortest sold), the seat says what it takes with no tightening
+  torque, and the key is a socket turned by hand.
+- `cad measured` knows the holds coupon's figures with no `--rule`: `x1c.snap_clearance`, `snap_barb`, `pin_press`,
+  `pin_slip`, `magnet_press`, `magnet_glue` and `magnet_crush`, each with its prediction read through the model that
+  draws from it and refused outside what a fit of its kind can be; and a plastic's `strength_z` from the pull bolt,
+  refused above its strength along the layers. `pin_slip` and `magnet_crush` may be 0 (both are past `hole_comp`, so 0
+  is a close fit); `snap_clearance` and `snap_barb` must be above 0, and the coupon's snap sockets stay a step above 0.
+- The bench's `holds-coupon` (examples/bench/projects/benchmarks), printed with the fixings coupon on one plate
+  (`fixings-test`), and MEASURE.md rows 40 to 47.
+
+### Printed sizes that moved
+
+None. The frames door's magnet pocket is drawn 10.2 mm as before; only its line on the shopping list reads
+`disc magnet 10x3 N35`.
+
+### What a workspace should change
+
+Nothing is required. An assembly that names pins or magnets in a fit's note can name them in `fastener` instead, so
+they are found, checked and counted.
+
 ## 0.7.59: routes kept between builds, assemblies shown as built
 
 ### Added

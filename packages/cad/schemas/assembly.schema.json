@@ -89,7 +89,7 @@
         "shaft": { "anyOf": [{ "type": "boolean" }, { "enum": ["slide", "press"] }], "description": "a or b is a motor, and the other takes its shaft: reads the bore from the part as drawn" },
         "seat": { "anyOf": [{ "type": "boolean" }, { "enum": ["press", "slip"] }, { "type": "number" }], "description": "a or b is a bought bearing, and the other its printed seat: reads the pocket as drawn against the bearing's rules and the printer's fit (fit.seat)" },
         "fastens": { "type": "boolean", "description": "a and b are fastened together (pins, a press, a clip): what holds a part that has no joint. Where screws hold them, use a fasten instead: it knows the screw, checks its holes and lists it" },
-        "fastener": { "type": "string", "description": "What does the fastening, by hand (two push pins): named on the shopping list and the assembly step. A screw is a fasten's, which chooses its length and counts it" },
+        "fastener": { "description": "What does the fastening: in words (two push pins), named on the shopping list and the assembly step as written; or pins, { \"pin\": \"snap pin 4x6\", \"count\": 2 }, found in the parts' holes and checked (fit.pin): each hole against the one @rulecad/fixings draws for the pin and the printer, the pin's length against the parts, and the load; or magnets, { \"magnet\": \"disc magnet 8x3\", \"count\": 2 }, found in the parts' pockets and checked (fit.magnet): each pocket against the one @rulecad/fixings draws for the magnet and the printer, its depth and floor, and their pull against the load. A screw is a fasten's, which chooses its length and counts it", "anyOf": [{ "$ref": "#/$defs/pins" }, { "$ref": "#/$defs/magnets" }, { "type": "string" }] },
         "count": { "$ref": "#/$defs/expr", "description": "With fastener: how many" },
         "access": { "type": "string", "description": "<item>.<anchor>: where the screw's tool comes from, its z axis pointing out along the screw. Whatever stands on that line goes on after the screw; if nothing can, assembly.order says so" },
         "min": { "$ref": "#/$defs/expr" },
@@ -105,6 +105,18 @@
         "within": { "$ref": "#/$defs/expr", "description": "With an anchor name (item@anchor): only faces this close to it (mm, default 10)" }
       }
     },
+    "pins": { "type": "object", "required": ["pin"], "additionalProperties": false, "description": "Pins that hold a fit's two parts together: found in round holes of part a that go on into part b", "properties": {
+      "pin": { "type": "string", "description": "A pin by name, as @rulecad/fixings reads it: snap pin 4x6 (a printed snap pin, 4 mm peg, 6 mm shaft; barb 0.6 after it for another barb), dowel 3x12 (a steel ISO 8734 dowel; ISO 2338 after it for an unhardened one), filament pin 1.75x12, printed pin 4x10" },
+      "count": { "$ref": "#/$defs/expr", "description": "How many (default 1): that many holes must be found" },
+      "fit": { "enum": ["press", "slip"], "description": "A plain pin's fit in its holes: press (it grips) or slip (it turns). Left out, each hole may be either" },
+      "load": { "$ref": "#/$defs/expr", "description": "N across the joint, shared by the pins: each pin's shear and its hole's bearing are held to it with about twice the margin" },
+      "pull": { "$ref": "#/$defs/expr", "description": "N along the pins, shared by them: what snap pins must hold before they let go" } } },
+    "magnets": { "type": "object", "required": ["magnet"], "additionalProperties": false, "description": "Magnets that hold a fit's two parts together: found in round pockets of part a or part b", "properties": {
+      "magnet": { "type": "string", "description": "A magnet by name, as @rulecad/fixings reads it: disc magnet 8x3 (8 mm across, 3 mm thick, N35 unless a grade follows: disc magnet 8x3 N52), block magnet 10x5x2" },
+      "count": { "$ref": "#/$defs/expr", "description": "How many (default 1): that many pockets must be found" },
+      "fit": { "enum": ["press", "glue", "ribs"], "description": "How each sits in its pocket: pressed, glued, or held by crush ribs. Left out, each pocket may be any of them" },
+      "load": { "$ref": "#/$defs/expr", "description": "N pulling the parts apart, shared by the magnets: their pull is held to it with about twice the margin" },
+      "gap": { "$ref": "#/$defs/expr", "description": "mm between each magnet and what it pulls on, when the parts are together (paint, a skin, air): its pull falls across it" } } },
     "beamAddress": { "type": "string", "pattern": "^([ab](\\.\\d+)?|(top|bottom|front|back)(\\.\\d+)?(@-?\\d+(\\.\\d+)?%?)?)$", "description": "An address on a beam, without its item: an end (a, b), an end's bore (a.1), or a face's place with a distance from end a (top@120), from end b (top@-20) or a share of the length (top@50%), the second place of a face top.2@120" },
     "beamOp": { "type": "object", "required": ["op", "at"], "additionalProperties": false, "description": "An operation on a beam (@rulecad/frames OPS): each takes only its own keys, and is refused by name otherwise", "properties": {
       "op": { "enum": ["cut", "mitre", "tap", "access", "drill", "counterbore", "pocket", "notch", "deburr"], "description": "cut: square to length; mitre: an end at an angle about a named face; tap: a thread in an end bore; access: a hole across, in line with a slot, for a key; drill: through one wall or right through, plain or tapped; counterbore: a seat for a head; pocket: milled by outline; notch: a slot's lips cut away; deburr: named so the sheet asks for it" },

@@ -240,6 +240,24 @@ test('what holds a screw in plastic: inserts from one maker, pilots as starting 
   }
 });
 
+test('the printer\'s pin, snap and magnet fits send the reader to the holds coupon\'s row that measures each, as the measuring sheet has it', () => {
+  // These six were added with the holds coupon, which measures them; the fixings coupon has no pin, socket or magnet row.
+  // Each source names the measuring sheet's row, and that row names the fit and the coupon rows the source names
+  const sheet = fs.readFileSync(dir + '../../examples/bench/projects/benchmarks/MEASURE.md', 'utf8').split(/\r?\n/);
+  const x1c = rulesOf('x1c'), rowOf = (n) => sheet.find((l) => l.startsWith(`| ${n} |`));
+  const want = { snap_clearance: [41, ['S3', 'S4']], pin_press: [42, ['D3P', 'FP']], pin_slip: [43, ['D3S', 'FS']], magnet_press: [44, ['6x3', '8x3']], magnet_glue: [44, []], magnet_crush: [45, ['8x3R']] };
+  for (const [k, [n, rows]] of Object.entries(want)) {
+    const s = x1c[k].source;
+    assert.doesNotMatch(s, /fixings coupon/, `${k} is measured on the holds coupon, not the fixings coupon`);
+    assert.match(s, new RegExp(`examples/bench/projects/benchmarks/MEASURE\\.md row ${n}\\b`), k);
+    const row = rowOf(n); assert.ok(row, `MEASURE.md has row ${n}`); assert.ok(row.includes(`x1c.${k}`), `row ${n} says how to measure x1c.${k}`);
+    for (const r of rows) { assert.ok(s.includes(r), `${k}'s source names row ${r}`); assert.match(row, new RegExp(`\\b${r}\\b`), `row ${n} names ${r}`); }
+    if (rows.length) assert.match(s, /holds coupon's/, k);
+  }
+  // the glued pocket is printed on no coupon, and its source says so, as row 44 does
+  assert.match(x1c.magnet_glue.source, /No coupon prints a glued pocket/); assert.match(rowOf(44), /The glued fit is not printed here/);
+});
+
 // ---------- profiles, slots and the alloys they are made of ----------
 test('profiles and slots: one maker one set, named for size and maker, every figure saying what it rests on', () => {
   // (plain sections and custom outlines have no maker and no sheet: they have their own test below)

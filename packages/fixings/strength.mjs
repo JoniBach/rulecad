@@ -26,7 +26,7 @@ const options = (what, o, example) => { if (o == null || typeof o !== 'object' |
 
 // A material from what a function was handed: a kit set's name ('PLA'), the workspace's set of that name (sets), or a
 // rule set itself. Its class is told by its stiffness: under 20 GPa a plastic, under 100 GPa an aluminium, else a steel.
-function materialOf(what, material, sets) {
+export function materialOf(what, material, sets) {
   if (material == null) throw new Error(`${what}: give a material, what the thread is in or the head sits on: ${MATERIALS.join(', ')}, or a rule set with a strength ({ name, rules })`);
   let set = null;
   if (typeof material === 'object' && material.rules && typeof material.rules === 'object') set = material;
@@ -36,10 +36,10 @@ function materialOf(what, material, sets) {
     if (!set) throw new Error(`${what}: no material "${material}". There are: ${MATERIALS.join(', ')}. For another, hand in its rule set ({ name, rules: { strength, modulus } }), or the workspace's sets with it in`);
   } else throw new Error(`${what}: material is a material's name (${MATERIALS.join(', ')}) or its rule set ({ name, rules }), not ${shown(material)}`);
   const name = set.name ?? 'the material', num = (k) => { const f = set.rules[k]; if (f && !(isNum(f.value) && f.value > 0)) throw new Error(`${what}: ${name}.${k} is a number above 0 (got ${shown(f.value)})`); return f ? { ...f, name: `${name}.${k}` } : null; };
-  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus');
+  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus'), density = num('density'), poisson = num('poisson');
   if (!strength) throw new Error(`${what}: ${name} has no strength in its rule set: a tensile or yield strength in MPa is needed`);
   if (!modulus) throw new Error(`${what}: ${name} has no modulus in its rule set, which tells a plastic from a metal`);
-  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus };
+  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus, density, poisson };
 }
 // The class of material an engagement rule is read by: a class by name, or a material's
 function classOf(what, material, sets) {
@@ -48,14 +48,21 @@ function classOf(what, material, sets) {
   return materialOf(what, material, sets);
 }
 // The weaker of a printed material's two strengths, with what it says about itself
-function weakest(mat) {
+export function weakest(mat) {
   const f = mat.across && mat.across.value < mat.strength.value ? mat.across : mat.strength;
   const note = mat.cls !== 'plastic' ? '' : mat.across ? ` (${f.name}, the weaker way of the print)` : ` (${mat.name} has no strength across its layers, strength_z: the strength along them is used, and a screw standing across the layers may hold less)`;
   return { f, note };
 }
 
 // A screw's own strength: its tensile stress area, and its proof load from its property class
+// A printed bolt (a screw named with the word printed) is refused by name: it has no property class, so no proof load,
+// preload or torque. A printed nut is let through: the screw in it is a bought one
+function notPrinted(what, fx) {
+  if (fx.printed && fx.item !== 'nut') throw new Error(`${what}: ${fx.name} is a printed bolt, with no property class and no proof load: it is plastic, done up by hand, and breaks at its plastic's strength. Its breaking load and the margin on a pull are printedBoltModel('${fx.name}', { material, load })${what === 'seating' ? '; the pressure under its head is seating with a force (N) given' : ''}`);
+  return fx;
+}
 function proofOf(what, fx, o) {
+  notPrinted(what, fx);
   if (fx.form === 'plastic') throw new Error(`${what}: ${fx.thread} is a thread-forming screw for plastic, with no property class in its rule set (${fx.set}): its maker's sheet gives what it holds`);
   const kind = oneOf(what, 'screw', o.screw ?? 'steel', ['steel', 'stainless']), name = kind === 'steel' ? 'proof_stress' : 'stainless_proof_stress';
   if (o.proof != null) positive(what, 'proof (the screw\'s proof stress, in MPa)', o.proof);
@@ -141,6 +148,7 @@ export function preload(m, o = {}) {
 export function torqueFor(m, o = {}) {
   options('torqueFor', o, '{ force: 500 }');
   if (o.torque != null) throw new Error('torqueFor: give force (N), the clamp force wanted: for the force a torque gives, use preload');
+  notPrinted('torqueFor', fixingOf('torqueFor', m, o));
   return preload(m, o);
 }
 
@@ -163,7 +171,7 @@ export function seating(m, o = {}) {
   if (form === 'set') throw new Error(`${what}: a set screw has no head to bear on anything: it presses with its point`);
   const head = headOf(what, fx, form), mat = materialOf(what, o.material, o.sets), kind = oneOf(what, 'hole', o.hole ?? 'clearance', ['clearance', 'close', 'loose']), h = holeModel(fx, { kind, printer: o.printer });
   if (o.force != null && o.torque != null) throw new Error(`${what}: give force (N) or torque (N·m), not both`);
-  const K = o.K ?? DEFAULTS.nut_factor.value, screw = proofOf(what, fx, o), given = o.force != null || o.torque != null;
+  const K = o.K ?? DEFAULTS.nut_factor.value, given = o.force != null || o.torque != null, screw = given ? null : proofOf(what, fx, o); // (the screw's proof load sets the force only when none is given)
   if (!(isNum(K) && K > 0)) throw new Error(`${what}: K is the nut factor, a number above 0 (got ${shown(o.K)})`);
   const force = o.force != null ? positive(what, 'force (in N)', o.force) : o.torque != null ? (positive(what, 'torque (in N·m)', o.torque) * 1000) / (K * fx.major) : DEFAULTS.preload_share.value * screw.load;
   const across = head.flats ?? head.diameter, ring = (D) => (Math.PI / 4) * (D * D - h.diameter ** 2), area = ring(across), { f } = weakest(mat), limit = f.value, pressure = force / area, within = pressure <= limit + 1e-9;
@@ -241,10 +249,10 @@ export function lengthFor(stack, m, o = {}) {
   let washer = 0; if (o.washer) { if (!fx.made.washer) throw new Error(`${what}: ${fx.thread} has no washer in its rule set (${fx.set})`); washer = figure(what, fx, 'washer_thickness'); rests.push(rest(cite(fx, 'washer_thickness'), fx.figures.washer_thickness)); }
   const total = parts.reduce((s, t) => s + t, 0), grip = r3(total + washer - (o.sunk ?? 0));
   if (!(grip > 0)) throw new Error(`${what}: a seat sunk ${mm(o.sunk)} mm is deeper than the ${mm(total)} mm stack it is in: nothing is left under the head`);
-  const sold = fx.figures.lengths?.value;
+  const sold = fx.printed ? Array.from({ length: 300 }, (_, i) => i + 1) : fx.figures.lengths?.value; // (a printed screw is printed to any whole millimetre)
   if (!Array.isArray(sold) || !sold.every(isNum)) throw new Error(`${what}: ${fx.thread} lists no lengths in its rule set (${fx.set}), so none can be chosen: the length wanted is between ${mm(r3(grip + end.need))} mm${Number.isFinite(end.room) ? ` and ${mm(r3(grip + end.room - end.tip))} mm` : ' and as long as you like'}`);
-  rests.push(rest(cite(fx, 'lengths'), fx.figures.lengths));
-  const most = end.room - end.tip, verdict = (L) => (L - grip < end.need - 1e-9 ? 'short' : L - grip > most + 1e-9 ? 'long' : 'fits'), name = (L) => screwName(fx, L, form);
+  if (!fx.printed) rests.push(rest(cite(fx, 'lengths'), fx.figures.lengths));
+  const most = end.room - end.tip, verdict = (L) => (L - grip < end.need - 1e-9 ? 'short' : L - grip > most + 1e-9 ? 'long' : 'fits'), name = (L) => `${screwName(fx, L, form)}${fx.printed ? ' printed' : ''}`;
   const lengths = sold.map((L) => ({ length: L, name: name(L), engaged: r3(Math.max(L - grip, 0)), fits: verdict(L) })), pick = lengths.find((l) => l.fits === 'fits'), below = lengths.filter((l) => l.fits === 'short').at(-1), above = lengths.find((l) => l.fits === 'long');
   if (most < end.need - 1e-9) throw new Error(`${what}: ${end.says} leaves ${mm(r3(most))} mm of room for the screw (${end.why}) where ${mm(end.need)} mm of thread is asked: no length can do both. Deepen the far end to ${mm(r3(end.need + end.tip))} mm or more`);
   const short = (l) => (l.length <= grip ? `${l.name} does not reach through the ${mm(grip)} mm stack` : `${l.name} would engage ${mm(l.engaged)} mm where ${mm(end.need)} mm is asked`), long = (l) => `${l.name} would ${end.ends}: ${mm(l.engaged)} mm into ${mm(r3(most))} mm of room (${end.why})`;
@@ -326,7 +334,7 @@ export function screwGroup(places, o = {}) {
 export function screwLoad(m, o = {}) {
   const what = 'screwLoad';
   options(what, o, '{ tension: 20, depth: 5, material: \'pla\' }');
-  const fx = fixingOf(what, m, o), num = (k, v) => { if (v != null && !(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is a number of N, 0 or more (got ${shown(v)})`); return v ?? 0; };
+  const fx = notPrinted(what, fixingOf(what, m, o)), num = (k, v) => { if (v != null && !(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is a number of N, 0 or more (got ${shown(v)})`); return v ?? 0; };
   const T = Math.max(0, isNum(o.tension) ? o.tension : num('tension', o.tension)), S = num('shear', o.shear), mu = o.friction ?? DEFAULTS.clamp_friction.value;
   if (!(isNum(mu) && mu > 0)) throw new Error(`${what}: friction is a number above 0 (got ${shown(o.friction)})`);
   if (o.most != null) positive(what, 'most (the clamp force the seat takes, in N)', o.most);

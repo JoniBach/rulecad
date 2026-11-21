@@ -138,6 +138,54 @@
       "source": "A reasoned guess, the same as fit, the gap between parts that slide together; the fixings coupon prints M6 to M12 threads at three clearances to measure it (docs/fixings-and-frames.md, section 2.5)",
       "checked": "2026-11-15"
     },
+    "snap_clearance": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Gap round a printed snap pin's peg in its socket, each side, as drawn: the socket's hole is the peg's diameter plus twice this, with no hole compensation added. Tighter, and the split halves cannot close to let the barb through; looser, and the pin rocks",
+      "kind": "estimate",
+      "source": "The clearance @rulecad/flexures' snapSocket drew by default before snap pins moved to @rulecad/fixings, kept so no socket moves; the holds coupon's snap pin socket rows, S3 and S4, measure it (examples/bench/projects/benchmarks/MEASURE.md row 41)",
+      "checked": "2026-11-21"
+    },
+    "pin_press": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "How much smaller across a printed hole is drawn than a plain pin pressed into it (a steel dowel, a length of filament): the pin grips. hole_comp is added as well, as for any printed hole",
+      "kind": "estimate",
+      "source": "A reasoned guess, the same as press, the bought bearing's press fit; the holds coupon's pressed pin rows, D3P and FP, print three press fits round it to measure it (examples/bench/projects/benchmarks/MEASURE.md row 42)",
+      "checked": "2026-11-21"
+    },
+    "pin_slip": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "How much larger across a printed hole is drawn than a plain pin that turns in it (a hinge pin): it slides in by hand and turns freely. hole_comp is added as well, as for any printed hole",
+      "kind": "estimate",
+      "source": "A reasoned guess, the same as fit, the gap between parts that slide together; the holds coupon's slipping pin rows, D3S and FS, print three slip fits round it to measure it (examples/bench/projects/benchmarks/MEASURE.md row 43)",
+      "checked": "2026-11-21"
+    },
+    "magnet_press": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much smaller across a printed pocket is drawn than a disc or block magnet pressed into it, so it grips with no glue. hole_comp is added as well, as for any printed hole. A magnet is sold within ±0.1 mm (magnets.tolerance), so a press is a close call: crush ribs (magnet_crush) take up the spread",
+      "kind": "estimate",
+      "source": "A reasoned guess, twice x1c.press since a magnet is sold to ±0.1 mm where a bearing is ground to microns; the holds coupon's magnet rows, 6x3 and 8x3, print three press fits round it to measure it (examples/bench/projects/benchmarks/MEASURE.md row 44)",
+      "checked": "2026-11-21"
+    },
+    "magnet_glue": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much larger across a printed pocket is drawn than a magnet glued into it: room for a film of glue, a twentieth of a millimetre each side. hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess: the magnet catch of @rulecad/frames has drawn its pocket the magnet and x1c.fit (0.2 mm) across since 0.1, which is hole_comp and this. No coupon prints a glued pocket: examples/bench/projects/benchmarks/MEASURE.md row 44 says to keep it unless a glued magnet will not go in, and then to raise it by 0.1",
+      "checked": "2026-11-21"
+    },
+    "magnet_crush": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "With crush ribs, how much smaller across the ribs' tips stand than the magnet, past hole_comp: the ribs are a line wide and give, so a magnet anywhere in its ±0.1 mm goes in and grips",
+      "kind": "estimate",
+      "source": "A reasoned guess, twice magnets.tolerance; the holds coupon's crush rib row, 8x3R, measures it (examples/bench/projects/benchmarks/MEASURE.md row 45)",
+      "checked": "2026-11-21"
+    },
     "pilot_m3": {
       "value": 2.9,
       "unit": "mm",

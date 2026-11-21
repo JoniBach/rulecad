@@ -40,9 +40,10 @@ for (const [dir, files] of Object.entries(browser)) for (const f of files) copy(
 // A package whose modules share names with another's (fixings has a seats.mjs, as shapes has) goes in a folder of its own.
 // fixings reads its figures from the published rule sets as JSON modules (import … with { type: 'json' }): the import
 // map points @rulecad/rules/ at the copies made below, so the page runs on the same data the package ships with.
-const nested = { fixings: ['fixings.mjs', 'model.mjs', 'holes.mjs', 'seats.mjs', 'hardware.mjs', 'threads.mjs', 'strength.mjs', 'draw.mjs'],
-  // frames: every module of the package (frames.mjs first, the one the import map points at), so a module it gains loads too
-  frames: ['frames.mjs', ...fs.readdirSync(path.join(ROOT, 'packages/frames')).filter((f) => f.endsWith('.mjs') && !['frames.mjs', 'test.mjs'].includes(f)).sort()] }
+const modules = (dir) => [`${dir}.mjs`, ...fs.readdirSync(path.join(ROOT, 'packages', dir)).filter((f) => f.endsWith('.mjs') && ![`${dir}.mjs`, 'test.mjs'].includes(f)).sort()]
+// fixings and frames: every module of the package (its main one first, the one the import map points at), so a module it gains loads too
+const nested = { fixings: modules('fixings'),
+  frames: modules('frames') }
 for (const [dir, files] of Object.entries(nested)) { for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', dir, f)); browser[dir] = files }
 const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', '@rulecad/rules/': '../assets/data/rules/', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${nested[dir] ? `${dir}/` : ''}${f}`])) } }
 

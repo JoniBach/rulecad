@@ -3,6 +3,22 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.19: pins, magnets and the printer's new fits (Fixings 4)
+
+### Added
+
+- `pins`: steel dowel diameters and lengths sold to ISO 8734 (community, a seller's listing), its m6 tolerance, a
+  dowel's shear strength (estimate: S275's yield over √3, which understates a hardened pin), and 1.75 mm filament's
+  diameter (Bambu Lab's PLA Basic data sheet) and its ±0.03 mm (community).
+- `magnets`: six disc magnets (6 x 2, 6 x 3, 8 x 3, 10 x 2, 10 x 3, 12 x 3) and two blocks, each with its seller's
+  pull straight off steel and the grade it was sold in (community, supermagnete's product pages), the remanence of
+  each grade N35 to N52, the default grade N35, the size tolerance, the density, and the on-axis field formula.
+- `x1c`: `snap_clearance` (0.2 mm), `pin_press` (0.05 mm), `pin_slip` (0.2 mm), `magnet_press` (0.1 mm),
+  `magnet_glue` (0.1 mm) and `magnet_crush` (0.2 mm), all estimates until the holds coupon measures them
+  (examples/bench/projects/benchmarks/MEASURE.md, rows 40 to 47).
+
+No existing value changed.
+
 ## 0.3.18: Kailh Choc v1, DO-35 diodes
 
 ### Added

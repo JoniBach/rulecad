@@ -1,0 +1,42 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "holds-coupon",
+  "title": "Holds coupon",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn: the plate on its base with every hole opening upward, the bolts standing on their heads, the snap pins on their feet",
+  "description": "The fixings coupon's second plate: snap pin sockets for 3 and 4 mm pins at three clearances, holes for a 3 mm steel dowel and 1.75 mm filament at three press and three slip fits, 6x3 and 8x3 disc magnet pockets at three press fits and an 8x3 with crush ribs at three, and printed nuts, a hex nut's height, for M8 and M10 printed bolts at three thread gaps. Loose beside it: the six printed bolts, a pull bolt to break, and six snap pins at three barb depths. Each figure is the one to write back with cad measured (MEASURE.md, rows 40 to 47). Print it with the fixings coupon, once per printer and plastic.",
+  "variables": {
+    "base": { "value": "x1c.layer * 6", "unit": "mm", "rule": "The plate every feature stands on: six layers, the floor under every blind hole and pocket, and a first layer that is one plain rectangle but for the socket and push-out holes" },
+    "wall": { "value": "x1c.wall_min * 2", "unit": "mm", "rule": "Plastic round every hole and pocket: four print lines, as a design gives a boss" },
+    "gap": { "value": "x1c.wall_min", "unit": "mm", "rule": "Between features, between a feature and its figure, between loose pieces, and round the edge" },
+    "root": { "value": "x1c.chamfer", "unit": "mm", "rule": "The 45° flare where each boss meets the plate, so no inside corner is square" },
+    "step": { "value": "x1c.hole_comp", "unit": "mm", "rule": "Sockets, slip fits, magnet pockets and printed nuts step by the printer's hole compensation either side of what the kit draws: the amount a printed hole comes out wrong by" },
+    "press_step": { "value": "x1c.hole_comp / 2", "unit": "mm", "rule": "A pin's press fit steps by half that: a pin grips or splits its boss over a few hundredths of a millimetre" },
+    "shaft": { "value": 6, "unit": "mm", "rule": "A snap pin's shaft, and the thickness of its socket's boss from the bed, so the barb clicks out just past the plate's underside" },
+    "barb": { "value": 0.4, "unit": "mm", "rule": "The middle snap pin's barb depth, the kit's default; the others are a barb_step either side" },
+    "barb_step": { "value": 0.1, "unit": "mm", "rule": "The snap pins' barbs step by a tenth of a millimetre: about a quarter of the barb, enough to feel between a pin that clicks and one that will not go" },
+    "pin_depth": { "value": 6, "unit": "mm", "rule": "How deep a dowel or a filament pin goes into its hole: twice a 3 mm dowel's diameter, so it is held straight, and the rest of a 12 mm pin stands out to pull on" },
+    "push": { "value": 2, "unit": "mm", "rule": "The hole under each magnet pocket, to push a pressed magnet out with a 1.75 mm filament or a small screwdriver" },
+    "engaged": { "value": 2, "rule": "A printed bolt's length as a multiple of its nut's height: it goes right through the nut, with as much again to hold it by" },
+    "tiny": { "value": 1e-6, "rule": "What a height may be over a whole number of layers and still count as that number" },
+    "pull_length": { "value": 45, "unit": "mm", "rule": "The pull bolt's length under its head: the waist, then 36 mm of full thread, room for blocks up to 20 mm thick (MEASURE.md row 47: an 18 mm plywood offcut), an M8 washer (1.6 mm), a bought M8 nut (6.8 mm at most) and a pitch to start the nut on" },
+    "waist": { "value": 3.5, "unit": "mm", "rule": "The pull bolt's waist, across: 9.62 mm², which breaks at about 38 kg if the plastic holds 39 MPa across its layers (less across them in practice), within a 50 kg luggage scale's reach. Thick enough that the bolt prints standing: a sideways push of 1 N at its tip, as the nozzle passes, stresses the waist about 9.9 MPa (16 at 3 mm) and sways the tip about 0.46 mm (1 mm at 3 mm by 6), by beam bending at pla.modulus 2680 MPa: an estimate" },
+    "waist_length": { "value": 3.5, "unit": "mm", "rule": "The waist's straight length, one diameter, so it breaks in the waist and not where the cones meet the shank, and short so the bolt sways little as it prints standing" },
+    "small_pin": { "value": 3, "unit": "mm", "rule": "The smaller snap pin: the thinnest the kit draws a sampler's pins, above fixings.pin_least (2 mm) by half again" },
+    "large_pin": { "value": 4, "unit": "mm", "rule": "The larger snap pin: the size the kit's examples hold a lid with (snap pin 4x6)" },
+    "places": { "value": 3, "rule": "Figures in a row are worked to a thousandth of a millimetre, so a step's sum does not leave 0.30000000000000004" },
+    "fits": { "value": 3, "rule": "Three of every feature: the kit's figure and a step either side" },
+    "notch_turn": { "value": 60, "unit": "°", "rule": "The notches are a sixth of a turn apart, so on a hex head they fall on its flats" },
+    "half_turn": { "value": 180, "unit": "°", "rule": "Half a turn, to turn degrees into radians" },
+    "notch": { "value": 0.5, "unit": "mm", "rule": "The notches down the side of a loose bolt's head or a snap pin's foot that say which figure it is: one, two or three, for the first, second and third figure in its row" },
+    "label": { "value": 2.5, "unit": "mm", "rule": "Figure height: six print lines tall, readable close up, and small enough that a figure is no wider than its feature" },
+    "stroke": { "value": "x1c.line", "unit": "mm", "rule": "One print line, for the figures" },
+    "emboss": { "value": "x1c.layer * 2", "unit": "mm", "rule": "Two layers proud" },
+    "corner": { "value": 3, "unit": "mm", "rule": "The plate's corners, rounded so they stay down" },
+    "segments": { "value": 48, "rule": "Facets on round holes, bosses and the pull bolt's waist" }
+  }
+}

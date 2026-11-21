@@ -7,6 +7,7 @@ import { DEFAULTS, fixingOf, headOf, nutOf, lengthOf, screwName, figure, cite, r
 import { optionsOf } from './holes.mjs';
 import { lathe, turnedVolume, booleans, LIGHT } from './draw.mjs';
 import { threadModel, threadedScrew, threadedNut } from './threads.mjs';
+import { materialOf } from './strength.mjs';
 
 /**
  * @typedef {import('./model.mjs').Fixing} Fixing a fixing's model, as fixingModel gives it
@@ -41,13 +42,16 @@ const weighed = (name, mass, material, how) => finding('info', `${name}: ${mm(ma
  * A screw as numbers: its outline, the anchors an assembly places it by, and its mass.
  * It stands on the z axis with its head up: the face its head seats on is at z = 0 and its thread runs down to
  * z = -length. A countersunk screw and a set screw are measured overall, so their top is at z = 0.
+ * A printed bolt ('M8x20 hex printed') keeps the word printed in its name and is weighed in its plastic; its strength
+ * is printedBoltModel's.
  * @param {Fixing | string} m a screw's model or name ('M3x12 cap'), or a thread with { length, head }
- * @param {{ length?: number, head?: string, material?: 'steel' | 'stainless', anyLength?: boolean, sets?: object, display?: 'plain' | 'thread', printer?: object,
+ * @param {{ length?: number, head?: string, material?: string | object, anyLength?: boolean, sets?: object, display?: 'plain' | 'thread', printer?: object,
  *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', segments?: number }} [o]
- *   length, head: where the model has none, or to change them; material: for its mass (default steel); display: plain
+ *   length, head: where the model has none, or to change them; material: for its mass, steel (the default) or
+ *   stainless, or for a printed bolt its plastic (default PLA); display: plain
  *   (the light solid, the default) or thread (its thread drawn, to print it standing on its head: then printer, mate,
  *   gap, flanks, hand and segments are threadModel's)
- * @returns {{ item: 'screw', name: string, thread: string, head: string, length: number, sold: boolean | null, major: number, headDiameter: number, headHeight: number, sink: number, top: number, key: number | null,
+ * @returns {{ item: 'screw', name: string, printed?: boolean, thread: string, head: string, length: number, sold: boolean | null, major: number, headDiameter: number, headHeight: number, sink: number, top: number, key: number | null,
  *   mass: number, material: string, display: 'plain' | 'thread', threaded: object | null, anchors: { seat: Anchor, tip: Anchor, axis: Anchor, top: Anchor }, profile: number[][], rests: object[], findings: object[] }}
  *   sink: how deep a countersunk head's cone goes; top: the z of the head's top; mass: grams; threaded: threadModel's numbers where its thread is drawn;
  *   anchors: seat (under the head, or the flush face of a countersunk screw), tip, axis (the thread's, at the seat) and top (where a key goes in)
@@ -59,7 +63,7 @@ export function screwModel(m, o = {}) {
   if (!['screw', 'thread'].includes(fx.item)) throw new Error(`${what}: ${fx.name} is ${a(fx.item)}, not a screw: use ${fx.item}()`);
   const form = o.head ?? fx.head?.form ?? (fx.made.heads.includes('cap') ? 'cap' : fx.made.heads[0]), head = headOf(what, fx, form);
   if (o.length == null && fx.length == null) throw new Error(`${what}: give a length, in the name ('${fx.thread}x12 ${form}') or as { length: 12 }`);
-  const { length, sold } = o.length == null ? fx : form === 'set' ? { length: positive(what, 'length', o.length), sold: null } : lengthOf(what, fx, o.length, !!o.anyLength);
+  const { length, sold } = o.length == null ? fx : form === 'set' ? { length: positive(what, 'length', o.length), sold: null } : lengthOf(what, fx, o.length, !!o.anyLength || !!fx.printed); // (a printed screw is printed at any length)
   const r = fx.major / 2, R = head.across / 2, k = head.height, L = length;
   // The outline, turned about z: from the tip up the thread, out under the head and over it
   const sink = form === 'countersunk' ? Math.min(r3((R - r) / Math.tan((((head.angle ?? 90) / 2) * Math.PI) / 180)), L) : 0;
@@ -70,12 +74,16 @@ export function screwModel(m, o = {}) {
   const top = form === 'set' || form === 'countersunk' ? 0 : k, shank = L - sink;
   const headProfile = form === 'countersunk' ? [[0, -sink], [r, -sink], [R, 0], [0, 0]] : profile.filter(([, z]) => z >= 0).map((p, i) => (i === 0 ? [0, 0] : p));
   const headVolume = form === 'set' ? 0 : form === 'hex' ? (Math.sqrt(3) / 2) * head.flats ** 2 * k : turnedVolume(headProfile);
-  const material = o.material ?? 'steel', w = massOf(what, threadArea(what, fx) * shank + headVolume, material), name = screwName(fx, L, form);
+  // a printed bolt ('M8x20 hex printed') is named as printed and weighed in its plastic (PLA unless material names another): its strength is printedBoltModel's
+  const volume = threadArea(what, fx) * shank + headVolume, plastic = fx.printed ? materialOf(what, o.material ?? 'pla', o.sets) : null;
+  if (plastic && plastic.cls !== 'plastic') throw new Error(`${what}: ${fx.name} is printed, and ${plastic.name} is no plastic: give a plastic as its material (pla, petg), or name a bought screw ('${screwName(fx, L, form)}'). printedBoltModel('${fx.name}') gives its strength`);
+  if (plastic && !plastic.density) throw new Error(`${what}: ${plastic.name} has no density in its rule set, so ${fx.name} cannot be weighed`);
+  const material = plastic ? plastic.name : o.material ?? 'steel', w = plastic ? { mass: r3((volume * plastic.density.value) / 1000), density: rest(plastic.density.name, plastic.density) } : massOf(what, volume, material), name = `${screwName(fx, L, form)}${fx.printed ? ' printed' : ''}`;
   const threaded = drawnThread(what, fx, o, { length: shank, top: '-z' }); // (it prints standing on its head, so its tip is up)
-  return { item: 'screw', name, thread: fx.thread, head: form, length: L, sold, major: fx.major, headDiameter: head.across, headHeight: k, sink, top, key: head.key ?? null, mass: w.mass, material,
+  return { item: 'screw', name, ...(fx.printed ? { printed: true } : {}), thread: fx.thread, head: form, length: L, sold, major: fx.major, headDiameter: head.across, headHeight: k, sink, top, key: head.key ?? null, mass: w.mass, material,
     display: threaded ? 'thread' : 'plain', threaded, anchors: { seat: anchor(0), tip: anchor(-L, -1), axis: anchor(0), top: anchor(top) }, profile,
     rests: [rest(cite(fx, 'major_diameter'), fx.figures.major_diameter), rest(cite(fx, 'pitch'), fx.figures.pitch), ...head.figures.map((n) => rest(cite(fx, n), fx.figures[n])), w.density, ...(threaded ? threaded.rests : [])],
-    findings: [weighed(name, w.mass, material, 'the thread at its pitch diameter, the head with no socket'), ...(threaded ? threaded.findings : [])] };
+    findings: [weighed(name, w.mass, material, 'the thread at its pitch diameter, the head with no socket'), ...(fx.printed ? [finding('info', `${name} is printed in ${material}, not bought: printedBoltModel('${name}', { material: '${material}' }) gives its strength`, 'fixing.printed', { values: { grams: w.mass }, refs: { material } })] : []), ...(threaded ? threaded.findings : [])] };
 }
 
 /**

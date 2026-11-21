@@ -7,7 +7,7 @@
 // the slot's centre line), z out of the face (0 on the face). The latch and the catch use the same frame on their
 // beam. A handle's: y along it between its feet, x across, z out of the door's face. Units: mm, N, grams, degrees.
 import jscad from '@jscad/modeling';
-import { hole, fixingModel, nutModel, washerModel } from '@rulecad/fixings';
+import { hole, fixingModel, nutModel, washerModel, magnetSeatModel, MAGNET_SIZES } from '@rulecad/fixings';
 import { FITTING_DEFAULTS, pfig, printerOf, options, profileOf, slotSide, roundConcave, ccw, combine, sold, screwOf } from './fitting.mjs';
 import { partSetup, loadOk, weigh, closingFindings, sheetThickness, sidePart, sideToFit, bendT, PANEL_DEFAULTS } from './panel.mjs';
 
@@ -37,7 +37,7 @@ export const DOOR_DEFAULTS = {
   pull: rule(100, 'N', 'The design pull on a handle where none is given: a firm pull on a door that sticks', 'default', 'A working figure of @rulecad/frames'),
   span: rule(64, 'mm', 'A handle\'s screws are this far apart: a common pitch for furniture handles', 'community', 'Furniture handle makers\' hole pitches of 64, 96 and 128 mm; not checked against one standard'),
   finger: rule(25, 'mm', 'Room under a handle\'s grip for the fingers', 'estimate', 'A working figure of @rulecad/frames'),
-  magnet: rule([10, 3], 'mm', 'A magnet catch\'s disc magnet, diameter and thickness: a common size; give the one you have', 'estimate', 'A working figure of @rulecad/frames: its pull is not checked, as no figure from a maker is held'),
+  magnet: rule([10, 3], 'mm', 'A magnet catch\'s disc magnet, diameter and thickness: a common size; give the one you have', 'estimate', 'A working figure of @rulecad/frames; its pull and its pocket are @rulecad/fixings\' magnetSeatModel\'s, from a seller\'s figure where the size has one'),
   open: rule(120, '°', 'How far a door opens where nothing else is said', 'default', 'A working figure of @rulecad/frames: past square, short of laying it back on the frame'),
 };
 
@@ -229,6 +229,13 @@ export function magnetCatchModel(profile, o = {}) {
   const washers = ['M3', 'M4', 'M5', 'M6', 'M8', 'M10'].map((t) => { try { return washerModel(t); } catch { return null; } }).filter(Boolean), strike = washers.find((x) => x.diameter >= dm - 1e-9) ?? washers.at(-1);
   const top = r3(o.standoff - strike.thickness - 0.5), least = Math.max(up(FITTING_DEFAULTS.least.value * sc.major, k.layer), 2 * k.layer), fits = sold(least, k.layer, [sd], sd.thread), step = fits ? fits.t : least;
   const kh = fixingModel(sd.thread).figures.button_head_height?.value ?? sc.major;
+  // the magnet's seat: a glued pocket lying on its side, from the printer's rules; its pull across the half millimetre to the strike
+  const magnetName = `disc magnet ${mm(dm)}x${mm(hm)}`, seatOf = (more) => magnetSeatModel(magnetName, { fit: 'glue', into: '-y', printer: k.pr, material: k.mat, gap: 0.5, ...more });
+  let seat, pulled = true;
+  try { seat = seatOf({}); } catch (e) { if (!/no seller's pull/.test(e.message)) throw new Error(`${what}: ${e.message.replace(/^magnet\w*: /, '')}`); seat = seatOf({ pull: 1 }); pulled = false; }
+  // its pocket: the magnet and the printer's fit, the figure the catch has drawn since 0.1, for every printer (fixings'
+  // glue pocket, the magnet + hole_comp + magnet_glue, is the same 10.2 mm on the X1C, and would move on a printer whose fit differs)
+  const own = isNum(k.pr.rules?.fit?.value), pocketD = r3(dm + pfig(k.pr, 'fit')), fitRule = own ? `${k.pr.name}.fit` : 'x1c.fit';
   if (top < hm + 2 * k.layer) throw new Error(`${what}: a ${mm(o.standoff)} mm standoff leaves ${mm(top)} mm under the strike, too little for a ${mm(hm)} mm magnet and a floor`);
   if (step + kh + DOOR_DEFAULTS.clear.value > o.standoff + 1e-9) throw new Error(`${what}: the screw's head on its ${mm(step)} mm step stands ${mm(step + kh)} mm off the face, into a ${mm(o.standoff)} mm standoff`);
   const y0 = r3(up(Math.max(sc.dk / 2 + FITTING_DEFAULTS.reach.value, o.edge ?? 0), 0.5)), y1 = r3(y0 + dm + 2 * wall), endBy = r3(up(Math.max(FITTING_DEFAULTS.end.value * sc.hd, sc.dk / 2 + FITTING_DEFAULTS.reach.value), 0.5));
@@ -236,12 +243,16 @@ export function magnetCatchModel(profile, o = {}) {
   const m = { kind: 'fitting', fitting: 'magnet-catch', name: `magnet-catch-${short(p)}-${mm(dm)}x${mm(hm)}`, title: `printed magnet catch for ${short(p)}, a ${mm(dm)} x ${mm(hm)} mm magnet`, profile: p.name, face: sd.face, thread: sd.thread, head: 'button', width: w,
     standoff: o.standoff, top, step, magnet: [dm, hm], pocket: r3((y0 + y1) / 2), section: loop, strike: strike.name, tongue: { slot: sd.slot.name, ...sd.tongue, nut: sd.nut.name },
     screws: [{ thread: sd.thread, head: 'button', grip: step, at: [0, 0, step], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null }],
-    hardware: [{ kind: 'magnet', name: `${mm(dm)} x ${mm(hm)} mm disc magnet`, count: 1, why: 'pressed into the catch' }, { kind: 'washer', name: strike.name, thread: strike.thread, count: 1, why: 'stuck to the door\'s inner face over the magnet, the strike' }],
+    pocketDiameter: pocketD, pull: pulled ? seat.magnet.pull : null,
+    hardware: [{ kind: 'magnet', name: seat.magnet.name, count: 1, grams: seat.magnet.grams, why: 'glued into the catch\'s pocket' }, { kind: 'washer', name: strike.name, thread: strike.thread, count: 1, why: 'stuck to the door\'s inner face over the magnet, the strike' }],
     load: { force: 0, what: 'the magnet\'s pull, not checked' }, stress: 0, margin: Infinity, size: { top, step, magnet: [dm, hm] }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
-    rests: [{ name: 'DOOR_DEFAULTS.magnet', value: [dm, hm], kind: DOOR_DEFAULTS.magnet.kind }] };
+    rests: [{ name: 'DOOR_DEFAULTS.magnet', value: [dm, hm], kind: DOOR_DEFAULTS.magnet.kind }, { name: fitRule, value: pfig(k.pr, 'fit'), kind: own ? k.pr.rules.fit.kind : 'default' }, ...(pulled ? seat.rests : seat.rests.filter((r) => !/^magnets\./.test(r.name) || r.name === 'magnets.density')).filter((r) => !/\.(hole_comp|magnet_glue)$/.test(r.name))] }; // (the pocket is the magnet and the fit: the glue pocket's rules are not what it is drawn from)
   weigh(m, magnetCatch(m, { printer: k.pr }), k.density);
   m.findings.push(fits ? finding('pass', `${sd.thread}x${fits.lengths[0]} button into the slot through its ${mm(step)} mm step, its head ${mm(o.standoff - step - kh)} mm under the door`, 'fitting.screw', { values: { lengths: fits.lengths } }) : finding('warn', `no ${sd.thread} button screw sold fits through the step into its nut`, 'fitting.screw', {}));
-  m.findings.push(finding('info', `${m.title}: its tower ${mm(top)} mm off the face (the standoff less the ${strike.name}'s ${mm(strike.thickness)} mm and 0.5 mm), the magnet's pocket ${mm(hm)} mm deep at ${mm(m.pocket)} mm from the slot's line; the magnet's pull is not checked (an estimate: no maker's figure is held)`, 'fitting.size', { values: { ...m.size } }));
+  m.findings.push(finding('info', `${m.title}: its tower ${mm(top)} mm off the face (the standoff less the ${strike.name}'s ${mm(strike.thickness)} mm and 0.5 mm), the magnet's pocket ${mm(pocketD)} mm across (the magnet and ${fitRule} ${mm(r3(pocketD - dm))} mm) and ${mm(hm)} mm deep at ${mm(m.pocket)} mm from the slot's line, glued`, 'fitting.size', { values: { ...m.size } }));
+  const pullSays = seat.findings.find((f) => f.code === 'magnet.pull');
+  m.findings.push(pulled ? finding('info', `${pullSays.text}. Shut, the strike lies 0.5 mm over the magnet; the ${strike.name} is thin steel, so it takes less than this`, 'fitting.magnet', { values: { pull: seat.magnet.pull, gap: 0.5 } })
+    : finding('info', `${seat.magnet.name}'s pull is not checked: no seller's figure is held for that size (fixings' magnets rule set holds ${MAGNET_SIZES.disc.join(', ')} mm discs)`, 'fitting.magnet', { values: { pull: null } }));
   m.findings.push(finding('info', 'it is drawn to print on its side, its section the first layer, the magnet\'s pocket a teardrop: no supports', 'fitting.printable', { values: { pose: 'on its side' } }));
   m.findings.push(finding('info', `it weighs ${mm(m.grams)} g of ${m.material} (${mm(m.volume)} mm³)`, 'fitting.mass', { values: { grams: m.grams, volume: m.volume } }));
   return m;
@@ -249,6 +260,6 @@ export function magnetCatchModel(profile, o = {}) {
 /** A magnet catch's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', tongues?: boolean, printer?: object, ops?: object }} [o] @returns {object} */
 export function magnetCatch(m, o = {}) {
   if (m?.fitting !== 'magnet-catch') throw new Error(`magnetCatch: give a magnet catch's model (magnetCatchModel), not ${shown(m)}`);
-  const pr = printerOf('magnetCatch', o.printer), g = sidePart({ loop: m.section, width: m.width, tongue: o.tongues === false ? null : { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.step }], pockets: [{ y: m.pocket, top: m.top, d: m.magnet[0] + pfig(pr, 'fit'), depth: m.magnet[1] }], pr, ops: o.ops });
+  const pr = printerOf('magnetCatch', o.printer), g = sidePart({ loop: m.section, width: m.width, tongue: o.tongues === false ? null : { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.step }], pockets: [{ y: m.pocket, top: m.top, d: m.pocketDiameter ?? m.magnet[0] + pfig(pr, 'fit'), depth: m.magnet[1] }], pr, ops: o.ops });
   return Object.assign(o.pose === 'fit' ? transform(sideToFit(m.width), g) : g, { model: m });
 }
