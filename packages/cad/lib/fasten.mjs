@@ -668,7 +668,7 @@ export function fastenOf(s, worlds, opts = {}) {
       // The far end: the hole in the last part, from its mouth; or, into a slot, the slot nut under its lips
       const first = B.segs.find((seg) => seg.solid || seg.hole);
       let end = null;
-      const mh = !slotAt && first?.solid ? onMount(O, D) : null;
+      const mh = !slotAt && (first?.solid || (first?.hole && drive && drive === boughtMount)) ? onMount(O, D) : null; // (a bought part may draw its tapped holes: a rail's carriage)
       if (slotAt) end = slotEnd(s, slotAt, slotNutM, { B, O, D, x, fx, cl, clr, say, sc });
       else if (mh) {
         if (mh.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s mounting holes are ${mh.thread} threads, and the screw is ${fx.thread}: use ${an(mh.thread)} ${mh.thread} screw`); bad = true; }

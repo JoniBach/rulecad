@@ -12,7 +12,7 @@
 // V tracks either side over the stretch from..from + length; wheels on a face with no V track are refused with why. A
 // slider is a printed part (the fitting slider) on its sliding joint along the slot "on" names. Units: mm, N, N m, kg.
 import jscad from '@jscad/modeling';
-import { railModel, rail, carriage, carriageMargin, guideFit, railTerms, railJigModel, GUIDE_DEFAULTS, vWheel, wheelMargin, rodsLayout, rodMargin, ROD_DEFAULTS } from '@rulecad/frames';
+import { railModel, rail, carriage, carriageMargin, guideFit, railTerms, railJigModel, GUIDE_DEFAULTS, vWheel, wheelMargin, rodsLayout, rodMargin, ROD_DEFAULTS, beltLayout, beltRub, BELT_DEFAULTS } from '@rulecad/frames';
 import { beamOf, framesContext } from './beams.mjs';
 import { givenFor } from './frames.mjs';
 import { named } from './parts.mjs';
@@ -20,11 +20,13 @@ import { referenceBuilt } from './bought.mjs';
 import { fittingModel } from './fittings.mjs';
 
 const KEYS = { rail: ['id', 'kind', 'rail', 'carriage', 'on', 'from', 'length', 'carriages', 'nut', 'note'], wheels: ['id', 'kind', 'wheel', 'wheels', 'pitch', 'load', 'on', 'from', 'length', 'note'], slider: ['id', 'kind', 'mode', 'size', 'load', 'on', 'from', 'length', 'note'],
-  rods: ['id', 'kind', 'rod', 'bearing', 'spacing', 'height', 'load', 'on', 'from', 'length', 'endstop', 'nut', 'note'], screw: ['id', 'kind', 'guide', 'screw', 'nut', 'support', 'coupler', 'motor', 'friction', 'note'] };
-const { cylinder } = jscad.primitives, { translate } = jscad.transforms, { subtract, union } = jscad.booleans;
+  rods: ['id', 'kind', 'rod', 'bearing', 'spacing', 'height', 'load', 'on', 'from', 'length', 'endstop', 'nut', 'note'], screw: ['id', 'kind', 'guide', 'screw', 'nut', 'support', 'coupler', 'motor', 'friction', 'note'],
+  belt: ['id', 'kind', 'guide', 'motor', 'pulley', 'idler', 'belt', 'tension', 'accel', 'cut', 'across', 'idlerAt', 'nut', 'note'] };
+const { cylinder, cuboid, polygon } = jscad.primitives, { translate, rotateZ } = jscad.transforms, { subtract, union } = jscad.booleans, { extrudeRotate } = jscad.extrusions;
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
+const up2 = (x, step) => Math.ceil(x / step - 1e-9) * step;
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3), n3 = (x, d = 2) => String(Number(Number(x).toFixed(d)));
-const strip = (e) => String(e?.message ?? e).replace(/^(railModel|guideFit|railTerms|railJigModel|wheelsModel|sliderModel|rodsLayout): /, '');
+const strip = (e) => String(e?.message ?? e).replace(/^(railModel|guideFit|railTerms|railJigModel|wheelsModel|sliderModel|rodsLayout|beltLayout|beltPlateModel|beltClampModel|beltIdlerModel): /, '');
 const G = 9.80665;
 const SETS_OF = (m) => ({ diameter: r3(2 * (m.seat.axle + m.seat.depth)) });
 const SETS_KIND = (L) => `${L.bearing.set}'s ratings as its set gives them: a single bush's moment capacity is worked as a couple along it, an estimate`;
@@ -77,7 +79,7 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
     for (const k of Object.keys(g)) if (!KEYS.screw.includes(k)) throw new Error(`${what}: a screw guide has no "${k}": it takes ${KEYS.screw.join(', ')}`);
     const target = list.find((x) => x && (x.id ?? `g${list.indexOf(x) + 1}`) === g.guide);
     if (!target) throw new Error(`${what}: guide names the rods guide whose carriage the screw drives, by its id (got ${shown(g.guide)}; guides: ${list.map((x, k) => x?.id ?? `g${k + 1}`).join(', ')})`);
-    if (target.kind !== 'rods') throw new Error(`${what}: a screw drives a rods guide's carriage, and ${g.guide} is a ${target.kind} guide; a belt and screws on rails or wheels are not built yet`);
+    if (target.kind !== 'rods') throw new Error(`${what}: a screw drives a rods guide's carriage, and ${g.guide} is a ${target.kind} guide; a rail guide's carriage is driven by a belt, and screws on rails or wheels are not built yet`);
     if (screws.has(g.guide)) throw new Error(`${what}: ${g.guide} is driven by another screw already: one drive to a carriage`);
     if (!g.motor || typeof g.motor !== 'object' || typeof g.motor.model !== 'string') throw new Error(`${what}: motor is the motor item's spec, as { "model": "28byj48", "microsteps": 1 }: its drives and leadscrew come from the guide (got ${shown(g.motor)})`);
     for (const k of ['drives', 'leadscrew', 'belt']) if (g.motor[k] != null) throw new Error(`${what}: motor.${k} comes from the guide: leave it out`);
@@ -184,8 +186,8 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
   list.forEach((g, i) => {
     const what = `guide ${g?.id ?? i + 1}`;
     if (!g || typeof g !== 'object' || Array.isArray(g)) throw new Error(`${what} is { "kind": "rail", "rail": "rail-mgn12", "on": "x1.top", "length": 300 } (got ${shown(g)})`);
-    if (!KEYS[g.kind]) throw new Error(`${what}: kind is rail (a miniature linear rail), wheels (a plate on V-wheels in a V-slot's tracks), slider (a printed slider in or over a slot), rods (two rods in printed holders, a printed carriage on linear bearings) or screw (a lead screw and its motor driving a rods guide's carriage); a belt is not built yet (got ${shown(g.kind)})`);
-    if (g.kind === 'screw') return; // (worked out with the rods guide it drives)
+    if (!KEYS[g.kind]) throw new Error(`${what}: kind is rail (a miniature linear rail), wheels (a plate on V-wheels in a V-slot's tracks), slider (a printed slider in or over a slot), rods (two rods in printed holders, a printed carriage on linear bearings) screw (a lead screw and its motor driving a rods guide's carriage) or belt (a timing belt and its motor driving a rail guide's carriage) (got ${shown(g.kind)})`);
+    if (g.kind === 'screw' || g.kind === 'belt') return; // (a screw worked out with the rods guide it drives, a belt once the rail it drives is)
     for (const k of Object.keys(g)) if (!KEYS[g.kind].includes(k)) throw new Error(`${what}: a ${g.kind} guide has no "${k}": it takes ${KEYS[g.kind].join(', ')}`);
     const id = g.id ?? `g${i + 1}`;
     if (!/^[a-z][\w-]*$/.test(id) || ids.has(id)) throw new Error(`${what}: id ${shown(id)} is ${ids.has(id) ? 'an item already' : 'not a name (letters, digits, - or _)'}`);
@@ -211,7 +213,7 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
       keep.push({ from: r3(d - half), to: r3(d + half), what: `${other} joined at ${j.b}` });
     }
     const fit = guideFit(m, B.profile, { face, from, beam: B.length, keep, ...(g.nut ? { nut: g.nut } : {}), given: givenFor(context, B.profile.name) });
-    const rid = id, record = { id, beam: bid, face: q.name, from, length, model: m, fit, carriages: [], joints: [], keep, note: g.note ?? null };
+    const rid = id, record = { id, kind: 'rail', beam: bid, face: q.name, from, length, model: m, fit, carriages: [], joints: [], keep, note: g.note ?? null };
     added.push({ id: rid, bought: m.set, _guide: { part: 'rail', model: m }, at: `${bid}.${q.name}@${r3(from)}`, guideOf: id });
     // its screws into the slot, at its holes: only where a nut is made for them (else guide.fit says why)
     if (fit.nut) fasten.push({ screw: `${m.rail.thread} cap`, through: [rid], into: `${bid}.${q.name}`, at: m.screws.map((x) => `${rid}.${x.name}`), nut: g.nut ?? fit.nut.nutKind, note: `${id}: the rail into ${bid}'s ${q.name} slot, a screw every ${mm(m.rail.pitch)} mm`, guideOf: id });
@@ -230,6 +232,52 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
     try { record.jig = railJigModel(B.profile, { rail: m.set, face, given: givenFor(context, B.profile.name) }); } catch (e) { record.jig = { error: String(e.message).replace(/^railJigModel: /, '') }; }
     guides.push(record);
   });
+  // a belt drives a rail guide's one carriage: worked out once the rail is, from its carriage's place and travel
+  const belts = new Set();
+  list.forEach((g, i) => {
+    if (g?.kind !== 'belt') return;
+    const id = g.id ?? `g${i + 1}`, what = `guide ${g.id ?? i + 1}`;
+    for (const k of Object.keys(g)) if (!KEYS.belt.includes(k)) throw new Error(`${what}: a belt guide has no "${k}": it takes ${KEYS.belt.join(', ')}`);
+    if (!/^[a-z][\w-]*$/.test(id) || ids.has(id)) throw new Error(`${what}: id ${shown(id)} is ${ids.has(id) ? 'an item already' : 'not a name (letters, digits, - or _)'}`);
+    const named_ = list.map((x, k) => x?.id ?? `g${k + 1}`), target = guides.find((x) => x.id === g.guide);
+    if (!target) throw new Error(`${what}: guide names the rail guide whose carriage the belt drives, by its id (got ${shown(g.guide)}; guides: ${named_.join(', ')})`);
+    if (target.kind !== 'rail') throw new Error(`${what}: a belt drives a rail guide's carriage, and ${g.guide} is a ${target.kind} guide; a rods guide is driven by a screw`);
+    if (target.carriages.length !== 1) throw new Error(`${what}: a belt drives one carriage, and ${g.guide} has ${target.carriages.length}: give it "carriages": 1`);
+    if (belts.has(g.guide)) throw new Error(`${what}: ${g.guide} is driven by another belt already: one drive to a carriage`);
+    belts.add(g.guide);
+    if (!g.motor || typeof g.motor !== 'object' || typeof g.motor.model !== 'string') throw new Error(`${what}: motor is the motor item's spec, as { "model": "nema17", "microsteps": 16 }: its drives and its belt come from the guide (got ${shown(g.motor)})`);
+    for (const k of ['drives', 'leadscrew', 'belt']) if (g.motor[k] != null) throw new Error(`${what}: motor.${k} comes from the guide: leave it out`);
+    ids.add(id);
+    const bid = target.beam, B = beamOf(beams.get(bid), num, context).model, q = B.places.find((x) => x.name === target.face), face = B.places.filter((x) => x.face === q.face).length > 1 ? q.name : q.face;
+    const m = target.model, c = m.carriage, ln = m.lanes[0], opt = (k) => (g[k] != null ? { [k]: num(g[k]) } : {}), set = (k) => (g[k] != null ? { [k]: String(g[k]) } : {});
+    let L;
+    try {
+      L = beltLayout(B.profile.name, { face, beam: B.length, rail: { from: target.from, length: target.length, width: m.rail.width, height: m.rail.height }, carriage: { top: c.height, width: c.width, length: c.lengthMax ?? c.length, clearance: c.clearance, holes: c.holes, thread: c.thread, depth: c.depth, rest: ln.rest, travel: ln.travel },
+        motor: g.motor.model, ...set('pulley'), ...set('idler'), ...set('belt'), ...set('nut'), ...opt('tension'), ...opt('across'), ...opt('idlerAt'), ...opt('cut'), material, given: givenFor(context, B.profile.name) });
+    } catch (e) { throw new Error(`${what}: ${strip(e)}`); }
+    const own = (x) => { if (ids.has(x)) throw new Error(`${what}: ${x} is an item already: give the guide another id`); ids.add(x); return x; };
+    const plate = own(`${id}-plate`), mo = own(`${id}-motor`), pu = own(`${id}-pulley`), cl = own(`${id}-clamp`), blk = own(`${id}-idler-block`), il = own(`${id}-idler`), bt = own(`${id}-belt`);
+    const cid = target.carriages[0], jid = target.joints[0], S = L.sets, at0 = `${bid}.${q.name}@0`;
+    added.push({ id: plate, fitting: { kind: 'belt-plate', profile: B.profile.name, ...L.specs.plate }, at: at0, guideOf: id });
+    added.push({ id: mo, motor: { ...g.motor, drives: jid, belt: { teeth: S.pulley.teeth, pitch: S.belt.pitch, stiffness: S.belt.kw, width: S.belt.width, length: L.span, load: 0 } }, at: `${plate}.motor`, guideOf: id });
+    added.push({ id: pu, bought: S.pulley.set, _guide: { part: 'pulley', ...S.pulley }, at: `${plate}.pulley`, guideOf: id });
+    added.push({ id: cl, fitting: { kind: 'belt-clamp', ...L.specs.clamp }, at: `${cid}.top`, guideOf: id });
+    added.push({ id: blk, fitting: { kind: 'belt-idler', profile: B.profile.name, ...L.specs.idler }, at: `${bid}.${q.name}@${L.idler.block}`, guideOf: id });
+    added.push({ id: il, bought: S.idler.set, _guide: { part: 'idler', ...S.idler }, at: `${blk}.axle`, guideOf: id });
+    // the belt itself: drawn where the carriage is at the start of its travel, left out of the overlap check (its runs
+    // move with the carriage, so belt.rub holds them to the parts they pass through the whole travel)
+    const drawn = L.drawn(target.from + ln.rest), tb = S.belt.thickness;
+    added.push({ id: bt, bought: S.belt.set, _guide: { part: 'belt', set: S.belt.set, length: L.buy, cut: L.cut, height: L.height, width: S.belt.width, thickness: tb, runs: drawn.runs, wraps: drawn.wraps }, at: at0, guideOf: id });
+    const pm = L.plate, bm = L.block, cm = L.clamp, screwsOf = (x, mdl) => mdl.screws.map((_, k) => `${x}.b${k + 1}`);
+    fasten.push({ screw: `${pm.thread} ${pm.head}`, through: [plate], into: `${bid}.${q.name}`, at: screwsOf(plate, pm), nut: g.nut ?? pm.screws[0].nutKind, note: `${id}: the motor's plate into ${bid}'s ${q.name} slot`, guideOf: id });
+    fasten.push({ screw: `${cm.thread} cap`, through: [cl], into: cid, at: screwsOf(cl, cm), note: `${id}: the belt's clamp into ${cid}'s tapped holes`, guideOf: id });
+    fasten.push({ screw: `${bm.thread} cap`, through: [blk], into: `${bid}.${q.name}`, at: screwsOf(blk, bm), nut: g.nut ?? bm.screws[0].nutKind, note: `${id}: the idler's block into ${bid}'s ${q.name} slot, through its slots`, guideOf: id });
+    fits.push({ a: mo, b: plate, fastens: true, min: -0.1, note: 'The motor\'s face under its plate' }, { a: mo, b: pu, min: -100, note: 'The motor\'s shaft in the pulley' }, { a: il, b: blk, fastens: true, min: -0.1, note: 'The idler on its axle, on the block\'s ring' });
+    const spec = joints.find((x) => x.id === jid);
+    if (spec) spec._guide.belt = id;
+    guides.push({ id, kind: 'belt', guide: g.guide, on: bid, face: q.name, layout: L, rub: beltRub(L), motor: mo, carriage: cid, items: { plate, motor: mo, pulley: pu, clamp: cl, block: blk, idler: il, belt: bt },
+      accel: g.accel != null ? num(g.accel) : null, tensionGiven: g.tension != null, carriages: [], joints: [jid], wheels: [], note: g.note ?? null, fasten: [] });
+  });
   const out = { ...a, items: [...items, ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}), ...(fits.length ? { fits: [...(a.fits || []), ...fits] } : {}), joints: [...(a.joints || []), ...joints], poses: { ...(a.poses || {}), ...poses } };
   for (const r of guides) r.fasten = fasten.map((x, k) => (x.guideOf === r.id ? first + k : -1)).filter((k) => k >= 0);
   return { a: out, guides };
@@ -242,6 +290,25 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
  */
 export function guideBuilt(it, id) {
   const { part, model: m } = it._guide;
+  // a belt drive's bought parts: the pulley and the idler, drawn round their own z from their sets' figures; the belt
+  // along its path as drawn, in its frame on the face (out of the overlap check: belt.rub holds it through the travel)
+  if (part === 'pulley' || part === 'idler') {
+    const g = it._guide, body = subtract(translate([0, 0, g.body / 2], cylinder({ radius: g.od / 2, height: g.body, segments: 48 })), translate([0, 0, g.body / 2], cylinder({ radius: g.bore / 2, height: g.body + 2, segments: 24 })));
+    const parts = named({ body }, { body: { label: `${g.set}` } }), anchors = { origin: { at: [0, 0, 0], axis: [0, 0, 1], ref: [1, 0, 0] } };
+    return referenceBuilt({ id, key: `guide-${part}`, objName: `${part}:${g.set}`, name: g.set, parts, anchors, entries: [], values: { pitch_diameter: g.pd, outer_diameter: g.od, body_width: g.body, bore: g.bore, ...(g.teeth ? { teeth: g.teeth } : {}) }, extra: { bought: { set: g.set, variant: null, part, mass: null } } });
+  }
+  if (part === 'belt') {
+    const g = it._guide, z0 = g.height - g.width / 2, t = g.thickness, pieces = [];
+    for (const r of g.runs) {
+      const dx = r.to[0] - r.from[0], dy = r.to[1] - r.from[1], len = Math.hypot(dx, dy);
+      if (len < 0.01) continue;
+      pieces.push(translate([(r.from[0] + r.to[0]) / 2, (r.from[1] + r.to[1]) / 2, g.height], rotateZ(Math.atan2(dy, dx), cuboid({ size: [len, t, g.width] }))));
+    }
+    for (const w of g.wraps) pieces.push(translate([w.at[0], w.at[1], 0], extrudeRotate({ segments: 48, startAngle: w.from, angle: Math.min(w.angle, 2 * Math.PI - 1e-3) }, polygon({ points: [[w.r - t / 2, z0], [w.r + t / 2, z0], [w.r + t / 2, z0 + g.width], [w.r - t / 2, z0 + g.width]] }))));
+    const parts = named({ body: union(...pieces) }, { body: { label: `${g.set} x ${mm(g.cut)} mm, cut from ${mm(g.length)} mm` } });
+    parts[0].collide = jscad.geometries.geom3.create();
+    return referenceBuilt({ id, key: 'guide-belt', objName: `belt:${g.set}:${g.cut}`, name: g.set, parts, anchors: { origin: { at: [0, 0, 0], axis: [0, 0, 1], ref: [1, 0, 0] } }, entries: [], values: { length: g.length, cut: g.cut, width: g.width }, extra: { bought: { set: g.set, variant: null, part: 'belt', mass: null, length: g.length } } });
+  }
   // a screw drive's bought parts, drawn from their sets' figures along their own z: the coupler, the screw, the lead nut
   if (part === 'coupler' || part === 'screw' || part === 'nut') {
     const g = it._guide, rod = (r, z0, z1, seg = 48) => translate([0, 0, (z0 + z1) / 2], cylinder({ radius: r, height: z1 - z0, segments: seg }));
@@ -269,7 +336,8 @@ export function guideBuilt(it, id) {
   const c = m.carriage, parts = named({ body: carriage(m) }, { body: { label: `${m.set} carriage ${c.variant ?? ''}`.trim() } });
   const anchors = { slide: { at: [0, 0, 0], axis: [1, 0, 0], ref: [0, 0, 1] }, top: { at: [0, 0, c.height], axis: [0, 0, 1], ref: [1, 0, 0] }, ...Object.fromEntries(c.holes.map(([x, y], k) => [`t${k + 1}`, { at: [x, y, c.height], axis: [0, 0, -1] }])) };
   const values = { length: c.length, width: c.width, height: c.height, travel: m.travel, static_rating: c.ratings.C0, moment_roll: c.ratings.MR, moment_pitch: c.ratings.MP, moment_yaw: c.ratings.MY, ...(c.mass != null ? { mass: c.mass } : {}) };
-  return referenceBuilt({ id, key: 'guide-carriage', objName: `carriage:${m.set}:${c.variant}`, name: `${m.set} ${c.variant}`, parts, anchors, entries: [], values, extra: { guide: m, bought: { set: m.set, variant: c.variant, part: 'carriage', mass: c.mass ?? null } } });
+  // (its tapped holes are its mount: a fasten into the carriage ends in its own thread, held to the depth its maker gives)
+  return referenceBuilt({ id, key: 'guide-carriage', objName: `carriage:${m.set}:${c.variant}`, name: `${m.set} ${c.variant}`, parts, anchors, entries: [], values, extra: { guide: m, bought: { set: m.set, variant: c.variant, part: 'carriage', mass: c.mass ?? null, mount: { thread: c.thread, holes: c.holes, reach: c.depth } } } });
 }
 
 /**
@@ -286,6 +354,7 @@ export function guideFindings(s, f) {
       if (r.endstop) f('info', `${r.id}: ${r.endstop.switch} on its printed mount at ${r.endstop.at}; the carriage's flag meets its lever ${mm(r.endstop.home)} mm along the travel, where the joint homes (the lever's place is an estimate: measure your switch's lever and its pretravel)`, null, { code: 'guide.endstop', values: { home: r.endstop.home, lever: r.endstop.model.lever }, refs: { ...refs, switch: r.endstop.switch, mount: r.endstop.mount } });
       continue;
     }
+    if (r.kind === 'belt') { beltFindings(r, f); continue; }
     if (r.kind === 'screw') {
       const L = r.layout, refs = { guide: r.id, drives: r.guide, motor: r.motor, ...r.items };
       f('info', `${r.id}: ${L.motor.set} on a printed plate ${mm(r.from)} mm along ${r.beam}, through ${L.coupler.set} to ${mm(r.length)} mm of ${L.screw.set} (a ${mm(r.lead)} mm lead${L.support ? `, in a ${L.support.set} at each holder` : ''}), the ${L.nut.set} on ${r.guide}'s carriage; the lead and the nut's friction μ ${n3(r.friction, 3)} (${r.frictionKind ?? 'default'}) go to the motor's checks as a lead screw`, null, { code: 'guide.drive', values: { lead: r.lead, length: r.length, friction: r.friction, engaged: r.plate.engaged }, refs });
@@ -351,4 +420,21 @@ export function carriageChecks(s, f, helpers, { masses, beyond, poses }) {
     const text = `${spec._guide.carriage} (${m.carriage.variant}) on ${spec._guide.id}: ${n3(kg * 1000, 0)} g carried, worst ${p.label}: ${n3(Math.hypot(Fy, Fz), 1)} N across the rail, roll ${n3(Mx, 3)}, pitch ${n3(My, 3)} and yaw ${n3(Mz, 3)} N m, against C0 ${c.C0} N, MR ${c.MR}, MP ${c.MP} and MY ${c.MY} N m: ${n3(r.margin, 2)} times over${r.level === 'fail' ? `, past its ${r.worst} rating` : ''} (each load over its rating, summed: an estimate of how they combine)`;
     f(r.level, text, r.level === 'pass' ? null : `${j.id}: carriage ${n3(r.margin, 1)}×`, { code: 'joint.moment', at: O, refs: { joint: j.id, carriage: spec._guide.carriage, guide: spec._guide.id, rail: m.set }, values: { force: load.force, moment: load.moment, ratios: r.ratios, margin: r.margin, carried: kg, pose: p.label, ratings: c } });
   }
+}
+
+// A belt drive's findings: what it is and its ratio, its length to cut and to buy, its tension, whether its runs rub
+// what they pass through the travel, whether it lies square, and what is left of the tensioner's travel
+function beltFindings(r, f) {
+  const L = r.layout, S = L.sets, B = S.belt, refs = { guide: r.id, drives: r.guide, carriage: r.carriage, ...r.items }, T = L.tension;
+  f('info', `${r.id}: ${S.pulley.set} on ${r.motor} under its printed plate past ${r.on}'s end a, ${B.set} round ${S.idler.set} on its printed block at ${mm(L.idler.block)} mm, both ends in the clamp on ${r.carriage}: ${S.pulley.teeth} teeth × ${mm(B.pitch)} mm is ${mm(L.mmPerTurn)} mm of travel a turn, the belt ${mm(L.height)} mm over the face; the motor's checks read it as a belt`, null, { code: 'guide.drive', values: { mmPerTurn: L.mmPerTurn, teeth: S.pulley.teeth, pitch: B.pitch, height: L.height }, refs });
+  f('info', `${r.id}: the belt's path is ${mm(L.length)} mm by its pitch line (the working runs, ${mm(L.pulley.r * 2)} and ${mm(L.idler.r * 2)} mm pitch circles, the return run and the ends in the clamp); cut it ${mm(L.cut)} mm, ${mm(L.cut / B.pitch)} teeth, which stretches ${mm(L.stretch)} mm at ${mm(T)} N; buy ${mm(L.buy / 1000)} m (${BELT_DEFAULTS.sold.rule.split(':')[0].toLowerCase()}: an estimate)`, null, { code: 'belt.length', values: { path: L.length, cut: L.cut, buy: L.buy, stretch: L.stretch, teeth: L.cut / B.pitch }, refs });
+  const F = r.force ?? 0, slack = T - F / 2, tight = T + F / 2, lo = B.least ?? 0, hi = B.rated ?? Infinity, ok = slack >= lo - 1e-9 && tight <= hi + 1e-9;
+  f(ok ? 'pass' : 'fail', `${r.id}: each span at ${mm(T)} N (${r.tensionGiven ? 'given' : 'BELT_DEFAULTS.tension, an estimate'}); pushing ${r.carried != null ? `${n3(r.carried * 1000, 0)} g at ${n3(r.accelUsed, 0)} mm/s²` : 'the carriage'} takes ${n3(F, 2)} N, so the spans run from ${n3(slack, 2)} to ${n3(tight, 2)} N, ${ok ? 'within' : 'outside'} ${B.set}'s ${mm(lo)} N least static and ${mm(hi)} N rated tension${ok ? '' : slack < lo ? ': more tension' : ': less tension or less acceleration'}`, ok ? null : `${r.id}: belt tension`, { code: 'belt.tension', values: { tension: T, force: F, slack, tight, least: lo, rated: hi }, refs });
+  for (const x of r.rub.rubs) f('fail', `${r.id}: ${x.run} rubs ${x.part}, ${mm(x.depth)} mm into it with the carriage at ${mm(x.at)} mm along ${r.on}: move the idler or the pulley back onto the belt's square line, or the part out of its way`, `${r.id}: belt rubs ${x.part}`, { code: 'belt.rub', values: { depth: x.depth, carriage: x.at }, refs: { ...refs, run: x.run, part: x.part } });
+  if (!r.rub.rubs.length) f('pass', `${r.id}: through the carriage's travel the belt's runs clear the beam, the rail, the carriage and the clamp, by ${mm(r.rub.least.clearance)} mm at least (${r.rub.least.run} and ${r.rub.least.part}, the carriage at ${mm(r.rub.least.at)} mm; the belt ${mm(B.thickness)} mm thick, an estimate)`, null, { code: 'belt.rub', values: { clearance: r.rub.least.clearance, carriage: r.rub.least.at }, refs });
+  const lim = BELT_DEFAULTS.line.value, square = L.line <= lim + 1e-9;
+  f(square ? 'pass' : 'fail', `${r.id}: the idler's top is ${mm(L.across)} mm off the pulley's line along the travel, ${n3(L.line, 3)}° off square, ${square ? 'within' : 'past'} the ${lim}° the belt is held to (BELT_DEFAULTS.line, an estimate)${square ? '' : ': move the idler back onto the line'}`, square ? null : `${r.id}: belt off square`, { code: 'belt.line', values: { angle: L.line, across: L.across, limit: lim }, refs });
+  const d = L.idler.offset, room = d >= 0 ? L.idler.room.b : L.idler.room.a, way = d >= 0 ? 'toward the beam\'s end b' : 'toward the rail', fits = Math.abs(d) <= room + 1e-9;
+  f(fits ? 'pass' : 'fail', `${r.id}: cut ${mm(L.cut)} mm, the belt sets its tension with the idler's block ${mm(Math.abs(d))} mm ${way} from where it is drawn, along the slot, which leaves it ${mm(room)} mm that way${fits ? `: ${mm(room - Math.abs(d))} mm of the tensioner's travel left` : `: the tensioner's travel is used up; cut the belt ${mm(up2(2 * (Math.abs(d) - room), B.pitch))} mm ${d >= 0 ? 'shorter' : 'longer'}, or move the block`}`, fits ? null : `${r.id}: tensioner used up`, { code: 'belt.tensioner', values: { offset: d, room: L.idler.room, left: r3(room - Math.abs(d)) }, refs });
+  f('info', `${r.id}: the belt holds the carriage on two spans, the stiffest it is ${mm(L.span)} mm of belt each side as one (a·b/(a+b) at the worst place in the travel); at ${n3(B.k, 0)} N a unit of strain (${B.set}'s stiffness, ${B.kKind ?? 'its kind not given'}), ${n3(r.force ?? 0, 2)} N stretches it ${n3(((r.force ?? 0) * L.span) / B.k, 4)} mm: the belt stretch term of the error budget where a task is given`, null, { code: 'belt.stretch', values: { span: L.span, stiffness: B.k, force: r.force ?? 0, stretch: ((r.force ?? 0) * L.span) / B.k }, refs });
 }

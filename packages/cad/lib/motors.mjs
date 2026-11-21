@@ -174,8 +174,11 @@ export function motorChecks(s, f, helpers, materialName) {
     // Its shaft on the joint's axis
     const j = motion.joints.find((x) => x.id === d.joint), { O, Z } = axisOf(motion, worlds, j, mul), S = rowsAt(W, m.anchors.shaft.origin), A = [W[2], W[6], W[10]];
     const off = cross(sub(S, O), Z), apart = Math.hypot(...off), tilt = Math.abs(1 - Math.abs(dot(A, Z)));
-    if (apart > 0.05 || tilt > 1e-6) { f('fail', `${d.id}'s shaft isn't on ${d.joint}'s axis: ${n3(apart, 2)} mm off${tilt > 1e-6 ? ', and not parallel to it' : ''}`, `${d.id}: shaft off axis`, { code: 'motor.axis', at: S, refs: { item: d.id, joint: d.joint } }); continue; }
-    f('pass', `${d.id}'s shaft is on ${d.joint}'s axis`, null, { code: 'motor.axis', at: S });
+    // (a belt's pulley turns square to the slide, the belt's line tangent to it: belt.line holds that line; a check drawn
+    // with the motor on the slide's axis, as before, still passes)
+    if (j.slide?.kind === 'belt' && Math.abs(dot(A, Z)) < 1e-6) { f('pass', `${d.id}'s shaft turns square to ${d.joint}'s travel, as a belt's pulley does`, null, { code: 'motor.axis', at: S }); }
+    else if (apart > 0.05 || tilt > 1e-6) { f('fail', `${d.id}'s shaft isn't on ${d.joint}'s axis: ${n3(apart, 2)} mm off${tilt > 1e-6 ? ', and not parallel to it' : ''}`, `${d.id}: shaft off axis`, { code: 'motor.axis', at: S, refs: { item: d.id, joint: d.joint } }); continue; }
+    else f('pass', `${d.id}'s shaft is on ${d.joint}'s axis`, null, { code: 'motor.axis', at: S });
     // Everything it drives that carries a load
     const driven = motion.joints.filter((x) => trainFrom(motion, x.id).root === d.joint).map((x) => ({ j: x, t: trainFrom(motion, x.id), load: worstLoad(motion, loads, x, d, helpers) })).filter((x) => x.load.torque > 0);
     const motorSpeed = workingSpeed(m, d.spec), loaded = driven.length ? driven : [];
@@ -189,14 +192,16 @@ export function motorChecks(s, f, helpers, materialName) {
     const lines = [], at = (x) => axisOf(motion, worlds, x, mul).O;
     let locked = null;
     for (const { j: x, t, load } of loaded) {
-      // the lead's torque for a load here: a slide's force through the pinion, a revolute's torque down the ratio
-      const atLead = t.slide != null ? (load.torque * t.slide * 180) / Math.PI / 1000 : load.torque;
+      // the lead's torque for a load here: a slide's force through the pinion, a revolute's torque down the ratio; what
+      // holds it still reads only the loads there at rest (a belt's push at the carriage's acceleration is not, lib/belts.mjs)
+      const lead = (q) => (t.slide != null ? (q * t.slide * 180) / Math.PI / 1000 : q), atLead = lead(load.torque);
+      const still = loads.some((l) => l.belt && l.joint === x.id) ? lead(worstLoad(motion, loads.filter((l) => !l.belt), x, d, helpers).torque) : atLead;
       const unit = t.slide != null ? 'N' : 'N m', reduction = t.ratio;
       const η = t.efficiency, needed = atLead / (reduction * η);
       need += needed; const ηback = Math.max(0, 2 - 1 / η);
       if (t.locks) locked = t.locks;
       else if (η <= 0.5) locked = `the gears (${n3(η * 100, 0)}% forwards, under the 50% where they can't be driven backwards)`;
-      back += (atLead / reduction) * ηback; backOn += atLead / reduction;
+      back += (still / reduction) * ηback; backOn += still / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
     const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = mountTorque(d), margin = need ? avail / need : Infinity;

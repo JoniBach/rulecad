@@ -29,6 +29,7 @@ const MORE = {
   'rail-jig': ['railJigModel', 'railJig'], 'wheel-plate': ['wheelsModel', 'wheelPlate'], slider: ['sliderModel', 'slider'],
   'nut-carrier': ['carrierModel', 'carrier', { pose: { fit: 'slot', print: 'print' } }],
   'rod-holder': ['rodHolderModel', 'rodHolder'], 'rod-carriage': ['rodCarriageModel', 'rodCarriage'], 'motor-plate': ['motorPlateModel', 'motorPlate'], 'endstop-mount': ['endstopMountModel', 'endstopMount'],
+  'belt-plate': ['beltPlateModel', 'beltPlate'], 'belt-clamp': ['beltClampModel', 'beltClamp', { profile: false }], 'belt-idler': ['beltIdlerModel', 'beltIdler'],
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
 const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider', 'end-cap'];

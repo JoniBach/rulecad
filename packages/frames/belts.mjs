@@ -1,9 +1,9 @@
 // A belt drive along a beam: a timing belt (gt2-belt-6) round a pulley on a motor at end a of the beam and a toothed
 // idler at the far end, both its ends held in a printed clamp on a rail's carriage. The motor hangs past the beam's end
 // under a flat printed plate whose tab screws into the face's slot, its shaft out of the face; the pulley sits on its
-// shaft over the plate. The idler turns on an M5 axle in a printed block beyond the rail's end, which screws into the
-// same slot through two slots along the beam: slid along them it takes up the belt's stretch and the length the belt
-// was cut to, then its screws hold it. The belt's two runs lie side by side at one height over the face, clear over
+// shaft over the plate. The idler turns on an M5 axle in a printed block beyond the rail's end, which is the tensioner:
+// its two screws go into slot nuts in the face's own slot, so loosened it slides along the slot to take up the belt's
+// stretch and the length the belt was cut to, and tightened they hold it there. The belt's two runs lie side by side at one height over the face, clear over
 // the carriage: the working run in the clamp's toothed channel, the return run beside it.
 //
 // Every part's frame is a mount's on the face: x along the beam, y across it, z out of the face (0 on it), its origin
@@ -15,7 +15,7 @@ import { SETS } from './catalogue.mjs';
 import { FITTING_DEFAULTS, options, profileOf, printerOf, ccw, combine, screwOf, sold, slotSide } from './fitting.mjs';
 import { partSetup, weigh, closingFindings, bendT, bendMargin } from './panel.mjs';
 
-const { cylinder, polygon, cuboid } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { translate, rotateY } = jscad.transforms, { hull } = jscad.hulls;
+const { cylinder, polygon, cuboid } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { translate, rotateY } = jscad.transforms;
 const CHECKED = '2026-11-21';
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
@@ -78,7 +78,6 @@ function motorOf(what, name) {
 // ---------- drawing ----------
 const prismZ = (loop, z0, z1) => translate([0, 0, z0], extrudeLinear({ height: z1 - z0 }, polygon({ points: ccw(loop) })));
 const discZ = (x, y, d, z0, z1) => translate([x, y, (z0 + z1) / 2], cylinder({ radius: d / 2, height: z1 - z0, segments: 48 }));
-const slotZ = (x0, x1, y, d, z0, z1) => hull(discZ(x0, y, d, z0, z1), discZ(x1, y, d, z0, z1)); // (a slot along x, round at its ends)
 // a rectangle with its corners rounded by r, as a loop
 function roundedRect(x0, y0, x1, y1, r, steps = 8) {
   const out = [], c = [[x1 - r, y0 + r, -90], [x1 - r, y1 - r, 0], [x0 + r, y1 - r, 90], [x0 + r, y0 + r, 180]];
@@ -119,7 +118,7 @@ export function beltPlateModel(profile, o = {}) {
   // the band's middle over the plate's top: past the gap the pulley stands off it, its band at its far end
   const band = S.pulley.body - BELT_DEFAULTS.flange.value - S.belt.width / 2 + gap;
   // the tab's two screws along the slot, from the beam's end
-  const endBy = r3(up(Math.max(sc.dk / 2 + FITTING_DEFAULTS.reach.value, sc.hd), 0.5)), pitch = r3(up(sc.dk + FITTING_DEFAULTS.pitch.value, 0.5)), xs = [endBy, r3(endBy + pitch)], x1 = r3(xs[1] + endBy);
+  const endBy = r3(up(Math.max(sc.dk / 2 + FITTING_DEFAULTS.reach.value, sc.hd), 0.5)), pitch = r3(up(Math.max(sc.dk, sd.nut.length ?? 0) + FITTING_DEFAULTS.pitch.value, 0.5)), xs = [endBy, r3(endBy + pitch)], x1 = r3(xs[1] + endBy);
   // its thickness: the motor's screws, the bend at the beam's end, the belt's height; then a length of slot screw sold
   const W = (mo.mass ?? 0) * 9.80665, b = y1 - y0, Mof = (t) => 2 * T * (t + band - t / 2) + W * Math.abs(xm);
   let t = Math.max(up(1.5 * fixingModel(mo.thread).major, k.layer), up(least - band, k.layer));
@@ -172,34 +171,39 @@ function channelOf(what, c, pr, fit, belt) {
  * the belt's teeth face so they mesh, its floor rounded. Each end meshes over half the channel less the gap between
  * them: at least BELT_DEFAULTS.mesh teeth, and as many as its teeth take the end's pull with twice the margin in shear.
  * It prints as it sits, on its base.
- * @param {{ belt?: string, holes: number[][], thread: string, width: number, length: number, rise: number, tension?: number, printer?: object, material?: string | object }} o
- *   holes, thread: the carriage's tapped holes (x along, y across from its middle) and their thread; width, length: the
+ * @param {{ belt?: string, carriageHoles: number[][], thread: string, width: number, length: number, rise: number, tension?: number, printer?: object, material?: string | object }} o
+ *   carriageHoles, thread: the carriage's tapped holes (x along, y across from its middle) and their thread; width, length: the
  *   carriage's; rise: the belt's middle over the carriage's top
  * @returns {object} its model, with anchors b1, b2 (the screws) and belt (the channel's middle at the belt's height)
  */
 export function beltClampModel(o = {}) {
   const what = 'beltClampModel';
-  options(what, o ?? {}, ['belt', 'holes', 'thread', 'width', 'length', 'rise', 'tension', 'printer', 'material']);
+  options(what, o ?? {}, ['belt', 'carriageHoles', 'carriageDepth', 'thread', 'width', 'length', 'rise', 'tension', 'printer', 'material']);
   const k = partSetup(what, o), S = setsOf(what, { belt: o.belt }), B = S.belt, T = tensionOf(what, o.tension);
-  if (!Array.isArray(o.holes) || !o.holes.every((h) => Array.isArray(h) && h.length === 2 && h.every(isNum)) || typeof o.thread !== 'string') throw new Error(`${what}: holes are the carriage's tapped holes, [[x, y], ...] mm from its top's middle, and thread their thread (got ${shown(o.holes)}, ${shown(o.thread)})`);
+  if (!Array.isArray(o.carriageHoles) || !o.carriageHoles.every((h) => Array.isArray(h) && h.length === 2 && h.every(isNum)) || typeof o.thread !== 'string') throw new Error(`${what}: carriageHoles are the carriage's tapped holes, [[x, y], ...] mm from its top's middle, and thread their thread (got ${shown(o.carriageHoles)}, ${shown(o.thread)})`);
   for (const key of ['width', 'length', 'rise']) if (!(isNum(o[key]) && o[key] > 0)) throw new Error(`${what}: ${key} is mm, above 0 (got ${shown(o[key])})`);
-  const ch = channelOf(what, { holes: o.holes, thread: o.thread }, k.pr, k.fit, B), wall = 2, rise = o.rise, floor = r3(rise - B.width / 2 - 0.25);
+  const ch = channelOf(what, { holes: o.carriageHoles, thread: o.thread }, k.pr, k.fit, B), wall = 2, rise = o.rise, floor = r3(rise - B.width / 2 - 0.25);
   if (floor < wall - 1e-9) throw new Error(`${what}: the belt's middle ${mm(rise)} mm over the carriage leaves a ${mm(floor)} mm floor under the channel, under the ${mm(wall)} mm it needs: raise the belt to ${mm(wall + B.width / 2 + 0.25)} mm`);
   // its teeth: each end's pull over its teeth's roots in shear (a tooth's root half a pitch long across the belt's width)
   const tau = (BELT_DEFAULTS.shear.value * k.S), perTooth = tau * (B.pitch / 2) * B.width, n = Math.max(BELT_DEFAULTS.mesh.value, Math.ceil((T * want()) / perTooth));
   const gapMid = BELT_DEFAULTS.clamp_gap.value, xsHoles = ch.holes.map((h) => Math.abs(h[0])), L = r3(Math.max(2 * n * B.pitch + gapMid, 2 * Math.max(...xsHoles) + ch.cb.diameter + 2 * wall)), mesh = Math.floor((L - gapMid) / 2 / B.pitch);
   const half = B.thickness / 2 + k.fit, yLo = r3(ch.y - half - B.tooth - wall), yHi = r3(Math.max(...ch.holes.map((h) => h[1])) + ch.cb.diameter / 2 + wall), top = r3(up(rise + B.width / 2 + 0.25, k.layer));
-  const margin = r3((mesh * perTooth) / T), grip = r3(floor), lens = [...(fixingModel(o.thread).figures.lengths?.value ?? [])].sort((a, b) => a - b);
-  const cbDepth = r3(top - grip);
+  // the screws: the shortest length sold that goes as deep as steel asks into the carriage's thread and no deeper than
+  // it is (carriageDepth), the plastic under each head at least the thread's diameter; the counterbore takes the rest
+  const depth = o.carriageDepth ?? null, major = fixingModel(o.thread).major, least = engagement(o.thread, { depth: 1, material: 'steel' }).need, lens = [...(fixingModel(o.thread).figures.lengths?.value ?? [])].sort((a, b) => a - b);
+  if (depth != null && !(isNum(depth) && depth > 0)) throw new Error(`${what}: carriageDepth is the carriage's tapped holes' depth, mm (got ${shown(o.carriageDepth)})`);
+  const Ls = lens.find((x) => r3(x - Math.min(least, depth ?? least)) >= major - 1e-9 && r3(x - Math.min(least, depth ?? least)) <= top - 1e-9);
+  if (Ls == null) throw new Error(`${what}: no ${o.thread} cap screw sold reaches ${mm(least)} mm into the carriage through ${mm(major)} to ${mm(top)} mm of clamp`);
+  const grip = r3(Ls - Math.min(least, depth ?? least)), cbDepth = r3(top - grip), margin = r3((mesh * perTooth) / T);
   const m = { kind: 'fitting', fitting: 'belt-clamp', guide: 'belt', name: `belt-clamp-${B.set}-${o.thread}-${mm(o.width)}`, title: `printed clamp for the two ends of ${B.set} on a carriage`, belt: B.set,
     length: L, yLo, yHi, top, floor, channel: { y: ch.y, half, tooth: B.tooth, pitch: B.pitch }, mesh, gap: gapMid, counterbore: { diameter: ch.cb.diameter, depth: cbDepth }, thread: o.thread, head: 'cap',
-    screws: ch.holes.map(([x, y]) => ({ thread: o.thread, head: 'cap', grip, at: [x, y, grip], axis: [0, 0, -1], length: null })), hardware: [],
+    screws: ch.holes.map(([x, y]) => ({ thread: o.thread, head: 'cap', grip, at: [x, y, grip], axis: [0, 0, -1], length: Ls })), hardware: [],
     load: { force: T, what: `${mm(T)} N on each belt end, the span's tension, along its ${mesh} teeth` }, stress: r3(T / (mesh * (B.pitch / 2) * B.width)), margin,
     anchors: { belt: { at: [0, ch.y, rise], axis: [1, 0, 0], ref: [0, 0, 1] } },
     size: { length: L, width: r3(yHi - yLo), height: top }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['shear', 'mesh', 'thickness', 'tooth'].map((x) => ({ name: `BELT_DEFAULTS.${x}`, value: BELT_DEFAULTS[x].value, kind: BELT_DEFAULTS[x].kind }))] };
   keep(m, k); weigh(m, beltClamp(m), k.density);
-  m.findings.push(finding('info', `each belt end drops into its channel from above and meshes ${mesh} teeth on the toothed wall (${mm(B.tooth)} mm teeth at ${mm(B.pitch)} mm, BELT_DEFAULTS.tooth and thickness: estimates of a GT2 belt's), ${mm(gapMid)} mm between the ends; two ${o.thread} cap screws down through ${mm(grip)} mm under ${mm(cbDepth)} mm counterbores into the carriage's tapped holes${lens.length ? '' : ''}`, 'fitting.belt', { values: { mesh, channel: ch.y, grip } }));
+  m.findings.push(finding('info', `each belt end drops into its channel from above and meshes ${mesh} teeth on the toothed wall (${mm(B.tooth)} mm teeth at ${mm(B.pitch)} mm, BELT_DEFAULTS.tooth and thickness: estimates of a GT2 belt's), ${mm(gapMid)} mm between the ends; two ${o.thread}x${Ls} cap screws down through ${mm(grip)} mm under ${mm(cbDepth)} mm counterbores, ${mm(Ls - grip)} mm into the carriage's tapped holes`, 'fitting.belt', { values: { mesh, channel: ch.y, grip } }));
   m.findings.push(finding(margin >= want() - 1e-9 ? 'pass' : 'fail', `under ${m.load.what}, its teeth shear at ${mm(m.stress)} MPa against ${mm(tau)} MPa (BELT_DEFAULTS.shear of ${k.mat.name.toUpperCase()}'s ${k.S} MPa): ${mm(margin)} times over, an estimate`, 'fitting.margin', { values: { load: T, stress: m.stress, strength: tau, margin } }));
   m.findings.push(finding('info', `${m.title}: ${mm(L)} mm along the carriage, ${mm(yHi - yLo)} mm across, ${mm(top)} mm over its top`, 'fitting.size', { values: { ...m.size } }));
   m.findings.push(finding('info', 'it is drawn to print as it sits, on its base: a plain first layer, its channel and counterbores open upward, no supports (printcheck\'s check() reads the solid)', 'fitting.printable', { values: { pose: 'on its base' } }));
@@ -222,12 +226,14 @@ export function beltClamp(m, o = {}) {
 // ---------- the idler and its tensioner ----------
 /**
  * A printed block for a belt's idler at the far end of a beam, which is the belt's tensioner: the idler on an M5 axle
- * screwed into a heat-set insert, a raised ring under its inner race, and behind it two screws into the face's slot
- * through slots along the beam, their travel enough to take up the belt's stretch at its tension and the one pitch its
- * cut length may be off, twice over. It prints as it sits, every hole upright.
+ * screwed into a heat-set insert, a raised ring under its inner race, and behind it two screws into slot nuts in the
+ * face's slot. The slot is the tensioner's: loosened, the block slides along it; it needs room each way along the slot
+ * for half the belt's stretch at its tension and half the one pitch its cut length may be off, twice over (need, and
+ * room, twice need). Where no sold screw length suits the block's height, their heads sit in counterbores. It prints
+ * as it sits, every hole upright.
  * @param {string | object} profile
  * @param {{ face?: string, idler?: string, belt?: string, rise: number, across?: number, stretch?: number, tension?: number, thread?: string, nut?: string, printer?: object, material?: string | object, given?: object }} o
- *   rise: the belt's middle over the face; across: the idler's axle off the slot's line; stretch: the belt's stretch at its tension, mm (the travel takes half of it)
+ *   rise: the belt's middle over the face; across: the idler's axle off the slot's line; stretch: the belt's stretch at its tension, mm (the block moves half of it)
  * @returns {object} its model, with anchors axle (the idler's own frame, on its ring) and b1, b2 (the screws)
  */
 export function beltIdlerModel(profile, o = {}) {
@@ -245,27 +251,30 @@ export function beltIdlerModel(profile, o = {}) {
   // the axle: through the washer, the idler and its ring into the insert, a length sold that reaches into it
   const grip = r3(washer + I.body + ring), lens = [...(fixingModel(axle).figures.lengths?.value ?? [])].sort((a, b) => a - b), axleL = lens.find((x) => x - grip >= 0.5 * ins.depth - 1e-9 && x - grip <= ins.depth - 0.5 + 1e-9) ?? null;
   if (axleL == null) throw new Error(`${what}: no ${axle} screw sold reaches into its insert through ${mm(grip)} mm`);
-  // the travel: half the stretch and half a pitch each way, twice over, in whole mm
-  const need = r3(stretch / 2 + B.pitch / 2), travel = Math.max(2, up(2 * want() * need, 1)); // (the block in the middle of its slots: need each way, twice over)
-  const R = I.od / 2, ax = r3(R + wall), ringD = r3(Math.min(I.bore + 4, I.od - 4)), hd = holeModel(sd.thread, { kind: 'clearance', printer: k.pr }).diameter;
-  const s1 = r3(ax + R + gap + sc.dk / 2 + travel / 2), pitch = r3(up(sc.dk + FITTING_DEFAULTS.pitch.value + travel, 0.5)), s2 = r3(s1 + pitch), x1 = r3(s2 + travel / 2 + sc.dk / 2 + wall);
+  // the room it slides in along the slot: half the stretch and half a pitch each way, twice over, in whole mm
+  const need = r3(stretch / 2 + B.pitch / 2), room = Math.max(2, up(want() * need, 1));
+  const R = I.od / 2, ax = r3(R + wall), ringD = r3(Math.min(I.bore + 4, I.od - 4)), cb = counterbore(sd.thread, { head: 'cap', printer: k.pr, into: '-z', at: [0, 0, 0] }).model;
+  const s1 = r3(ax + R + gap + cb.diameter / 2), pitch = r3(up(Math.max(cb.diameter, sd.nut.length ?? 0) + FITTING_DEFAULTS.pitch.value, 0.5)), s2 = r3(s1 + pitch), x1 = r3(s2 + cb.diameter / 2 + wall);
   const half = r3(Math.max(R + wall, Math.abs(across) + R + wall)), y0 = r3(Math.min(-half, across - R - wall)), y1 = r3(Math.max(half, across + R + wall));
-  const fits = sold(topZ, k.layer, [sd], sd.thread);
+  // the screws' grip: the block's height, or the deepest a counterbore leaves where a sold length engages its nut
+  let fits = null, held = topZ;
+  for (let g0 = topZ; g0 >= fixingModel(sd.thread).major - 1e-9; g0 = r3(g0 - k.layer)) { const q = sold(g0, k.layer, [sd], sd.thread); if (q && Math.abs(q.t - g0) < 1e-9) { fits = q; held = g0; break; } }
+  const sink = r3(topZ - held);
   // sized: the belt's two spans at the idler's middle pull the insert against its wall, and bend the block at its base
   const F = 2 * T, bear = r3(F / (ins.diameter * ins.depth)), Mb = F * o.rise, bW = y1 - y0, bendS = r3((6 * Mb) / (bW * x1 * x1)), margin = r3(Math.min(k.S / bear, k.S / bendS));
   const m = { kind: 'fitting', fitting: 'belt-idler', guide: 'belt', name: `belt-idler-${I.set}-${short(p.name)}-${sd.face.replace('.', '-')}`, title: `printed idler block and tensioner for ${I.set} on ${p.name}'s ${sd.face} face`,
-    profile: p.name, face: sd.face, idler: I.set, belt: B.set, rise: o.rise, across, top: topZ, length: x1, y0, y1, axleAt: [ax, across], ring: { d: ringD, h: ring }, insert: { d: ins.diameter, depth: ins.depth }, travel, need,
-    thread: sd.thread, head: 'cap', slotHole: r3(hd), screws: [s1, s2].map((x) => ({ thread: sd.thread, head: 'cap', grip: topZ, at: [x, 0, topZ], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })),
+    profile: p.name, face: sd.face, idler: I.set, belt: B.set, rise: o.rise, across, top: topZ, length: x1, y0, y1, axleAt: [ax, across], ring: { d: ringD, h: ring }, insert: { d: ins.diameter, depth: ins.depth }, room, need,
+    thread: sd.thread, head: 'cap', counterbore: sink > 0 ? { diameter: cb.diameter, depth: sink } : null, screws: [s1, s2].map((x) => ({ thread: sd.thread, head: 'cap', grip: held, at: [x, 0, held], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })),
     hardware: [{ name: `${axle}x${axleL} cap`, kind: 'screw', thread: axle, length: axleL, head: 'cap', count: 1, why: `the idler's axle, into its insert` }, { name: `${axle} washer`, kind: 'washer', thread: axle, count: 1, why: 'over the idler, under the axle\'s head' }, { name: `${axle} heat-set insert`, kind: 'insert', thread: axle, count: 1, why: 'the idler\'s axle screws into it' }],
     load: { force: F, what: `the belt's two spans at ${mm(T)} N each on the idler, ${mm(o.rise)} mm over the face` }, stress: Math.max(bear, bendS), margin,
     anchors: { axle: { at: [ax, across, r3(topZ + ring)], axis: [0, 0, 1], ref: [1, 0, 0] } },
     size: { length: x1, across: r3(bW), height: topZ }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, { name: 'BELT_DEFAULTS.tension', value: BELT_DEFAULTS.tension.value, kind: BELT_DEFAULTS.tension.kind }] };
   keep(m, k); weigh(m, beltIdler(m), k.density);
-  m.findings.push(fits ? finding('pass', `two ${sd.thread}x${fits.lengths[0]} cap through ${mm(topZ)} mm into slot nuts, through slots ${mm(travel)} mm long: loosen them, slide the block toward the beam's end until the belt is at its tension, tighten them`, 'fitting.screw', { values: { lengths: fits.lengths, windows: fits.windows, travel } })
-    : finding('warn', `no ${sd.thread} cap screw sold engages its slot nut fully through ${mm(topZ)} mm: the screw's length is the fasten check's to choose`, 'fitting.screw', { values: { travel } }));
-  m.findings.push(finding('info', `${I.set} on an ${axle}x${axleL} cap and a washer into an ${axle} heat-set insert (${mm(ins.diameter)} mm, ${mm(ins.depth)} deep), on a ${mm(ring)} mm ring under its inner race; its slots travel ${mm(travel)} mm, twice the ${mm(need)} mm half the belt's ${mm(stretch)} mm stretch and half a ${mm(B.pitch)} mm pitch ask`, 'fitting.idler', { values: { axle: axleL, travel, need } }));
-  closingFindings(m, { S: k.S, sizeText: `${mm(x1)} mm along the beam, ${mm(bW)} mm across, ${mm(topZ)} mm over the face`, marginText: `under ${m.load.what}, the insert bears on its wall at ${mm(bear)} MPa and the block bends at its base to ${mm(bendS)} MPa`, pose: 'as it sits, on its base, every hole and slot upright' });
+  m.findings.push(fits ? finding('pass', `two ${sd.thread}x${fits.lengths[0]} cap through ${mm(held)} mm${sink > 0 ? ` under ${mm(sink)} mm counterbores` : ''} into slot nuts: loosen them, slide the block along the slot toward the beam's end until the belt is at its tension, tighten them`, 'fitting.screw', { values: { lengths: fits.lengths, windows: fits.windows, grip: held } })
+    : finding('warn', `no ${sd.thread} cap screw sold engages its slot nut fully through the block: the screw's length is the fasten check's to choose`, 'fitting.screw', {}));
+  m.findings.push(finding('info', `${I.set} on an ${axle}x${axleL} cap and a washer into an ${axle} heat-set insert (${mm(ins.diameter)} mm, ${mm(ins.depth)} deep), on a ${mm(ring)} mm ring under its inner race; it wants ${mm(room)} mm of slot each way to slide in, twice the ${mm(need)} mm half the belt's ${mm(stretch)} mm stretch and half a ${mm(B.pitch)} mm pitch ask`, 'fitting.idler', { values: { axle: axleL, room, need } }));
+  closingFindings(m, { S: k.S, sizeText: `${mm(x1)} mm along the beam, ${mm(bW)} mm across, ${mm(topZ)} mm over the face`, marginText: `under ${m.load.what}, the insert bears on its wall at ${mm(bear)} MPa and the block bends at its base to ${mm(bendS)} MPa`, pose: 'as it sits, on its base, every hole upright' });
   return m;
 }
 /** A belt idler block's solid, in its fitted frame (which is how it prints). @param {object} m beltIdlerModel's @param {{ pose?: 'print' | 'fit', ops?: object }} [o] @returns {object} */
@@ -273,7 +282,7 @@ export function beltIdler(m, o = {}) {
   if (m?.fitting !== 'belt-idler') throw new Error(`beltIdler: give a belt idler block's model (beltIdlerModel), not ${shown(m)}`);
   const pr = printerOf('beltIdler', m.pr ?? null), t = m.top, parts = [prismZ(roundedRect(0, m.y0, m.length, m.y1, 3), 0, t), discZ(m.axleAt[0], m.axleAt[1], m.ring.d, t - 0.01, t + m.ring.h)];
   const cuts = [hole('M5', { kind: 'insert', into: '-z', at: [m.axleAt[0], m.axleAt[1], t + m.ring.h], depth: m.insert.depth + m.ring.h, printer: pr })];
-  for (const q of m.screws) cuts.push(slotZ(q.at[0] - m.travel / 2, q.at[0] + m.travel / 2, 0, m.slotHole, -1, t + 1));
+  for (const q of m.screws) cuts.push(m.counterbore ? counterbore(q.thread, { head: 'cap', printer: pr, into: '-z', at: [q.at[0], q.at[1], t], depth: m.counterbore.depth, length: t + 1 }) : hole(q.thread, { kind: 'clearance', into: '-z', at: [q.at[0], q.at[1], t + 0.5], depth: t + 1, printer: pr }));
   return Object.assign(combine(parts, cuts, o.ops ?? null), { model: m });
 }
 
@@ -316,17 +325,17 @@ export function beltLayout(profile, o = {}) {
   const plate = beltPlateModel(p, { face, motor: o.motor, pulley: S.pulley.set, belt: B.set, across: yp, least, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
   const zb = plate.height, xp = plate.motorAt[0];
   if (rail.from < plate.x1 + gap - 1e-9) throw new Error(`${what}: the motor's plate takes the first ${mm(plate.x1)} mm of the face, and the rail starts ${mm(rail.from)} mm along it: start the rail at ${mm(plate.x1 + gap)} mm or more`);
-  const clamp = beltClampModel({ belt: B.set, holes: c.holes, thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T, ...pass });
+  const clamp = beltClampModel({ belt: B.set, carriageHoles: c.holes, ...(c.depth != null ? { carriageDepth: c.depth } : {}), thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T, ...pass });
   // the belt's length round its path with the block in the middle of its slots, and its stretch at the tension
   const end = rail.from + rail.length;
   const trial = beltIdlerModel(p, { face, idler: S.idler.set, belt: B.set, rise: zb, across: yi, stretch: 0, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
-  const at0 = o.idlerAt ?? r3(o.beam - trial.length);
+  const at0 = o.idlerAt ?? r3(o.beam - trial.length - trial.room);
   const pathAt = (xi, xc) => path({ xp, yp, rp, xi, yi, ri, xc, yw, Lc: clamp.length, gapMid: clamp.gap });
   const L0 = pathAt(at0 + trial.axleAt[0], rail.from + c.rest).length, stretch = r3((L0 * T) / B.k);
   const idler = beltIdlerModel(p, { face, idler: S.idler.set, belt: B.set, rise: zb, across: yi, stretch, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
-  const blockAt = o.idlerAt ?? r3(o.beam - idler.length);
+  const blockAt = o.idlerAt ?? r3(o.beam - idler.length - idler.room);
   if (!isNum(blockAt)) throw new Error(`${what}: idlerAt is the idler block's end toward a, mm along the beam (got ${shown(o.idlerAt)})`);
-  if (blockAt < end + gap - 1e-9) throw new Error(`${what}: the idler's block starts ${mm(blockAt)} mm along the beam, and the rail ends at ${mm(end)} mm: put it at ${mm(end + gap)} mm or more${o.idlerAt == null ? ` (a beam ${mm(end + gap + idler.length)} mm long, or a shorter rail)` : ''}`);
+  if (blockAt < end + gap - 1e-9) throw new Error(`${what}: the idler's block starts ${mm(blockAt)} mm along the beam, and the rail ends at ${mm(end)} mm: put it at ${mm(end + gap)} mm or more${o.idlerAt == null ? ` (a beam ${mm(end + gap + idler.length + idler.room)} mm long, or a shorter rail)` : ''}`);
   if (blockAt + idler.length > o.beam + 1e-9) throw new Error(`${what}: the idler's block runs ${mm(idler.length)} mm from ${mm(blockAt)} mm, past the beam's ${mm(o.beam)} mm: give idlerAt ${mm(o.beam - idler.length)} or less`);
   const xi0 = r3(blockAt + idler.axleAt[0]), Lmid = pathAt(xi0, rail.from + c.rest).length;
   // the length to cut: whole teeth, which at the tension stretches to the path with the block a little toward a
@@ -339,7 +348,11 @@ export function beltLayout(profile, o = {}) {
   for (const xc of samples) { const q = pathAt(xi0 + offset, xc); worstSpan = Math.max(worstSpan, (q.a * q.b) / (q.a + q.b)); }
   const F0 = faceFrame(what, p, face);
   const line = r3((Math.atan2(Math.abs(across), xi0 - xp) * 180) / Math.PI);
-  return { kind: 'belt-layout', profile: p.name, face, sets: S, tension: T, height: zb, working: yw, pulley: { x: xp, y: yp, r: rp }, idler: { x: xi0, y: yi, r: ri, block: blockAt, offset, travel: idler.travel },
+  const common = { belt: B.set, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}) };
+  const specs = { plate: { face, motor: plate.motor, pulley: S.pulley.set, across: yp, least, ...common }, clamp: { belt: B.set, carriageHoles: c.holes, thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T },
+    idler: { face, idler: S.idler.set, rise: zb, across: yi, stretch, ...common } };
+  if (c.depth != null) specs.clamp.carriageDepth = c.depth;
+  return { kind: 'belt-layout', profile: p.name, face, sets: S, specs, tension: T, height: zb, working: yw, pulley: { x: xp, y: yp, r: rp }, idler: { x: xi0, y: yi, r: ri, block: blockAt, offset, room: { a: r3(blockAt - end - gap), b: r3(o.beam - blockAt - idler.length) }, want: idler.room },
     plate, clamp, block: idler, rail, carriage: c, beamFrame: F0, length: r3(Lmid), cut, buy, stretch: r3(cut * strain), strain, span: r3(worstSpan), samples, line, across, mmPerTurn: r3(S.pulley.teeth * B.pitch),
     pathAt: (xc) => pathAt(xi0 + offset, xc), drawn: (xc) => pathAt(xi0, xc) };
 }
