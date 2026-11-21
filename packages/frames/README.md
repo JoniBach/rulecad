@@ -1247,7 +1247,7 @@ m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'fo
 | Generator | What it is | Size |
 |---|---|---|
 | `box(o)` | Four upright beams (`z1` to `z4`) and a ring of four beams at the bottom and at the top | `[width, depth, height]` |
-| `portal(o)` | Two legs and a beam across their tops, standing in the x-z plane | `[width, height]` |
+| `portal(o)` | Two legs and a beam across their tops, standing in the x-z plane. It lies in one plane, so it stands only with its feet held down (bolted to a bench or a wall); cad refuses a generated portal until `frame.supports` says so | `[width, height]` |
 | `table(o)` | Four legs and a ring at the top; the height is the clear height under the ring | `[width, depth, height]` |
 | `gantry(o)` | A box without its top beams across, and a beam `g` lying across the two top side beams, riding along y (`moving`: its track, direction and travel) | `[width, depth, height]` |
 | `shelf(o)` | A box with `shelves` rings between (default 1), spacing its height into equal clear bays | `[width, depth, height]` |

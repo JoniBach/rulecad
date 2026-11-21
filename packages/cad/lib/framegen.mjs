@@ -31,7 +31,16 @@ export function frameOf(a, num, context = framesContext()) {
   for (const k of FRAME_GEN_KEYS.slice(1)) if (f[k] != null) o[k] = f[k];
   for (const k of ['inside', 'outside']) if (o[k] != null) { if (!Array.isArray(o[k])) throw new Error(`frame: ${k} is [width, depth, height] in mm (got ${shown(o[k])})`); o[k] = o[k].map((x) => num(x)); }
   if (o.panels?.thickness != null) o.panels = { ...o.panels, thickness: num(o.panels.thickness) };
-  try { return frameModel(f.kind, { ...o, given: givenFor(context, f.profile) }); } catch (e) { throw new Error(`frame: ${String(e.message).replace(/^frameModel: /, '')}`); }
+  let m;
+  try { m = frameModel(f.kind, { ...o, given: givenFor(context, f.profile) }); } catch (e) { throw new Error(`frame: ${String(e.message).replace(/^frameModel: /, '')}`); }
+  // a portal lies in one plane: standing on its two feet, a foot holds an upright's end from moving and not from turning,
+  // so nothing holds it out of that plane and it tips over sideways under any load. It checks clean once its feet are
+  // held down (bolted to a bench or a wall), so where nothing says how it is held, it is refused here, before any check
+  if (m.kind === 'portal' && f.supports == null) {
+    const feet = m.beams.filter((b) => Math.min(b.from[2], b.to[2]) < 1e-6).map((b) => `"${b.id}.${b.from[2] <= b.to[2] ? 'a' : 'b'}": "fixed"`);
+    throw new Error(`frame: a portal stands in one plane (x-z) on its two feet, and a foot stops an upright's end moving but not turning, so nothing holds the portal out of that plane: on its feet alone it tips over sideways (frame.buckling fails it, frame.rack finds it free along y). Say how its feet are held down, bolted to a bench or a wall: "supports": { ${feet.join(', ')} }; or, to stand free, generate a table or a box`);
+  }
+  return m;
 }
 
 /**

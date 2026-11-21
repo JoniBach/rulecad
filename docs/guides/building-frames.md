@@ -140,7 +140,10 @@ and `projects/frame/assemblies/box.json`:
 - `"join"` is how its corners are held (section 5). `"feet"` are printed levelling feet screwed into the uprights' ends.
 - `"loads"` say what it carries, at an address on a beam: `x3.top@50%` is the middle of beam x3's top face.
 
-Other kinds are `portal`, `table`, `gantry` and `shelf`. `npx cad frame frame/box` says what it expands into:
+Other kinds are `portal`, `table`, `gantry` and `shelf`. A portal is two legs and a beam across, in one plane: a
+foot stops a leg's end moving but lets it turn, so on its feet alone a portal tips over sideways. cad refuses it until
+its frame says the feet are held down, bolted to a bench or a wall: `"supports": { "z1.a": "fixed", "z2.a": "fixed" }`.
+To stand free, make a table or a box. `npx cad frame frame/box` says what it expands into:
 
 ```
 frame/box: a box of 2020-acme (20 mm), joined blind: the upright beams run through and the rest butt against their faces

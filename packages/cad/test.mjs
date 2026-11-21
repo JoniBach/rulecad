@@ -4842,6 +4842,37 @@ test('generated frames: a box asked for by its inside size expands into beams on
   } finally { done(); }
 });
 
+test('generated frames: a portal, which lies in one plane and tips over on its feet alone, is refused by name until its feet are said to be held down, and then checks clean in 2020 joined blind and in 3030 and 4040 by printed gussets', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const probe = (n) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const f = checkAssembly(await buildAssembly('frame/${n}'));
+      console.log(JSON.stringify(f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text)));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // Two legs and a beam across, in the x-z plane, on levelling feet. A foot stops a leg's end moving and lets it
+    // turn, so nothing holds the portal out of its plane: checked as it stands it fails frame.buckling (it tips over,
+    // factor 0) and frame.rack finds it free along y, whatever the join. So the generator refuses it by name, before
+    // any check, and says how to hold it
+    const ask = { kind: 'portal', inside: [400, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
+    write('portal', { frame: ask });
+    assert.match(cad('check', 'frame/portal'), /frame: a portal stands in one plane \(x-z\) on its two feet[^]*it tips over sideways \(frame\.buckling fails it, frame\.rack finds it free along y\)\. Say how its feet are held down, bolted to a bench or a wall: "supports": \{ "z1\.a": "fixed", "z2\.a": "fixed" \}; or, to stand free, generate a table or a box/);
+    // its feet bolted down, it checks clean: in 2020 joined blind, and by printed gussets in MISUMI's and Bosch's 3030
+    // and item's 4040 (each checked with nothing failed or warned)
+    const held = { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' } };
+    write('portal', { frame: { ...ask, ...held } });
+    assert.deepEqual(probe('portal'), []);
+    for (const profile of ['3030-misumi-hfs6', '3030-bosch', '4040-item-8']) {
+      write('portal', { frame: { ...ask, profile, join: { kind: 'gusset', fitting: 'printed' }, ...held } });
+      assert.deepEqual(probe('portal'), [], profile);
+    }
+  } finally { done(); }
+});
+
 test('frame sizing: a table under a named load gets heavier long rails than legs, each group\'s profile named by the limit that set it, lighter as the limit loosens, and written in to check clean', () => {
   const { ws, cad, done } = workspace();
   try {

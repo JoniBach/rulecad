@@ -944,7 +944,9 @@ screws, the cut list, the frame checks, the build page) sees a hand-drawn frame.
 (`frame.generated`: the kind, the inside and outside, the beams by length, the joins and the ends).
 
 - `"kind"`: `box` (four upright beams `z1` to `z4` and a ring of four at the bottom and at the top), `portal` (two
-  legs and a beam across their tops, in the x-z plane), `table` (four legs and a ring at the top), `gantry` (a box
+  legs and a beam across their tops, in the x-z plane; it lies in one plane, so on its feet alone it tips over out of
+  it, and it is refused by name until `"supports"` says its feet are held down, as
+  `"supports": { "z1.a": "fixed", "z2.a": "fixed" }` for a portal bolted to a bench or a wall), `table` (four legs and a ring at the top), `gantry` (a box
   without its two top beams across, and a beam `g` lying across the two top side beams, sliding along them on the
   joint `gantry`, with the poses `gantry-front` and `gantry-back`) or `shelf` (a box with `"shelves"` rings between,
   default 1, spacing its height into equal clear bays). Beams across x are `x1`, `x2` .., along y `y1` .., by ring

@@ -56,6 +56,12 @@ and head, the parts it passes through and the part it ends in.
 
 ### Changed
 
+- **A generated portal says how it is held**: a portal lies in one plane, and on its two feet (each holding a leg's end
+  from moving, not from turning) it tips over out of that plane: every generated portal failed `frame.buckling`
+  (factor 0) or warned `frame.solve`, whatever its join or profile. `"frame": { "kind": "portal" }` is now refused by
+  name until `"supports"` says how its feet are held, as `{ "z1.a": "fixed", "z2.a": "fixed" }` for a portal bolted
+  to a bench or a wall. So held, it checks clean in 2020 joined blind and in 3030 and 4040 by printed gussets. No
+  printed size moves.
 - **Guessed supports said**: where a frame has no feet and no `"frame": { "supports" }`, and its lowest ends pinned
   would leave it free, the guess stands its posts fixed on their end faces (and lays a lying beam on its face). That
   hid the frame's freedom: a 2020 portal with no supports passed `frame.rack` along y at 0.411 mm though it is free
