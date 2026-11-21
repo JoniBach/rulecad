@@ -57,8 +57,11 @@ jobs:
           key: dimension-diff-${{ github.sha }}
           restore-keys: dimension-diff-
       # One build at a time, each Node process's heap held to 6 GB of the runner's 16: with two at once the runner was
-      # lost three times on 2026-11-17 (a shutdown signal about 13 minutes in), most likely out of memory. A build past
-      # the cap stops with a heap error that the table shows against its objects; a run that outlasts its time is green.
+      # lost three times on 2026-11-17 (a shutdown signal about 13 minutes in), most likely out of memory. The heap cap
+      # does not hold an optimisation's or a lamina's arrays and WASM memory, so the script itself keeps those apart: their
+      # results are shared by both commits and kept in the cache above (.cache/dimension-diff/slow/), and a worker past
+      # DIMENSION_DIFF_RSS_MB after a build hands the rest of its list to a fresh one. A build past the cap stops with a
+      # heap error that the table shows against its objects; a run that outlasts its time is green.
       - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md --jobs 1 >> "$GITHUB_STEP_SUMMARY"
         timeout-minutes: 25
         continue-on-error: true

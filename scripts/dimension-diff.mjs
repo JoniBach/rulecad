@@ -15,6 +15,12 @@
 // by that. An object made from the same files at both commits is the same by construction and isn't built at all;
 // one built before is read back. Only what changed is built: from a copy of that commit's files under the system's
 // temporary folder (git archive, never a worktree), using this checkout's installed dependencies.
+//
+// Memory: a cold build of the showcase's optimisations and the launcher's staged physics is the slow and large part
+// (one optimisation held 3.5 GB within four minutes on a laptop, most of it outside the V8 heap, so a heap cap does not
+// bound it). So those results, which cad keys by the code and the inputs that decide them, are shared by both commits
+// and kept between runs (.cache/dimension-diff/slow/); and a worker whose memory has passed DIMENSION_DIFF_RSS_MB
+// (2048 by default) after a build hands the rest of its list to a fresh one, so no build carries an earlier one's.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -79,6 +85,8 @@ export function measure(b) {
   return { values, parts, ...(fixings.length ? { fixings } : {}) };
 }
 
+// The memory, in MB, past which a worker stops after its build and a fresh one takes the rest of its list
+const rssBudget = () => Number(process.env.DIMENSION_DIFF_RSS_MB || 2048);
 async function worker(dir, names) {
   const { build, locate } = await import(pathToFileURL(path.join(dir, 'packages/cad/lib/design.mjs')).href);
   const log = console.log; console.log = console.error; // (a design's own logging stays off the results)
@@ -86,15 +94,33 @@ async function worker(dir, names) {
     let r;
     try { r = measure(await build(locate(n))); } catch (e) { r = { error: String(e?.message || e).split('\n')[0].slice(0, 200) }; }
     log(JSON.stringify({ n, r }));
+    if (process.memoryUsage().rss > rssBudget() * 1048576) { log(JSON.stringify({ restart: true })); process.exit(0); } // (the WASM memory a build grew is never given back)
   }
 }
 
 // ---------- a commit's files, built ----------
 const TMP = path.join(os.tmpdir(), 'rulecad-dimension-diff');
-// A copy of a tree's files, with this checkout's dependencies linked in and the tree's own packages as @rulecad/*
-function materialise(rev, tree) {
+// The slow results cad keeps by what decides them (an optimisation's densities: the problem, the solver's code and
+// the FE's; a lamina's stages: the flexures' and the FE's code and the stage's inputs), so the same in any commit
+// that has the same of each: shared by every commit's copy, and kept between runs
+export const SHARED = ['densities', 'stages'];
+const linkShared = (dir, tree, slow) => {
+  for (const ws of new Set([...tree.keys()].map(workspaceOf).filter(Boolean))) for (const kind of SHARED) {
+    const at = path.join(dir, ws, '.cache', kind), to = path.join(slow, kind);
+    fs.mkdirSync(to, { recursive: true }); fs.mkdirSync(path.dirname(at), { recursive: true });
+    let was = null; try { was = fs.lstatSync(at); } catch {}
+    if (was?.isSymbolicLink()) { try { fs.unlinkSync(at); } catch { fs.rmdirSync(at); } } else if (was) fs.rmSync(at, { recursive: true, force: true }); // (a copy made with another shared folder, or none)
+    fs.symlinkSync(to, at, 'junction');
+  }
+};
+/**
+ * A copy of a tree's files, with this checkout's dependencies linked in, the tree's own packages as @rulecad/*, and
+ * each workspace's slow results (SHARED) linked to one folder.
+ * @param {string} rev @param {Map<string, string>} tree @param {string} slow the shared folder @returns {string} the copy
+ */
+export function materialise(rev, tree, slow) {
   const dir = path.join(TMP, sha([...tree].sort()).slice(0, 16)), done = path.join(dir, '.complete');
-  if (fs.existsSync(done)) return dir;
+  if (fs.existsSync(done)) { linkShared(dir, tree, slow); return dir; }
   fs.mkdirSync(dir, { recursive: true });
   if (rev === '.') for (const f of tree.keys()) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); }
   else execFileSync('tar', ['-x', '-f', '-', '-C', dir], { input: execFileSync('git', ['archive', '--format=tar', rev, '--', ...SCOPE.filter((s) => [...tree.keys()].some((f) => f === s || f.startsWith(`${s}/`)))], { cwd: ROOT, maxBuffer: 1 << 30 }), maxBuffer: 1 << 30 });
@@ -107,19 +133,30 @@ function materialise(rev, tree) {
     const own = path.join(ROOT, 'packages', p, 'node_modules'); // (a package's own copy of a dependency, as npm placed it)
     if (fs.existsSync(own)) link(own, path.join(dir, 'packages', p, 'node_modules'));
   }
+  linkShared(dir, tree, slow);
   fs.writeFileSync(done, rev);
   return dir;
 }
 
-function run(dir, ws, names, each = () => {}) {
-  return new Promise((resolve) => {
-    const home = path.join(dir, ws), out = new Map();
-    const env = { ...process.env, CAD_WORKSPACE: home, CAD_TRUST: '1', CAD_TRUSTED: path.join(dir, '.trusted.json') };
-    const p = spawn(process.execPath, [fileURLToPath(import.meta.url), '--worker', dir, ...names], { cwd: home, env, stdio: ['ignore', 'pipe', 'ignore'] });
-    let buf = '';
-    p.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); try { const { n, r } = JSON.parse(line); out.set(n, r); each(n, r); } catch {} } });
-    p.on('close', (code) => { for (const n of names) if (!out.has(n)) out.set(n, { error: `the build stopped (exit ${code})` }); resolve(out); });
-  });
+/**
+ * Builds a workspace's objects in workers: one, and a fresh one for the rest whenever a worker stops for its memory.
+ * @param {string} dir a commit's copy @param {string} ws @param {string[]} names project/object
+ * @param {(n: string, r: object) => void} [each] @returns {Promise<Map<string, object> & { workers: number }>}
+ */
+export async function run(dir, ws, names, each = () => {}) {
+  const out = new Map(); let workers = 0;
+  for (let left = names; left.length;) {
+    workers++;
+    const restart = await new Promise((resolve) => {
+      const home = path.join(dir, ws), env = { ...process.env, CAD_WORKSPACE: home, CAD_TRUST: '1', CAD_TRUSTED: path.join(dir, '.trusted.json') };
+      const p = spawn(process.execPath, [fileURLToPath(import.meta.url), '--worker', dir, ...left], { cwd: home, env, stdio: ['ignore', 'pipe', 'ignore'] });
+      let buf = '', again = false;
+      p.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(line); if (m.restart) again = true; else { out.set(m.n, m.r); each(m.n, m.r); } } catch {} } });
+      p.on('close', (code) => { if (!again) for (const n of left) if (!out.has(n)) out.set(n, { error: `the build stopped (exit ${code})` }); resolve(again); });
+    });
+    left = restart ? left.filter((n) => !out.has(n)) : [];
+  }
+  return Object.assign(out, { workers });
 }
 
 /**
@@ -136,7 +173,7 @@ export async function measuresAt(rev, { only, jobs = 4, cache = path.join(ROOT, 
   const due = objects.filter((o) => !measures.has(o.id) && !skip.has(o.key));
   if (due.length) {
     say(`building ${due.length} of ${objects.length} objects at ${rev}`);
-    const dir = materialise(rev, tree), queue = [];
+    const dir = materialise(rev, tree, path.join(cache, 'slow')), queue = [];
     // a few workers, each in one workspace (the workspace is where cad looks for rules), each given a share of it
     const byWs = Map.groupBy ? Map.groupBy(due, (o) => o.ws) : due.reduce((m, o) => m.set(o.ws, [...(m.get(o.ws) || []), o]), new Map());
     for (const [ws, list] of byWs) { const n = Math.max(1, Math.min(jobs, Math.ceil(list.length / 8))); for (let i = 0; i < n; i++) queue.push({ ws, list: list.filter((_, k) => k % n === i) }); }

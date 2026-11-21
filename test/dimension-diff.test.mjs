@@ -1,9 +1,12 @@
 // The dimension diff (scripts/dimension-diff.mjs): every example object compared between two commits. These tests
-// build nothing: they hold how an object is known (so one made from the same files is never rebuilt) and what a
-// comparison reports.
+// hold how an object is known (so one made from the same files is never rebuilt), what a comparison reports, and how
+// its builds are held in memory; only the last builds anything (the template's two smallest objects).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { treeOf, objectsOf, compare } from '../scripts/dimension-diff.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { treeOf, objectsOf, compare, materialise, run, SHARED } from '../scripts/dimension-diff.mjs';
 
 test('the diff between a commit and itself is empty, and builds nothing', () => {
   const objects = objectsOf(treeOf('HEAD'));
@@ -38,4 +41,31 @@ test('a comparison names each hole, volume, size and v.fixings figure that moved
     ['w/p/c', 'the build', 'builds', 'fails: no rule "clearence" in m4'],
   ]);
   assert.equal(r.same, 1, 'a hundredth of a mm³ is the same solid'); assert.equal(r.unchanged, 1);
+});
+
+test('the slow results (an optimisation\'s densities, a lamina\'s stages) are one folder for every workspace and commit, kept with the measures', () => {
+  const tree = treeOf('HEAD'), slow = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-slow-'));
+  try {
+    const dir = materialise('HEAD', tree, slow), wss = ['examples/bench', 'packages/create-rulecad/template', 'packages/create-rulecad/machines/arm'];
+    assert.deepEqual(SHARED, ['densities', 'stages']);
+    for (const ws of wss) for (const kind of SHARED) assert.equal(fs.realpathSync(path.join(dir, ws, '.cache', kind)), fs.realpathSync(path.join(slow, kind)), `${ws}'s ${kind}`);
+    fs.writeFileSync(path.join(dir, wss[0], '.cache/densities/x.json'), '{}');
+    assert.ok(fs.existsSync(path.join(dir, wss[1], '.cache/densities/x.json')), 'what one workspace keeps, another reads');
+    // the same commit's copy again, with another folder (a later run's), follows it
+    const later = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-slow-'));
+    try { materialise('HEAD', tree, later); assert.equal(fs.realpathSync(path.join(dir, wss[0], '.cache/stages')), fs.realpathSync(path.join(later, 'stages'))); } finally { fs.rmSync(later, { recursive: true, force: true }); }
+  } finally { fs.rmSync(slow, { recursive: true, force: true }); }
+});
+
+test('a worker past its memory budget hands the rest of its list to a fresh one, and every object is still measured', async () => {
+  const tree = treeOf('HEAD'), slow = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-slow-')), was = process.env.DIMENSION_DIFF_RSS_MB;
+  try {
+    const dir = materialise('HEAD', tree, slow);
+    process.env.DIMENSION_DIFF_RSS_MB = '1'; // (every worker is past 1 MB after a build: one worker an object)
+    const small = await run(dir, 'packages/create-rulecad/template', ['home/box', 'home/lid']);
+    assert.equal(small.workers, 2); assert.deepEqual([...small.keys()].sort(), ['home/box', 'home/lid']);
+    for (const [n, r] of small) assert.ok(r.parts && !r.error, `${n}: ${JSON.stringify(r)}`);
+    process.env.DIMENSION_DIFF_RSS_MB = '100000'; // (none is: one worker for the list)
+    assert.equal((await run(dir, 'packages/create-rulecad/template', ['home/box', 'home/lid'])).workers, 1);
+  } finally { if (was == null) delete process.env.DIMENSION_DIFF_RSS_MB; else process.env.DIMENSION_DIFF_RSS_MB = was; fs.rmSync(slow, { recursive: true, force: true }); }
 });
