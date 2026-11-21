@@ -1,0 +1,35 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "holds-coupon",
+  "title": "Holds coupon",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn: the plate on its base with every hole opening upward, the bolts standing on their heads, the snap pins on their feet",
+  "description": "The fixings coupon's second plate: snap pin sockets for 3 and 4 mm pins at three clearances, holes for a 3 mm steel dowel and 1.75 mm filament at three press and three slip fits, 6x3 and 8x3 disc magnet pockets at three press fits and an 8x3 with crush ribs at three, and printed nuts for M8 and M10 printed bolts at three thread gaps. Loose beside it: the six printed bolts, a pull bolt to break, and six snap pins at three barb depths. Each figure is the one to write back with cad measured (MEASURE.md, rows 40 to 46). Print it with the fixings coupon, once per printer and plastic.",
+  "variables": {
+    "base": { "value": "x1c.layer * 6", "unit": "mm", "rule": "The plate every feature stands on: six layers, the floor under every blind hole and pocket, and a first layer that is one plain rectangle but for the socket and push-out holes" },
+    "wall": { "value": "x1c.wall_min * 2", "unit": "mm", "rule": "Plastic round every hole and pocket: four print lines, as a design gives a boss" },
+    "gap": { "value": "x1c.wall_min", "unit": "mm", "rule": "Between features, between a feature and its figure, between loose pieces, and round the edge" },
+    "root": { "value": "x1c.chamfer", "unit": "mm", "rule": "The 45° flare where each boss meets the plate, so no inside corner is square" },
+    "step": { "value": "x1c.hole_comp", "unit": "mm", "rule": "Sockets, slip fits, magnet pockets and printed nuts step by the printer's hole compensation either side of what the kit draws: the amount a printed hole comes out wrong by" },
+    "press_step": { "value": "x1c.hole_comp / 2", "unit": "mm", "rule": "A pin's press fit steps by half that: a pin grips or splits its boss over a few hundredths of a millimetre" },
+    "shaft": { "value": 6, "unit": "mm", "rule": "A snap pin's shaft, and the thickness of its socket's boss from the bed, so the barb clicks out just past the plate's underside" },
+    "barb": { "value": 0.4, "unit": "mm", "rule": "The middle snap pin's barb depth, the kit's default; the others are a barb_step either side" },
+    "barb_step": { "value": 0.1, "unit": "mm", "rule": "The snap pins' barbs step by a tenth of a millimetre: about a quarter of the barb, enough to feel between a pin that clicks and one that will not go" },
+    "pin_depth": { "value": 6, "unit": "mm", "rule": "How deep a dowel or a filament pin goes into its hole: twice a 3 mm dowel's diameter, so it is held straight, and the rest of a 12 mm pin stands out to pull on" },
+    "push": { "value": 2, "unit": "mm", "rule": "The hole under each magnet pocket, to push a pressed magnet out with a 1.75 mm filament or a small screwdriver" },
+    "engaged": { "value": 0.8, "rule": "A printed bolt's length as a share of its nut's depth, so it turns all the way in without reaching the nut's floor" },
+    "pull_length": { "value": 30, "unit": "mm", "rule": "The pull bolt's length under its head: room for the waist and a bought M8 nut's full height of thread beyond it" },
+    "waist": { "value": 3, "unit": "mm", "rule": "The pull bolt's waist, across: 7.07 mm², which breaks at about 28 kg if the plastic holds 39 MPa across its layers, within a 50 kg luggage scale's reach with room for a stronger print" },
+    "waist_length": { "value": 6, "unit": "mm", "rule": "The waist's straight length, twice its diameter, so it breaks in the waist and not where the cones meet the shank" },
+    "notch": { "value": 0.5, "unit": "mm", "rule": "The notches down the side of a loose bolt's head or a snap pin's foot that say which figure it is: one, two or three, for the first, second and third figure in its row" },
+    "label": { "value": 2.5, "unit": "mm", "rule": "Figure height: six print lines tall, readable close up, and small enough that a figure is no wider than its feature" },
+    "stroke": { "value": "x1c.line", "unit": "mm", "rule": "One print line, for the figures" },
+    "emboss": { "value": "x1c.layer * 2", "unit": "mm", "rule": "Two layers proud" },
+    "corner": { "value": 3, "unit": "mm", "rule": "The plate's corners, rounded so they stay down" },
+    "segments": { "value": 48, "rule": "Facets on round holes, bosses and the pull bolt's waist" }
+  }
+}
