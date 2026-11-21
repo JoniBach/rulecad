@@ -1,4 +1,4 @@
-// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut, bought fitting, rail, V-wheel and eccentric spacer in @rulecad/rules (and the bearings the wheels run on), the rods, linear bearings, lead screws and nuts, couplers, motors and switches a rod guide and its drive read, the threads
+// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut, bought fitting, rail, V-wheel and eccentric spacer in @rulecad/rules (and the bearings the wheels run on), the rods, linear bearings, lead screws and nuts, couplers, motors and switches a rod guide and its drive read, the belts, pulleys and idlers a belt drive reads, the threads
 // their bores tap to, the materials they name and the outlines the kit draws itself. Generated from the rules package (one import per set, so a bundler
 // can see them): after adding a set there, add its line here. A test holds the two together.
 import s_al6000_item from '@rulecad/rules/al6000-item.json' with { type: 'json' };
@@ -227,6 +227,11 @@ import s_endstop_10t85 from '@rulecad/rules/endstop-10t85.json' with { type: 'js
 import s_28byj48 from '@rulecad/rules/28byj48.json' with { type: 'json' };
 import s_nema14 from '@rulecad/rules/nema14.json' with { type: 'json' };
 import s_nema17 from '@rulecad/rules/nema17.json' with { type: 'json' };
+import s_gt2_belt_6 from '@rulecad/rules/gt2-belt-6.json' with { type: 'json' };
+import s_pulley_gt2_16 from '@rulecad/rules/pulley-gt2-16.json' with { type: 'json' };
+import s_pulley_gt2_20 from '@rulecad/rules/pulley-gt2-20.json' with { type: 'json' };
+import s_idler_gt2_toothed_20 from '@rulecad/rules/idler-gt2-toothed-20.json' with { type: 'json' };
+import s_idler_gt2_smooth_20 from '@rulecad/rules/idler-gt2-smooth-20.json' with { type: 'json' };
 import o_profile_custom from '@rulecad/rules/outlines/profile-custom.json' with { type: 'json' };
 import vocabulary from '@rulecad/rules/vocabulary.json' with { type: 'json' };
 
@@ -252,7 +257,7 @@ export const SETS = Object.fromEntries([
   s_profile_custom, s_profile_round_bar_al_10, s_profile_round_bar_steel_10, s_profile_round_bar, s_profile_round_tube_al_25x2,
   s_profile_round_tube_steel_25x2, s_profile_round_tube, s_profile_tube_al_20x20x2, s_profile_tube_al_25x25x2,
   s_profile_tube_al_40x20x2, s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2, s_profile_tube,
-  s_rail_mgn7, s_rail_mgn9, s_rail_mgn12, s_rail_mgn15, s_v_wheel_solid, s_v_wheel_mini, s_eccentric_6_openbuilds, s_eccentric_mini_6_openbuilds, s_bearing_625, s_bearing_mr105, s_rod_8, s_lm8uu, s_lm8luu, s_t8_nut, s_t8_screw, s_bearing_608, s_coupler_5_8, s_endstop_10t85, s_28byj48, s_nema14, s_nema17, s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
+  s_rail_mgn7, s_rail_mgn9, s_rail_mgn12, s_rail_mgn15, s_v_wheel_solid, s_v_wheel_mini, s_eccentric_6_openbuilds, s_eccentric_mini_6_openbuilds, s_bearing_625, s_bearing_mr105, s_rod_8, s_lm8uu, s_lm8luu, s_t8_nut, s_t8_screw, s_bearing_608, s_coupler_5_8, s_endstop_10t85, s_28byj48, s_nema14, s_nema17, s_gt2_belt_6, s_pulley_gt2_16, s_pulley_gt2_20, s_idler_gt2_toothed_20, s_idler_gt2_smooth_20, s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
   s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,
