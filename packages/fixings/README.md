@@ -636,9 +636,13 @@ axis there, over the field at its face: an estimate. `count` magnets share a `lo
 the set has no figure for, give its maker's pull (`{ pull: 12 }`, in N).
 
 **The pocket.** Each fit takes its size from the printer's rules, all estimates until the holds coupon measures
-them: a press (`fit: 'press'`, the default) is the magnet plus `hole_comp` less `magnet_press`; a glued fit
-(`fit: 'glue'`) plus `magnet_glue`; crush ribs (`fit: 'ribs'`) are a glued pocket with three ribs a line wide whose
-tips stand `magnet_crush` inside the magnet, so a magnet anywhere in its ±0.1 mm goes in and grips. A block's pocket
+them: a press (`fit: 'press'`) is the magnet plus `hole_comp` less `magnet_press`; a glued fit (`fit: 'glue'`) plus
+`magnet_glue`; crush ribs (`fit: 'ribs'`) are a glued pocket with three ribs a line wide whose tips stand
+`magnet_crush` inside the magnet, so a magnet anywhere in its ±0.1 mm goes in and grips. With no fit given, a disc
+standing in its pocket gets crush ribs, and a disc lying on its side (where ribs would hang from the roof) or a block
+is glued: each of those passes for every size the set holds, in PLA and PETG. A press grips hardest, but it stretches
+the wall: an 8 x 3 disc in PLA at 24.6 MPa round the hoop, past half of PLA's 39 MPa, and a 10 x 5 x 2 block at 39.4
+MPa, which splits it. A block's pocket
 has its corners relieved by round cuts, so no inside corner is square. Given the part's `thickness`, the floor left
 under the pocket is held to `magnet_floor` (three layers). The magnet's own pull draws it out of a pocket that faces its
 steel: a press grips by its interference (p = E i / d / (1 + ν), with friction over its wall), crush ribs by the
@@ -677,7 +681,7 @@ press 8 2 557.2
 glue 8.2 2 null
 ribs 8.2 2 44.2
 0.6 12.77
-[ 10, 5 ] 3
+[ 10.2, 5.2 ] 3
 magnetSeatModel: a pocket 3 mm deep in a part 3.4 mm thick there leaves a floor of 0.4 mm under th
 ```
 

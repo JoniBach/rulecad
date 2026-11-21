@@ -35,10 +35,18 @@ why.
 
 - `screwLoad`, `preload`, `torqueFor`, `stripping`, and `seating` with no force given, refuse a printed bolt by name:
   each reads a steel screw's proof load, which a printed bolt does not have.
+- `screwModel` on a printed name (`M8x20 hex printed`) keeps the word printed in its name, says `printed: true`, and
+  weighs it in its plastic (`material`, PLA by default: 2.0 g, not 12.46 g of steel). `lengthFor` names a printed
+  length as printed too.
+- `magnetSeatModel` with no `fit` gives crush ribs for a disc standing in its pocket, and glue for a disc lying on its
+  side or a block: a press warned on its wall for an 8 x 3 disc in PLA and split a 10 x 5 x 2 block's.
+- `magnetModel` and `magnetSeatModel` handed a magnet's model with options build it again from its name with them
+  (its own grade, gap, count, load and given pull kept where the options say none). Before, the options were ignored.
 
 ### Printed sizes that moved
 
-None. Every snap pin and socket the kit drew before (the launcher's, the joints sampler's, the gears tensioner's) is
+A magnet pocket drawn with no `fit` given: 8.2 mm with ribs for an 8 x 3 disc, where the press was 8 mm (fixings'
+own default only; frames' catch and the coupons name their fit). Otherwise none. Every snap pin and socket the kit drew before (the launcher's, the joints sampler's, the gears tensioner's) is
 byte for byte the same, and frames' magnet catch pocket is 10.2 mm as it was.
 
 ### What a workspace should change

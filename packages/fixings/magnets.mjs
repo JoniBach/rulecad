@@ -88,7 +88,8 @@ export function fieldShare(p, z) {
  * A magnet as a model by name: its pull straight off steel, from its seller's figure (magnets.<size>_pull) scaled to
  * its grade by the square of the remanence, then across a gap by the square of the field on its axis; its mass.
  * Refused by name where its size has no seller's figure, unless the pull is given.
- * @param {string | Magnet} p a magnet's name (see MAGNET_GRAMMAR) or its model
+ * @param {string | Magnet} p a magnet's name (see MAGNET_GRAMMAR) or its model (given back as it is, or with options
+ *   built again from its name, its own grade, gap, count, load and given pull where the options say none)
  * @param {{ grade?: string, gap?: number, count?: number, load?: number, pull?: number }} [o]
  *   grade: in place of the name's; gap: plastic, paint or air between it and the steel, mm (default 0); count: magnets
  *   sharing the load (default 1); load: the pull asked of them, N, held to fixings.load_margin; pull: a magnet's own
@@ -98,7 +99,11 @@ export function fieldShare(p, z) {
 export function magnetModel(p, o = {}) {
   const what = 'magnetModel';
   optionsOf(what, o, '{ count: 2, load: 10 }');
-  if (p && typeof p === 'object' && p.kind === 'magnet') return p;
+  if (p && typeof p === 'object' && p.kind === 'magnet') { // a model: as it is, or built again from its name with the options given, its own figures where they say none
+    if (Object.values(o).every((x) => x === undefined)) return p;
+    const given = p.findings?.find((f) => f.code === 'magnet.pull')?.refs?.kind === 'given';
+    return magnetModel(p.name, { grade: o.grade ?? p.grade, gap: o.gap ?? p.gap, count: o.count ?? p.count, load: o.load ?? p.load ?? undefined, pull: o.pull ?? (given ? p.touching : undefined) });
+  }
   const n = parseMagnet(p), rests = [], out = [], size = sizeOf(n), key = `${n.shape}_${size}`;
   if (o.grade != null && !MAGNET_GRADES.includes(o.grade)) throw new Error(`${what}: grade is one of ${MAGNET_GRADES.join(', ')} (got ${shown(o.grade)})`);
   const grade = o.grade ?? n.grade ?? MAGNETS.grade.value, gap = o.gap ?? 0, count = o.count ?? 1;
@@ -154,7 +159,8 @@ export function magnetModel(p, o = {}) {
  * @param {string | Magnet} p a magnet's name or model
  * @param {{ fit?: 'press' | 'glue' | 'ribs', printer?: object, material?: string | object, sets?: object, into?: string, axis?: 'x' | 'y' | 'z',
  *   recess?: number, thickness?: number, facing?: 'open' | 'floor', grade?: string, gap?: number, count?: number, load?: number, pull?: number }} [o]
- *   fit: press (the default), glue or ribs; material: the part's plastic (default PLA); into or axis: the pocket's way
+ *   fit: press, glue or ribs (the default: ribs for a disc standing in its pocket; glue for a disc lying on its side,
+ *   where ribs would hang from the roof, and for a block, whose press splits its wall); material: the part's plastic (default PLA); into or axis: the pocket's way
  *   (default down from a top face); recess: how far under the face the magnet sits, mm; thickness: the part's along
  *   the pocket, for its floor; facing: where the magnet's steel is, past the pocket's open face (the default) or
  *   through its floor, which is then the gap; grade, gap, count, load, pull: magnetModel's
@@ -164,10 +170,14 @@ export function magnetSeatModel(p, o = {}) {
   const what = 'magnetSeatModel';
   optionsOf(what, o, '{ fit: \'press\', thickness: 5 }');
   const pr = printerOf(what, o.printer), dir = directionOf(what, o, '-z'), out = [], rests = [];
-  const fit = oneOf(what, 'fit', o.fit ?? 'press', MAGNET_FITS), facing = oneOf(what, 'facing', o.facing ?? 'open', ['open', 'floor']);
+  const model = typeof p === 'object' && p?.kind === 'magnet', n = model ? p : parseMagnet(p);
+  // The fit by default: crush ribs for a disc standing in its pocket, glue for one lying on its side (ribs would hang
+  // from its roof) and for a block. A press grips well, but its hoop stress splits a thin wall: an 8x3 disc in PLA at
+  // x1c.magnet_press is stretched 24.6 MPa round its hoop against 39 / 2, a 10x5x2 block 39.4 MPa against 39
+  const fit = oneOf(what, 'fit', o.fit ?? (n.shape === 'disc' && !dir.across ? 'ribs' : 'glue'), MAGNET_FITS), facing = oneOf(what, 'facing', o.facing ?? 'open', ['open', 'floor']);
   const recess = o.recess ?? 0;
   if (!(isNum(recess) && recess >= 0)) throw new Error(`${what}: recess is how far under the face the magnet sits, 0 mm or more (got ${shown(o.recess)})`);
-  const n = typeof p === 'object' && p?.kind === 'magnet' ? p : parseMagnet(p), mat = materialOf(what, o.material ?? 'pla', o.sets);
+  const mat = materialOf(what, o.material ?? 'pla', o.sets);
   const layer = pr.n('layer'), least = r3(DEFAULTS.magnet_floor.value * layer), depth = r3(n.thickness + recess);
   // The floor: what the part leaves under the pocket, and (facing the floor) the gap the pull goes across
   let floor = null, thickness = null;
@@ -176,7 +186,8 @@ export function magnetSeatModel(p, o = {}) {
     if (floor < least - 1e-9) throw new Error(`${what}: a pocket ${mm(depth)} mm deep in a part ${mm(thickness)} mm thick there leaves a floor of ${mm(floor)} mm under the magnet, under fixings.magnet_floor's ${DEFAULTS.magnet_floor.value} layers (${mm(least)} mm at ${pr.cite('layer')} ${mm(layer)} mm): too thin to print whole, and the magnet pulls through it. Make the part ${mm(r3(depth + least))} mm thick there, or the pocket shallower`);
     rests.push(rest('fixings.magnet_floor', DEFAULTS.magnet_floor), pr.rest('layer'));
   } else if (facing === 'floor') throw new Error(`${what}: facing 'floor' pulls through the floor under the pocket: give thickness, the part's along the pocket, so the floor is known`);
-  const m = typeof p === 'object' && p?.kind === 'magnet' ? p : magnetModel(p, { grade: o.grade, gap: (facing === 'floor' ? floor : 0) + (o.gap ?? 0), count: o.count, load: o.load, pull: o.pull });
+  // (a model handed in is built again with these options, so its pull is taken across this floor and held to this load)
+  const m = magnetModel(p, { grade: o.grade, gap: (facing === 'floor' ? floor : 0) + (o.gap ?? (model ? p.gap : 0)), count: o.count, load: o.load, pull: o.pull });
   rests.push(...m.rests); out.push(...m.findings);
   // The pocket: the magnet, plus hole_comp as any printed hole, less magnet_press or plus magnet_glue
   const comp = pr.n('hole_comp'), k = fit === 'press' ? 'magnet_press' : 'magnet_glue', c = pr.n(k), clearance = r3(fit === 'press' ? -c : c);
