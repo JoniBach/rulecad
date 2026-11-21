@@ -160,8 +160,8 @@ function boltRule(set, key, data) {
   if (key !== 'strength_z' || data.rules?.density == null || typeof data.rules?.strength?.value !== 'number') return null;
   const along = data.rules.strength.value, z = data.rules.strength_z;
   return { unit: 'MPa', predicted: z?.value ?? along, was: z ? `${set}.strength_z, ${z.kind}` : `${set}.strength, along the layers: no figure across them`, source: `${HOLDS_COUPON}, the pull bolt broken on a luggage scale`,
-    measuredRule: `Tensile strength of ${set.toUpperCase()} across its printed layers: the pull bolt on ${HOLDS_COUPON}, printed standing, broken on a luggage scale at its 3 mm waist (the kilograms × 9.81 over 7.07 mm²). A printed bolt standing on its head, and any part pulled across its layers, takes it before the along-layer strength`,
-    check: (x) => (!(x > 0) || x > along ? `is above 0 and no more than ${set}.strength, ${along} MPa: a print holds less across its layers than along them, so read the scale's peak again, and work it as kilograms × 9.81 over the waist's 7.07 mm²` : null) };
+    measuredRule: `Tensile strength of ${set.toUpperCase()} across its printed layers: the pull bolt on ${HOLDS_COUPON}, printed standing, broken on a luggage scale at its 3.5 mm waist (the kilograms × 9.81 over 9.62 mm²). A printed bolt standing on its head, and any part pulled across its layers, takes it before the along-layer strength`,
+    check: (x) => (!(x > 0) || x > along ? `is above 0 and no more than ${set}.strength, ${along} MPa: a print holds less across its layers than along them, so read the scale's peak again, and work it as kilograms × 9.81 over the waist's 9.62 mm²` : null) };
 }
 const printerName = (project) => { try { return fixingsContext({ project, dir: paths.project(project) }).context.printer?.name ?? 'x1c'; } catch { return 'x1c'; } };
 // A rule the workspace's copy lacks and the kit's own set of that name holds (a set copied before the rule was added)

@@ -1,7 +1,7 @@
 {
   "title": "Fixings coupons",
   "kind": "fit",
-  "description": "The fixings coupon and, behind it on the same plate, the holds coupon, for cad measured: write each result back with cad measured benchmarks/fixings-test <rule>=<value> (MEASURE.md, rows 22 to 28 and 40 to 47), and the ledger keeps predicted against measured. Both fit the X1C's bed together, 195 by 204 mm.",
+  "description": "The fixings coupon and, behind it on the same plate, the holds coupon, for cad measured: write each result back with cad measured benchmarks/fixings-test <rule>=<value> (MEASURE.md, rows 22 to 28 and 40 to 47), and the ledger keeps predicted against measured. Both fit the X1C's 256 mm bed together, about 195 by 194 mm: cad check gives the holds coupon 195.3 by 76.8 mm, placed 117 mm behind the fixings coupon's front edge, and the fixings coupon 98.6 by 111.8 mm.",
   "items": [
     {
       "id": "coupon",

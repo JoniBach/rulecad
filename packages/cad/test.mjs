@@ -2397,11 +2397,11 @@ test('the holds coupon\'s pull bolt is long enough for the blocks MEASURE.md row
   // thread's radius R to the waist's r, the waist, a cone back up; full thread from z2 to the tip at k + pull_length
   const k = screwModel(`M8x${v.pull_length} hex`).headHeight, R = 8 / 2, r = v.waist / 2, z2 = k + 1 + (R - r) + v.waist_length + (R - r);
   const thread = k + v.pull_length - z2, needed = blocks + washerModel('M8').thickness + nutModel('M8').height + threadModel('M8', { length: 10 }).pitch;
-  // By hand: k = 5.3 (ISO 4017 M8 head), z2 = 5.3 + 1 + 2.5 + 6 + 2.5 = 17.3, so pull_length 45 leaves 5.3 + 45 - 17.3 = 33 mm
-  // of full thread above the waist. The blocks (20) + an ISO 7089 washer (1.6) + an ISO 4032 nut at its tallest (6.8) + a
-  // pitch to start the nut on (1.25) = 29.65 mm: it fits, 3.35 mm to spare. At pull_length 30 there were 18 mm, room for
+  // By hand: k = 5.3 (ISO 4017 M8 head), the 3.5 mm waist 3.5 mm long, z2 = 5.3 + 1 + 2.25 + 3.5 + 2.25 = 14.3, so pull_length
+  // 45 leaves 5.3 + 45 - 14.3 = 36 mm of full thread above the waist. The blocks (20) + an ISO 7089 washer (1.6) + an ISO
+  // 4032 nut at its tallest (6.8) + a pitch to start the nut on (1.25) = 29.65 mm: it fits, 6.35 mm to spare. At pull_length 30 there were 18 mm, room for
   // blocks of 8.35 mm at most: an 18 mm plywood offcut left the waist inside the gap, out of the cord's reach
-  assert.equal(Number(z2.toFixed(6)), 17.3); assert.equal(Number(thread.toFixed(6)), 33); assert.equal(Number(needed.toFixed(6)), 29.65);
+  assert.equal(Number(z2.toFixed(6)), 14.3); assert.equal(Number(thread.toFixed(6)), 36); assert.equal(Number(needed.toFixed(6)), 29.65);
   assert.ok(thread >= needed, `${thread} mm of thread above the waist holds blocks ${blocks} mm thick, a washer and a nut (${needed} mm)`);
   assert.ok(blocks >= 18, 'an 18 mm plywood offcut, the common board, is thin enough');
 });
