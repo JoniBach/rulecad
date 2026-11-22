@@ -101,7 +101,7 @@ function jointSpeeds(s, c) {
   return c.names.map((id) => {
     const t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root);
     if (!d) return null;
-    const rpm = workingSpeed(d.model, d.spec), output = (rpm / t.ratio) * 6; // deg/s at the joint
+    const rpm = workingSpeed(d.model, d.spec, d.supply), output = (rpm / t.ratio) * 6; // deg/s at the joint
     return t.slide != null ? output * t.slide : output;
   });
 }

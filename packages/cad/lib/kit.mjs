@@ -102,7 +102,7 @@ export async function writeKit(s, findings, { pictures = false, preview = null }
   // buy.csv: one row a line to buy
   const rows = [['kind', 'quantity', 'what', 'buy', 'for']];
   for (const st of list.cut?.stock ?? []) for (const b of st.buy) rows.push(['bar', b.count, `${st.profile} x ${mm(b.length)} mm`, `${b.count} x ${mm(b.length)} mm`, `the cut list's marks ${[...new Set(st.bars.flatMap((x) => x.cuts.map((c) => c.mark)))].join(', ')}`]);
-  for (const b of list.bought.filter((x) => x.part !== 'beam')) rows.push(['bought', b.qty, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, b.cost != null ? `${b.cost} ${b.currency} each` : '', b.items.join(' ')]);
+  for (const b of list.bought.filter((x) => x.part !== 'beam')) rows.push([b.have ? 'in hand' : 'bought', b.qty, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, b.have ? 'none: in hand' : b.cost != null ? `${b.cost} ${b.currency} each` : '', b.items.join(' ')]);
   for (const f of list.fasteners) rows.push([f.kind ?? 'fixing', f.qty, f.fastener, f.packs ? `${f.packs} pack${f.packs > 1 ? 's' : ''} of ${list.totals.pack.size}` : '', f.from.join('; ')]);
   put(path.join(dir, 'buy.csv'), `${csv(rows)}\n`);
 
@@ -131,8 +131,9 @@ export async function writeKit(s, findings, { pictures = false, preview = null }
     out.push('### Bars', '', `Cut to the cut list below. Each cut takes the saw's ${mm(list.cut.rules.kerf.value)} mm kerf, and ${mm(list.cut.rules.trim.value)} mm is trimmed off each bar's first end.`, '');
     out.push(...table(['Profile', 'Buy', 'Left over, mm'], list.cut.stock.map((st) => [st.profile, st.buy.map((b) => `${b.count} x ${mm(b.length)} mm`).join(', '), mm(st.offcut ?? 0)])), '');
   }
-  const bought = list.bought.filter((b) => b.part !== 'beam');
+  const bought = list.bought.filter((b) => b.part !== 'beam' && !b.have), inHand = list.bought.filter((b) => b.part !== 'beam' && b.have);
   if (bought.length) out.push('### Bought parts', '', ...table(['Qty', 'Part', 'What', 'Price each', 'Where it goes'], bought.map((b) => [b.qty, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.size ? `, cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, b.part, b.cost != null ? `${b.cost} ${b.currency}` : 'not given', b.items.join(', ')])), '');
+  if (inHand.length) out.push('### In hand', '', 'Marked `"have"` in the assembly: nothing to buy for these.', '', ...table(['Qty', 'Part', 'What', 'Where it goes'], inHand.map((b) => [b.qty, `${b.set}${b.variant ? ` (${b.variant})` : ''}`, b.part, b.items.join(', ')])), '');
   if (list.fasteners.length) out.push('### Screws, nuts and inserts', '', ...table(['Qty', 'Fixing', 'Buy', 'Where it goes'], list.fasteners.map((f) => [f.qty, f.fastener, f.packs ? `${plural(f.packs, 'pack')} of ${list.totals.pack.size}, ${f.spare} spare` : '', f.from.join('; ')])), '');
   if (list.totals.pack) out.push(`Packs of ${list.totals.pack.size} are ${list.totals.pack.kind === 'estimate' ? 'an estimate' : `${list.totals.pack.kind}`} (${list.totals.pack.rule}).`, '');
 

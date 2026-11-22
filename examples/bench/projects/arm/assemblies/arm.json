@@ -6,7 +6,7 @@
   "uses": ["arm"],
   "items": [
     { "id": "base", "object": "base" },
-    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 } },
+    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "housing", "object": "housing", "at": [0, 0, "arm.face"] },
     { "id": "sun", "object": "sun" },
     { "id": "carrier", "object": "speck" },
@@ -16,7 +16,7 @@
     { "id": "bridge", "object": "bridge", "at": [0, 0, "arm.bridge_low"] },
     { "id": "b1", "bought": "bearing-6800", "at": [0, 0, "arm.bridge_low + arm.bridge - arm.bearing_width"] },
     { "id": "upper", "object": "upper" },
-    { "id": "m2", "motor": { "model": "nema14", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 } },
+    { "id": "m2", "motor": { "model": "17HS4401", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "esun", "object": "sun", "set": { "tip": 11.7 } },
     { "id": "ecarrier", "object": "speck" }, { "id": "ering", "object": "speck" },
     { "id": "ep1", "object": "planet" }, { "id": "ep2", "object": "planet" }, { "id": "ep3", "object": "planet" },
@@ -24,15 +24,15 @@
     { "id": "clip1", "object": "clip" }, { "id": "clip2", "object": "clip" }, { "id": "clip3", "object": "clip" },
     { "id": "forearm", "object": "forearm" },
     { "id": "holder", "object": "holder" },
-    { "id": "servo", "motor": { "model": "sg90", "drives": "lift_servo", "duty": 0.05 } },
+    { "id": "servo", "motor": { "model": "sg90", "drives": "lift_servo", "duty": 0.05 }, "have": true },
     { "id": "horn", "object": "horn" },
     { "id": "pen", "object": "pen" },
     { "id": "es1", "bought": "endstop-10t85" },
     { "id": "es2", "bought": "endstop-10t85" },
-    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8] },
-    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8] },
-    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0] },
-    { "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "at": [-330, 150, 0] }
+    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8], "have": true },
+    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8], "have": true },
+    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0], "have": true },
+    { "id": "psu", "bought": "supply-12v", "set": { "output_current": 1.5 }, "at": [-330, 150, 0], "have": true }
   ],
   "joints": [
     { "id": "m1_on", "type": "fixed", "parent": "housing.motor", "child": "m1.face" },
@@ -106,7 +106,7 @@
     { "id": "pen", "from": "servo.connector", "to": "shield.Z", "via": ["forearm.cable", "upper.cable", "base.cable"], "gauge": "awg26", "colour": "brown, red, orange", "conductors": 3, "current": 0.7, "connectors": ["Servo JR 3 pin", "D11, 5 V, GND"], "note": "D11 is the Z limit pin on a V3.00 shield: arm.ino uses it for the servo" },
     { "id": "home1", "from": "es1.left", "to": "shield.X", "via": ["base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "X limit and GND"] },
     { "id": "home2", "from": "es2.left", "to": "shield.Y", "via": ["upper.cable", "base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "Y limit and GND"] },
-    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "24 V into the shield's motor terminals" }
+    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V from the bench supply, its current limit at 1.5 A, into the shield's motor terminals" }
   ],
   "loads": [
     { "joint": "out", "torque": "arm.shoulder_torque", "note": "The pen's drag at its reach, the arm's inertia at 500 mm/s², the bias" },

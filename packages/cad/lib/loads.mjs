@@ -188,8 +188,8 @@ export function accelChecks(s, f, helpers, masses, payload) {
     for (const m of masses) if (beyond(motion, j, m.item)) { const X = rowsAt(base[m.item], m.centre), r = sub(X, axis.O), rad = norm(sub(r, scale(axis.Z, dot(r, axis.Z)))); I += m.kg * rad * rad; }
     if (payload && beyond(motion, j, payload.item)) { const X = rowsAt(base[payload.item], payload.point), r = sub(X, axis.O), rad = norm(sub(r, scale(axis.Z, dot(r, axis.Z)))); I += payload.kg * rad * rad; }
     for (const p of posesOf(s, jointValues).slice(0, 30)) gravity = Math.max(gravity, Math.abs(loadAt(motion, masses, payload, placeItems(motion, p.values), j, mul).torque));
-    const m = d.model, speed = workingSpeed(m, d.spec), ratio = t.ratio, eff = t.efficiency, rotor = (m.figures.rotor_inertia?.value ?? 0) * 0.1, kgmm2 = I / (ratio * ratio * eff) + rotor; // kg mm²
-    const avail = atCurrent(m, d.spec, performance(m, { speed }).motor.torque), left = avail - gravity / (ratio * eff), refs = { joint: id, item: d.id }, at = axis.O;
+    const m = d.model, speed = workingSpeed(m, d.spec, d.supply), ratio = t.ratio, eff = t.efficiency, rotor = (m.figures.rotor_inertia?.value ?? 0) * 0.1, kgmm2 = I / (ratio * ratio * eff) + rotor; // kg mm²
+    const avail = atCurrent(m, d.spec, performance(m, { speed, supply: d.supply }).motor.torque), left = avail - gravity / (ratio * eff), refs = { joint: id, item: d.id }, at = axis.O;
     if (left <= 0) { f('fail', `${id} stalls: ${d.id} gives ${n3(avail, 3)} N m at ${n3(speed, 0)} rpm, and the load takes ${n3(gravity / (ratio * eff), 3)} N m of it through ${n3(ratio, 1)}:1`, `${id}: stalls`, { code: 'motor.accel', at, refs, values: { available: avail, gravity } }); limits.push(0); continue; }
     const alphaMotor = (left * 1e6) / kgmm2, alpha = (alphaMotor / ratio) * (180 / Math.PI); // rad/s² at the motor, deg/s² at the joint
     limits.push(alpha);

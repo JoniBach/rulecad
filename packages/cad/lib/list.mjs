@@ -43,11 +43,12 @@ export function printedParts(s) {
 /** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], cut: object | null, totals: object }} */
 export function shoppingList(s) {
   const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
+  const have = new Set((s.a?.items ?? []).filter((it) => it.have === true).map((it) => it.id)); // ("have": in hand, not to buy)
   for (const o of s.objects) if (o.bought && !o.unplaced) {
     // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
     // (a panel by its sheet and size: lib/panels.mjs)
-    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}`;
-    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, ...(o.bought.cost ? { cost: o.bought.cost.value, currency: o.bought.cost.unit } : {}), items: [] };
+    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, inHand = have.has(o.id), key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}|${inHand}`;
+    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), ...(inHand ? { have: true } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, ...(o.bought.cost ? { cost: o.bought.cost.value, currency: o.bought.cost.unit } : {}), items: [] };
     line.qty++; line.items.push(o.id); bought.set(key, line);
   }
   // fasten.count: the hardware a fasten placed (a component's too), one part a piece; a motor's mounting screws; and a fit
@@ -83,17 +84,24 @@ export function shoppingList(s) {
   const fixingsGrams = fixings.reduce((t, f) => t + (f.mass ?? 0), 0);
   // what it costs, where prices are given: the bought items' by their sets, the printed parts' plastic by the material's
   // price a kilogram; fixings and bars are not priced, and the list says which lines have no price
-  const priced = boughtList.filter((b) => b.cost != null), currencies = [...new Set(priced.map((b) => b.currency))];
+  const priced = boughtList.filter((b) => b.cost != null && !b.have), currencies = [...new Set(priced.map((b) => b.currency))];
   const plastic = printedGrams > 0 ? printedCost(printedGrams, { name: mat.name, rules: mat.cost ? { cost: mat.cost } : {} }) : null;
   const cost = priced.length || plastic ? { bought: priced.length && currencies.length === 1 ? n(priced.reduce((t, b) => t + b.cost * b.qty, 0), 2) : null, currency: currencies.length === 1 ? currencies[0] : plastic?.unit ?? null, ...(currencies.length > 1 ? { currencies } : {}),
-    unpriced: [...new Set(boughtList.filter((b) => b.cost == null).map((b) => b.set))], printed: plastic ? n(plastic.value, 2) : null, ...(plastic ? { printedUnit: plastic.unit, printedRule: plastic.rule } : {}) } : null;
+    unpriced: [...new Set(boughtList.filter((b) => b.cost == null && !b.have).map((b) => b.set))], printed: plastic ? n(plastic.value, 2) : null, ...(plastic ? { printedUnit: plastic.unit, printedRule: plastic.rule } : {}) } : null;
   return { bought: boughtList, fasteners: fixings, wires: [...wires.values()], printed, cut, ...(cost ? { cost } : {}), totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), fixingsGrams: n(fixingsGrams), machineGrams: n(printedGrams + boughtGrams + fixingsGrams), ...(pack && fixings.some((f) => f.packs) ? { pack } : {}), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
 }
 
 export function listText(ref, l) {
   const out = [`${ref}: what it takes to build`];
   const row = (a) => out.push(a.join('  '));
-  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', ...(b.cost != null ? [`${b.cost} ${b.currency} each`] : []), b.items.join(', ')]); }
+  // (with parts in hand, those to buy come first, then what is in hand: neither is left off the list)
+  const boughtRow = (b) => row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', ...(b.cost != null ? [`${b.cost} ${b.currency} each`] : []), b.items.join(', ')]);
+  const toBuy = l.bought.filter((b) => !b.have), inHand = l.bought.filter((b) => b.have);
+  if (l.bought.length && !inHand.length) { out.push('', 'Bought'); toBuy.forEach(boughtRow); }
+  else if (l.bought.length) {
+    out.push('', toBuy.length ? 'Bought, to buy' : 'Bought: nothing to buy, all in hand'); toBuy.forEach(boughtRow);
+    out.push('', 'Bought, in hand (marked "have" in the assembly)'); inHand.forEach(boughtRow);
+  }
   if (l.cut) { out.push('', `Cut list (kerf ${l.cut.rules.kerf.value} mm, trim ${l.cut.rules.trim.value} mm; a sheet for each mark: cad beams ${ref})`, ...cutListText(l.cut)); }
   if (l.fasteners.length) {
     out.push('', 'Fasteners');

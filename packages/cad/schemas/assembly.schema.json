@@ -60,6 +60,7 @@
         "to": { "$ref": "#/$defs/vec3", "description": "A beam's end b, with from its end a" },
         "roll": { "$ref": "#/$defs/expr", "description": "Degrees a beam placed by its ends turns about its own axis, a toward b; at 0 its top faces up (+z), or +y when it stands upright" },
         "place": {},
+        "have": { "type": "boolean", "description": "A bought part or a motor already in hand: cad list, the kit's buy.csv and its build page list it as in hand, apart from what is to buy. Only on a bought or motor item" },
         "from": { "description": "For a beam: its end a, [x, y, z]. For an object: inputs worked out from items built before it, { input: expression }" },
         "repeat": {
           "type": "object",

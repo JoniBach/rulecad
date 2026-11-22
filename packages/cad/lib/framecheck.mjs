@@ -651,7 +651,7 @@ function rackCheck(s, fm, f, { restsJoins, restsOn }) {
  */
 export function excitesOf(s) {
   const excites = [];
-  for (const d of s.motion.drives ?? []) if (d.model?.stepAngle) { const rpm = workingSpeed(d.model, d.spec), at = (rpm / 60) * (360 / d.model.stepAngle); excites.push({ kind: 'step', what: `${d.id}'s full steps at ${n3(rpm, 1)} rpm`, Hz: at, from: d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}` }); }
+  for (const d of s.motion.drives ?? []) if (d.model?.stepAngle) { const rpm = workingSpeed(d.model, d.spec, d.supply), at = (rpm / 60) * (360 / d.model.stepAngle); excites.push({ kind: 'step', what: `${d.id}'s full steps at ${n3(rpm, 1)} rpm`, Hz: at, from: d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}` }); }
   if (s.task?.speed) { const acc = s.task.accel ?? FRAME_CHECK.ramp.value, t = s.task.speed / acc; excites.push({ kind: 'move', what: `the task's moves, ramping to ${n3(s.task.speed, 1)} mm/s in ${n3(t, 3)} s`, Hz: 1 / t, from: s.task.accel != null ? 'the task\'s speed and accel' : 'the task\'s speed and frame.ramp' }); }
   return excites;
 }
