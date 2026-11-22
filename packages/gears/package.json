@@ -29,6 +29,7 @@
     "worm.d.mts",
     "diagram.d.mts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "MIT",

@@ -5,6 +5,14 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Fixed
+
+- `wiresFor`, `wireTubesOf` and `wireRoutesOf` moved from `lib/assembly.mjs` to `lib/wires.mjs`, so `lib/list.mjs` no
+  longer imports `lib/assembly.mjs` back (a loop of imports, issue #278). `lib/assembly.mjs` re-exports all three
+  under the same names. No printed size moved.
+
 ## 0.7.62: commands that write projects and assemblies, and belt guides (Frames 4)
 
 ### Added

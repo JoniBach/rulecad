@@ -15,6 +15,7 @@
     "smooth.d.mts",
     "core.d.mts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "MIT",
