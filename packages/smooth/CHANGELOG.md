@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. Releases before this file was started are
 described in their pull requests on GitHub.
 
-## Unreleased
+## 0.2.2: no import loops (#278)
 
 ### Fixed
 
