@@ -20,7 +20,7 @@ import { AREA, TOUCH, OWN_ROUNDS, rad, mul, apply, shift, turn, empty, union, in
  *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
  *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
  *   of it that never moves). spec.ground may then be left out
- * @param {(spec: object) => Promise<any>} lamina the solver it floods round (lamina.mjs hands it over, so this module
+ * @param {typeof import('./lamina.mjs').lamina} lamina the solver it floods round (lamina.mjs hands it over, so this module
  *   doesn't import that one back)
  */
 export async function flooded(spec, lamina) {
