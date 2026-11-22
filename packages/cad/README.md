@@ -114,13 +114,13 @@ frame's own fields, or write it out with `cad frame <ref> --expand` first.
 
 | Refusal | When |
 |---|---|
-| `project.exists`, `assembly.exists` | `cad new` of one that is there, or `--material` or `--printer` with `cad new <project>/<assembly> --assembly` where the project is there (they are the project's: `cad set <project> material=PETG`). Where the project is not there, the assembly makes it with them, each checked as `cad new <project>` checks it |
+| `project.exists`, `assembly.exists` | `cad new` of one that is there, or a field given to `cad new <project>` or `--material` or `--printer` given to `cad new <project>/<assembly> --assembly` that differs from the project's own (they are the project's: `cad set <project> material=PETG`, as the refusal names). Fields that match it change nothing and pass, so a step can run twice. Where the project is not there, the assembly makes it with them, each checked as `cad new <project>` checks it |
 | `project.printer` | A printer with no rule set |
 | `project.material` | A material printed fittings cannot be sized from: anything but PLA, PETG or a rule set in `rules/` giving strength, modulus and density. Every frame command reads the project's material as it builds the joins, guides and panels, so one it cannot read would stop them all |
 | `edit.kind` | An assembly kind other than `fit` |
 | `frame.refused` | A generated frame the generator refuses (a portal with nothing holding its feet, an end-tap join its profile cannot take) |
 | `edit.address`, `edit.ambiguous`, `edit.generated` | An address nothing has, an id two lists share, a generated frame's part |
-| `edit.part`, `edit.incomplete`, `edit.duplicate` | A name that is not in the assembly, an entry missing what it needs, an id already taken |
+| `edit.part`, `edit.incomplete`, `edit.duplicate` | A name that is not in the assembly, an entry missing what it needs, an id already taken. A name the build makes counts as there only where an entry makes it, by its exact pattern: a repeated item's copies (`key-0`, `key-0-3`), a mounted item's mount (`psu-mount`), a panel's clips, hinges, leaves, handle and catch, a levelling foot's pad, a join's fitting (`y1-x1-bracket`), a wire's clips, a guide's parts (`g1-carriage-1`) and joints (`g1-1`, `door-hinge`). So `rail-3` is no name where `rail` is one beam |
 | `edit.referenced` | `cad remove` of what other entries name (each listed in `refs`) |
 | `edit.renumber` | `cad remove` of a guide while guides after it have no id of their own: they are named g1, g2 .. by place, so they would be renamed |
 | `edit.dangling` | An edit that leaves another entry naming what is no longer there: a beam renamed or removed that a join, a load, a wire or a mount names, a frame changed or removed whose beams a join or a guide uses (each listed in `refs`). A name that was already missing before the edit is left to `cad check` |

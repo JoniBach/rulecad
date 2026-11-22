@@ -25,7 +25,10 @@ and head, the parts it passes through and the part it ends in.
   `--dry-run`, and with `--json` says what changed and the checks. `cad remove` of a beam a join uses is refused,
   naming the join; so is `cad remove frame` where a join uses the frame's beams, and the removal of any guide before
   one with no id of its own, which is named by place. `cad new <project>/<assembly> --assembly --material PETG
-  --printer x1c` makes the project with them where it is not there, and refuses them by name where it is.
+  --printer x1c` makes the project with them where it is not there, passes them where the project already has them, and
+  refuses by name one that differs. The change paths in `--json` are from the workspace (`projects/<p>/project.json`,
+  `projects/<p>/assemblies/<a>.json`). A name the build makes (a repeated item's copy, a mount, a guide's part) counts
+  as there only by the exact pattern its maker uses, so `rail-3` is refused where `rail` makes no copies.
 - `schemas/project.schema.json`: the project file's fields.
 - Belt guides (`"kind": "belt"`, FR4.2): a GT2 belt drives a rail guide's one carriage from a motor under a printed
   plate past the beam's end a, round a toothed idler on a printed block past the rail's end (the tensioner: it slides

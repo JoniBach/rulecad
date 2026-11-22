@@ -1245,9 +1245,13 @@ test('workspace edits: cad new makes a project and an assembly, cad set, cad mov
   const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
   try {
     // a project: its project.json, laid out as the edits lay one out; PLA unless given
-    assert.match(cad('new', 'frame', '--title', 'A box frame', '--printer', 'x1c'), /projects\/frame\/project\.json\n {2}made project\.json\n {2}✓ matches the project schema\n {2}✓ prints are checked against x1c/);
+    assert.match(cad('new', 'frame', '--title', 'A box frame', '--printer', 'x1c'), /projects\/frame\/project\.json\n {2}made projects\/frame\/project\.json\n {2}✓ matches the project schema\n {2}✓ prints are checked against x1c/);
     assert.deepEqual(JSON.parse(read('frame/project.json')), { $schema: 'https://jonibach.github.io/rulecad/schemas/project.schema.json', name: 'frame', title: 'A box frame', printer: 'x1c', material: 'PLA', objects: [] });
     refused(cad('new', 'frame', '--json'), 'project.exists');
+    // run again with the fields it has, it changes nothing and says so; with one that differs, refused by name
+    const again = json('new', 'frame', '--printer', 'x1c', '--material', 'pla');
+    assert.deepEqual([again.written, again.changes, again.findings.map((f) => [f.level, f.code, f.text])], [false, [], [['pass', 'project.exists', 'projects/frame/project.json is already there with material PLA and printer x1c: nothing to change']]]);
+    assert.equal(refused(cad('new', 'frame', '--material', 'PETG', '--title', 'A box', '--json'), 'project.exists').message, 'projects/frame/project.json is already there with title A box frame and material PLA, so --title A box and --material PETG would change it: change them with cad set frame title="A box" material=PETG');
     refused(cad('new', 'shed', '--printer', 'nope', '--json'), 'project.printer');
     assert.ok(!fs.existsSync(file('shed')), 'a refused project is not made');
     const p = json('new', 'shed', '--dry-run');
@@ -1395,7 +1399,7 @@ test('workspace edits: an edit that leaves another entry naming what is gone is 
   } finally { done(); }
 });
 
-test('workspace edits: a wire\'s ends and route, a loop\'s anchors, a load\'s joint and a mount\'s beam are names checked as a join\'s are, and cad new <project>/<assembly> makes its project with the material and printer given', () => {
+test('workspace edits: a wire\'s ends and route, a loop\'s anchors, a load\'s joint and a mount\'s beam are names checked as a join\'s are, and cad new <project>/<assembly> makes its project with the material and printer given', async () => {
   const { ws, cad, done } = workspace();
   const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8');
   const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
@@ -1423,14 +1427,38 @@ test('workspace edits: a wire\'s ends and route, a loop\'s anchors, a load\'s jo
     // a repeated item's copies (key-0, key-1) are names a fit can give, as a guide's own parts are
     cad('add', 'item', 'q/m', '--id', 'key', '--object', 'nothing', 'repeat.x.count=2', 'repeat.x.step=20');
     assert.match(cad('add', 'fit', 'q/m', '--a', 'key-1', '--b', 'a1', '--min', '0'), /the names in fits\.0 are all in q\/m/);
+    // a name that only starts with an item's id and a dash is not that item's: rail makes no copies, so rail-3 is no name
+    // in the assembly, on add and when a rename leaves a wire naming it (rail-2 is an item, never rail's copy)
+    cad('new', 'p-1/m', '--assembly');
+    cad('add', 'beam', 'p-1/m', '--id', 'rail', '--profile', '2020-misumi-hfs5', '--from', '0,0,0', '--to', '200,0,0');
+    cad('add', 'beam', 'p-1/m', '--id', 'rail-2', '--profile', '2020-misumi-hfs5', '--from', '0,100,0', '--to', '200,100,0');
+    const pm = read('p-1/assemblies/m.json');
+    assert.equal(refused(cad('add', 'wire', 'p-1/m', 'id=w1', 'from=rail-3.a', 'to=rail.b', '--json'), 'edit.part').message, 'wire w1 from: no item "rail-3" in p-1/m (items: rail, rail-2)');
+    assert.equal(read('p-1/assemblies/m.json'), pm, 'refused: nothing written');
+    cad('add', 'wire', 'p-1/m', 'id=w5', 'from=rail-2.a', 'to=rail.b');
+    const pw = read('p-1/assemblies/m.json');
+    assert.match(refused(cad('set', 'p-1/m', 'rail-2.id=r2', '--json'), 'edit.dangling').message, /wires\.0 \(wire w5 from: no item "rail-2" in p-1\/m\)/);
+    assert.equal(read('p-1/assemblies/m.json'), pw, 'refused: nothing written');
+    // the names the build does make, each by its maker's pattern
+    const { madeBy } = await import('./lib/edit.mjs');
+    const mb = madeBy({ items: [{ id: 'rail', beam: {} }, { id: 'key', repeat: {} }, { id: 'psu', mount: {} }, { id: 'front', panel: {} }, { id: 'foot', fitting: { kind: 'levelling-foot' } }, { id: 'cap', fitting: { kind: 'end-cap' } }], guides: ['g1'], wires: ['w1'], joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.back@120' }] });
+    assert.deepEqual(['key-0', 'key-0-3', 'psu-mount', 'psu-mount-2', 'front-clip', 'front-clip-3', 'front-hinge-1', 'front-leaf-2', 'front-handle', 'front-latch', 'front-catch', 'foot-pad', 'y1-x1-bracket', 'y1-x1-gusset-2', 'w1-clip', 'w1-clip-2', 'g1-carriage-1', 'g1-wheel-4', 'g1-holder-a', 'g1-endstop-mount', 'g1-rod-2', 'g1-belt', 'g1-idler-block'].filter((n) => !mb.item(n)), []);
+    assert.deepEqual(['rail-3', 'rail-mount', 'key-a', 'key-0-x', 'psu-3', 'front-1', 'cap-pad', 'x1-y1-bracket', 'y1-x1-2', 'w1-2', 'g1-2', 'g1-carriage', 'g1-wheel'].filter((n) => mb.item(n)), []);
+    assert.deepEqual([mb.joint('g1-1'), mb.joint('front-hinge'), mb.joint('front-bay'), mb.joint('g1-carriage-1'), mb.joint('key-1'), mb.joint('rail-hinge')], [true, true, true, false, false, false]);
     // the project an assembly makes takes the material and printer given, checked as cad new <project> checks them
     cad('new', 'q5/a', '--assembly', '--material', 'PETG', '--printer', 'x1c');
     const p5 = JSON.parse(read('q5/project.json'));
     assert.deepEqual([p5.material, p5.printer], ['PETG', 'x1c']);
     assert.equal(refused(cad('new', 'q6/a', '--assembly', '--material', 'nylon', '--json'), 'project.material').code, 'project.material');
     assert.ok(!fs.existsSync(file('q6')), 'refused: no project made');
-    assert.equal(refused(cad('new', 'q5/b', '--assembly', '--printer', 'x1c', '--json'), 'project.exists').message, 'projects/q5/project.json is already there, so --printer would make nothing: change it with cad set q5 printer=x1c');
+    assert.equal(refused(cad('new', 'q5/b', '--assembly', '--material', 'PLA', '--printer', 'x1c', '--json'), 'project.exists').message, 'projects/q5/project.json is already there with material PETG, so --material PLA would change it: change it with cad set q5 material=PLA');
     assert.ok(!fs.existsSync(file('q5/assemblies/b.json')), 'refused: no assembly made');
+    // the project's own material and printer again: the assembly is made, the project left as it was
+    const p5text = read('q5/project.json'), b = JSON.parse(cad('new', 'q5/b', '--assembly', '--material', 'petg', '--printer', 'x1c', '--json'));
+    assert.deepEqual([b.written, b.made, read('q5/project.json') === p5text], [true, ['projects/q5/assemblies/b.json'], true]);
+    assert.ok(b.findings.some((f) => f.code === 'project.exists' && f.level === 'pass' && f.text === 'projects/q5/project.json is already there with material PETG and printer x1c: nothing to change'), JSON.stringify(b.findings));
+    // and the change paths of an assembly that makes its project are both from the workspace
+    assert.deepEqual(JSON.parse(cad('new', 'q7/a', '--assembly', '--json')).changes.map((c) => c.path), ['projects/q7/project.json', 'projects/q7/assemblies/a.json']);
   } finally { done(); }
 });
 

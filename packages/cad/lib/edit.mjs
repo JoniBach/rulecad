@@ -146,22 +146,46 @@ function numFor(a) {
  * What an assembly names, its generated frame expanded: its items (with the frame's beams, ends and panels), the beams
  * among them, the ids the generator gives, its guides' ids, and the frame's model (or why it did not expand).
  * @param {object} a the assembly as read
- * @returns {{ items: object[], beams: string[], generated: string[], guides: string[], joints: string[], frame: object | null, refused: Error | null }}
+ * @returns {{ items: object[], beams: string[], generated: string[], guides: string[], joints: string[], joins: object[], wires: string[], frame: object | null, refused: Error | null }}
  */
 export function knownOf(a) {
-  let items = a.items || [], joints = a.joints || [], frame = null, refused = null, generated = [];
+  let items = a.items || [], joints = a.joints || [], joins = a.joins || [], frame = null, refused = null, generated = [];
   if (a.frame && typeof a.frame === 'object' && a.frame.kind != null) {
-    try { const x = expandFrame(a, numFor(a), framesContext()); frame = x.frame; generated = x.a.items.slice(0, x.a.items.length - items.length).map((it) => it.id); items = x.a.items; joints = x.a.joints || joints; } catch (e) { refused = e; }
+    try { const x = expandFrame(a, numFor(a), framesContext()); frame = x.frame; generated = x.a.items.slice(0, x.a.items.length - items.length).map((it) => it.id); items = x.a.items; joints = x.a.joints || joints; joins = x.a.joins || joins; } catch (e) { refused = e; }
   }
-  return { items, beams: items.filter((x) => x?.beam).map((x) => x.id), generated, guides: (a.guides || []).map((g, i) => idOf('guides', g, i)), joints: joints.map((j) => j?.id).filter(Boolean), frame, refused };
+  return { items, beams: items.filter((x) => x?.beam).map((x) => x.id), generated, guides: (a.guides || []).map((g, i) => idOf('guides', g, i)), joints: joints.map((j) => j?.id).filter(Boolean),
+    joins: Array.isArray(joins) ? joins : [], wires: (Array.isArray(a.wires) ? a.wires : []).map((w, i) => w?.id ?? `w${i + 1}`), frame, refused };
+}
+
+// The names an assembly's build makes that are not in its file, each by the exact pattern its maker uses (lib/assembly,
+// fittings, panels, services, guides): a repeated item's copies (key-0-3: <id>-<i>, <id>-<i>-<j>), a mounted item's
+// mount (psu-mount), a panel's clips, hinges, leaves, handle and catch, a levelling foot's pad, a join's fitting
+// (y1-x1-bracket), a wire's clips (w1-clip), a guide's carriages, wheels, holders, rods, bearings and drive parts
+// (g1-carriage-1, g1-belt); and the joints the build makes, a guide's sliding joints (g1-1) and a panel's hinge or bay
+// (door-hinge). A name that only starts with an item's id and a dash (rail-3, where rail is one beam) is none of them.
+const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const GUIDE_PART = /^(carriage-\d+|wheel-\d+|holder-[ab]|endstop|endstop-mount|rod-\d+|bearing-\d+|plate|motor|coupler|screw|nut|support-[ab]|pulley|clamp|idler|idler-block|belt)$/;
+const PANEL_PART = /^(clip|hinge-\d+|leaf-\d+|handle|latch|catch)(-\d+)?$/;
+/**
+ * The items and joints an assembly's build makes from its entries, by name. @param {ReturnType<typeof knownOf>} known
+ * @returns {{ item: (n: string) => boolean, joint: (n: string) => boolean }}
+ */
+export function madeBy(known) {
+  const one = (n, id, re) => { const s = String(n), head = `${id}-`; return s.startsWith(head) && re.test(s.slice(head.length)); };
+  const joins = (known.joins || []).filter((j) => j && typeof j.a === 'string' && typeof j.b === 'string').map((j) => new RegExp(`^${esc(rootOf(j.a))}-${esc(rootOf(j.b))}-[a-z]+(-\\d+)?$`));
+  const items = known.items.filter((it) => it?.id != null);
+  const item = (n) => items.some((it) => (it.repeat != null && one(n, it.id, /^\d+(-\d+)?$/)) || (it.mount != null && one(n, it.id, /^mount(-\d+)?$/))
+      || (it.panel != null && one(n, it.id, PANEL_PART)) || (it.fitting?.kind === 'levelling-foot' && one(n, it.id, /^pad$/)))
+    || known.guides.some((g) => one(n, g, GUIDE_PART)) || (known.wires || []).some((w) => one(n, w, /^clip(-\d+)?$/)) || joins.some((re) => re.test(String(n)));
+  const joint = (n) => known.guides.some((g) => one(n, g, /^\d+$/)) || items.some((it) => it.panel != null && one(n, it.id, /^(hinge|bay)$/));
+  return { item, joint };
 }
 
 // The names an entry gives must be there: a fit's parts, a fasten's, a join's beams, a guide's beam and the guide it
 // drives, a joint's parent and child items and the joint it follows, a pose's joints. self is the entry's own id.
 function entryProblems(what, entry, { ref, file, known, self }) {
   const items = known.items, ids = items.map((x) => x?.id), list = (xs) => xs.join(', ') || 'none';
-  const guideMade = (n) => known.guides.some((g) => String(n).startsWith(`${g}-`)); // a guide's own parts: g1-carriage-1 ..
-  const made = (n) => guideMade(n) || ids.some((id) => String(n).startsWith(`${id}-`)); // and an item's: psu-mount, door-hinge, key-0-3
+  const { item: made, joint: madeJoint } = madeBy(known); // what the build makes: g1-carriage-1, psu-mount, key-0-3 (madeBy)
   if (what === 'fit') for (const side of ['a', 'b']) {
     const named = entry[side]; if (typeof named !== 'string') continue;
     const [item, part = 'body'] = named.split('@')[0].split('.'), it = items.find((x) => x?.id === item);
@@ -175,7 +199,7 @@ function entryProblems(what, entry, { ref, file, known, self }) {
   }
   // a fasten names the parts its screw passes and ends in, and where the screws go: each must be an item of the assembly
   if (what === 'fasten') {
-    const has = (n) => ids.includes(rootOf(n)) || guideMade(rootOf(n));
+    const has = (n) => ids.includes(rootOf(n)) || made(rootOf(n));
     if (!entry.screw) throw new CadError('edit.incomplete', 'a fasten needs its screw, by thread and head: --screw "M3 cap"', { file });
     if (!entry.into || !Array.isArray(entry.through)) throw new CadError('edit.incomplete', 'a fasten needs the parts the screw passes and the one it ends in: --through bracket --into base', { file });
     if ((entry.at == null) === (entry.holes == null)) throw new CadError('edit.incomplete', 'a fasten needs where its screws go: --at bracket.h1,bracket.h2 (an anchor each) or --holes bracket.body (a part whose holes they use), one of the two', { file });
@@ -187,7 +211,7 @@ function entryProblems(what, entry, { ref, file, known, self }) {
     for (const side of ['a', 'b']) { const id = rootOf(entry[side]); if (!known.beams.includes(id)) throw new CadError('edit.part', `join ${side}: no beam "${id}" in ${ref} (beams: ${list(known.beams)})`, { file }); }
   }
   // an item placed at an address, and a load carried at one, name an item that is there
-  if ((what === 'item' || what === 'load') && typeof entry.at === 'string' && !ids.includes(rootOf(entry.at)) && !guideMade(rootOf(entry.at)))
+  if ((what === 'item' || what === 'load') && typeof entry.at === 'string' && !ids.includes(rootOf(entry.at)) && !made(rootOf(entry.at)))
     throw new CadError('edit.part', `${what} at: no item "${rootOf(entry.at)}" in ${ref} (items: ${list(ids)})`, { file });
   // a guide runs on a beam's face, and a screw guide drives another guide
   if (what === 'guide') {
@@ -200,14 +224,14 @@ function entryProblems(what, entry, { ref, file, known, self }) {
   if (what === 'joint') {
     for (const side of ['parent', 'child']) {
       const r = entry[side], item = typeof r === 'string' ? rootOf(r) : r && typeof r === 'object' && r.item != null ? String(r.item) : null;
-      if (item != null && !ids.includes(item) && !guideMade(item)) throw new CadError('edit.part', `joint ${entry.id ?? ''} ${side}: no item "${item}" in ${ref} (items: ${list(ids)})`.replace('  ', ' '), { file });
+      if (item != null && !ids.includes(item) && !made(item)) throw new CadError('edit.part', `joint ${entry.id ?? ''} ${side}: no item "${item}" in ${ref} (items: ${list(ids)})`.replace('  ', ' '), { file });
     }
     if (entry.follow != null && !known.joints.includes(String(entry.follow))) throw new CadError('edit.part', `joint ${entry.id ?? ''} follow: no joint "${entry.follow}" in ${ref} (joints: ${list(known.joints)})`.replace('  ', ' '), { file });
   }
   // a pose gives values to joints by id (its keys with a dot in them are not joints); a guide's and an item's own
   // joints (g1-1, door-hinge) are made as it is built, so a name under one of theirs is taken as theirs
   if (what === 'pose') for (const k of Object.keys(entry.values || {})) {
-    if (k.includes('.') || known.joints.includes(k) || made(k)) continue;
+    if (k.includes('.') || known.joints.includes(k) || madeJoint(k)) continue;
     throw new CadError('edit.part', `pose ${entry.name}: no joint "${k}" in ${ref} (joints: ${list(known.joints)})`, { file });
   }
   // a wire runs from an anchor to an anchor, by anchors, path joints and runs along a beam's slot (via); a loop closes
@@ -222,13 +246,13 @@ function entryProblems(what, entry, { ref, file, known, self }) {
     for (const side of ['from', 'to']) if (entry[side] != null) noItem(`wire${name} ${side}`, entry[side]);
     for (const v of Array.isArray(entry.via) ? entry.via : []) {
       if (typeof v === 'string' && v.includes('.')) noItem(`wire${name} via`, v);
-      else if (typeof v === 'string' && !known.joints.includes(v) && !made(v)) throw new CadError('edit.part', `wire${name} via: no joint "${v}" in ${ref}, and an anchor is <item>.<anchor> (joints: ${list(known.joints)})`, { file });
+      else if (typeof v === 'string' && !known.joints.includes(v) && !madeJoint(v)) throw new CadError('edit.part', `wire${name} via: no joint "${v}" in ${ref}, and an anchor is <item>.<anchor> (joints: ${list(known.joints)})`, { file });
       else if (v && typeof v === 'object' && v.along != null) noBeam(`wire${name} via along`, v.along);
     }
   }
   if (what === 'loop') for (const side of ['a', 'b']) noItem(`loop ${side}`, entry[side]);
   if (what === 'load') {
-    if (entry.joint != null && !known.joints.includes(String(entry.joint)) && !made(String(entry.joint))) throw new CadError('edit.part', `load joint: no joint "${entry.joint}" in ${ref} (joints: ${list(known.joints)})`, { file });
+    if (entry.joint != null && !known.joints.includes(String(entry.joint)) && !madeJoint(String(entry.joint))) throw new CadError('edit.part', `load joint: no joint "${entry.joint}" in ${ref} (joints: ${list(known.joints)})`, { file });
     if (entry.at != null && typeof entry.at === 'object') noItem('load at', entry.at);
   }
   if (what === 'item' && entry.mount && typeof entry.mount === 'object' && entry.mount.on != null) noBeam(`item${name} mount on`, entry.mount.on);
@@ -477,17 +501,33 @@ function projectFindings(json, project) {
 
 /**
  * Make a project: projects/<name>/project.json with its name, and title, description, material (PLA unless given) and
- * printer where given. Refused by name: a name not in lower case with dashes, a project already there, a printer with
- * no rule set. @param {string} name @param {{ title?: string, description?: string, material?: string, printer?: string, dryRun?: boolean }} [fields]
+ * printer where given. Run again on a project that is there with the same fields, it changes nothing and says so (a
+ * guide's step can be run twice). Refused by name: a name not in lower case with dashes, a project already there given
+ * no fields or fields that differ from its own (cad set changes those), a printer with no rule set.
+ * @param {string} name @param {{ title?: string, description?: string, material?: string, printer?: string, dryRun?: boolean }} [fields]
  */
 export function newProject(name, { dryRun = false, ...fields } = {}) {
   if (!NAME.test(String(name || ''))) throw new CadError('edit.name', `a project's name is lower case, with dashes (got ${JSON.stringify(name)})`);
   const file = projectFile(name);
-  if (fs.existsSync(file)) throw new CadError('project.exists', `projects/${name}/project.json is already there: change its fields with cad set ${name} material=PETG ..`, { file });
   const given = Object.fromEntries(Object.entries(fields).filter(([, v]) => v != null));
+  if (fs.existsSync(file)) {
+    if (!Object.keys(given).length) throw new CadError('project.exists', `projects/${name}/project.json is already there: change its fields with cad set ${name} material=PETG ..`, { file });
+    return { file, written: false, ...(dryRun ? { dryRun: true } : {}), changes: [], findings: [sameProject(name, given)] };
+  }
   const json = { $schema: 'https://jonibach.github.io/rulecad/schemas/project.schema.json', name, ...given, material: given.material ?? 'PLA', objects: [] };
   const text = laidOut(json);
-  return finish({ file, before: '', text, kind: 'project', changes: [{ op: 'make', path: path.relative(paths.project(name), file), after: json }], dryRun, findings: projectFindings(json, name) });
+  return finish({ file, before: '', text, kind: 'project', changes: [{ op: 'make', path: `projects/${name}/project.json`, after: json }], dryRun, findings: projectFindings(json, name) });
+}
+
+// A project that is there, held to the fields given for it (a material by its name in any case, PLA where it gives
+// none): a pass finding where each is already its own, refused by name where one differs, naming the cad set that
+// changes it
+function sameProject(name, given) {
+  const file = projectFile(name), own = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const ownOf = (k) => (k === 'material' ? own.material ?? 'PLA' : own[k]), same = (k, v) => (k === 'material' ? String(ownOf(k)).toLowerCase() === String(v).toLowerCase() : ownOf(k) === v);
+  const differ = Object.entries(given).filter(([k, v]) => !same(k, v)), was = (k) => (ownOf(k) === undefined ? `no ${k}` : `${k} ${ownOf(k)}`);
+  if (differ.length) throw new CadError('project.exists', `projects/${name}/project.json is already there with ${differ.map(([k]) => was(k)).join(' and ')}, so ${differ.map(([k, v]) => `--${k} ${v}`).join(' and ')} would change it: change ${differ.length === 1 ? 'it' : 'them'} with cad set ${name} ${differ.map(([k, v]) => `${k}=${/\s/.test(v) ? JSON.stringify(v) : v}`).join(' ')}`, { file });
+  return { level: 'pass', text: `projects/${name}/project.json is already there with ${Object.keys(given).map(was).join(' and ')}: nothing to change`, code: 'project.exists', values: Object.fromEntries(Object.keys(given).map((k) => [k, ownOf(k)])) };
 }
 
 /**
@@ -516,7 +556,7 @@ export function setProject(project, changes, { dryRun = false } = {}) {
  * Make an assembly: projects/<project>/assemblies/<name>.json, empty (items: []) or a generated frame, checked as it
  * is made; its project is made first where there is none, with the material and printer given for it (checked as cad new
  * <project> checks them). Refused by name: an assembly already there, a kind that is not fit, a frame the generator
- * refuses, a material or printer for a project that is already there (cad set <project> changes those).
+ * refuses, a material or printer for a project that is already there with another (cad set <project> changes those).
  * @param {string} ref project/assembly
  * @param {{ title?: string, kind?: string, description?: string, frame?: object, fields?: Record<string, any>, project?: { material?: string, printer?: string }, dryRun?: boolean }} [fields]
  */
@@ -526,7 +566,7 @@ export function newAssembly(ref, { title, kind = 'fit', description, frame, fiel
   const file = path.join(paths.project(project), 'assemblies', `${name}.json`);
   if (fs.existsSync(file)) throw new CadError('assembly.exists', `projects/${project}/assemblies/${name}.json is already there: change it with cad set, cad add, cad move and cad remove`, { file });
   const projectFields = Object.fromEntries(Object.entries(forProject || {}).filter(([, v]) => v != null)), hasProject = fs.existsSync(projectFile(project));
-  if (hasProject && Object.keys(projectFields).length) throw new CadError('project.exists', `projects/${project}/project.json is already there, so --${Object.keys(projectFields).join(' and --')} would make nothing: change ${Object.keys(projectFields).length === 1 ? 'it' : 'them'} with cad set ${project} ${Object.entries(projectFields).map(([k, v]) => `${k}=${v}`).join(' ')}`, { file: projectFile(project) });
+  const same = hasProject && Object.keys(projectFields).length ? sameProject(project, projectFields) : null; // refused where one differs
   if (!hasProject) newProject(project, { ...projectFields, dryRun: true }); // its material and printer refused before anything is written
   if (kind !== 'fit') throw new CadError('edit.kind', `an assembly's kind is fit (got ${JSON.stringify(kind)}): a mechanism is a fit with joints (cad add joint), a machine a fit with a task, and a plate is written by cad plates`, { file });
   const json = { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: title ?? name, kind, ...(description ? { description } : {}), ...(frame ? { frame } : { items: [] }) };
@@ -538,10 +578,10 @@ export function newAssembly(ref, { title, kind = 'fit', description, frame, fiel
     if (!top.includes(p[0])) throw new CadError('edit.address', `an assembly has no field "${p[0]}" (fields: ${top.filter((k) => k !== '$schema').join(', ')})`, { file });
     text = setDeep(text, p, value);
   }
-  const args = { ref, file, before: '', text, kind: 'assembly', changes: [{ op: 'make', path: `assemblies/${name}.json`, after: JSON.parse(text) }], touched: [] };
+  const args = { ref, file, before: '', text, kind: 'assembly', changes: [{ op: 'make', path: `projects/${project}/assemblies/${name}.json`, after: JSON.parse(text) }], touched: [] };
   try { finish({ ...args, dryRun: true }); } catch (e) { throw Object.assign(e, { message: e.message.replace(/^not changed: /, 'not made: ') }); } // checked before anything is written, the project too
   const made = [];
   if (!hasProject) made.push(newProject(project, { ...projectFields, dryRun }));
   const r = finish({ ...args, dryRun });
-  return { ...r, changes: [...made.flatMap((m) => m.changes.map((c) => ({ ...c, path: `projects/${project}/${c.path}` }))), ...r.changes], findings: [...made.flatMap((m) => m.findings.filter((f) => f.code !== 'schema')), ...r.findings], made: [...made.map((m) => m.file), r.file] };
+  return { ...r, changes: [...made.flatMap((m) => m.changes), ...r.changes], findings: [...made.flatMap((m) => m.findings.filter((f) => f.code !== 'schema')), ...(same ? [same] : []), ...r.findings], made: [...made.map((m) => m.file), r.file] };
 }
