@@ -3,7 +3,7 @@
   "name": "lift",
   "rules": {
     "payload": {"value": 0.1, "unit": "kg", "rule": "The most the arm is rated to carry at the tool", "kind": "default", "source": "Design: the top of the range the arm is for, 50 to 100 g", "checked": "2026-11-09"},
-    "upper_mass": {"value": 0.376, "unit": "kg", "rule": "The upper arm, the elbow's gears, the elbow's motor and the switch: as the shoulder sees them", "kind": "derived", "source": "joint.moment's carried mass in chapter 13, less what's beyond the elbow", "checked": "2026-11-09"},
+    "upper_mass": {"value": 0.466, "unit": "kg", "rule": "The upper arm, the elbow's gears, the elbow's motor (a 17HS4401, 280 g) and the switch: as the shoulder sees them", "kind": "derived", "source": "joint.moment's carried mass in chapter 13, less what's beyond the elbow: 0.376 kg with a 190 g NEMA 14, 90 g more with the 17HS4401", "checked": "2026-11-22"},
     "fore_mass": {"value": 0.07, "unit": "kg", "rule": "The forearm and the elbow's output gear, about", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
     "tool_mass": {"value": 0.148, "unit": "kg", "rule": "The gripper with its servo and horn, and the payload", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
     "grip_horn": {"value": 12.3, "unit": "mm", "rule": "The horn's lever at full close, where it's smallest (18 mm reach × cos 47°): what the servo's torque turns into the push on each finger", "kind": "derived", "source": "gripper's reach and close_a", "checked": "2026-11-09"},
