@@ -5,11 +5,12 @@
   "uses": [
     "mx"
   ],
-  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display on a tall socket at the module's right end, its pins level with the module's display column, lying over the module and the top row of keys. The board's underside is z = 0.",
+  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display on a standard socket at the module's right end, lying flat over the module and the board above it, clear of the keys. The board's underside is z = 0, and a USB-C cable plugged into the module through the board's slot.",
   "requires": {
-    "macropad": "^0.3.0",
+    "macropad": "^0.4.0",
     "module": "^0.7.2",
-    "display": "^0.1.0"
+    "display": "^0.1.0",
+    "usb-plug": "^0.1.0"
   },
   "items": [
     {
@@ -52,15 +53,24 @@
         "pcb.spi_y",
         "pcb.thickness + pcb.spi_top"
       ]
+    },
+    {
+      "id": "cable",
+      "object": "usb-plug",
+      "at": [
+        "pcb.usb_x",
+        "pcb.usb_y",
+        "pcb.thickness + module.thickness / 2"
+      ]
     }
   ],
   "fits": [
     {
       "a": "display.board",
-      "b": "key-0-0.cap",
-      "min": 0.5,
-      "note": "The display's board clears the top row's keycaps (it reaches over them)",
-      "label": "Display over the keys"
+      "b": "module.board",
+      "min": 3,
+      "note": "The display lies clear over the module (its parts reach about 1 mm above its board)",
+      "label": "Display over the module"
     }
   ]
 }

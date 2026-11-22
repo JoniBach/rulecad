@@ -9,6 +9,7 @@
     "choc-switch",
     "choc-keycap",
     "display",
-    "headers"
+    "headers",
+    "usb-plug"
   ]
 }

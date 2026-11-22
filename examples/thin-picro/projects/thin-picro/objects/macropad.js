@@ -78,40 +78,42 @@ export function main (v) {
   const place = { module_x: mc.x, module_y: mc.y, key_x0: keyLeft + P / 2, key_y0: 0, flip }
   let tabTop = null, xs = [-L / 2, L / 2]
   if (!rear) {
-    // SPI at the right end, each pin straight across from the module's own display column (the same heights): a
-    // display lies over the module with its header in it, lifted on a tall socket (display_stack) clear of the top row
-    // of keycaps that it reaches over
+    // SPI at the right end: a display lies flat on a standard socket with its header in it, its lower edge level with
+    // the module's (so it covers the module, never the keys), the board reaching up under the rest of it. The socket's
+    // centre is half the display's height up from there: its pins sit above the module's own display column, joined to
+    // it by short tracks
     nets.GND = pinOf('GND').map((p) => `U1.pin${p.pin}`) // (all of them: joined inside the module anyway, and no pad left off a net for a track to pass over)
     nets['3V3'] = [`U1.pin${pinOf('3V3').find((p) => p.side === 'right').pin}`]
     const spi = ['GND', '3V3', `GP${v.display_scl}`, `GP${v.display_sda}`, `GP${v.display_res}`, `GP${v.display_dc}`, `GP${v.display_cs}`, `GP${v.display_blk}`]
     const i2c = ['GND', '3V3', `GP${v.i2c_scl}`, `GP${v.i2c_sda}`]
-    const column = pins.filter((p) => p.side === 'right').map((p) => at(p.hole).y)
-    const sx = L / 2 + v.castle_out + v.socket_gap, sy = column.reduce((n, y) => n + y, 0) / column.length // (the module's column, pitch for pitch)
+    const sx = L / 2 + v.castle_out + v.socket_gap, sy = mc.y - H / 2 + v.st7789_2in.height / 2
     const ix = -sx, iy = mc.y
     // header(): pin 1 at the top of the column; turned half round, pin 1 (GND) at the bottom, as the module's own column
     const strip = (n, height) => v.pcb.stripModel(n, { pitch: mod.pitch, height, thickness: v.thickness })
-    parts.push({ ...v.pcb.header('J1', sx, sy, sockets, { pins: spi.length, rotation: v.socket_turn, mpn: `1 × ${spi.length} female header, ${mod.pitch} mm`, model: strip(spi.length, v.display_stack), sch: { x: -v.cols * v.sch_grid, y: -v.sch_grid } }), bom: false, place: false },
+    parts.push({ ...v.pcb.header('J1', sx, sy, sockets, { pins: spi.length, rotation: v.socket_turn, mpn: `1 × ${spi.length} female header, ${mod.pitch} mm`, model: strip(spi.length, v.socket_height), sch: { x: -v.cols * v.sch_grid, y: -v.sch_grid } }), bom: false, place: false },
       { ...v.pcb.header('J2', ix, iy, sockets, { pins: i2c.length, rotation: v.socket_turn, mpn: `1 × ${i2c.length} female header, ${mod.pitch} mm`, model: strip(i2c.length, v.socket_height), sch: { x: -v.cols * v.sch_grid, y: -v.rows * v.sch_grid } }), bom: false, place: false })
     const join = (part, list) => list.forEach((s, i) => { (nets[s] ||= [`U1.pin${(pinOf(s).find((p) => p.side !== 'bottom') || pinOf(s)[0]).pin}`]).push(`${part}.pin${i + 1}`) })
     join('J1', spi); join('J2', i2c)
     // each pin's name on the back, beside the socket (the front is under the display)
     const names = (x0, y0, labels, dir) => labels.forEach((t, i) => silk.push({ text: t, x: x0 + dir * (ring / 2 + v.label_gap + t.length * text * v.label_char / 2), y: y0 + (i - (labels.length - 1) / 2) * mod.pitch, size: text, layer: 'bottom' }))
     names(sx, sy, ['GND', 'VCC', 'SCL', 'SDA', 'RES', 'DC', 'CS', 'BLK'], -1); names(ix, iy, ['GND', 'VCC', 'SCL', 'SDA'], 1)
-    tabTop = sy + (spi.length * mod.pitch) / 2 + v.edge_keep
+    tabTop = Math.max(sy + (spi.length * mod.pitch) / 2, mc.y - H / 2 + v.st7789_2in.height) + v.edge_keep // (the socket, and the display's top edge: the board under all of it)
     xs = [ix - ring / 2 - v.edge_keep, sx + ring / 2 + v.edge_keep]
-    Object.assign(place, { spi_x: sx, spi_y: sy, spi_top: v.display_stack, i2c_x: ix, i2c_y: iy })
+    Object.assign(place, { spi_x: sx, spi_y: sy, spi_top: v.socket_height, i2c_x: ix, i2c_y: iy, usb_x: mc.x + v.usb_x, usb_y: mc.y + H / 2 + v.usb_out })
   }
 
   // ---- the board ----
   // rear: exactly the keys and the module (the module's top edge, with USB-C, is the board's). front: the module's
-  // pads, the keys, the diodes and the sockets, edge_keep beyond them, and a tab beside the module's top corner for the
-  // SPI socket. M2 holes where four keys meet, in the lower rows (clear of the module and the diodes)
+  // pads, the keys, the diodes and the sockets, edge_keep beyond them, reaching up under the
+  // whole display. M2 holes where four keys meet, in the lower rows (clear of the module and the diodes)
   const halfW = rear ? Math.max(L / 2, keyRight) : Math.max(L / 2 + v.castle_out, keyRight + d35.pad / 2) + v.edge_keep
   const left = rear ? -halfW : Math.min(-halfW, xs[0]), right = rear ? halfW : Math.max(halfW, xs[1])
   const top = mc.y + H / 2, bottom = keyBottom
-  const corner = xs[1] - v.edge_keep * 2 - ring // the tab's inner side: edge_keep short of the SPI socket's pads
+  // front: a slot from under the module's USB-C notch out through the top edge, a USB-C plug's overmould wide (and some),
+  // so a cable plugs into the module's socket past the board that now reaches beyond the module
+  const slot = [mc.x + v.usb_x - v.plug_w / 2 - v.plug_gap, mc.x + v.usb_x + v.plug_w / 2 + v.plug_gap], slotFrom = mc.y + v.usb_notch_y
   const outline = (tabTop && tabTop > top
-    ? [[left, bottom], [right, bottom], [right, tabTop], [corner, tabTop], [corner, top], [left, top]]
+    ? [[left, bottom], [right, bottom], [right, tabTop], [slot[1], tabTop], [slot[1], slotFrom], [slot[0], slotFrom], [slot[0], tabTop], [left, tabTop]]
     : [[left, bottom], [right, bottom], [right, top], [left, top]]).map(([x, y]) => ({ x, y }))
   const holes = String(v.mount_rows).split(/[ ,]+/).map(Number).flatMap((r) => [-1, 1].map((sx) => v.pcb.mount('M2', sx * P / 2, -r * P - P / 2)))
 

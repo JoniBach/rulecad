@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## 0.7.61: commands that write projects and assemblies, and belt guides (Frames 4)
+## 0.7.62: commands that write projects and assemblies, and belt guides (Frames 4)
 
 ### Added
 
@@ -53,6 +53,17 @@ and head, the parts it passes through and the part it ends in.
 - `cad add` prints the place it added at (`added a join to … (joins.3)`), and its `--json` is `{ command, file,
   written, changes, findings, added }`; the `file` is relative to the workspace.
 - No printed size or figure moves.
+
+## 0.7.61: a board rebuilt when its finish changes
+
+### Fixed
+
+- A board's cached build now misses when @rulecad/smooth changes, not only @rulecad/pcb: its build runs smooth's
+  smoothing and finish, so a change there could leave a board built by the old code (the engine id hashes both).
+
+### Printed sizes that moved
+
+None. Boards build again once (their cache key changed); what they build is the same unless @rulecad/smooth changed.
 
 ## 0.7.60: pins, magnets and printed bolts in assemblies, and the holds coupon (Fixings 4)
 
@@ -103,6 +114,7 @@ they are found, checked and counted.
 ### Printed sizes that moved
 
 None.
+
 ## 0.7.58: frame checks (Frames 3)
 
 ### Added
