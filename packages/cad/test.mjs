@@ -4050,7 +4050,9 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
     const power = arm.wires.find((w) => w.id === 'power');
     const write = (items, wires = [{ ...power, via: [{ along: 'rail.front', from: 300, to: 60 }] }]) => fs.writeFileSync(at('assemblies/rack.json'), JSON.stringify({ title: 'rack', kind: 'fit',
       items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [400, 0, 0] }, ...items], wires }));
-    write([{ ...mine('shield'), mount: { on: 'rail.top@100' } }, { ...mine('psu'), mount: { on: 'rail.top@-90' } }]);
+    // (the arm now runs on a 12 V bench supply, which stands on the bench and has no mounting holes: the Mean Well it
+    // was drawn with before, an LRS-50-24, is the supply that mounts here)
+    write([{ ...mine('shield'), mount: { on: 'rail.top@100' } }, { id: 'psu', bought: 'supply-24v', variant: 'LRS-50-24', mount: { on: 'rail.top@-90' } }]);
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('rack/rack'), f = checkAssembly(s);

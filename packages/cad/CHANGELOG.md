@@ -5,6 +5,33 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased: the arm on the parts its builder has
+
+### Changed
+
+- A stepper's torque at speed (`motor.torque`, `motor.mount`, `fasten.load`, `motor.accel`, `task.time`, a gait's
+  torque, the motor's curve in the preview) is worked out at the volts of the assembly's bought supply, where it has
+  one; before, always at `@rulecad/motors`' default 24 V. On 12 V a 17HS4401 at 300 rpm gives 0.269 N m at full
+  current, not 0.283. A stepper with no `speed` works at its corner speed at that supply (286 rpm on 12 V, not 571).
+  `motor.torque` says it: `..., at 300 rpm on its supply's 12 V`, and its values carry `supply` and `rpm`. An
+  assembly with no supply checks as before.
+- A motor named by its variant (`17HS4401`) is listed by it: `nema17 (17HS4401)` on `cad list`, the kit and the
+  `bought.item` line.
+
+### Added
+
+- `"have": true` on a motor or bought item: in hand, so `cad list` lists it under `Bought, in hand` apart from what is
+  to buy (`have: true` on its line in `--json`, and out of the bought cost), the kit's `buy.csv` gives it the kind `in
+  hand`, and the kit's build page a table of its own. On a printed or beam item it is refused, by name.
+
+### The bench arm (examples/bench/projects/arm and EXAMPLES chapters 12 and 13)
+
+- The elbow's motor is a 17HS4401, the shoulder's, on the same `v.motors` mount: printed sizes moved in `upper`, the
+  elbow motor's four M3 holes and their counterbores from the NEMA 14's 26 mm square to the 17HS4401's 31 mm square,
+  so the motor the builder has bolts on (the part weighs 126.1 g, as before). The supply is a 12 V bench supply with
+  its limit at 1.5 A; the drivers stay at 0.5 A and 1/8 step, the upright arm's shoulder at 0.8 A. Rules moved:
+  `arm.shoulder_torque` 0.2 to 0.22 N m, `lift.upper_mass` 0.376 to 0.466 kg.
+
 ## 0.7.62: commands that write projects and assemblies, and belt guides (Frames 4)
 
 ### Added
