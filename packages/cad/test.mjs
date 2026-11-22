@@ -6032,6 +6032,14 @@ test('"have": a bought part or motor in hand is listed apart from what is to buy
     // a printed part is never in hand: refused by name, with what can be
     write('projects/home/assemblies/bad.json', { title: 'Bad', kind: 'fit', items: [{ id: 'block', object: 'block', have: true }] });
     assert.match(cad('check', 'home/bad'), /item block: "have" marks a bought part or a motor as in hand, and block is printed \(object block\)/);
+    // "have" holds on a repeat's copies (r-0, r-1) and on a component's parts (k.s): all three bearings in hand, none to buy
+    write('projects/home/assemblies/sub.json', { title: 'Sub', kind: 'fit', items: [{ id: 's', bought: 'bearing-608', have: true }] });
+    write('projects/home/assemblies/top.json', { title: 'Top', kind: 'fit', items: [{ id: 'k', assembly: 'sub', at: [0, 200, 0] },
+      { id: 'r', bought: 'bearing-608', have: true, at: [0, 0, 0], repeat: { x: { count: 2, step: 40 } } }, { id: 'b', bought: 'bearing-608', at: [0, 100, 0] }] });
+    const top = JSON.parse(cad('list', 'home/top', '--json'));
+    assert.deepEqual(top.bought.map((b) => [b.set, b.qty, b.have ?? false, [...b.items].sort()]).sort(), [['bearing-608', 1, false, ['b']], ['bearing-608', 3, true, ['k.s', 'r-0', 'r-1']]].sort());
+    const topText = cad('list', 'home/top');
+    assert.match(topText.slice(topText.indexOf('Bought, in hand')), /3 ×\s+bearing-608/, topText);
   } finally { done(); }
 });
 

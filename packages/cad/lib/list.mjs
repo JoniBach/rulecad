@@ -43,11 +43,11 @@ export function printedParts(s) {
 /** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], cut: object | null, totals: object }} */
 export function shoppingList(s) {
   const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
-  const have = new Set((s.a?.items ?? []).filter((it) => it.have === true).map((it) => it.id)); // ("have": in hand, not to buy)
   for (const o of s.objects) if (o.bought && !o.unplaced) {
     // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
     // (a panel by its sheet and size: lib/panels.mjs)
-    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, inHand = have.has(o.id), key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}|${inHand}`;
+    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, inHand = o.have === true, // ("have": in hand, not to buy; set on each copy and on a component's parts by lib/assembly.mjs)
+       key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}|${inHand}`;
     const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), ...(inHand ? { have: true } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, ...(o.bought.cost ? { cost: o.bought.cost.value, currency: o.bought.cost.unit } : {}), items: [] };
     line.qty++; line.items.push(o.id); bought.set(key, line);
   }

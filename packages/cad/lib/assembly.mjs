@@ -253,7 +253,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}), ...(it.have === true ? { have: true } : {}) }); // ("have" on the object: a repeat's copies and a component's parts keep it)
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role, ...(src.beam ? { beam: src.beam } : {}) });
     }
   }
