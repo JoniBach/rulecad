@@ -5,6 +5,14 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.20: the edit commands and belt guides in the agent notes (Frames 4)
+
+### Changed
+
+- The template's `AGENTS.md`, copied from `@rulecad/cad`, tells an agent to make and change projects and assemblies
+  with `cad new`, `cad set`, `cad add`, `cad move` and `cad remove` rather than writing their JSON by hand, and how to
+  put a belt drive on a beam.
+
 ## 0.3.19: pins, magnets and printed bolts in the agent notes (Fixings 4)
 
 ### Changed

@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
+## 0.1.11: belt guides (Frames 4)
 
 ### Added
 
