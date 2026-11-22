@@ -36,3 +36,6 @@ export async function stage(name, inputs, compute) {
   store.put(key, text);
   return JSON.parse(text);
 }
+
+// How long each stage of a lamina takes, on stderr, when LAMINA_TIMES is set (shared by lamina.mjs and flooded.mjs)
+export const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) return () => {}; const t0 = performance.now(); let last = t0; return (what) => { const now = performance.now(); console.error(`${name} ${what}: ${((now - last) / 1000).toFixed(1)} s (${((now - t0) / 1000).toFixed(1)} s in)`); last = now; }; };

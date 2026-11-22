@@ -16,11 +16,11 @@
 // The plane's geometry and the print in 3D are plane.mjs; a flexure drawn bent and its finite-element peak are
 // bent.mjs; a flooded frame is flooded.mjs; the slow stages are kept between builds by cache.mjs.
 
-import * as gens from './flexures.mjs';
-import { curveClearance } from './curves.mjs';
+import * as flexures from './core.mjs';
+import { curve, curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
 import { simulate, systemOf, bend, centrelines } from './physics.mjs';
-import { stage } from './cache.mjs';
+import { stage, timer } from './cache.mjs';
 import { shapeOf, fixedLoads, equilibrium } from './beams.mjs';
 import { outOfPlane } from './outofplane.mjs';
 import { grid as feaGrid, analyse as feaAnalyse } from '@rulecad/fea';
@@ -29,10 +29,10 @@ import { shares, split, fromOutlines, smooth, coverage, fePeak } from './bent.mj
 import { flooded } from './flooded.mjs';
 import { bridgesStage, guidesStage, pinsStage } from './print3d.mjs';
 import { checksStage } from './checks.mjs';
+const gens = { ...flexures, curve }; // every flexure's shape by its kind: core.mjs's, and the curve (curves.mjs)
 
 // ---------- the mechanism ----------
-// LAMINA_TIMES=1 prints each stage's time to stderr (where a long build's minutes go)
-export const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) return () => {}; const t0 = performance.now(); let last = t0; return (what) => { const now = performance.now(); console.error(`${name} ${what}: ${((now - last) / 1000).toFixed(1)} s (${((now - t0) / 1000).toFixed(1)} s in)`); last = now; }; };
+// LAMINA_TIMES=1 prints each stage's time to stderr (where a long build's minutes go: timer, in cache.mjs)
 /**
  * A mechanism in one plane, printed flat.
  * @param {object} spec
@@ -87,7 +87,7 @@ export const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) ret
  */
 export async function lamina(spec) {
   await ready();
-  if (spec.flood) return flooded(spec);
+  if (spec.flood) return flooded(spec, lamina); // (handed the solver, so flooded.mjs needn't import this module back)
   const mark = timer(spec.groundRounded ? (spec.bridges === undefined && spec.fire === undefined ? 'lamina (flood probe)' : 'lamina (flooded)') : 'lamina');
   const { height, gap, material, printer } = spec, slack = spec.check?.slack ?? gap / 10, steps = spec.check?.steps ?? 8, stepMost = spec.check?.step ?? 0.25;
   // Friction, taken the cautious way for each question: what must move is checked sticky (a ramp must still push its

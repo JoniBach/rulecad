@@ -9,6 +9,7 @@
   },
   "files": [
     "flexures.mjs",
+    "core.mjs",
     "compose.mjs",
     "lamina.mjs",
     "plane.mjs",
@@ -24,6 +25,7 @@
     "outofplane.mjs",
     "synth.mjs",
     "flexures.d.mts",
+    "core.d.mts",
     "compose.d.mts",
     "lamina.d.mts",
     "plane.d.mts",

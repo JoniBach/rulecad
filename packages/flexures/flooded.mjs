@@ -2,8 +2,7 @@
 // builds), the frame is what's left of the outline round the room the moving parts need, and the mechanism is
 // solved again on it (lamina.mjs). Split from lamina.mjs.
 import { ports } from './compose.mjs';
-import { stage } from './cache.mjs';
-import { lamina, timer } from './lamina.mjs';
+import { stage, timer } from './cache.mjs';
 import { AREA, TOUCH, OWN_ROUNDS, rad, mul, apply, shift, turn, empty, union, intersect, subtract, grow, shrink, area, apart, box, all, within } from './plane.mjs';
 
 /**
@@ -21,8 +20,10 @@ import { AREA, TOUCH, OWN_ROUNDS, rad, mul, apply, shift, turn, empty, union, in
  *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
  *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
  *   of it that never moves). spec.ground may then be left out
+ * @param {(spec: object) => Promise<any>} lamina the solver it floods round (lamina.mjs hands it over, so this module
+ *   doesn't import that one back)
  */
-export async function flooded(spec) {
+export async function flooded(spec, lamina) {
   const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
   // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
