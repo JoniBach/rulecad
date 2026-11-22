@@ -3,7 +3,7 @@
 // real fillets, rounds and centre distance); how far the forward meeting is from where the ratio puts it is the
 // transmission error; outlines that cross where the ratio puts them interfere. Plain 2D geometry: the outlines'
 // edges near the pitch point, tested for crossing.
-import { spurProfile, internalProfile, rackProfile, gearModel, internalModel, rackModel, mesh, phase, rackPhase } from './gears.mjs';
+import { spurProfile, internalProfile, rackProfile, gearModel, internalModel, rackModel, mesh, phase, rackPhase } from './core.mjs';
 
 const DEG = Math.PI / 180;
 const fmt = (x, d = 3) => String(+x.toFixed(d));

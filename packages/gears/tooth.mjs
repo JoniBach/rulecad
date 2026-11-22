@@ -2,7 +2,7 @@
 // stress), the rim's cut edges held, the load at the tip along the line of action. The peak stress at the root, with
 // the fillet and the printed shape as they are, against Lewis's number, which leaves the fillet's concentration out.
 import { grid, analyse, positions } from '@rulecad/fea';
-import { gearModel, spurProfile, lewisFactor } from './gears.mjs';
+import { gearModel, spurProfile, lewisFactor } from './core.mjs';
 
 const fmt = (x, d = 1) => String(+x.toFixed(d));
 const inside = ([x, y], pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
