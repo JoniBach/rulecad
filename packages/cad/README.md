@@ -1406,17 +1406,22 @@ the rest by addresses (`examples/bench` `axes/x-belt` is one, written by the edi
   printed block (`belt-idler`, `<id>-idler-block`) past the rail's end, which is the tensioner: its two screws go into
   slot nuts in the beam's slot, so loosened it slides along it. `idlerAt` places the block (default room short of the
   beam's end b), `across` moves the idler's axle off the belt's square line, `tension` sets each span (default 25 N, an
-  estimate), `cut` says the length the belt is cut to, `belt` its set (default `gt2-belt-6`). The rail starts after
+  estimate), `cut` says the length the belt is cut to, `height` raises the belt's middle over the face (the pulley
+  further up its shaft), `belt` its set (default `gt2-belt-6`). The rail starts after
   the plate's tab and ends before the block, or the guide is refused naming where to put it.
 - The motor drives the carriage's joint with `belt` from the sets (the pulley's teeth, the belt's pitch, stiffness and
   width), so `motor.torque`, `motor.speed` and the step's term in the error budget read 20 × 2 = 40 mm a turn. Its
   load is what the belt pushes: everything the carriage carries at `accel` (the guide's, else the task's, else 1000
-  mm/s²), a load on the joint that `motor.holds` leaves out (it is not there at rest). Its shaft turns square to the
-  travel (`motor.axis`).
+  mm/s²), a load on the joint that `motor.holds` leaves out (it is not there at rest). The push goes either way along
+  the travel, so on an upright or sloping axis it adds to the weight: 1.04 kg on an upright 2020 at 5000 mm/s² needs
+  10.18 + 5.19 = 15.37 N. Its shaft turns square to the travel (`motor.axis`).
 - `belt.length` gives the path by the belt's pitch line, the length to cut it (whole teeth that stretch to the path at
   the tension) and to buy, rounded up to whole metres (`cad list` shows `gt2-belt-6 x 1000 mm`). `belt.tension` holds
-  each span, with the push, between the belt's least static tension and its rated tension. `belt.rub` fails a run that
-  rubs the beam, the rail, the carriage or the clamp anywhere through the travel, naming the run, the part and where.
+  each span, with the push and the weight along the travel, between the belt's least static tension and its rated
+  tension. `belt.rub` fails a run that rubs the beam, the rail, the carriage, the clamp or anything else on the
+  carriage (by its box) anywhere through the travel, naming the run, the part and where; for a part on the carriage it
+  gives the `height` that clears it by 1 mm. Its pass says how far the return run passes over the carriage's top
+  (3.4 mm for an MGN12H on a 2020), the room a part on the carriage's free holes has under it.
   `belt.line` fails an idler off the pulley's line past 0.25° (an estimate). `belt.tensioner` says where the block
   must slide along its slot to tension the belt as cut, and fails when the slot has no room left there, saying how
   much shorter or longer to cut it. `belt.stretch` gives the belt's stretch under the push, the term `belt stretch` in

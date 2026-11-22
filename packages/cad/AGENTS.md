@@ -189,8 +189,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   pulley, idler, belt, plate or clamp yourself: the guide places them by addresses. Report `belt.length` (cut and
   buy), `belt.tension`, `motor.torque`'s margin and the travel a turn, `belt.tensioner`'s room, and each printed part's
   grams and margin; say the tension and the belt's thickness are estimates. A `belt.rub` or `belt.line` fail means the
-  idler or the part it names moves, never the belt's figures; a `belt.tensioner` fail means cutting the belt to the
-  length it names.
+  idler or the part it names moves, never the belt's figures; where the part is on the carriage, raise the belt with
+  the `"height"` it names instead or move the part; a `belt.tensioner` fail means cutting the belt to the length it
+  names.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, or `x1.top@120`, the
   middle of its screws), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off

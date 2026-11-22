@@ -4448,7 +4448,8 @@ test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carr
     // the parts it placed: the plate, the clamp and the idler block printed; the belt bought by the metre, its pulley and idler
     assert.deepEqual(axis.printed.map((p) => p[0]), ['g2-plate', 'g2-clamp', 'g2-idler-block']);
     assert.deepEqual(axis.bought.filter((b) => ['belt', 'pulley', 'idler', 'motor'].includes(b[2])).map((b) => [b[1], b[3]]), [['gt2-belt-6', 1000], ['idler-gt2-toothed-20', null], ['nema17', null], ['pulley-gt2-20', null]]);
-    for (const f of ['2 × M3x6 cap', '2 × M5x12 cap', '3 × M5x16 cap', '1 × M5 heat-set insert']) assert.ok(axis.fasteners.some(([q, n]) => `${q} × ${n}` === f), `${f}: ${JSON.stringify(axis.fasteners)}`);
+    // (the rail's twelve M3x8 and the clamp's two: 3.2 mm into the carriage's thread, 4.8 under each head)
+    for (const f of ['14 × M3x8 cap', '2 × M5x12 cap', '3 × M5x16 cap', '1 × M5 heat-set insert']) assert.ok(axis.fasteners.some(([q, n]) => `${q} × ${n}` === f), `${f}: ${JSON.stringify(axis.fasteners)}`);
     // travel a turn: 20 teeth × 2 mm = 40 mm; at the NEMA 17's working 600 rpm, 600 / 60 × 40 = 400 mm/s
     assert.equal(by(axis, 'guide.drive')[0].values.mmPerTurn, 40);
     assert.match(by(axis, 'motor.speed')[0].text, /moves at 400 mm\/s with g2-motor at 600 rpm/);
@@ -4480,6 +4481,66 @@ test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carr
     const long = probe('x-long'), tn = by(long, 'belt.tensioner')[0];
     assert.equal(tn.level, 'fail'); assert.match(tn.text, /the tensioner's travel is used up; cut the belt/);
     assert.ok(Math.abs(tn.values.offset - (830 * (1 + 25 / 16903) - 810.296) / 2) < 0.01, `${tn.values.offset}`);
+  } finally { done(); }
+});
+
+test('guides: a belt Z axis adds the push at its acceleration to the weight, in the motor\'s need and the belt\'s spans; an MGN12C clamp on a 16-tooth pulley engages the carriage\'s thread with room; a part on the carriage across the return run rubs by name, and a higher belt clears it', () => {
+  const { ws, done } = workspace();
+  try {
+    const dir = path.join(ws, 'projects/ax');
+    fs.mkdirSync(path.join(dir, 'assemblies'), { recursive: true }); fs.mkdirSync(path.join(dir, 'objects'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'project.json'), JSON.stringify({ name: 'ax', material: 'PLA', printer: 'x1c', objects: ['pad'] }));
+    // a 20 × 8 mm pad on the carriage's top, over its free holes' side (y = -9 across, as the belt's frame has it)
+    fs.writeFileSync(path.join(dir, 'objects/pad.json'), JSON.stringify({ name: 'pad', title: 'Pad', version: '0.1.0', engine: 'manifold', variables: { thick: { value: 6, unit: 'mm', rule: 'Its thickness', tweak: [1, 20] } } }));
+    fs.writeFileSync(path.join(dir, 'objects/pad.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [20, 8, v.thick], center: [0, -9, v.thick / 2] }) }\n");
+    const write = (name, a) => fs.writeFileSync(path.join(dir, `assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', ...a }));
+    const beam = (id, from, to, profile = '2020-misumi-hfs5') => ({ id, beam: { profile }, from, to });
+    // upright: a 2020 400 mm tall, an MGN12C rail on its front face, 1 kg on the carriage
+    for (const accel of [1000, 5000]) write(`z${accel}`, { items: [beam('b1', [0, 0, 0], [0, 0, 400])], guides: [{ kind: 'rail', id: 'r_1', rail: 'rail-mgn12', on: 'b1.front', from: 40, length: 300 }, { kind: 'belt', id: 'zb', guide: 'r_1', motor: { model: 'nema17', current: 1.2 }, accel }], loads: [{ mass: 1, at: 'r_1-carriage-1.top' }] });
+    // level: a 2040 along y, an MGN12C rail on top.2, a 16-tooth pulley at 30 N, 1.2 kg on the carriage
+    write('y16', { items: [beam('beam_y', [10, 0, 5], [10, 500, 5], '2040-misumi-hfs5')], guides: [{ kind: 'rail', id: 'lin', rail: 'rail-mgn12', carriage: 'MGN12C', on: 'beam_y.top.2', from: 45, length: 350 }, { kind: 'belt', id: 'drv', guide: 'lin', pulley: 'pulley-gt2-16', tension: 30, accel: 2000, motor: { model: 'nema17', current: 1.2 } }], loads: [{ mass: 1.2, at: 'lin-carriage-1.top' }] });
+    // the bench's X axis with the pad screwed to the carriage, then with the belt raised to 23 mm
+    const x = (belt) => ({ items: [beam('x1', [0, 0, 0], [400, 0, 0]), { id: 'pad', object: 'pad', at: 'g1-carriage-1.top' }], guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x1.top', from: 30, length: 300 }, { kind: 'belt', guide: 'g1', motor: { model: 'nema17', microsteps: 16, current: 1.2 }, accel: 3000, ...belt }], loads: [{ mass: 0.5, at: 'g1-carriage-1.top' }], fits: [{ a: 'pad', b: 'g1-carriage-1', fastens: true, note: 'On its free holes' }] });
+    write('xpad', x({})); write('xhigh', x({ height: 23 }));
+    // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
+    const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly } = await lib('assembly.mjs');
+      const s = await buildAssembly('ax/${name}'), findings = checkAssembly(s);
+      console.log(JSON.stringify(findings.map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      process.exit(0);
+    `); return JSON.parse(execFileSync(process.execPath, [path.join(ws, 'probe.mjs')], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })); };
+    const by = (r, code) => r.filter((x) => x.code === code), bad = (r) => r.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code} ${x.text}`);
+    // upright, by hand: the carriage, its clamp and the 1 kg weigh m = W / 9.80665 (W the weight belt.tension reads, about
+    // 1.038 kg); the motor lifts all of it and pushes it at a, both the same way at worst: m × 9.80665 + m × a / 1000 N,
+    // 10.18 + 5.19 = 15.37 N at 5000 mm/s², 10.18 + 1.04 = 11.22 N at 1000; it grows with a, by m × 4 N between them
+    const need = {}, spans = {}; let kg = 0;
+    for (const a of [1000, 5000]) {
+      const r = probe(`z${a}`), t = by(r, 'belt.tension')[0].values, m = t.weight / 9.80665, mt = by(r, 'motor.torque').find((q) => q.values?.margin != null);
+      assert.ok(Math.abs(m - 1.038) < 0.002, `${m} kg carried`);
+      assert.ok(Math.abs(t.push - (m * a) / 1000) < 1e-6, `${t.push} N push at ${a}`);
+      assert.ok(Math.abs(mt.values.needed - (m * 9.80665 + (m * a) / 1000)) < 0.01, `${mt.text}: ${m * 9.80665 + (m * a) / 1000} N by hand`);
+      need[a] = mt.values.needed; spans[a] = [t.slack, t.tight]; kg = m;
+      // the spans: 25 N each less and more half the weight and the push, 25 ∓ (W + push) / 2
+      assert.ok(Math.abs(t.slack - (25 - (t.weight + t.push) / 2)) < 1e-9 && Math.abs(t.tight - (25 + (t.weight + t.push) / 2)) < 1e-9, JSON.stringify(t));
+      assert.ok(Math.abs(by(r, 'belt.stretch')[0].values.force - (t.weight + t.push)) < 1e-9, 'the stretch under the weight and the push');
+    }
+    assert.ok(Math.abs(need[5000] - 15.37) < 0.02 && Math.abs(need[5000] - need[1000] - kg * 4) < 0.01, JSON.stringify(need));
+    assert.ok(Math.abs(spans[5000][0] - 17.32) < 0.02 && Math.abs(spans[5000][1] - 32.68) < 0.02, JSON.stringify(spans));
+    // level, MGN12C on a 16-tooth pulley: the clamp's two M3x8 go 3.2 mm into the carriage's 3.5 mm thread, a layer past
+    // the 3 mm steel's least asks, and the axis checks clean
+    const y = probe('y16'), eg = by(y, 'fasten.engagement').find((q) => /clamp/.test(q.text));
+    assert.deepEqual([eg.level, eg.values.engaged], ['pass', 3.2]);
+    assert.deepEqual(bad(y), []);
+    // the 6 mm pad on the carriage's top (13 to 19 mm over the face) reaches 19 - (19.4 - 3) = 2.6 mm into the return run's
+    // band: a fail by name, which says the height that clears it by 1 mm, 19 + 3 + 1 = 23
+    const rub = by(probe('xpad'), 'belt.rub');
+    assert.deepEqual(rub.map((q) => [q.level, q.refs.run, q.refs.part, q.values.depth, q.values.height]), [['fail', 'the return run', 'pad', 2.6, 23]]);
+    assert.match(rub[0].text, /rubs pad, which g1-carriage-1 carries, 2\.6 mm into its box .* Raise the belt over it with "height": 23/);
+    // raised to 23 mm: the pad clears the band by 23 - 3 - 19 = 1 mm, the pulley 3.6 mm further up its shaft, all clean
+    const high = probe('xhigh'), ok = by(high, 'belt.rub')[0];
+    assert.deepEqual([ok.level, ok.values.clearance, ok.values.under, ok.refs.carried], ['pass', 1, 7, ['pad']]);
+    assert.deepEqual(bad(high), []);
   } finally { done(); }
 });
 

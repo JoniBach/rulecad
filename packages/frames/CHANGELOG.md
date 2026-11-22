@@ -15,6 +15,9 @@ What changed in each release, for someone upgrading a workspace.
   against the beam, the rail, the carriage and the clamp through the travel); `BELT_DEFAULTS`, each figure with what
   it rests on. The catalogue gains `gt2-belt-6`, `pulley-gt2-16`, `pulley-gt2-20`, `idler-gt2-toothed-20` and
   `idler-gt2-smooth-20`.
+  `beltLayout`'s `height` raises the belt (the plate as thick, the pulley up its shaft by `beltPlateModel`'s `lift`);
+  `beltRub`'s `carried` holds the boxes of what the carriage carries; the clamp's screws go 3.2 mm into an MGN12
+  carriage's thread (steel's 3 mm and a layer), an M3x8 where an M3x6 was.
 
 ### Printed sizes that moved
 

@@ -34,6 +34,9 @@ and head, the parts it passes through and the part it ends in.
   by the metre; `belt.length`, `belt.tension`, `belt.rub` (swept through the travel), `belt.line`, `belt.tensioner`
   and `belt.stretch` (a term of the error budget). The schema has the guide's keys and the fittings `belt-plate`,
   `belt-clamp` and `belt-idler`. The example is `examples/bench` `axes/x-belt`, written by the edit commands.
+  A belt's push adds to the weight on an upright or sloping axis (in `motor.torque`, `belt.tension` and the stretch),
+  the clamp's screws go a layer past steel's least engagement, `belt.rub` holds what the carriage carries, and the
+  guide's `height` raises the belt over it.
 
 ### Changed
 

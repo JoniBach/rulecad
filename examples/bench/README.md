@@ -233,7 +233,7 @@ npx cad add load axes/x-belt mass=0.5 at=g1-carriage-1.top
 ```
 
 The belt guide places the rest by addresses: the motor under a printed plate past the beam's end a (17.4 g), the
-pulley on its shaft, a printed clamp for both belt ends on the carriage (4.4 g, two M3x6 into the carriage's own
+pulley on its shaft, a printed clamp for both belt ends on the carriage (4.5 g, two M3x8 into the carriage's own
 threads), and the idler on a printed block past the rail's end (18.6 g), which is the tensioner: its two M5 screws go
 into slot nuts in the beam's slot, so loosened it slides along the slot. `npx cad check axes/x-belt` passes with no
 warning. What it reports, and what each figure rests on:
@@ -244,7 +244,7 @@ warning. What it reports, and what each figure rests on:
 | `motor.torque` | 37.4 N at the belt against 1.68 N to push 558 g at 3000 mm/s², 22.3 times over | the NEMA 17's set, the belt's 0.95 (an estimate) |
 | `belt.length` | a path of 810.3 mm; cut 808 mm (404 teeth), buy 1 m | the pitch circles; open belt sold by the metre (an estimate) |
 | `belt.tension` | each span at 25 N, from 24.2 to 25.8 N while it pushes | 25 N is an estimate; Gates's 9.3 N least and 173 N rated |
-| `belt.rub` | the runs clear the carriage by 3.4 mm through the travel | the belt's 1.38 mm thickness (an estimate) |
+| `belt.rub` | the runs clear the carriage by 3.4 mm through the travel: a part screwed to the carriage's free holes stays under that, or `height` raises the belt | the belt's 1.38 mm thickness (an estimate) |
 | `belt.tensioner` | the block 0.55 mm toward the rail to tension the belt, 21.45 mm of slot left | the belt's stiffness (Gates) |
 | `belt.stretch` | 1.68 N stretches 184.5 mm of belt 0.018 mm | the belt's stiffness (Gates) |
 
