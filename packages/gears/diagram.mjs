@@ -2,7 +2,7 @@
 // the geometry its numbers come from: the pitch circles rolling on each other at the pitch point, the base circles the
 // flanks unwind from, the line of action tangent to both, and the stretch of it where the teeth touch (the path of
 // contact, whose length over the base pitch is the contact ratio).
-import { gearModel, internalModel, rackModel, spurProfile, internalProfile, rackProfile, mesh, phase, rackPhase } from './gears.mjs';
+import { gearModel, internalModel, rackModel, spurProfile, internalProfile, rackProfile, mesh, phase, rackPhase } from './core.mjs';
 
 const DEG = Math.PI / 180;
 const C = { a: '#2f6fb3', b: '#e07a1f', aFill: '#d6e4f3', bFill: '#f9e0c8', line: '#333', faint: '#999', contact: '#c0392b' };

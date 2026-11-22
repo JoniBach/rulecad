@@ -7,7 +7,7 @@
 //    of the same copper is laid across the corner, so the notch between them (where etchant pools: an acid trap) becomes
 //    two obtuse corners.
 // Every new piece of copper keeps the board's clearance from everything else; what can't be finished is listed.
-import { copperOf, netsOf, padShape, distance, inside, segSeg } from './smooth.mjs';
+import { copperOf, netsOf, padShape, distance, inside, segSeg } from './core.mjs';
 
 const EPS = 1e-6;
 const len = (v) => Math.hypot(v.x, v.y);

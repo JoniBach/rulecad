@@ -2,6 +2,7 @@
 // poses. A wire that won't reach the elbow at full stretch, or is too thin for what it carries, is found here rather than
 // on the bench. "wires": [{ "from": "elbow.connector", "to": "board.Y", "via": ["upper.cable"], "gauge": "awg22" }]
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
+import { placeItems, jointValues, mul } from '@rulecad/model-link';
 
 const n3 = (x, d = 1) => String(Number(x.toFixed(d)));
 const GAUGE = /^awg(\d{1,2})$/i;
@@ -130,3 +131,10 @@ export function wiringSheet(rows) {
   return [line(['Wire', 'From', 'To', 'Length (mm)', 'Gauge', 'Conductors', 'Colour', 'Connectors', 'Board pins', 'Carries']), line(['---', '---', '---', '---:', '---', '---:', '---', '---', '---', '---']),
     ...rows.map((w) => line([w.id, w.from, w.to, w.length, w.gauge ?? '', w.conductors, w.colour ?? '', Array.isArray(w.connectors) ? w.connectors.join(' to ') : w.connectors ?? '', w.pins ?? '', `${n3(w.current, 2)} A, ${w.why}`]))].join('\n');
 }
+
+// An assembly's wires with model-link's placing: their rows (lengths, gauges, pins), tubes to draw and routes. Here
+// rather than in assembly.mjs, which re-exports them, so list.mjs can use them without importing assembly.mjs back
+// (a loop of imports, issue #278).
+export const wiresFor = (s) => wireRows(s, { placeItems, jointValues, mul });
+export const wireTubesOf = (s) => wireTubes(s, { placeItems, mul });
+export const wireRoutesOf = (s) => wireRoutes(s, { placeItems, mul });
