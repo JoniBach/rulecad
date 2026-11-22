@@ -29,6 +29,7 @@ import { shares, split, fromOutlines, smooth, coverage, fePeak } from './bent.mj
 import { flooded } from './flooded.mjs';
 import { bridgesStage, guidesStage, pinsStage } from './print3d.mjs';
 import { checksStage } from './checks.mjs';
+export { timer }; // (kept here too, for anything that took it from this module)
 const gens = { ...flexures, curve }; // every flexure's shape by its kind: core.mjs's, and the curve (curves.mjs)
 
 // ---------- the mechanism ----------

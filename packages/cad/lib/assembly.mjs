@@ -39,7 +39,7 @@ import { ops as booleans } from '@rulecad/shapes';
 import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axisOf } from './motors.mjs';
 import { runningChecks, seatFit } from './seats.mjs';
 import { seatSize } from '@rulecad/shapes';
-import { wiresOf, wireChecks, wireRows, wireTubes, wireRoutes } from './wires.mjs';
+import { wiresOf, wireChecks } from './wires.mjs';
 import { printedParts } from './list.mjs';
 import { taskOf, taskChecks } from './task.mjs';
 import { powerChecks } from './power.mjs';
@@ -741,9 +741,7 @@ export function anchorsAt(s, values = s.jointValues) {
 
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
 export { keyCentres };
-export const wiresFor = (s) => wireRows(s, { placeItems, jointValues, mul });
-export const wireTubesOf = (s) => wireTubes(s, { placeItems, mul });
-export const wireRoutesOf = (s) => wireRoutes(s, { placeItems, mul });
+export { wiresFor, wireTubesOf, wireRoutesOf } from './wires.mjs'; // (there, so list.mjs needn't import this module back: #278)
 
 // ---------- checks ----------
 export { closest };
