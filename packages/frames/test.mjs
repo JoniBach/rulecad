@@ -1467,7 +1467,19 @@ test('belts: a belt drive\'s layout on a rail\'s carriage, its plate, clamp and 
   assert.deepEqual([high.height, high.plate.thickness, high.plate.lift, high.plate.pulleyAt.at[2], beltRub(high, { carried: [pad(6)] }).least.clearance], [23, 6.4, 3.6, 11, 1]);
   assert.ok(high.plate.margin >= 2 && high.clamp.floor > L.clamp.floor, `${high.plate.margin}, ${high.clamp.floor}`);
   await prints(beltClamp(high.clamp), 'a raised belt clamp');
-  assert.throws(() => beltLayout(P, { ...base, height: 15 }), /height is the belt's middle over the face, mm, at least 18\.25/);
+  assert.throws(() => beltLayout(P, { ...base, height: 15 }), /height is the belt's middle over the face, mm, at least 18\.25 \(the carriage's 13 mm top, the clamp's 2 mm floor/);
+  // a low carriage (an MGN9C, 10 mm top): the clamp alone asks only 10 + 2 + 3 + 0.25 = 15.25 mm, but the idler's block
+  // asks its 10.5 mm M5 insert, 2 mm under it, the 1 mm ring and half the 8.5 mm idler: 10.5 + 2 + 1 + 4.25 = 17.75 mm.
+  // The plate is then up(17.75 - 13, 0.2) = 4.8 mm, a sold slot screw's 6.4 mm, so the belt is 6.4 + 13 = 19.4 mm up and
+  // the block 19.4 - 4.25 - 1 = 14.15 mm high, over the 12.5 its insert takes (it was refused by default before)
+  { const m9 = railModel('rail-mgn9', { length: 340, variant: 'MGN9C' }), c9 = m9.carriage, l9 = m9.lanes[0];
+    const b9 = { face: 'top', beam: 450, rail: { from: 35, length: 340, width: m9.rail.width, height: m9.rail.height }, carriage: { top: c9.height, width: c9.width, length: c9.lengthMax ?? c9.length, clearance: c9.clearance, holes: c9.holes, thread: c9.thread, depth: c9.depth, rest: l9.rest, travel: l9.travel } };
+    const L9 = beltLayout(P, b9);
+    assert.deepEqual([c9.height, L9.height, L9.plate.thickness, L9.block.top, beltRub(L9).rubs], [10, 19.4, 6.4, 14.15, []]);
+    assert.ok(L9.block.margin >= 2 && L9.clamp.margin >= 2, `${L9.block.margin}, ${L9.clamp.margin}`);
+    assert.throws(() => beltLayout(P, { ...b9, height: 17 }), /at least 17\.75 \(the idler's block: its 10\.5 mm M5 insert and 2 mm floor, its 1 mm ring and half idler-gt2-toothed-20's 8\.5 mm body\)/);
+    // the block alone, given too low a belt, names the height that clears it
+    assert.throws(() => frames.beltIdlerModel(P, { rise: 17.6 }), /leaves the block 12\.35 mm, under the 12\.5 mm an M5 insert and its floor take: raise the belt to 17\.75 mm/); }
   assert.throws(() => beltRub(L, { carried: [{ part: 'pad', lo: [0, 0] }] }), /carried is a list of \{ part, lo: \[x, y, z\], hi: \[x, y, z\] \} boxes/);
   // refused by name
   assert.throws(() => beltLayout(P, { ...base, idler: 'idler-gt2-smooth-20' }), /smooth and 18 mm across, .* asks for 25\.4 mm at least \(min_flat_idler_diameter\): use a toothed idler/);

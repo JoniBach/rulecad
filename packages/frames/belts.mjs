@@ -253,7 +253,7 @@ export function beltIdlerModel(profile, o = {}) {
   const axle = 'M5';
   if (Math.abs(fixingModel(axle).major - I.bore) > 1e-9) throw new Error(`${what}: ${I.set}'s ${mm(I.bore)} mm bore takes no M5 axle`);
   const ring = BELT_DEFAULTS.boss.value, washer = washerModel(axle).thickness, topZ = r3(o.rise - I.body / 2 - ring), ins = holeModel(axle, { kind: 'insert', printer: k.pr });
-  if (topZ < ins.depth + 2 - 1e-9) throw new Error(`${what}: the belt's middle ${mm(o.rise)} mm over the face leaves the block ${mm(topZ)} mm, under the ${mm(ins.depth + 2)} mm an ${axle} insert and its floor take`);
+  if (topZ < ins.depth + 2 - 1e-9) throw new Error(`${what}: the belt's middle ${mm(o.rise)} mm over the face leaves the block ${mm(topZ)} mm, under the ${mm(ins.depth + 2)} mm an ${axle} insert and its floor take: raise the belt to ${mm(ins.depth + 2 + ring + I.body / 2)} mm`);
   // the axle: through the washer, the idler and its ring into the insert, a length sold that reaches into it
   const grip = r3(washer + I.body + ring), lens = [...(fixingModel(axle).figures.lengths?.value ?? [])].sort((a, b) => a - b), axleL = lens.find((x) => x - grip >= 0.5 * ins.depth - 1e-9 && x - grip <= ins.depth - 0.5 + 1e-9) ?? null;
   if (axleL == null) throw new Error(`${what}: no ${axle} screw sold reaches into its insert through ${mm(grip)} mm`);
@@ -314,7 +314,8 @@ const seg = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
  *   tapped holes, its middle along the rail at the start of its travel (rest) and its travel; across: the idler's axle
  *   off the line that squares the belt, mm; idlerAt: the block's end toward a, mm along the beam (default it ends at
  *   end b); cut: the belt's length as cut, mm (default the length that sets the tension with the block in the middle of its slots);
- *   height: the belt's middle over the face, mm (default the least the clamp's floor over the carriage takes; give more
+ *   height: the belt's middle over the face, mm (default the least the clamp's floor over the carriage and the idler's
+ *   block take; give more
  *   for room under the return run over the carriage's free holes)
  * @returns {object} the layout
  */
@@ -329,10 +330,11 @@ export function beltLayout(profile, o = {}) {
   const pass = { printer: o.printer, material: o.material }, rp = S.pulley.pd / 2, ri = S.idler.pd / 2;
   // the working run's line: the clamp's channel, beside the carriage's holes; the pulley's and idler's middles off it
   const ch = channelOf(what, c, k.pr, k.fit, B), yw = ch.y, yp = r3(yw - rp), yi = r3(yw - ri + across);
-  // the belt's least height: the clamp's 2 mm floor under its channel over the carriage, or higher where it is given
-  // (room under the belt for what is screwed to the carriage's free holes)
-  const lowest = r3(c.top + 2 + B.width / 2 + 0.25);
-  if (o.height != null && !(isNum(o.height) && o.height >= lowest - 1e-9)) throw new Error(`${what}: height is the belt's middle over the face, mm, at least ${mm(lowest)} (the carriage's ${mm(c.top)} mm top, the clamp's 2 mm floor and half the belt's ${mm(B.width)} mm width with 0.25 mm) (got ${shown(o.height)})`);
+  // the belt's least height: the higher of what the clamp's 2 mm floor under its channel over the carriage takes and
+  // what the idler's block takes (its M5 insert and 2 mm of floor, the ring and half the idler's body under the belt's
+  // middle), or higher where it is given (room under the belt for what is screwed to the carriage's free holes)
+  const byClamp = r3(c.top + 2 + B.width / 2 + 0.25), insert = holeModel('M5', { kind: 'insert', printer: k.pr }).depth, byIdler = r3(insert + 2 + BELT_DEFAULTS.boss.value + S.idler.body / 2), lowest = Math.max(byClamp, byIdler);
+  if (o.height != null && !(isNum(o.height) && o.height >= lowest - 1e-9)) throw new Error(`${what}: height is the belt's middle over the face, mm, at least ${mm(lowest)} (${byClamp >= byIdler ? `the carriage's ${mm(c.top)} mm top, the clamp's 2 mm floor and half the belt's ${mm(B.width)} mm width with 0.25 mm` : `the idler's block: its ${mm(insert)} mm M5 insert and 2 mm floor, its ${mm(BELT_DEFAULTS.boss.value)} mm ring and half ${S.idler.set}'s ${mm(S.idler.body)} mm body`}) (got ${shown(o.height)})`);
   // (a belt higher than that: the plate as thick as for the least, the pulley further up its shaft)
   const least = lowest, plateWith = (lift) => beltPlateModel(p, { face, motor: o.motor, pulley: S.pulley.set, belt: B.set, across: yp, least, ...(lift ? { lift } : {}), tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
   let plate = plateWith(0);

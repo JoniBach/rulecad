@@ -18,6 +18,9 @@ What changed in each release, for someone upgrading a workspace.
   `beltLayout`'s `height` raises the belt (the plate as thick, the pulley up its shaft by `beltPlateModel`'s `lift`);
   `beltRub`'s `carried` holds the boxes of what the carriage carries; the clamp's screws go 3.2 mm into an MGN12
   carriage's thread (steel's 3 mm and a layer), an M3x8 where an M3x6 was.
+  The belt's least height counts the idler's block too (its M5 insert and 2 mm under it, the ring and half the idler:
+  17.75 mm for the toothed 20T), so MGN9 and MGN7 carriages build at the default height, 19.4 mm on a 2020, where
+  they were refused; a block given too low a belt names the height that clears it.
 
 ### Printed sizes that moved
 

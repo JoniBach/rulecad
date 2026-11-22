@@ -1051,8 +1051,9 @@ beltRub(L).rubs                       // [] : the runs clear the beam, the rail,
 - **The layout.** The belt lies flat, its two runs side by side at one height over the face, clear over the
   carriage. The working run lies in the clamp's channel, beside the heads of the carriage's own tapped holes on one
   side; the pulley's and the idler's middles are half a pitch circle off it, so both runs are square to the travel.
-  The belt's height is the least that leaves the clamp a 2 mm floor under its channel, or higher where `height` is
-  given: then the plate stays as thick and the pulley stands further up its shaft (the plate's `lift`). The return run
+  The belt's height is the least that leaves the clamp a 2 mm floor under its channel and the idler's block room for
+  its M5 insert and 2 mm under it (10.5 + 2 + the 1 mm ring + half the idler's body: 17.75 mm for the toothed 20T,
+  which sets it on an MGN9 or MGN7 carriage), or higher where `height` is given: then the plate stays as thick and the pulley stands further up its shaft (the plate's `lift`). The return run
   crosses over the carriage's free tapped holes, 3.4 mm over its top for an MGN12H on a 2020, so a part screwed there
   either stays under the belt's band or the belt is raised over it.
 - **The motor's plate.** A flat plate on the face: its tab over the beam screws into the face's slot (two screws
