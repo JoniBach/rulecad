@@ -13,7 +13,7 @@
 //   everything else moves only as the springs and the contacts make it
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
 import { beamSystem, equilibrium, shapeOf, energyOf, fixedLoads } from './beams.mjs';
-import { beamProfile, waveSpringPath } from './flexures.mjs';
+import { beamProfile, waveSpringPath } from './core.mjs';
 import { curveLines } from './curves.mjs';
 
 // PHYS_DEBUG=1 (in Node): the solver's steps on stderr. Asked of globalThis, so a browser, which has no process, runs the same

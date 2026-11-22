@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## 0.7.63: the arm on the parts its builder has
+## 0.7.65: the arm on the parts its builder has
 
 ### Changed
 
@@ -31,6 +31,14 @@ and head, the parts it passes through and the part it ends in.
   so the motor the builder has bolts on (the part weighs 126.1 g, as before). The supply is a 12 V bench supply with
   its limit at 1.5 A; the drivers stay at 0.5 A and 1/8 step, the upright arm's shoulder at 0.8 A. Rules moved:
   `arm.shoulder_torque` 0.2 to 0.22 N m, `lift.upper_mass` 0.376 to 0.466 kg.
+
+## 0.7.64: no import loops (#278)
+
+### Fixed
+
+- `wiresFor`, `wireTubesOf` and `wireRoutesOf` moved from `lib/assembly.mjs` to `lib/wires.mjs`, so `lib/list.mjs` no
+  longer imports `lib/assembly.mjs` back (a loop of imports, issue #278). `lib/assembly.mjs` re-exports all three
+  under the same names. No printed size moved.
 
 ## 0.7.62: commands that write projects and assemblies, and belt guides (Frames 4)
 

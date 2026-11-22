@@ -3,7 +3,7 @@
 // printed teeth, a little soft, spread). One turn of a worm of s starts moves its wheel s teeth. With a lead angle
 // under the friction angle it locks: the wheel can't turn the worm.
 import jscad from '@jscad/modeling';
-import { rackProfile, helical, gearModel } from './gears.mjs';
+import { rackProfile, helical, gearModel } from './core.mjs';
 
 const { extrudeFromSlices, slice } = jscad.extrusions;
 const { mat4 } = jscad.maths;

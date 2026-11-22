@@ -3,7 +3,7 @@
 // −R / S). planetary() finds the teeth for a wanted ratio that also put together: the ring is the sun and two planets
 // across (R = S + 2P), the planets go in evenly spaced ((S + R) a whole number of times the planets), and they clear
 // each other. It lays the gearbox out with every planet in phase with the sun and the ring.
-import { gearModel, internalModel, mesh, phase } from './gears.mjs';
+import { gearModel, internalModel, mesh, phase } from './core.mjs';
 
 const DEG = Math.PI / 180;
 const MEMBERS = ['sun', 'carrier', 'ring'];

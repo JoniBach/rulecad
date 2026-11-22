@@ -10,6 +10,7 @@
     "choc-keycap",
     "display",
     "headers",
-    "usb-plug"
+    "usb-plug",
+    "socket"
   ]
 }

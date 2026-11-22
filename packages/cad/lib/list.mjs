@@ -11,7 +11,7 @@ import { paths } from './workspace.mjs';
 import { readJson } from './host.mjs';
 import path from 'node:path';
 import { volume } from './mesh.mjs';
-import { wiresFor } from './assembly.mjs';
+import { wiresFor } from './wires.mjs';
 import { companions } from './fittings.mjs';
 import { cutListOf, cutListData } from './beams.mjs';
 import { cutListText, printedCost } from '@rulecad/frames';

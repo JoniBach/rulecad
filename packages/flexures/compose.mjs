@@ -1,7 +1,7 @@
 // Composing flexures into mechanisms: where each one attaches (ports), how big one must be for a job (sizing), and one
 // report for a mechanism's worth of them (report). Units: mm, N, MPa, radians.
 import { curvePath, curveModel } from './curves.mjs';
-import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable, need } from './flexures.mjs';
+import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable, need } from './core.mjs';
 
 /** @typedef {{ at: number[], dir: number[] }} Port a point on a flexure and the direction a mating part faces from it */
 
