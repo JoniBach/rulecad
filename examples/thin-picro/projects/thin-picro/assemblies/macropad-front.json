@@ -5,12 +5,13 @@
   "uses": [
     "mx"
   ],
-  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display on a standard socket at the module's right end, lying flat over the module and the board above it, clear of the keys. The board's underside is z = 0, and a USB-C cable plugged into the module through the board's slot.",
+  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads at the board's top edge (its USB-C over the edge, a cable plugged in), and a 2.0 in ST7789 display plugged straight into the module's display column on a standard socket, lying over the module, clear of the keys. The board's underside is z = 0.",
   "requires": {
-    "macropad": "^0.4.0",
+    "macropad": "^0.5.0",
     "module": "^0.7.2",
     "display": "^0.1.0",
-    "usb-plug": "^0.1.0"
+    "usb-plug": "^0.1.0",
+    "socket": "^0.1.0"
   },
   "items": [
     {
@@ -46,21 +47,30 @@
       }
     },
     {
-      "id": "display",
-      "object": "display",
-      "at": [
-        "pcb.spi_x",
-        "pcb.spi_y",
-        "pcb.thickness + pcb.spi_top"
-      ]
-    },
-    {
       "id": "cable",
       "object": "usb-plug",
       "at": [
         "pcb.usb_x",
         "pcb.usb_y",
         "pcb.thickness + module.thickness / 2"
+      ]
+    },
+    {
+      "id": "spi",
+      "object": "socket",
+      "at": [
+        "pcb.spi_x",
+        "pcb.spi_y",
+        "pcb.thickness + module.thickness"
+      ]
+    },
+    {
+      "id": "display",
+      "object": "display",
+      "at": [
+        "pcb.spi_x",
+        "pcb.spi_y",
+        "pcb.thickness + module.thickness + spi.height"
       ]
     }
   ],
@@ -71,6 +81,13 @@
       "min": 3,
       "note": "The display lies clear over the module (its parts reach about 1 mm above its board)",
       "label": "Display over the module"
+    },
+    {
+      "a": "display.board",
+      "b": "key-0-0.cap",
+      "min": 1,
+      "note": "The display, hanging below the module, keeps back from the top row's keycaps",
+      "label": "Display clear of the keys"
     }
   ]
 }

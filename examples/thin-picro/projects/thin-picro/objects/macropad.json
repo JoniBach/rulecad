@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "macropad",
   "title": "Macropad for the thin module",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -13,7 +13,7 @@
     "thin_picro_pins",
     "st7789_2in"
   ],
-  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: twelve keys in three columns and four rows, a DO-35 diode in the gaps beside each; the module's USB-C on the top edge. Front: the module above the keys, display sockets at its ends. Rear: the module under the top row, parts facing down.",
+  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: twelve keys in three columns and four rows, a DO-35 diode in the gaps beside each; the module's USB-C on the top edge. Front: the module at the top edge, an SPI display plugged into it, an I2C socket at its left end. Rear: the module under the top row, parts facing down.",
   "parts": {
     "board": {
       "label": "PCB"
@@ -49,9 +49,9 @@
       "label": "Columns"
     },
     "module_gap": {
-      "value": 0.5,
+      "value": 2,
       "unit": "mm",
-      "rule": "Front: the module's bottom edge this far beyond the top row of keys' square"
+      "rule": "Front: the module's bottom edge at least this far beyond the top row of keys' square (room for the castellated pads' fillets beside the switches); the display usually sets more"
     },
     "castle_out": {
       "value": 1.0,
@@ -62,36 +62,6 @@
       "value": 0.4,
       "unit": "mm",
       "rule": "Silkscreen labels this far from the pads they name"
-    },
-    "display_scl": {
-      "value": 14,
-      "rule": "SPI display: SCL (clock), the module's display column",
-      "interface": true
-    },
-    "display_sda": {
-      "value": 15,
-      "rule": "SPI display: SDA (data out)",
-      "interface": true
-    },
-    "display_res": {
-      "value": 16,
-      "rule": "SPI display: RES (reset)",
-      "interface": true
-    },
-    "display_dc": {
-      "value": 12,
-      "rule": "SPI display: DC (data or command)",
-      "interface": true
-    },
-    "display_cs": {
-      "value": 13,
-      "rule": "SPI display: CS (chip select)",
-      "interface": true
-    },
-    "display_blk": {
-      "value": 9,
-      "rule": "SPI display: BLK (an LCD's backlight)",
-      "interface": true
     },
     "i2c_scl": {
       "value": 3,
@@ -110,7 +80,7 @@
     },
     "socket_turn": {
       "value": 180,
-      "rule": "The display sockets turned so pin 1 (GND) is at the bottom of the column, as in the module's own display column"
+      "rule": "The I2C socket turned so pin 1 (GND) is at the bottom of the column"
     },
     "label_char": {
       "value": 0.75,
@@ -154,7 +124,7 @@
     "socket_gap": {
       "value": 1.5,
       "unit": "mm",
-      "rule": "Front: each display socket's pins this far beyond the module's pads"
+      "rule": "Front: the I2C socket's pins this far beyond the module's pads"
     },
     "socket_height": {
       "value": 8.5,
@@ -186,27 +156,15 @@
       "unit": "mm",
       "rule": "The module's USB-C socket, along it from its middle (the module's usb_x, read from its KiCad board)"
     },
-    "usb_notch_y": {
-      "value": 4.82,
-      "unit": "mm",
-      "rule": "The bottom of the module's notch for the mid-mount USB-C socket, up from the module's middle (read from its KiCad board: the notch runs 5.7 mm in from its top edge)"
-    },
-    "plug_w": {
-      "value": 12.35,
-      "unit": "mm",
-      "rule": "A USB-C plug's overmould, its widest",
-      "kind": "spec",
-      "source": "USB Type-C Cable and Connector Specification: plug overmold at most 12.35 x 6.5 mm"
-    },
-    "plug_gap": {
-      "value": 0.5,
-      "unit": "mm",
-      "rule": "Room either side of the plug in the board's slot"
-    },
     "usb_out": {
       "value": 0.9,
       "unit": "mm",
       "rule": "The module's USB-C socket's mouth, this far past its top edge (the module's usb_out)"
+    },
+    "display_clear": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Front: the SPI display, plugged into the module and lying over it, hangs below it: the module sits far enough from the keys that the display's edge is this far back from the top row's keycaps"
     }
   }
 }
