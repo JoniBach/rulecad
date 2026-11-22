@@ -9,9 +9,11 @@
   },
   "files": [
     "smooth.mjs",
+    "core.mjs",
     "finish.mjs",
     "finish.d.mts",
     "smooth.d.mts",
+    "core.d.mts",
     "README.md",
     "LICENSE"
   ],
