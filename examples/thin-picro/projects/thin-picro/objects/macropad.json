@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "macropad",
   "title": "Macropad for the thin module",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -181,11 +181,32 @@
         "max": 1
       }
     },
-    "display_stack": {
-      "value": "socket_height * 2",
+    "usb_x": {
+      "value": 14.3,
       "unit": "mm",
-      "rule": "Front: the SPI display's socket, two standard sockets stacked (17 mm): the display reaches over the top row of keys, and this lifts its board clear of the DSA keycaps (the assembly checks the gap)",
-      "interface": true
+      "rule": "The module's USB-C socket, along it from its middle (the module's usb_x, read from its KiCad board)"
+    },
+    "usb_notch_y": {
+      "value": 4.82,
+      "unit": "mm",
+      "rule": "The bottom of the module's notch for the mid-mount USB-C socket, up from the module's middle (read from its KiCad board: the notch runs 5.7 mm in from its top edge)"
+    },
+    "plug_w": {
+      "value": 12.35,
+      "unit": "mm",
+      "rule": "A USB-C plug's overmould, its widest",
+      "kind": "spec",
+      "source": "USB Type-C Cable and Connector Specification: plug overmold at most 12.35 x 6.5 mm"
+    },
+    "plug_gap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Room either side of the plug in the board's slot"
+    },
+    "usb_out": {
+      "value": 0.9,
+      "unit": "mm",
+      "rule": "The module's USB-C socket's mouth, this far past its top edge (the module's usb_out)"
     }
   }
 }

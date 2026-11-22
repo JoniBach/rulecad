@@ -30,6 +30,7 @@ No existing value changed.
 ### Values that changed
 
 None.
+
 ## 0.3.17: printed beams (Frames 3)
 
 ### Added
