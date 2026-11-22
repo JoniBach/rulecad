@@ -29,6 +29,7 @@ const MORE = {
   'rail-jig': ['railJigModel', 'railJig'], 'wheel-plate': ['wheelsModel', 'wheelPlate'], slider: ['sliderModel', 'slider'],
   'nut-carrier': ['carrierModel', 'carrier', { pose: { fit: 'slot', print: 'print' } }],
   'rod-holder': ['rodHolderModel', 'rodHolder'], 'rod-carriage': ['rodCarriageModel', 'rodCarriage'], 'motor-plate': ['motorPlateModel', 'motorPlate'], 'endstop-mount': ['endstopMountModel', 'endstopMount'],
+  'belt-plate': ['beltPlateModel', 'beltPlate'], 'belt-clamp': ['beltClampModel', 'beltClamp', { profile: false }], 'belt-idler': ['beltIdlerModel', 'beltIdler'],
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
 const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider', 'end-cap'];
@@ -62,12 +63,21 @@ export const fittingCache = {
 export function plasticOf(project) {
   let raw;
   try { raw = JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8')).material; } catch { return 'pla'; }
+  return plasticNamed(raw, `project ${project}`);
+}
+
+/**
+ * A plastic by the name a project.json gives it: pla or petg, or a rule set (the workspace's rules/, then the kit's)
+ * that gives strength, modulus and density; refused by name otherwise. Used by plasticOf and by cad set's check.
+ * @param {any} raw the material as written @param {string} [where] what names it, for the refusal @returns {string | object}
+ */
+export function plasticNamed(raw, where = 'the project') {
   const m = String(raw || 'pla').trim().toLowerCase().split(/\s/)[0];
   if (['pla', 'petg'].includes(m)) return m;
   let set = null; try { set = peekRuleSet(m); } catch {}
   const lacks = ['strength', 'modulus', 'density'].filter((k) => !(typeof set?.rules?.[k]?.value === 'number'));
   if (set && !lacks.length) return set;
-  throw new Error(`project ${project}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit has pla and petg, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to pla or petg`);
+  throw new Error(`${where}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit has pla and petg, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to pla or petg`);
 }
 
 /**

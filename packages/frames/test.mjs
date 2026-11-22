@@ -1409,6 +1409,86 @@ test('rods: a layout from the rod, bearing, screw, nut and motor sets; holders, 
   assert.throws(() => endstopMountModel(P, { face: 'front', toward: 0 }), /toward is 1 or -1/);
 });
 
+// ---------- belts ----------
+test('belts: a belt drive\'s layout on a rail\'s carriage, its plate, clamp and idler block each print-ready with grams and margin, its length by a hand sum, its rub, and refusals by name', async () => {
+  const { beltLayout, beltPlate, beltClamp, beltIdler, beltRub, beltPath, railModel, BELT_DEFAULTS } = frames;
+  const P = '2020-misumi-hfs5', m = railModel('rail-mgn12', { length: 300, variant: 'MGN12H' }), c = m.carriage, ln = m.lanes[0];
+  const base = { face: 'top', beam: 400, rail: { from: 30, length: 300, width: m.rail.width, height: m.rail.height }, carriage: { top: c.height, width: c.width, length: c.lengthMax, clearance: c.clearance, holes: c.holes, thread: c.thread, depth: c.depth, rest: ln.rest, travel: ln.travel } };
+  const L = beltLayout(P, base);
+  // the motor past end a: its middle half a NEMA 17's 42.3 mm body and 1 mm out, x = -22.15; the pulley's and idler's
+  // pitch circles 20 × 2 / π = 12.73 mm across; the idler block 43 mm long, ending its 4 mm of room short of the 400 mm
+  // beam's end b, its axle 11 mm in: 400 - 4 - 43 + 11 = 364
+  assert.deepEqual([L.pulley.x, L.idler.x, L.idler.block, L.mmPerTurn], [-22.15, 364, 353, 40]);
+  // the belt's length by hand: both runs (the pulley to the idler, twice), less the 2 mm gap between its ends in the clamp,
+  // and half round each pitch circle: 2 × (364 + 22.15) - 2 + π × (6.365 + 6.366) = 772.3 - 2 + 39.996 = 810.296 mm
+  assert.ok(Math.abs(L.length - (2 * (364 + 22.15) - 2 + Math.PI * (L.pulley.r + L.idler.r))) < 0.01, `${L.length}`);
+  assert.equal(L.length, 810.296);
+  // cut to whole teeth so that at 25 N (strain 25 / 16903) it stretches to the path: 810.296 / 1.001479 = 809.1, so 808 mm
+  // (404 teeth); the block then sits (808 × 1.001479 - 810.296) / 2 = -0.55 mm toward the rail; bought as 1 m
+  assert.deepEqual([L.cut, L.idler.offset, L.buy, L.tension], [808, -0.55, 1000, BELT_DEFAULTS.tension.value]);
+  // the path's own sum agrees: the working runs, the return run and the wraps, the ends inside the clamp
+  const q = beltPath({ xp: L.pulley.x, yp: L.pulley.y, rp: L.pulley.r, xi: L.idler.x, yi: L.idler.y, ri: L.idler.r, xc: 150, yw: L.working, Lc: L.clamp.length, gapMid: L.clamp.gap });
+  assert.ok(Math.abs(q.length - L.length) < 1e-3 && Math.abs(L.drawn(60).length - q.length) < 1e-9, 'the path does not depend on where the carriage is');
+  // the plate: thick enough for the belt 2 mm over the clamp's floor over the carriage (13 + 2 + 3 + 0.25), then a sold
+  // M5 length in its slot nuts: 6.4 mm, the belt's middle at 6.4 + 1 + 16 - 1 - 3 = 19.4 mm over the face. Bent at the
+  // beam's end by 2 × 25 N at 6.4 / 2 + 13 = 16.2 mm and 0.39 kg × 9.80665 at 22.15 mm: M = 810 + 84.7 = 894.7 N mm over
+  // 40.5 × 6.4² / 6, 3.24 MPa, 12.05 times under PLA's 39 MPa
+  assert.deepEqual([L.plate.thickness, L.height, L.plate.stress, L.plate.margin], [6.4, 19.4, 3.236, 12.052]);
+  // the clamp: two M3x8 into the carriage's tapped holes, 3.2 mm in (steel's least 3 mm and a 0.2 mm layer more, so a
+  // counterbore floor printed to the nearest layer never leaves it short; within their 3.5 mm): 8 - 3.2 = 4.8 mm under
+  // each head, at least the 3 mm thread's diameter. 7 teeth each end; its teeth shear at 25 / (7 × 1 × 6) = 0.595 MPa
+  // against half PLA's 39 MPa, 32.8 times over
+  assert.deepEqual([L.clamp.mesh, L.clamp.screws.map((s) => s.length), L.clamp.screws.map((s) => s.grip), L.clamp.stress, L.clamp.margin], [7, [8, 8], [4.8, 4.8], 0.595, 32.76]);
+  // and with an MGN12C on a 16-tooth pulley, where steel's least exactly was what the fasten check read as just short
+  { const mc = railModel('rail-mgn12', { length: 350, variant: 'MGN12C' }), cc = mc.carriage, lc = mc.lanes[0];
+    const C = beltLayout('2040-misumi-hfs5', { face: 'top.2', beam: 500, pulley: 'pulley-gt2-16', tension: 30, rail: { from: 45, length: 350, width: mc.rail.width, height: mc.rail.height }, carriage: { top: cc.height, width: cc.width, length: cc.lengthMax ?? cc.length, clearance: cc.clearance, holes: cc.holes, thread: cc.thread, depth: cc.depth, rest: lc.rest, travel: lc.travel } });
+    for (const q of C.clamp.screws) assert.ok(q.length - q.grip >= 3.2 - 1e-9 && q.length - q.grip <= cc.depth + 1e-9, `${q.length} - ${q.grip}`); }
+  // the idler's block: an M5x16 axle into an M5 insert; room each way for half its 1.2 mm stretch and half a pitch, twice
+  assert.deepEqual([L.block.need, L.block.room, L.block.hardware.map((h) => h.name)], [1.602, 4, ['M5x16 cap', 'M5 washer', 'M5 heat-set insert']]);
+  for (const x of [L.plate, L.clamp, L.block]) {
+    assert.ok(x.grams > 2 && x.grams < 25 && x.margin >= 2, `${x.name}: ${x.grams} g, ${x.margin}×`);
+    for (const code of ['fitting.size', 'fitting.margin', 'fitting.printable', 'fitting.mass']) assert.equal(coded(x, code).length, 1, `${x.name} ${code}`);
+  }
+  for (const [g, what] of [[beltPlate(L.plate), 'a belt plate'], [beltClamp(L.clamp), 'a belt clamp'], [beltIdler(L.block), 'an idler block']]) await prints(g, what);
+  // its runs clear what they pass, 3.4 mm at least (the return run over the carriage); the idler moved 12 mm across puts
+  // the return run into the clamp at the far end of the travel
+  assert.deepEqual([beltRub(L).rubs, beltRub(L).least.clearance], [[], 3.4]);
+  const moved = beltLayout(P, { ...base, across: 12 }), rub = beltRub(moved);
+  assert.deepEqual(rub.rubs.map((x) => [x.run, x.part]), [['the return run', 'the clamp']]);
+  assert.equal(moved.line, +((Math.atan(12 / (364 + 22.15)) * 180) / Math.PI).toFixed(3));
+  // what the carriage carries, by its box: a 6 mm pad on its top (13 to 19 mm over the face) across the return run's line
+  // reaches 19 - (19.4 - 3) = 2.6 mm into the belt's band; 3 mm thick it clears it by 16.4 - 16 = 0.4 mm
+  const pad = (h) => ({ part: 'pad', lo: [-10, -13, c.height], hi: [10, -5, c.height + h] });
+  assert.deepEqual(beltRub(L, { carried: [pad(6)] }).rubs.map((x) => [x.run, x.part, x.depth, x.top]), [['the return run', 'pad', 2.6, 19]]);
+  assert.deepEqual([beltRub(L, { carried: [pad(3)] }).rubs, beltRub(L, { carried: [pad(3)] }).least.clearance], [[], 0.4]);
+  // the belt raised to 23 mm (height): the plate as thick, the pulley 23 - 19.4 = 3.6 mm further up its shaft, from
+  // 6.4 + 1 + 3.6 = 11 mm over the face; the 6 mm pad then clears the band by 23 - 3 - 19 = 1 mm
+  const high = beltLayout(P, { ...base, height: 23 });
+  assert.deepEqual([high.height, high.plate.thickness, high.plate.lift, high.plate.pulleyAt.at[2], beltRub(high, { carried: [pad(6)] }).least.clearance], [23, 6.4, 3.6, 11, 1]);
+  assert.ok(high.plate.margin >= 2 && high.clamp.floor > L.clamp.floor, `${high.plate.margin}, ${high.clamp.floor}`);
+  await prints(beltClamp(high.clamp), 'a raised belt clamp');
+  assert.throws(() => beltLayout(P, { ...base, height: 15 }), /height is the belt's middle over the face, mm, at least 18\.25 \(the carriage's 13 mm top, the clamp's 2 mm floor/);
+  // a low carriage (an MGN9C, 10 mm top): the clamp alone asks only 10 + 2 + 3 + 0.25 = 15.25 mm, but the idler's block
+  // asks its 10.5 mm M5 insert, 2 mm under it, the 1 mm ring and half the 8.5 mm idler: 10.5 + 2 + 1 + 4.25 = 17.75 mm.
+  // The plate is then up(17.75 - 13, 0.2) = 4.8 mm, a sold slot screw's 6.4 mm, so the belt is 6.4 + 13 = 19.4 mm up and
+  // the block 19.4 - 4.25 - 1 = 14.15 mm high, over the 12.5 its insert takes (it was refused by default before)
+  { const m9 = railModel('rail-mgn9', { length: 340, variant: 'MGN9C' }), c9 = m9.carriage, l9 = m9.lanes[0];
+    const b9 = { face: 'top', beam: 450, rail: { from: 35, length: 340, width: m9.rail.width, height: m9.rail.height }, carriage: { top: c9.height, width: c9.width, length: c9.lengthMax ?? c9.length, clearance: c9.clearance, holes: c9.holes, thread: c9.thread, depth: c9.depth, rest: l9.rest, travel: l9.travel } };
+    const L9 = beltLayout(P, b9);
+    assert.deepEqual([c9.height, L9.height, L9.plate.thickness, L9.block.top, beltRub(L9).rubs], [10, 19.4, 6.4, 14.15, []]);
+    assert.ok(L9.block.margin >= 2 && L9.clamp.margin >= 2, `${L9.block.margin}, ${L9.clamp.margin}`);
+    assert.throws(() => beltLayout(P, { ...b9, height: 17 }), /at least 17\.75 \(the idler's block: its 10\.5 mm M5 insert and 2 mm floor, its 1 mm ring and half idler-gt2-toothed-20's 8\.5 mm body\)/);
+    // the block alone, given too low a belt, names the height that clears it
+    assert.throws(() => frames.beltIdlerModel(P, { rise: 17.6 }), /leaves the block 12\.35 mm, under the 12\.5 mm an M5 insert and its floor take: raise the belt to 17\.75 mm/); }
+  assert.throws(() => beltRub(L, { carried: [{ part: 'pad', lo: [0, 0] }] }), /carried is a list of \{ part, lo: \[x, y, z\], hi: \[x, y, z\] \} boxes/);
+  // refused by name
+  assert.throws(() => beltLayout(P, { ...base, idler: 'idler-gt2-smooth-20' }), /smooth and 18 mm across, .* asks for 25\.4 mm at least \(min_flat_idler_diameter\): use a toothed idler/);
+  assert.throws(() => beltLayout(P, { ...base, motor: '28byj48' }), /28byj48 is not a square-bodied motor/);
+  assert.throws(() => beltLayout(P, { ...base, rail: { ...base.rail, from: 10 } }), /the motor's plate takes the first 23 mm of the face, and the rail starts 10 mm along it: start the rail at 24 mm or more/);
+  assert.throws(() => beltLayout(P, { ...base, beam: 370 }), /the idler's block starts 323 mm along the beam, and the rail ends at 330 mm: put it at 331 mm or more \(a beam 378 mm long, or a shorter rail\)/);
+  assert.throws(() => beltLayout(P, { ...base, pulley: 'idler-gt2-toothed-20' }), /pulley is a pulley's rule set, one of pulley-gt2-16, pulley-gt2-20/);
+});
+
 // ---------- jigs ----------
 test('jigs: a squaring corner has a hand: fitted on beam a, its a tongue lies in a\'s slot clear of the lips (but for its root round at the slot\'s mouth) and its arm b runs along n x u when right-handed, the other way when left, from either end of a', async () => {
   const { squareCornerModel, squareCorner } = frames;

@@ -5,6 +5,55 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.62: commands that write projects and assemblies, and belt guides (Frames 4)
+
+### Added
+
+- Commands that write a workspace's projects and assemblies, so neither file need be written by hand: `cad new
+  <project>` (its `project.json`), `cad set <project> field=value` (title, description, material, printer,
+  `filaments.<name>.slot`), `cad new <project>/<assembly> --assembly` (empty, or a generated frame with `--frame box
+  --inside 300,300,350 --profile … --join … --feet …`, and any field as `field=value`), `cad set <project>/<assembly>
+  <address>=<value>` (an entry's field by its id or its place, `x1.at`, `joins.3.kind`, or the assembly's own,
+  `frame.join.fitting`), `cad move <project>/<assembly> <id> --at | --to [--rotate]` and `cad remove
+  <project>/<assembly> <id | list.n | id.field> [--with-refs]`. `cad add` also takes `guide`, `load` and `wire`, and any
+  field as `field=value`. Each keeps the file's layout, checks the edit against the schema and what it could break (a
+  generated frame must still expand, the names an entry gives must be there, and every other entry's names that were
+  there before must still be: a beam renamed or removed, a frame changed or removed, a joint's parent and child, a
+  pose's joints, a wire's ends and route, a loop's anchors, a load's joint, a mount's beam) before it writes, refuses a bad one by name with nothing written (`project.exists`,
+  `assembly.exists`, `project.printer`, `project.material`, `edit.kind`, `frame.refused`, `edit.address`,
+  `edit.ambiguous`, `edit.generated`, `edit.referenced`, `edit.dangling`, `edit.renumber`, `edit.move`), takes
+  `--dry-run`, and with `--json` says what changed and the checks. `cad remove` of a beam a join uses is refused,
+  naming the join; so is `cad remove frame` where a join uses the frame's beams, and the removal of any guide before
+  one with no id of its own, which is named by place. `cad new <project>/<assembly> --assembly --material PETG
+  --printer x1c` makes the project with them where it is not there, passes them where the project already has them, and
+  refuses by name one that differs. The change paths in `--json` are from the workspace (`projects/<p>/project.json`,
+  `projects/<p>/assemblies/<a>.json`). A name the build makes (a repeated item's copy, a mount, a guide's part) counts
+  as there only by the exact pattern its maker uses, so `rail-3` is refused where `rail` makes no copies.
+- `schemas/project.schema.json`: the project file's fields.
+- Belt guides (`"kind": "belt"`, FR4.2): a GT2 belt drives a rail guide's one carriage from a motor under a printed
+  plate past the beam's end a, round a toothed idler on a printed block past the rail's end (the tensioner: it slides
+  along the beam's slot), its ends in a printed clamp on the carriage. The motor reads the belt's ratio (40 mm a turn
+  for a 20 tooth GT2 pulley) and is held to the push of the carriage at its acceleration; the belt goes on `cad list`
+  by the metre; `belt.length`, `belt.tension`, `belt.rub` (swept through the travel), `belt.line`, `belt.tensioner`
+  and `belt.stretch` (a term of the error budget). The schema has the guide's keys and the fittings `belt-plate`,
+  `belt-clamp` and `belt-idler`. The example is `examples/bench` `axes/x-belt`, written by the edit commands.
+  A belt's push adds to the weight on an upright or sloping axis (in `motor.torque`, `belt.tension` and the stretch),
+  the clamp's screws go a layer past steel's least engagement, `belt.rub` holds what the carriage carries, and the
+  guide's `height` raises the belt over it.
+
+### Changed
+
+- `motor.axis` passes a motor driving a belt with its shaft square to the slide (a belt's pulley), as well as one on
+  the slide's axis as before. `motor.holds` leaves out a belt's push at its acceleration, which is not there at rest.
+- A rail's carriage carries its tapped holes as its mount: a `fasten` into a carriage ends in its own thread, held to
+  the depth HIWIN gives (`carriage_thread_depth`), as a motor's or a supply's mounting holes are.
+- A belt guide is no longer refused as "not built yet"; a screw on a rail is refused saying a rail is driven by a belt.
+- `cad add join`, `cad add fasten` and `cad add fit` accept a generated frame's beams (they were refused as not in the
+  assembly), and `cad add item` and `cad add load` refuse an address on an item the assembly does not have.
+- `cad add` prints the place it added at (`added a join to … (joins.3)`), and its `--json` is `{ command, file,
+  written, changes, findings, added }`; the `file` is relative to the workspace.
+- No printed size or figure moves.
+
 ## 0.7.61: a board rebuilt when its finish changes
 
 ### Fixed

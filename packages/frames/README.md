@@ -1029,6 +1029,64 @@ endstopMountModel('2020-misumi-hfs5', { face: 'front' }).lever          // { x: 
 Every part reports its grams, its margin at its load (`fitting.margin`), how it prints and its screws, and passes
 printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z out of the face (0 on it).
 
+## Guides: a belt drive
+
+A timing belt drives a rail's carriage along a beam: a pulley on a motor at end a, a toothed idler past the rail's
+far end, and both ends of the belt held in a printed clamp on the carriage. Every part comes from a rule set: the
+belt (`gt2-belt-6`, Gates's figures), the pulley (`pulley-gt2-20`, `pulley-gt2-16`), the idler
+(`idler-gt2-toothed-20`) and the motor (`nema14`, `nema17`).
+
+```js
+import { beltLayout, beltRub, railModel } from '@rulecad/frames'
+
+const m = railModel('rail-mgn12', { length: 300, variant: 'MGN12H' }), c = m.carriage, lane = m.lanes[0]
+const L = beltLayout('2020-misumi-hfs5', { beam: 400, rail: { from: 30, length: 300, width: 12, height: 8 },
+  carriage: { top: c.height, width: c.width, length: c.lengthMax, clearance: c.clearance, holes: c.holes, thread: c.thread, depth: c.depth, rest: lane.rest, travel: lane.travel } })
+L.height, L.mmPerTurn                 // the belt 19.4 mm over the face; 40 mm of travel a turn
+L.length, L.cut, L.buy                // a 810.3 mm path; cut 808 mm (404 teeth); buy 1000 mm
+L.plate.grams, L.clamp.grams, L.block.grams   // 17.4, 4.4 and 18.6 g of PLA
+beltRub(L).rubs                       // [] : the runs clear the beam, the rail, the carriage and the clamp
+```
+
+- **The layout.** The belt lies flat, its two runs side by side at one height over the face, clear over the
+  carriage. The working run lies in the clamp's channel, beside the heads of the carriage's own tapped holes on one
+  side; the pulley's and the idler's middles are half a pitch circle off it, so both runs are square to the travel.
+  The belt's height is the least that leaves the clamp a 2 mm floor under its channel and the idler's block room for
+  its M5 insert and 2 mm under it (10.5 + 2 + the 1 mm ring + half the idler's body: 17.75 mm for the toothed 20T,
+  which sets it on an MGN9 or MGN7 carriage), or higher where `height` is given: then the plate stays as thick and the pulley stands further up its shaft (the plate's `lift`). The return run
+  crosses over the carriage's free tapped holes, 3.4 mm over its top for an MGN12H on a 2020, so a part screwed there
+  either stays under the belt's band or the belt is raised over it.
+- **The motor's plate.** A flat plate on the face: its tab over the beam screws into the face's slot (two screws
+  along it, as far apart as a slot nut is long), its far part past the beam's end holds the motor under it by its
+  four tapped holes, the boss through a hole. It is as thick as the motor's screws ask (1.5 × their thread), as the
+  bend at the beam's end asks (both spans pulling the pulley at the belt's height, and the motor's weight), and as the
+  belt's height asks, then a thickness a sold slot screw suits. The pulley stands 1 mm over it on the shaft, its
+  toothed band at its far end (`BELT_DEFAULTS.flange`, an estimate). It prints flat, every hole upright.
+- **The clamp.** A block on the carriage's top, screwed through counterbores into two of the carriage's tapped holes
+  with the shortest sold screw that goes the depth steel asks into the thread and a layer more (so a counterbore
+  floor printed to the nearest layer never leaves it short), and no deeper than the thread is: an M3x8, 3.2 mm into
+  an MGN12 carriage's 3.5 mm thread. Its
+  channel is open on top, toothed on the wall the belt's teeth face, its floor rounded. Each belt end meshes at least
+  `BELT_DEFAULTS.mesh` teeth, and as many as take its span's tension in shear at twice the margin. It prints as it sits.
+- **The idler's block, the tensioner.** The idler turns on an M5 axle screwed into a heat-set insert, on a 1 mm ring
+  under its inner race; behind it two screws go into slot nuts in the face's own slot. Loosened, the block slides along
+  the slot: that slot is the tensioner's travel. It wants room each way for half the belt's stretch at its tension and
+  half a pitch (the belt is cut to whole teeth), twice over; by default it is placed that far short of the beam's end.
+  Where no sold screw length suits the block's height, their heads sit in counterbores. It prints as it sits.
+- **The belt's length.** `beltPath` follows the belt's pitch line: the working runs from the clamp's ends to the
+  pulley's and the idler's tops, half round each (exactly, by the outer tangent, where the two differ), the return run,
+  and the ends inside the clamp. The belt is cut to whole teeth short enough that at its tension it stretches to the
+  path with the block a little toward the rail, and bought by the metre (`BELT_DEFAULTS.sold`). A cut length given
+  (`cut`) says where the block must sit, which cad's `belt.tensioner` holds to the room either side.
+- **Rubbing.** `beltRub` takes each run as a band (the belt's thickness across it, its width over the face) at 21
+  places along the carriage's travel, against the beam, the rail, the carriage and the clamp, and against the boxes of
+  whatever else the carriage carries (`carried`, x from the carriage's middle; cad passes every part on the carriage);
+  a run that overlaps a part rubs it. The working runs end at the clamp, so they are not held against it.
+
+Refused by name: a smooth idler inside the belt smaller than its maker's least (Gates's 25.4 mm for a smooth idler
+on the teeth), a pulley whose bore is not the motor's shaft, a motor that is not square-bodied with four tapped
+holes, a rail that starts under the plate, and an idler block that meets the rail or runs past the beam's end.
+
 ## Ends and feet
 
 | Part | What it is | Prints |
@@ -1425,6 +1483,17 @@ solver. Refused by name: a profile whose material gives no modulus.
 | A wheel plate's thickness | t = √(6 M · 2 / (b S)), M = F s / 4 | A plate b long across the s between its rows of wheels, its load F at the middle, at twice the margin |
 | A holder's or motor plate's thickness | t = √(6 M · 2 / (b S)), M = F h | A plate b wide bent where it stands on the face by F along the beam at the height h of the rods or the shaft, at twice the margin |
 | The rods' spacing | s = 2 (D / 2 + F_d / 2 + w), rounded up to 0.5 mm | D the bearing's outside diameter, F_d the lead nut's flange, w `ROD_DEFAULTS.web` |
+| A belt's travel a turn | teeth × pitch | 20 × 2 = 40 mm for `pulley-gt2-20` (Gates's sprocket table) |
+| A belt's path (equal pulley and idler) | L = 2 C - g + π d | C the pulley's middle to the idler's, g the gap between the ends in the clamp, d the pitch diameter (teeth × pitch / π) |
+| The return run (unequal pulley and idler) | √(C² - (r₁ - r₂)²), the wraps π ± 2 asin((r₁ - r₂) / C) | The outer tangent of two circles |
+| The length to cut | ⌊L / (1 + T / k) / p⌋ p | T each span's tension, k the belt's stiffness (Gates: tension per unit strain), p its pitch: whole teeth |
+| The block's place for a cut | (c (1 + T / k) - L) / 2 | Moving the idler by d lengthens the path by 2 d |
+| The block's room each way | 2 (e / 2 + p / 2), e = L T / k | Half the stretch and half a pitch, twice over |
+| The belt's stretch under a push | F a b / ((a + b) k) | The motor holds the pulley: the carriage hangs on two spans a and b long, in parallel |
+| A clamp's teeth | n ≥ 2 T / (τ p / 2 · w), τ = 0.5 S | Each tooth's root half a pitch along, across the belt's width w, in shear (`BELT_DEFAULTS.shear`, an estimate) |
+| A belt plate's thickness | 6 M / (b t²) ≤ S / 2, M = 2 T (t / 2 + h) + m g x | Bent at the beam's end by both spans at the band's height h over the plate (the pulley's lift included), and the motor's weight x past the end |
+| A clamp's screw into the carriage | e = min(e_steel + layer, depth), grip = L - e ≥ d | e_steel the engagement steel asks (1 diameter), a 0.2 mm layer more; the shortest sold length L that leaves the diameter d under each head |
+| The spans on a sloping or upright axis | T ∓ (m g cos θ + m a) / 2 | θ between the travel and gravity: the belt carries the weight along it and the push together at worst (cad's `belt.tension`) |
 | A linear bearing's load | R = √((|F_y| / 2 + |M_z| / 2a)² + (|F_z| / 2 ± M_x / s + |M_y| / 2a)²), a = 0.5 L | Forces shared, a roll as a couple across the spacing s, pitch and yaw as a couple along the bush of length L (`ROD_DEFAULTS.couple`, an estimate); margin = static rating / R |
 | Where the endstop trips | home = (the switch's address + its lever's 12.4 mm) − (the flag's face at the travel's start) | The lever's place as @rulecad/cad draws a switch (`ROD_DEFAULTS.lever`, an estimate) |
 | A slider's pressure | p = F / A, held to 0.1 S | `WHEEL_DEFAULTS.pressure`, an estimate |
@@ -1505,6 +1574,12 @@ beyond it, and plastic across its layers is 0.6 of its strength along them where
 coupon bent between two supports (`cad measured`) is how they get replaced. The printable profiles' sets are worked
 out from the nuts' sizes and the X1C's rules, so they are `derived` and as good as those.
 
+A belt drive rests on Gates's figures for its belt (pitch, stiffness, least and rated tension, least idlers: `spec`)
+and pulley, and on estimates the kit names in `BELT_DEFAULTS`: the tension set (25 N), the belt's thickness and tooth
+height (hobby sellers' figures), where a hobby pulley's band is (`flange`), the least teeth in a clamp (`mesh`), the
+printed teeth's shear strength (`shear`), how square the belt must lie (`line`, 0.25°) and how open belt is sold
+(`sold`). The hobby pulley's and idler's own sizes are `community` figures from their sellers.
+
 ## Exports
 
 | Export | What |
@@ -1529,6 +1604,7 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
 | `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
+| `BELT_DEFAULTS`, `beltLayout(profile, { face?, beam, rail, carriage, motor?, pulley?, idler?, belt?, tension?, across?, idlerAt?, cut?, height?, ... })`, `beltPlateModel(profile, { motor?, pulley?, across?, least?, lift?, tension?, ... })`, `beltPlate(m)`, `beltClampModel({ carriageHoles, carriageDepth?, thread, width, length, rise, tension?, ... })`, `beltClamp(m)`, `beltIdlerModel(profile, { idler?, rise, across?, stretch?, tension?, ... })`, `beltIdler(m)`, `beltPath(g)`, `beltRub(layout, { carried? })` | A belt drive on a rail's carriage: the layout from the sets, a printed motor plate, a clamp for the belt's ends, the idler's block that is its tensioner, the belt's path and length, and where its runs rub through the travel |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
 | `FRAME_KINDS`, `FRAME_JOINS`, `FRAME_FEET`, `FRAME_GEN`, `frameModel(kind, o)`, `box(o)`, `portal(o)`, `table(o)`, `gantry(o)`, `shelf(o)` | Frames from a size: the kinds, the joins and feet a generator takes, its working figures, and each generator's beams, joins and ends (Frames from a size) |

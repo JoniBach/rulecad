@@ -20,7 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
-import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue } from '../lib/edit.mjs';
+import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
@@ -42,6 +42,10 @@ const openInSlicer = (f) => (process.platform === 'darwin' ? execFileSync('open'
 const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
   cad new <project>/<object>        start a design from the template (makes the project if needed)
+  cad new <project>                 a project: its project.json [--title …] [--description …] [--material PLA] [--printer x1c]
+  cad new <project>/<assembly> --assembly   an empty assembly that checks [--title …] (makes the project if needed); with
+                                    --frame box|portal|table|gantry|shelf --inside 300,300,350 (or --outside) --profile <set>
+                                    [--join blind] [--fitting printed] [--feet levelling] [--caps false]: a generated frame
   cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
   cad clone <board.kicad_pcb | GitHub link> <name>   a published circuit board into rules/<name>.json, to redraw by rules [--source, --licence]
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
@@ -54,7 +58,18 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
-  cad add fit|joint|item|beam|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad set <project>/<assembly> <address>=<value> …   change an assembly's fields: an entry's by its id or place (x1.at=[0,0,20],
+                                    joins.3.kind=bracket), or its own (title=…, frame.join.fitting=printed, frame.inside=[300,300,400]);
+                                    a value is JSON, a [list, of, names] or text
+  cad set <project> field=value …   change a project's own fields: title, description, material, printer, filaments.<name>.slot
+  cad add fit|joint|item|beam|loop|pose|guide|load|wire <project>/<assembly> --a … --b … --min … [field=value …]
+                                    add to an assembly, keeping its layout; any field as field=value (motor.model=nema17)
+  cad move <project>/<assembly> <id> --at x,y,z | --to x1.top@50% [--rotate 0,0,90]   move an item (a beam by its ends
+                                    moves both) or a guide (--to x3.top, --at 100 along it)
+  cad remove <project>/<assembly> <id | list.n | id.field>   take an entry or a field out; refused, naming them, while other
+                                    entries name it, unless --with-refs takes them out too
+  Every edit (new, set, add, move, remove): checked against the schema and what it could break before it is written,
+  refused by name with nothing written; --dry-run shows it without writing; --json says what changed, and the checks
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
@@ -143,7 +158,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad --version                     this tool's version`;
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
-const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
+const COMMANDS = ['new', 'remove', 'move', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
   'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'frame', 'wires', 'machine', 'plot', 'plates', 'order', 'kit', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
@@ -151,27 +166,32 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'unit', 'rule', 'label', 'from', 'out', 'jigs', 'no-jigs', 'expand', 'size', 'write', 'pictures', // cad set, cad rules, cad beams, cad frame, cad plates, cad kit
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
-  'kind', 'fitting']; // cad add join
+  'kind', 'fitting', // cad add join
+  'title', 'description', 'printer', 'frame', 'inside', 'outside', 'join', 'feet', 'caps', 'with-refs', 'mass', 'joint']; // cad new, cad remove, cad add load
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join|guide|load|wire <project>/<assembly> --key value … [field=value …]', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …, <project>/<assembly> <address>=<value> …, or <project> field=value …',
+  remove: '<project>/<assembly> <id | list.n | id.field> [--with-refs] [--dry-run]', move: '<project>/<assembly> <id> --at x,y,z | --to <address> [--rotate x,y,z] [--dry-run]',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'no-jigs', 'pictures', 'expand', 'size', 'write'];
+const FLAGS = ['with-refs', 'table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'no-jigs', 'pictures', 'expand', 'size', 'write'];
+// The options whose value may be left out; a field=value after one is a field to set, not its value (cad new
+// frame/box --assembly title=Box)
+const OPTIONAL = ['sweep', 'watch', 'nut', 'assembly'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
   if (FLAGS.includes(k)) return true;
-  if (args[i + 1] && !args[i + 1].startsWith('--')) return args[i + 1];
-  if (['sweep', 'watch', 'nut'].includes(k)) return true;
+  if (args[i + 1] && !args[i + 1].startsWith('--') && !(OPTIONAL.includes(k) && args[i + 1].includes('='))) return args[i + 1];
+  if (OPTIONAL.includes(k)) return true;
   throw new Error(`${args[i]} needs a value after it`);
 };
 // The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
-const takesValue = (a) => a === '-m' || (a.startsWith('--') && !FLAGS.includes(a.slice(2)));
-const positional = () => args.filter((a, i) => !a.startsWith('--') && a !== '-m' && !(i > 0 && takesValue(args[i - 1])));
+const takesValue = (a, next) => a === '-m' || (a.startsWith('--') && !FLAGS.includes(a.slice(2)) && !(OPTIONAL.includes(a.slice(2)) && String(next).includes('=')));
+const positional = () => args.filter((a, i) => !a.startsWith('--') && a !== '-m' && !(i > 0 && takesValue(args[i - 1], a)));
 // --set name=value,name=value (a value may hold an = of its own)
 const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => { const i = p.indexOf('='); return i < 0 ? [p.trim(), undefined] : [p.slice(0, i).trim(), p.slice(i + 1).trim()]; }));
 const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('').replace(/[^\w.=+-]/g, '_'); // in file names: nothing that could name another folder
@@ -408,6 +428,7 @@ async function main() {
   if (odd) { const guess = near(odd.slice(2), OPTIONS); throw new Error(`no option ${odd}${guess ? ` (did you mean --${guess}?)` : ''}: cad help lists them`); }
   if (configError) throw configError;
 
+  if (cmd === 'new' && (opt('assembly') || !String(ref || '').includes('/'))) return newCommand(ref ?? (typeof opt('assembly') === 'string' ? opt('assembly') : undefined));
   if (cmd === 'new') {
     const [project, name] = String(ref || '').split('/');
     if (!/^[a-z][a-z0-9-]*$/.test(project || '') || !/^[a-z][a-z0-9-]*$/.test(name || '')) throw new Error('usage: cad new <project>/<object>, lower-case names with dashes');
@@ -485,8 +506,9 @@ async function main() {
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
   if (cmd === 'why') return explainValue(ref);
-  if (cmd === 'set') return editVariables(ref);
+  if (cmd === 'set') return isAssembly(ref) ? editFields(ref) : !ref.includes('/') ? editProject(ref) : editVariables(ref);
   if (cmd === 'add') return editAssembly(pos[1], pos[2]);
+  if (cmd === 'remove' || cmd === 'move') return removeOrMove(cmd, ref, pos[2]);
   if (cmd === 'optimise' || cmd === 'optimize') return await optimiseProblem(ref);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
@@ -646,10 +668,70 @@ async function editAssembly(what, ref) {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|beam|loop|pose|fasten|join <project>/<assembly> --key value …');
-  const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry);
-  if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
-  console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
+  } else if (what === 'load') entry = { ...text(['joint']), ...pick(['mass', 'torque']), ...at(), ...text(['note']) };
+  else if (what === 'guide' || what === 'wire') entry = { ...text(['id', 'kind', 'note']) };
+  else throw new Error('usage: cad add fit|joint|item|beam|loop|pose|fasten|join|guide|load|wire <project>/<assembly> --key value … [field=value …]');
+  // field=value pairs, for any field (nested by dots: motor.model=nema17), over the options
+  if (what !== 'pose') for (const [k, v] of pairsOf(positional().slice(3), 'cad add')) { const keys = k.split('.'); let o = entry; for (const x of keys.slice(0, -1)) o = (o[x] ??= {}); o[keys.at(-1)] = v; }
+  const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry, { dryRun: !!opt('dry-run') });
+  edited(r, 'add', { added: entry }, `${opt('dry-run') ? 'would add' : 'added'} ${/^[aeiou]/.test(what) ? 'an' : 'a'} ${what} to ${rel(r.file)} (${r.changes[0].path})`);
+}
+
+// name=value pairs from the command line, each value as cad set takes it; refused by name where one has no =
+function pairsOf(list, what) {
+  const bad = list.find((p) => !p.includes('='));
+  if (bad) throw new Error(`${what}: "${bad}" isn't field=value`);
+  return list.map((p) => { const i = p.indexOf('='); return [p.slice(0, i).trim(), parseSetting(p.slice(i + 1))]; });
+}
+const rel = (f) => path.relative(WS, f).split(path.sep).join('/');
+const shownValue = (v) => (v === undefined ? 'nothing' : JSON.stringify(v).length > 70 ? `${JSON.stringify(v).slice(0, 67)}...` : JSON.stringify(v));
+// What an edit did, as words or as data (--json): its changes, then its checks
+function edited(r, command, extra = {}, head = null) {
+  if (opt('json')) return console.log(JSON.stringify({ command, file: rel(r.file), written: r.written, ...(r.dryRun ? { dryRun: true } : {}), ...(r.made ? { made: r.made.map(rel) } : {}), ...extra, changes: r.changes, findings: r.findings }, null, 2));
+  const verb = { set: 'set', add: 'added', remove: 'removed', make: 'made' }, would = r.dryRun ? 'would be ' : '';
+  console.log(`${r.dryRun ? 'dry run, nothing written: ' : ''}${head ?? `${rel(r.file)}${r.dryRun || r.written ? '' : ' (no change)'}`}`);
+  if (!head) for (const c of r.changes) console.log(`  ${would}${verb[c.op]} ${c.path}${c.op === 'set' ? `: ${shownValue(c.before)} → ${shownValue(c.after)}` : c.op === 'add' ? `: ${shownValue(c.after)}` : c.because ? ` (it ${c.because})` : ''}`);
+  report(r.findings);
+}
+
+// cad new <project> [--title --description --material --printer], cad new <project>/<assembly> --assembly [--frame ...]
+async function newCommand(ref) {
+  const dryRun = !!opt('dry-run'), str = (k) => (typeof opt(k) === 'string' ? opt(k) : undefined);
+  if (!ref) throw new Error('usage: cad new <project>/<object>, cad new <project>, or cad new <project>/<assembly> --assembly');
+  if (!ref.includes('/')) return edited(newProject(ref, { title: str('title'), description: str('description'), material: str('material'), printer: str('printer'), dryRun }), 'new');
+  let frame;
+  // the frame's options go with --frame, and a join's fitting and screw with --join: none is dropped unsaid
+  const FRAME_OPTS = ['inside', 'outside', 'profile', 'join', 'fitting', 'screw', 'feet', 'caps'], loose = FRAME_OPTS.filter((k) => opt(k) !== undefined);
+  if (!opt('frame') && loose.length) throw new Error(`--${loose.join(', --')} ${loose.length === 1 ? 'is a frame option' : 'are frame options'}: give --frame box|portal|table|gantry|shelf with ${loose.length === 1 ? 'it' : 'them'}, or set the fields after with cad set ${ref} frame.<field>=…`);
+  if (opt('frame') && !str('join') && (str('fitting') || str('screw'))) throw new Error(`--${['fitting', 'screw'].filter((k) => str(k)).join(' and --')} ${str('fitting') && str('screw') ? 'say' : 'says'} how the join is made: give the join's kind with ${str('fitting') && str('screw') ? 'them' : 'it'}, as --join blind`);
+  if (opt('frame')) {
+    const nums = (k) => (str(k) ? str(k).split(',').map((x) => parseValue(x.trim())) : undefined);
+    const join = str('join') && (str('fitting') || str('screw')) ? { kind: str('join'), ...(str('fitting') ? { fitting: str('fitting') } : {}), ...(str('screw') ? { screw: str('screw') } : {}) } : str('join');
+    frame = Object.fromEntries(Object.entries({ kind: str('frame'), inside: nums('inside'), outside: nums('outside'), profile: str('profile'), join, feet: str('feet'), caps: str('caps') != null ? parseSetting(str('caps')) : undefined }).filter(([, v]) => v !== undefined));
+    if (opt('frame') === true || !frame.profile || (!frame.inside && !frame.outside)) throw new Error('usage: cad new <project>/<assembly> --assembly --frame box|portal|table|gantry|shelf --inside 300,300,350 (or --outside) --profile <set> [--join blind] [--feet levelling]');
+  }
+  edited(newAssembly(ref, { title: str('title'), kind: str('kind'), description: str('description'), frame, fields: Object.fromEntries(pairsOf(positional().slice(2), 'cad new')), project: { material: str('material'), printer: str('printer') }, dryRun }), 'new');
+}
+
+// cad set <project>/<assembly> <address>=<value> …
+function editFields(ref) {
+  const pairs = pairsOf(positional().slice(2), 'cad set');
+  if (!pairs.length) throw new Error(`usage: cad set ${ref} <address>=<value> … (x1.at=[0,0,20], joins.0.kind=bracket, frame.join.fitting=printed)`);
+  edited(setInAssembly(ref, Object.fromEntries(pairs), { dryRun: !!opt('dry-run') }), 'set');
+}
+// cad set <project> field=value …
+function editProject(project) {
+  const pairs = pairsOf(positional().slice(2), 'cad set');
+  if (!pairs.length) throw new Error(`usage: cad set ${project} material=PETG printer=x1c title="…"`);
+  edited(setProject(project, Object.fromEntries(pairs), { dryRun: !!opt('dry-run') }), 'set');
+}
+// cad remove <project>/<assembly> <address> [--with-refs], cad move <project>/<assembly> <id> --at | --to [--rotate]
+function removeOrMove(cmd, ref, what) {
+  if (!what || !isAssembly(ref)) throw new Error(`usage: cad ${cmd} ${USAGE[cmd]}${ref && !isAssembly(ref) ? ` (there is no assembly ${ref})` : ''}`);
+  if (cmd === 'remove') return edited(removeFromAssembly(ref, what, { withRefs: !!opt('with-refs'), dryRun: !!opt('dry-run') }), 'remove');
+  const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
+  const at = typeof opt('at') !== 'string' ? undefined : opt('at').includes(',') ? list('at') : parseValue(opt('at'));
+  edited(moveInAssembly(ref, what, { at, to: typeof opt('to') === 'string' ? opt('to') : undefined, rotate: list('rotate'), dryRun: !!opt('dry-run') }), 'move');
 }
 
 // cad why <project>/<object>.<name>: the value, and what it reads, down to the rules (estimates marked)

@@ -58,6 +58,7 @@ import { frameHeatChecks } from './frameheat.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
+import { beltLoads } from './belts.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 import { frameSquareChecks, frameBuild } from './framebuild.mjs';
 let pinning = null; // lib/pins.mjs, loaded with the first assembly whose fits name pins
@@ -996,6 +997,7 @@ export function checkAssembly(s) {
   fittingFindings(s, f);
   panelFindings(s, f);
   serviceFindings(s, f);
+  beltLoads(s, { placeItems, jointValues, mul }); // (a belt's carriage pushed at its acceleration: a load on its joint, before the motor's checks read the loads)
   guideFindings(s, f);
   if (s.generated) { const m = s.generated, [what, ...more] = frameText(m); f('info', `generated: ${what}; ${more.map((x) => x.trim()).join('; ')}`, null, { code: 'frame.generated', values: { inside: m.inside, outside: m.outside, lengths: m.lengths.map(({ length, count }) => ({ length, count })) }, refs: { kind: m.kind, profile: m.profile, join: m.join.kind, arrangement: m.arrangement, by: m.by } }); }
   joinChecks(s, f);

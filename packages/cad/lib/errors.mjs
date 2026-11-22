@@ -22,7 +22,7 @@ export function located(e, file, code) {
 }
 
 /** An error as plain data: { code, message, file?, line?, path? }. @param {any} e */
-export const errorData = (e) => ({ code: e?.code || 'error', message: e?.message || String(e), ...(e?.file ? { file: e.file } : {}), ...(e?.line ? { line: e.line } : {}), ...(e?.path ? { path: e.path } : {}) });
+export const errorData = (e) => ({ code: e?.code || 'error', message: e?.message || String(e), ...(e?.file ? { file: e.file } : {}), ...(e?.line ? { line: e.line } : {}), ...(e?.path ? { path: e.path } : {}), ...(e?.refs ? { refs: e.refs } : {}) });
 
 /** The closest name to a typo, one or two letters out, or null. @param {string} word @param {string[]} names */
 export function near(word, names) {

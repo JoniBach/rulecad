@@ -1239,6 +1239,229 @@ test('cad set and cad add: edits that keep the file as it was, and refuse to bre
   } finally { done(); }
 });
 
+test('workspace edits: cad new makes a project and an assembly, cad set, cad move and cad remove change them, each checked first, refused by name with nothing written, with --dry-run and --json', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8'), json = (...a) => JSON.parse(cad(...a, '--json'));
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    // a project: its project.json, laid out as the edits lay one out; PLA unless given
+    assert.match(cad('new', 'frame', '--title', 'A box frame', '--printer', 'x1c'), /projects\/frame\/project\.json\n {2}made projects\/frame\/project\.json\n {2}✓ matches the project schema\n {2}✓ prints are checked against x1c/);
+    assert.deepEqual(JSON.parse(read('frame/project.json')), { $schema: 'https://jonibach.github.io/rulecad/schemas/project.schema.json', name: 'frame', title: 'A box frame', printer: 'x1c', material: 'PLA', objects: [] });
+    refused(cad('new', 'frame', '--json'), 'project.exists');
+    // run again with the fields it has, it changes nothing and says so; with one that differs, refused by name
+    const again = json('new', 'frame', '--printer', 'x1c', '--material', 'pla');
+    assert.deepEqual([again.written, again.changes, again.findings.map((f) => [f.level, f.code, f.text])], [false, [], [['pass', 'project.exists', 'projects/frame/project.json is already there with material PLA and printer x1c: nothing to change']]]);
+    assert.equal(refused(cad('new', 'frame', '--material', 'PETG', '--title', 'A box', '--json'), 'project.exists').message, 'projects/frame/project.json is already there with title A box frame and material PLA, so --title A box and --material PETG would change it: change them with cad set frame title="A box" material=PETG');
+    refused(cad('new', 'shed', '--printer', 'nope', '--json'), 'project.printer');
+    assert.ok(!fs.existsSync(file('shed')), 'a refused project is not made');
+    const p = json('new', 'shed', '--dry-run');
+    assert.deepEqual([p.command, p.file, p.written, p.dryRun, p.changes[0].op, p.changes[0].after.name, p.findings[0].code], ['new', 'projects/shed/project.json', false, true, 'make', 'shed', 'schema']);
+    assert.ok(!fs.existsSync(file('shed')), 'a dry run writes nothing');
+    // the project's own fields
+    const before = read('frame/project.json');
+    const m = json('set', 'frame', 'material=PETG', 'description=Four posts and two rings');
+    assert.deepEqual(m.changes.map((c) => [c.path, c.before, c.after]), [['material', 'PLA', 'PETG'], ['description', undefined, 'Four posts and two rings']]);
+    assert.deepEqual(m.findings.map((f) => [f.level, f.code]), [['pass', 'schema'], ['pass', 'project.printer'], ['pass', 'project.material']]);
+    assert.equal(read('frame/project.json').split('\n').slice(0, 4).join('\n'), before.split('\n').slice(0, 4).join('\n'), 'the lines it did not change are as they were');
+    refused(cad('set', 'frame', 'objects=[a]', '--json'), 'edit.address');
+    assert.match(cad('set', 'frame', 'colour=red'), /a project has no field "colour" \(fields: title, description, material, printer, filaments\)/);
+    // a plastic no fitting could be sized from is refused: every frame command reads it as it builds the joins
+    const petg = read('frame/project.json');
+    assert.match(refused(cad('set', 'frame', 'material=nylon', '--json'), 'project.material').message, /^project frame: its material is "nylon", and printed fittings are sized from their plastic's strength, modulus and density/);
+    assert.equal(read('frame/project.json'), petg, 'refused: nothing written');
+    refused(cad('new', 'nyl', '--material', 'nylon', '--json'), 'project.material');
+    assert.ok(!fs.existsSync(file('nyl')), 'a refused project is not made');
+    // an empty assembly that checks
+    const e = json('new', 'frame/empty', '--assembly', '--title', 'Nothing yet');
+    assert.deepEqual([e.file, e.written, e.changes[0].after], ['projects/frame/assemblies/empty.json', true, { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: 'Nothing yet', kind: 'fit', items: [] }]);
+    assert.doesNotMatch(cad('check', 'frame/empty'), /✗/);
+    refused(cad('new', 'frame/empty', '--assembly', '--json'), 'assembly.exists');
+    assert.match(cad('new', 'frame/arm', '--assembly', '--kind', 'mechanism'), /an assembly's kind is fit \(got "mechanism"\): a mechanism is a fit with joints/);
+    // one in a project not made yet makes the project first; a refused one makes neither
+    assert.match(cad('new', 'bench/portal', '--assembly', '--frame', 'portal', '--inside', '300,200', '--profile', '2020-misumi-hfs5'), /^not made: frame: a portal stands in one plane/);
+    assert.ok(!fs.existsSync(file('bench')), 'refused: no project, no assembly');
+    const portal = json('new', 'bench/portal', '--assembly', '--frame', 'portal', '--inside', '300,200', '--profile', '2020-misumi-hfs5', 'frame.supports["z1.a"]=fixed', 'frame.supports["z2.a"]=fixed');
+    assert.deepEqual(portal.made, ['projects/bench/project.json', 'projects/bench/assemblies/portal.json']);
+    assert.deepEqual(JSON.parse(read('bench/assemblies/portal.json')).frame.supports, { 'z1.a': 'fixed', 'z2.a': 'fixed' });
+    // a generated box: what it expands into is said as it is made
+    const box = json('new', 'frame/box', '--assembly', '--title', 'Box frame', '--frame', 'box', '--inside', '300,300,350', '--profile', '2020-misumi-hfs5', '--join', 'blind', '--feet', 'levelling');
+    const gen = box.findings.find((f) => f.code === 'frame.generated');
+    assert.deepEqual([gen.level, gen.values.outside, gen.values.beams, gen.values.joins], ['pass', [340, 340, 408.5], 12, 16], '350 + 2 x 20 + 18.5 = 408.5 mm uprights, 12 beams and 16 joins');
+    assert.match(read('frame/assemblies/box.json'), /"inside": \[300, 300, 350\],/, 'a short list of numbers on one line, as people write them');
+    // cad set: a string standing for its kind takes a field of its own; a generated beam is named as that
+    const s = json('set', 'frame/box', 'frame.join.fitting=printed', 'frame.feet=foot');
+    assert.deepEqual(s.changes.map((c) => [c.op, c.path, c.after]), [['set', 'frame.join.fitting', 'printed'], ['set', 'frame.feet', 'foot']]);
+    assert.deepEqual(JSON.parse(read('frame/assemblies/box.json')).frame.join, { kind: 'blind', fitting: 'printed' });
+    assert.match(cad('set', 'frame/box', 'frame.join=bracket', '--dry-run'), /dry run, nothing written: projects\/frame\/assemblies\/box\.json\n {2}would be set frame\.join: \{"kind":"blind","fitting":"printed"\} → "bracket"/);
+    assert.equal(JSON.parse(read('frame/assemblies/box.json')).frame.join.kind, 'blind', 'the dry run wrote nothing');
+    const kept = read('frame/assemblies/box.json');
+    assert.match(cad('set', 'frame/box', 'frame.join=end-tap', 'frame.profile=2020-bosch'), /^not changed: frame: a box: an end-tap join's M6 screw/, 'a frame the generator refuses');
+    assert.equal(read('frame/assemblies/box.json'), kept, 'and nothing written');
+    assert.match(cad('set', 'frame/box', 'x1.at=[0,0,0]'), /x1 is made by frame\/box's generated frame \(a box\), so it is not in the file to change: .*cad frame frame\/box --expand/);
+    refused(cad('set', 'frame/box', 'nope.at=1', '--json'), 'edit.address');
+    refused(cad('set', 'frame/box', 'frame.inside=[300,300]', '--json'), 'frame.refused');
+    // cad add names a generated frame's beams: a load, and a guide with its fields as field=value
+    assert.match(cad('add', 'load', 'frame/box', '--mass', '5', '--at', 'x3.top@50%', '--note', 'On the top front beam'), /added a load to projects\/frame\/assemblies\/box\.json \(loads\.0\)/);
+    const g = json('add', 'guide', 'frame/box', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x3.top', 'from=25', 'length=250', 'nut=drop-in');
+    assert.deepEqual(g.added, { kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x3.top', from: 25, length: 250, nut: 'drop-in' });
+    assert.match(cad('add', 'guide', 'frame/box', '--kind', 'rail', 'on=q9.top'), /guide on: no beam "q9" in frame\/box \(beams: z1, z2, z3, z4, x1, x2, y1, y2, x3, x4, y3, y4\)/);
+    assert.match(cad('add', 'join', 'frame/box', '--kind', 'blind', '--a', 'x1.a', '--b', 'z1.back@100'), /added a join/, 'a join may name the generated beams');
+    // beams of its own: a join that uses one keeps it, named
+    cad('new', 'frame/tee', '--assembly');
+    cad('add', 'beam', 'frame/tee', '--id', 'x1', '--profile', '2020-misumi-hfs5', '--from', '0,10,10', '--to', '300,10,10');
+    cad('add', 'beam', 'frame/tee', '--id', 'y1', '--profile', '2020-misumi-hfs5', '--from', '120,20,10', '--to', '120,220,10');
+    cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120');
+    const tee = read('frame/assemblies/tee.json');
+    const r = refused(cad('remove', 'frame/tee', 'x1', '--json'), 'edit.referenced');
+    assert.equal(r.message, 'x1 is named by joins.0 (blind y1.a to x1.back@120): remove it first, or add --with-refs to remove it with x1');
+    assert.deepEqual(r.refs, ['joins.0 (blind y1.a to x1.back@120)']);
+    assert.equal(read('frame/assemblies/tee.json'), tee, 'refused: nothing written');
+    const w = json('remove', 'frame/tee', 'x1', '--with-refs');
+    assert.deepEqual(w.changes.map((c) => [c.path, c.because]), [['items.0', undefined], ['joins.0', 'names x1']]);
+    const left = JSON.parse(read('frame/assemblies/tee.json'));
+    assert.deepEqual([left.items.map((x) => x.id), left.joins], [['y1'], []]);
+    // a field, and a guide whose going would rename the guides after it
+    assert.match(cad('remove', 'frame/tee', 'y1.roll'), /has no y1\.roll to remove/);
+    cad('add', 'beam', 'frame/tee', '--id', 'x2', '--profile', '2020-misumi-hfs5', '--from', '0,10,10', '--to', '300,10,10', '--roll', '90');
+    assert.deepEqual(json('remove', 'frame/tee', 'x2.roll').changes.map((c) => [c.op, c.path, c.before]), [['remove', 'items.1.roll', 90]]);
+    cad('add', 'guide', 'frame/tee', '--kind', 'rods', 'on=x2.top', 'from=100', 'length=150');
+    cad('add', 'guide', 'frame/tee', '--kind', 'screw', 'guide=g1', 'screw=t8-screw', 'motor.model=nema17');
+    assert.match(cad('remove', 'frame/tee', 'guides.0', '--with-refs'), /guides\.0 goes before guides\.1, which has no id of its own and so is named by place: g2 would become g1/);
+    cad('set', 'frame/tee', 'guides.0.id=rods', 'guides.1.id=drive', 'guides.1.guide=rods');
+    assert.match(cad('remove', 'frame/tee', 'rods'), /rods is named by guides\.1 \(screw\): remove it first/, 'the screw guide drives the rods');
+    // cad move: a beam placed by its ends moves both; an item to an address; a beam is not put at an address
+    const mv = json('move', 'frame/tee', 'y1', '--at', '150,20,10');
+    assert.deepEqual(mv.changes.map((c) => [c.path, c.after]), [['items.0.from', [150, 20, 10]], ['items.0.to', [150, 220, 10]]], 'end b keeps its offset: 120 + 30 = 150 and 220');
+    cad('add', 'item', 'frame/tee', '--id', 'cap', '--at', '0,0,0', 'fitting.kind=end-cap', 'fitting.profile=2020-misumi-hfs5');
+    assert.deepEqual(json('move', 'frame/tee', 'cap', '--to', 'y1.b').changes.map((c) => [c.path, c.before, c.after]), [['items.2.at', [0, 0, 0], 'y1.b']]);
+    assert.match(cad('move', 'frame/tee', 'cap', '--to', 'q1.b'), /item at: no item "q1" in frame\/tee/);
+    assert.match(cad('move', 'frame/tee', 'y1', '--to', 'x2.top@50%'), /y1 is a beam placed by its two ends: move it with --at x,y,z/);
+    assert.match(cad('move', 'frame/tee', 'rods', '--at', '120'), /set guides\.0\.from: 100 → 120/, 'a guide along its face');
+  } finally { done(); }
+});
+
+test('workspace edits: an edit that leaves another entry naming what is gone is refused by name (a beam renamed or removed, a frame changed or removed, guides renumbered), as are a joint\'s and a pose\'s missing names and frame options that would be dropped', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8');
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    cad('new', 'frm');
+    // a table with a beam of its own, a join from it to a generated leg and a load on it
+    cad('new', 'frm/tbl', '--assembly', '--frame', 'table', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'beam', 'frm/tbl', '--id', 'brace-1', '--profile', '2020-misumi-hfs5', '--from', '0,20,100', '--to', '300,20,100');
+    cad('add', 'join', 'frm/tbl', '--kind', 'blind', '--a', 'brace-1.a', '--b', 'z1.front@50');
+    cad('add', 'load', 'frm/tbl', '--mass', '1', '--at', 'brace-1.top@50%');
+    const tbl = read('frm/assemblies/tbl.json');
+    // the beam renamed: the join and the load still name brace-1
+    const a = refused(cad('set', 'frm/tbl', 'brace-1.id=brace-2', '--json'), 'edit.dangling');
+    assert.equal(a.message, 'not changed: the edit leaves joins.0 (join a: no beam "brace-1" in frm/tbl), loads.0 (load at: no item "brace-1" in frm/tbl) naming what is no longer there: change or remove them first');
+    assert.deepEqual(a.refs, ['joins.0', 'loads.0']);
+    // no longer a beam: the join needs one
+    assert.deepEqual(refused(cad('remove', 'frm/tbl', 'brace-1.beam', '--json'), 'edit.dangling').refs, ['joins.0']);
+    // the frame taken out: its leg z1 goes with it
+    assert.match(refused(cad('remove', 'frm/tbl', 'frame', '--json'), 'edit.dangling').message, /joins\.0 \(join b: no beam "z1" in frm\/tbl\)/);
+    assert.equal(read('frm/assemblies/tbl.json'), tbl, 'each refused: nothing written');
+    // a box's guide on its top beam x3; a table has no x3
+    cad('new', 'frm/bx', '--assembly', '--frame', 'box', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'guide', 'frm/bx', '--kind', 'rail', 'id=rr', 'rail=rail-mgn12', 'on=x3.top', 'length=200');
+    assert.match(refused(cad('set', 'frm/bx', 'frame.kind=table', '--json'), 'edit.dangling').message, /guides\.0 \(guide on: no beam "x3" in frm\/bx\)/);
+    assert.match(cad('set', 'frm/bx', 'frame.kind=shelf'), /set frame\.kind: "box" → "shelf"/, 'a shelf keeps x3: the edit goes through');
+    // a name already missing before the edit is left to cad check, and does not stop an edit elsewhere
+    const bx = JSON.parse(read('frm/assemblies/bx.json'));
+    fs.writeFileSync(file('frm/assemblies/bx.json'), JSON.stringify({ ...bx, loads: [{ mass: 1, at: 'q9.top@50%' }] }, null, 2));
+    assert.match(cad('set', 'frm/bx', 'title=Shelf'), /set title/);
+    // guides by place: taking out r1 (it has an id) renames the rods (g2 to g1) and the screw (g3 to g2), which then
+    // names itself as the guide it drives
+    cad('new', 'frm/gd', '--assembly', '--frame', 'table', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5', '--join', 'blind');
+    cad('add', 'guide', 'frm/gd', '--kind', 'rail', 'id=r1', 'rail=rail-mgn12', 'on=x1.top', 'length=200');
+    cad('add', 'guide', 'frm/gd', '--kind', 'rods', 'on=x2.top', 'from=60', 'length=150');
+    cad('add', 'guide', 'frm/gd', '--kind', 'screw', 'guide=g2', 'screw=t8-screw', 'motor.model=28byj48');
+    const gd = read('frm/assemblies/gd.json');
+    assert.equal(refused(cad('remove', 'frm/gd', 'r1', '--json'), 'edit.renumber').message, 'r1 goes before guides.1, guides.2, which have no id of their own and so are named by place: g2 would become g1, g3 would become g2. Give them ids first (cad set frm/gd guides.1.id=g2)');
+    assert.match(cad('set', 'frm/gd', 'guides.2.guide=g3'), /guide g3: it names itself as the guide it drives/);
+    assert.equal(read('frm/assemblies/gd.json'), gd, 'refused: nothing written');
+    // a joint's parent and child, and a pose's joints, are names in the assembly too
+    cad('new', 'frm/odd', '--assembly');
+    cad('add', 'item', 'frm/odd', '--id', 'b', '--object', 'nothing');
+    assert.match(cad('add', 'joint', 'frm/odd', '--id', 'ghostj', '--type', 'revolute', '--parent', 'nope.x', '--child', 'b.a'), /joint ghostj parent: no item "nope" in frm\/odd \(items: b\)/);
+    assert.match(cad('add', 'joint', 'frm/odd', '--id', 'j2', '--type', 'revolute', '--parent', 'b.x', '--child', 'b.a', '--follow', 'nope'), /joint j2 follow: no joint "nope" in frm\/odd \(joints: none\)/);
+    assert.match(cad('add', 'pose', 'frm/odd', '--name', 'bad', 'nope=45'), /pose bad: no joint "nope" in frm\/odd \(joints: none\)/);
+    assert.equal(JSON.parse(read('frm/assemblies/odd.json')).joints, undefined, 'refused: nothing written');
+    // field=value straight after --assembly is a field, not --assembly's value
+    cad('new', 'frm/a1', '--assembly', 'title=Hello');
+    assert.equal(JSON.parse(read('frm/assemblies/a1.json')).title, 'Hello');
+    // frame options are applied or refused, never dropped
+    const box = ['--assembly', '--frame', 'box', '--inside', '300,300,300', '--profile', '2020-misumi-hfs5'];
+    assert.match(cad('new', 'frm/f6', ...box, '--fitting', 'printed'), /--fitting says how the join is made: give the join's kind with it, as --join blind/);
+    assert.deepEqual(JSON.parse(cad('new', 'frm/f7', ...box, '--join', 'bracket', '--screw', 'M5', '--dry-run', '--json')).changes.at(-1).after.frame.join, { kind: 'bracket', screw: 'M5' });
+    assert.match(cad('new', 'frm/f8', '--assembly', '--inside', '300,300,300'), /--inside is a frame option: give --frame box\|portal\|table\|gantry\|shelf with it/);
+    assert.deepEqual(fs.readdirSync(file('frm/assemblies')).sort(), ['a1.json', 'bx.json', 'gd.json', 'odd.json', 'tbl.json']);
+  } finally { done(); }
+});
+
+test('workspace edits: a wire\'s ends and route, a loop\'s anchors, a load\'s joint and a mount\'s beam are names checked as a join\'s are, and cad new <project>/<assembly> makes its project with the material and printer given', async () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8');
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    cad('new', 'q/m', '--assembly');
+    cad('add', 'beam', 'q/m', '--id', 'a1', '--profile', '2020-misumi-hfs5', '--from', '0,0,0', '--to', '200,0,0');
+    cad('add', 'beam', 'q/m', '--id', 'b2', '--profile', '2020-misumi-hfs5', '--from', '0,100,0', '--to', '200,100,0');
+    const m = read('q/assemblies/m.json');
+    // each kind of entry, added with a name that is not there: refused by name, nothing written
+    assert.equal(refused(cad('add', 'wire', 'q/m', 'id=w2', 'from=nope.a', 'to=b2.b', '--json'), 'edit.part').message, 'wire w2 from: no item "nope" in q/m (items: a1, b2)');
+    assert.equal(refused(cad('add', 'loop', 'q/m', 'a=ghost.a', 'b=b2.b', '--json'), 'edit.part').message, 'loop a: no item "ghost" in q/m (items: a1, b2)');
+    assert.equal(refused(cad('add', 'load', 'q/m', 'joint=nojoint', 'torque=2', '--json'), 'edit.part').message, 'load joint: no joint "nojoint" in q/m (joints: none)');
+    assert.equal(refused(cad('add', 'item', 'q/m', 'id=psu', 'bought=supply-24v', 'mount.on=nope.top@50', '--json'), 'edit.part').message, 'item psu mount on: no beam "nope" in q/m (beams: a1, b2)');
+    assert.equal(read('q/assemblies/m.json'), m, 'each refused: nothing written');
+    // a wire on a1, routed along b2's slot: its route's names are checked too
+    assert.match(cad('add', 'wire', 'q/m', 'id=w1', 'from=a1.a', 'to=b2.b'), /the names in wires\.0 are all in q\/m/);
+    assert.match(cad('set', 'q/m', 'wires.0.via=["ghost"]'), /wire w1 via: no joint "ghost" in q\/m, and an anchor is <item>\.<anchor>/);
+    assert.match(cad('set', 'q/m', 'wires.0.via=[{"along":"zz.top","from":10,"to":50}]'), /wire w1 via along: no beam "zz" in q\/m/);
+    cad('set', 'q/m', 'wires.0.via=[{"along":"b2.top","from":10,"to":50}]');
+    // renaming either beam leaves the wire naming what is gone
+    const w = read('q/assemblies/m.json');
+    assert.deepEqual(refused(cad('set', 'q/m', 'a1.id=a9', '--json'), 'edit.dangling').refs, ['wires.0']);
+    assert.match(refused(cad('set', 'q/m', 'b2.id=b9', '--json'), 'edit.dangling').message, /wires\.0 \(wire w1 to: no item "b2" in q\/m\)/);
+    assert.equal(read('q/assemblies/m.json'), w, 'refused: nothing written');
+    // a repeated item's copies (key-0, key-1) are names a fit can give, as a guide's own parts are
+    cad('add', 'item', 'q/m', '--id', 'key', '--object', 'nothing', 'repeat.x.count=2', 'repeat.x.step=20');
+    assert.match(cad('add', 'fit', 'q/m', '--a', 'key-1', '--b', 'a1', '--min', '0'), /the names in fits\.0 are all in q\/m/);
+    // a name that only starts with an item's id and a dash is not that item's: rail makes no copies, so rail-3 is no name
+    // in the assembly, on add and when a rename leaves a wire naming it (rail-2 is an item, never rail's copy)
+    cad('new', 'p-1/m', '--assembly');
+    cad('add', 'beam', 'p-1/m', '--id', 'rail', '--profile', '2020-misumi-hfs5', '--from', '0,0,0', '--to', '200,0,0');
+    cad('add', 'beam', 'p-1/m', '--id', 'rail-2', '--profile', '2020-misumi-hfs5', '--from', '0,100,0', '--to', '200,100,0');
+    const pm = read('p-1/assemblies/m.json');
+    assert.equal(refused(cad('add', 'wire', 'p-1/m', 'id=w1', 'from=rail-3.a', 'to=rail.b', '--json'), 'edit.part').message, 'wire w1 from: no item "rail-3" in p-1/m (items: rail, rail-2)');
+    assert.equal(read('p-1/assemblies/m.json'), pm, 'refused: nothing written');
+    cad('add', 'wire', 'p-1/m', 'id=w5', 'from=rail-2.a', 'to=rail.b');
+    const pw = read('p-1/assemblies/m.json');
+    assert.match(refused(cad('set', 'p-1/m', 'rail-2.id=r2', '--json'), 'edit.dangling').message, /wires\.0 \(wire w5 from: no item "rail-2" in p-1\/m\)/);
+    assert.equal(read('p-1/assemblies/m.json'), pw, 'refused: nothing written');
+    // the names the build does make, each by its maker's pattern
+    const { madeBy } = await import('./lib/edit.mjs');
+    const mb = madeBy({ items: [{ id: 'rail', beam: {} }, { id: 'key', repeat: {} }, { id: 'psu', mount: {} }, { id: 'front', panel: {} }, { id: 'foot', fitting: { kind: 'levelling-foot' } }, { id: 'cap', fitting: { kind: 'end-cap' } }], guides: ['g1'], wires: ['w1'], joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.back@120' }] });
+    assert.deepEqual(['key-0', 'key-0-3', 'psu-mount', 'psu-mount-2', 'front-clip', 'front-clip-3', 'front-hinge-1', 'front-leaf-2', 'front-handle', 'front-latch', 'front-catch', 'foot-pad', 'y1-x1-bracket', 'y1-x1-gusset-2', 'w1-clip', 'w1-clip-2', 'g1-carriage-1', 'g1-wheel-4', 'g1-holder-a', 'g1-endstop-mount', 'g1-rod-2', 'g1-belt', 'g1-idler-block'].filter((n) => !mb.item(n)), []);
+    assert.deepEqual(['rail-3', 'rail-mount', 'key-a', 'key-0-x', 'psu-3', 'front-1', 'cap-pad', 'x1-y1-bracket', 'y1-x1-2', 'w1-2', 'g1-2', 'g1-carriage', 'g1-wheel'].filter((n) => mb.item(n)), []);
+    assert.deepEqual([mb.joint('g1-1'), mb.joint('front-hinge'), mb.joint('front-bay'), mb.joint('g1-carriage-1'), mb.joint('key-1'), mb.joint('rail-hinge')], [true, true, true, false, false, false]);
+    // the project an assembly makes takes the material and printer given, checked as cad new <project> checks them
+    cad('new', 'q5/a', '--assembly', '--material', 'PETG', '--printer', 'x1c');
+    const p5 = JSON.parse(read('q5/project.json'));
+    assert.deepEqual([p5.material, p5.printer], ['PETG', 'x1c']);
+    assert.equal(refused(cad('new', 'q6/a', '--assembly', '--material', 'nylon', '--json'), 'project.material').code, 'project.material');
+    assert.ok(!fs.existsSync(file('q6')), 'refused: no project made');
+    assert.equal(refused(cad('new', 'q5/b', '--assembly', '--material', 'PLA', '--printer', 'x1c', '--json'), 'project.exists').message, 'projects/q5/project.json is already there with material PETG, so --material PLA would change it: change it with cad set q5 material=PLA');
+    assert.ok(!fs.existsSync(file('q5/assemblies/b.json')), 'refused: no assembly made');
+    // the project's own material and printer again: the assembly is made, the project left as it was
+    const p5text = read('q5/project.json'), b = JSON.parse(cad('new', 'q5/b', '--assembly', '--material', 'petg', '--printer', 'x1c', '--json'));
+    assert.deepEqual([b.written, b.made, read('q5/project.json') === p5text], [true, ['projects/q5/assemblies/b.json'], true]);
+    assert.ok(b.findings.some((f) => f.code === 'project.exists' && f.level === 'pass' && f.text === 'projects/q5/project.json is already there with material PETG and printer x1c: nothing to change'), JSON.stringify(b.findings));
+    // and the change paths of an assembly that makes its project are both from the workspace
+    assert.deepEqual(JSON.parse(cad('new', 'q7/a', '--assembly', '--json')).changes.map((c) => c.path), ['projects/q7/project.json', 'projects/q7/assemblies/a.json']);
+  } finally { done(); }
+});
+
 test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -4081,7 +4304,9 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
     // refused by name
     write('bad', { items: [x1], guides: [{ kind: 'belt', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or screw .*; a belt is not built yet|guides\/0\/kind/);
+    assert.match(cad('check', 'slide/bad'), /guide 1: a belt guide has no "rail": it takes id, kind, guide, motor|guides\/0/);
+    write('bad', { items: [x1], guides: [{ kind: 'chain', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or belt .*|guides\/0\/kind/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
     assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
@@ -4214,6 +4439,140 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
   } finally { done(); }
 });
 
+test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carriage on a GT2 belt from a NEMA 17, checks clean; its motor margin, travel a turn and belt length agree with hand sums; a moved idler rubs and a long belt uses up the tensioner, each by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const run = (...a) => { const out = cad(...a); assert.doesNotMatch(out, /✗|exit 1|Error/, `cad ${a.join(' ')}: ${out}`); return out; };
+    run('new', 'axes', '--material', 'PLA', '--printer', 'x1c');
+    run('new', 'axes/x-belt', '--assembly', '--title', 'A belt X axis on a 2020');
+    run('add', 'item', 'axes/x-belt', 'id=x1', 'beam.profile=2020-misumi-hfs5', 'from=[0,0,0]', 'to=[400,0,0]');
+    run('add', 'guide', 'axes/x-belt', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x1.top', 'from=30', 'length=300');
+    run('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g1', 'motor.model=nema17', 'motor.microsteps=16', 'motor.current=1.2', 'accel=3000');
+    run('add', 'load', 'axes/x-belt', 'mass=0.5', 'at=g1-carriage-1.top');
+    // the commands write the bench example's file (examples/bench axes/x-belt), line for line (a Windows checkout
+    // gives the example CRLF line endings; the commands write LF, as every file the kit writes)
+    const benchFile = path.join(path.dirname(ROOT_MODULES), 'examples/bench/projects/axes/assemblies/x-belt.json'), lf = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    assert.equal(lf(path.join(ws, 'projects/axes/assemblies/x-belt.json')), lf(benchFile));
+    // the same axis with its idler moved 12 mm across, and with its belt cut 22 mm long
+    const dir = path.join(ws, 'projects/axes/assemblies');
+    for (const n of ['x-moved', 'x-long']) fs.copyFileSync(path.join(dir, 'x-belt.json'), path.join(dir, `${n}.json`));
+    run('set', 'axes/x-moved', 'g2.across=12'); run('set', 'axes/x-long', 'g2.cut=830');
+    // a belt names a rail guide by its id: refused by name, nothing written
+    const before = fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8');
+    assert.match(cad('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17'), /no guide "g9"/);
+    assert.equal(fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8'), before);
+    // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
+    const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs'), { terms } = await lib('task.mjs'), { motorModel, performance } = await import('@rulecad/motors');
+      const s = await buildAssembly('axes/${name}'), findings = checkAssembly(s), l = shoppingList(s);
+      console.log(JSON.stringify({ bought: l.bought.map((b) => [b.qty, b.set, b.part, b.length ?? null]), printed: l.printed.map((p) => [p.id, p.grams]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]),
+        terms: terms(s, { names: ['g1-1'] })[0].terms.map((x) => [x.term, x.kind, x.value]), torque600: performance(motorModel('nema17'), { speed: 600 }).motor.torque,
+        findings: findings.map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+      process.exit(0);
+    `); return JSON.parse(execFileSync(process.execPath, [path.join(ws, 'probe.mjs')], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })); };
+    const by = (r, code) => r.findings.filter((x) => x.code === code), bad = (r) => r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code} ${x.text}`);
+    const axis = probe('x-belt');
+    assert.deepEqual(bad(axis), [], 'the belt axis checks clean');
+    // the parts it placed: the plate, the clamp and the idler block printed; the belt bought by the metre, its pulley and idler
+    assert.deepEqual(axis.printed.map((p) => p[0]), ['g2-plate', 'g2-clamp', 'g2-idler-block']);
+    assert.deepEqual(axis.bought.filter((b) => ['belt', 'pulley', 'idler', 'motor'].includes(b[2])).map((b) => [b[1], b[3]]), [['gt2-belt-6', 1000], ['idler-gt2-toothed-20', null], ['nema17', null], ['pulley-gt2-20', null]]);
+    // (the rail's twelve M3x8 and the clamp's two: 3.2 mm into the carriage's thread, 4.8 under each head)
+    for (const f of ['14 × M3x8 cap', '2 × M5x12 cap', '3 × M5x16 cap', '1 × M5 heat-set insert']) assert.ok(axis.fasteners.some(([q, n]) => `${q} × ${n}` === f), `${f}: ${JSON.stringify(axis.fasteners)}`);
+    // travel a turn: 20 teeth × 2 mm = 40 mm; at the NEMA 17's working 600 rpm, 600 / 60 × 40 = 400 mm/s
+    assert.equal(by(axis, 'guide.drive')[0].values.mmPerTurn, 40);
+    assert.match(by(axis, 'motor.speed')[0].text, /moves at 400 mm\/s with g2-motor at 600 rpm/);
+    // the motor's margin by hand: it pushes the carriage (54 g), the clamp and the 0.5 kg load at 3000 mm/s²,
+    // F = (0.5 + 0.054 + clamp) × 3; the motor gives its torque at 600 rpm, scaled by 1.2 A of its rated 2 A, through the
+    // belt's 0.95 at a 40 / 2π = 6.366 mm pitch radius: F_avail = τ × 0.6 × 0.95 × 2π × 1000 / 40
+    const clamp = axis.printed.find((p) => p[0] === 'g2-clamp')[1] / 1000, need = ((0.5 + 0.054 + clamp) * 3000) / 1000, give = (axis.torque600 * 0.6 * 0.95 * 2 * Math.PI * 1000) / 40;
+    const mt = by(axis, 'motor.torque').find((x) => x.values?.margin != null);
+    assert.ok(Math.abs(mt.values.needed - need) < 0.01, `${mt.values.needed} N needed against ${need} by hand`);
+    assert.ok(Math.abs((mt.values.available * 2 * Math.PI * 1000) / 40 - give) < 0.05, `${mt.text} against ${give} N by hand`);
+    assert.ok(Math.abs(mt.values.margin - give / need) < 0.05 && mt.level === 'pass', mt.text);
+    // the belt's length by hand: the runs twice from the pulley at x = -22.15 to the idler at 364, less the 2 mm between
+    // its ends in the clamp, half round each 12.73 mm pitch circle: 2 × 386.15 - 2 + π × 12.731 = 810.296 mm; cut 808 mm
+    const bl = by(axis, 'belt.length')[0].values;
+    assert.ok(Math.abs(bl.path - (2 * (364 + 22.15) - 2 + Math.PI * 12.731)) < 0.01, `${bl.path}`);
+    assert.deepEqual([bl.cut, bl.buy], [808, 1000]);
+    for (const code of ['belt.tension', 'belt.rub', 'belt.line', 'belt.tensioner', 'motor.axis']) assert.deepEqual([...new Set(by(axis, code).map((x) => x.level))], ['pass'], code);
+    // the error budget: a 1.8° step at 1/16 over 40 mm a turn is 1.8 / 16 / 360 × 40 = 0.0125 mm; the belt's stretch is
+    // the push over its stiffness, F × span / 16902 (2817 N a unit of strain a mm, 6 mm wide)
+    const st = by(axis, 'belt.stretch')[0].values, terms = Object.fromEntries(axis.terms.map(([t, , v]) => [t, v]));
+    assert.ok(Math.abs(terms.step - 0.0125) < 1e-9, `${terms.step}`);
+    assert.ok(Math.abs(terms['belt stretch'] - (need * st.span) / (2817 * 6)) < 1e-4, `${terms['belt stretch']}`);
+    // the idler 12 mm across: off square, and its return run rubs the clamp toward the far end of the travel
+    const moved = probe('x-moved');
+    assert.deepEqual(by(moved, 'belt.rub').map((x) => [x.level, x.refs.run, x.refs.part]), [['fail', 'the return run', 'the clamp']]);
+    assert.equal(by(moved, 'belt.line')[0].level, 'fail');
+    // cut 830 mm, the belt reaches its tension only with the block (830 × 1.001479 - 810.296) / 2 = 10.47 mm toward the
+    // beam's end, past the 4 mm of slot left there
+    const long = probe('x-long'), tn = by(long, 'belt.tensioner')[0];
+    assert.equal(tn.level, 'fail'); assert.match(tn.text, /the tensioner's travel is used up; cut the belt/);
+    assert.ok(Math.abs(tn.values.offset - (830 * (1 + 25 / 16903) - 810.296) / 2) < 0.01, `${tn.values.offset}`);
+  } finally { done(); }
+});
+
+test('guides: a belt Z axis adds the push at its acceleration to the weight, in the motor\'s need and the belt\'s spans; an MGN12C clamp on a 16-tooth pulley engages the carriage\'s thread with room; a part on the carriage across the return run rubs by name, and a higher belt clears it', () => {
+  const { ws, done } = workspace();
+  try {
+    const dir = path.join(ws, 'projects/ax');
+    fs.mkdirSync(path.join(dir, 'assemblies'), { recursive: true }); fs.mkdirSync(path.join(dir, 'objects'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'project.json'), JSON.stringify({ name: 'ax', material: 'PLA', printer: 'x1c', objects: ['pad'] }));
+    // a 20 × 8 mm pad on the carriage's top, over its free holes' side (y = -9 across, as the belt's frame has it)
+    fs.writeFileSync(path.join(dir, 'objects/pad.json'), JSON.stringify({ name: 'pad', title: 'Pad', version: '0.1.0', engine: 'manifold', variables: { thick: { value: 6, unit: 'mm', rule: 'Its thickness', tweak: [1, 20] } } }));
+    fs.writeFileSync(path.join(dir, 'objects/pad.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [20, 8, v.thick], center: [0, -9, v.thick / 2] }) }\n");
+    const write = (name, a) => fs.writeFileSync(path.join(dir, `assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', ...a }));
+    const beam = (id, from, to, profile = '2020-misumi-hfs5') => ({ id, beam: { profile }, from, to });
+    // upright: a 2020 400 mm tall, an MGN12C rail on its front face, 1 kg on the carriage
+    for (const accel of [1000, 5000]) write(`z${accel}`, { items: [beam('b1', [0, 0, 0], [0, 0, 400])], guides: [{ kind: 'rail', id: 'r_1', rail: 'rail-mgn12', on: 'b1.front', from: 40, length: 300 }, { kind: 'belt', id: 'zb', guide: 'r_1', motor: { model: 'nema17', current: 1.2 }, accel }], loads: [{ mass: 1, at: 'r_1-carriage-1.top' }] });
+    // level: a 2040 along y, an MGN12C rail on top.2, a 16-tooth pulley at 30 N, 1.2 kg on the carriage
+    write('y16', { items: [beam('beam_y', [10, 0, 5], [10, 500, 5], '2040-misumi-hfs5')], guides: [{ kind: 'rail', id: 'lin', rail: 'rail-mgn12', carriage: 'MGN12C', on: 'beam_y.top.2', from: 45, length: 350 }, { kind: 'belt', id: 'drv', guide: 'lin', pulley: 'pulley-gt2-16', tension: 30, accel: 2000, motor: { model: 'nema17', current: 1.2 } }], loads: [{ mass: 1.2, at: 'lin-carriage-1.top' }] });
+    // the bench's X axis with the pad screwed to the carriage, then with the belt raised to 23 mm
+    const x = (belt) => ({ items: [beam('x1', [0, 0, 0], [400, 0, 0]), { id: 'pad', object: 'pad', at: 'g1-carriage-1.top' }], guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x1.top', from: 30, length: 300 }, { kind: 'belt', guide: 'g1', motor: { model: 'nema17', microsteps: 16, current: 1.2 }, accel: 3000, ...belt }], loads: [{ mass: 0.5, at: 'g1-carriage-1.top' }], fits: [{ a: 'pad', b: 'g1-carriage-1', fastens: true, note: 'On its free holes' }] });
+    write('xpad', x({})); write('xhigh', x({ height: 23 }));
+    // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
+    const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly } = await lib('assembly.mjs');
+      const s = await buildAssembly('ax/${name}'), findings = checkAssembly(s);
+      console.log(JSON.stringify(findings.map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      process.exit(0);
+    `); return JSON.parse(execFileSync(process.execPath, [path.join(ws, 'probe.mjs')], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })); };
+    const by = (r, code) => r.filter((x) => x.code === code), bad = (r) => r.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code} ${x.text}`);
+    // upright, by hand: the carriage, its clamp and the 1 kg weigh m = W / 9.80665 (W the weight belt.tension reads, about
+    // 1.038 kg); the motor lifts all of it and pushes it at a, both the same way at worst: m × 9.80665 + m × a / 1000 N,
+    // 10.18 + 5.19 = 15.37 N at 5000 mm/s², 10.18 + 1.04 = 11.22 N at 1000; it grows with a, by m × 4 N between them
+    const need = {}, spans = {}; let kg = 0;
+    for (const a of [1000, 5000]) {
+      const r = probe(`z${a}`), t = by(r, 'belt.tension')[0].values, m = t.weight / 9.80665, mt = by(r, 'motor.torque').find((q) => q.values?.margin != null);
+      assert.ok(Math.abs(m - 1.038) < 0.002, `${m} kg carried`);
+      assert.ok(Math.abs(t.push - (m * a) / 1000) < 1e-6, `${t.push} N push at ${a}`);
+      assert.ok(Math.abs(mt.values.needed - (m * 9.80665 + (m * a) / 1000)) < 0.01, `${mt.text}: ${m * 9.80665 + (m * a) / 1000} N by hand`);
+      need[a] = mt.values.needed; spans[a] = [t.slack, t.tight]; kg = m;
+      // the spans: 25 N each less and more half the weight and the push, 25 ∓ (W + push) / 2
+      assert.ok(Math.abs(t.slack - (25 - (t.weight + t.push) / 2)) < 1e-9 && Math.abs(t.tight - (25 + (t.weight + t.push) / 2)) < 1e-9, JSON.stringify(t));
+      assert.ok(Math.abs(by(r, 'belt.stretch')[0].values.force - (t.weight + t.push)) < 1e-9, 'the stretch under the weight and the push');
+    }
+    assert.ok(Math.abs(need[5000] - 15.37) < 0.02 && Math.abs(need[5000] - need[1000] - kg * 4) < 0.01, JSON.stringify(need));
+    assert.ok(Math.abs(spans[5000][0] - 17.32) < 0.02 && Math.abs(spans[5000][1] - 32.68) < 0.02, JSON.stringify(spans));
+    // level, MGN12C on a 16-tooth pulley: the clamp's two M3x8 go 3.2 mm into the carriage's 3.5 mm thread, a layer past
+    // the 3 mm steel's least asks, and the axis checks clean
+    const y = probe('y16'), eg = by(y, 'fasten.engagement').find((q) => /clamp/.test(q.text));
+    assert.deepEqual([eg.level, eg.values.engaged], ['pass', 3.2]);
+    assert.deepEqual(bad(y), []);
+    // the 6 mm pad on the carriage's top (13 to 19 mm over the face) reaches 19 - (19.4 - 3) = 2.6 mm into the return run's
+    // band: a fail by name, which says the height that clears it by 1 mm, 19 + 3 + 1 = 23
+    const rub = by(probe('xpad'), 'belt.rub');
+    assert.deepEqual(rub.map((q) => [q.level, q.refs.run, q.refs.part, q.values.depth, q.values.height]), [['fail', 'the return run', 'pad', 2.6, 23]]);
+    assert.match(rub[0].text, /rubs pad, which g1-carriage-1 carries, 2\.6 mm into its box .* Raise the belt over it with "height": 23/);
+    // raised to 23 mm: the pad clears the band by 23 - 3 - 19 = 1 mm, the pulley 3.6 mm further up its shaft, all clean
+    const high = probe('xhigh'), ok = by(high, 'belt.rub')[0];
+    assert.deepEqual([ok.level, ok.values.clearance, ok.values.under, ok.refs.carried], ['pass', 1, 7, ['pad']]);
+    assert.deepEqual(bad(high), []);
+  } finally { done(); }
+});
+
 test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and endstop all placed by addresses, gives its motor checks the same margin; a screw drives only rods, and an endstop out of reach is refused with where it would go', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -4277,7 +4636,7 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
     const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [0, 0, 300] }), bad = (guides, profile = '2020-misumi-hfs5') => { fs.writeFileSync(path.join(ws, 'projects/arm/assemblies/bad.json'), JSON.stringify({ title: 'bad', kind: 'fit', items: [beam(profile)], guides })); return cad('check', 'arm/bad'); };
     assert.match(bad([{ kind: 'wheels', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }], '2040-openbuilds'), /guide 2: a screw drives a rods guide's carriage, and g1 is a wheels guide/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g9', motor: { model: '28byj48' } }]), /guide 2: guide names the rods guide whose carriage the screw drives, by its id \(got "g9"; guides: g1, g2\)/);
-    assert.match(bad([{ kind: 'belt', on: 'x1.top', length: 200 }]), /a belt is not built yet|guides\/0/);
+    assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'belt', guide: 'g1', motor: { model: 'nema17' } }]), /guide 2: a belt drives a rail guide's carriage, and g1 is a rods guide; a rods guide is driven by a screw|guides\/1/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }]), /guide 2: the motor plate and coupler-5-8 take 29\.5 mm before the stretch, and it starts 0 mm along x1: give the rods guide a "from" of at least 29\.5/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', from: 40, length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48', drives: 'z' } }]), /guide 2: motor\.drives comes from the guide: leave it out|guides\/1/);
   } finally { done(); }

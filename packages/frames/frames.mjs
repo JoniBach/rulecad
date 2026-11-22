@@ -38,6 +38,7 @@ export { DOOR_DEFAULTS, hingeModel, hinge, handleModel, handle, latchModel, latc
 export { SERVICE_DEFAULTS, FANS, DIN_RAIL, deviceMountModel, deviceMount, fanMountModel, fanMount, dragChainEndModel, dragChainEnd, dinRailAdapterModel, dinRailAdapter, cableClipModel, cableClip, runClips, tieAnchorModel, tieAnchor, spoolHolderModel, spoolHolder } from './services.mjs';
 export { GUIDE_KINDS, GUIDE_DEFAULTS, rails, railModel, rail, carriage, carriageMargin, guideFit, railTerms, railJigModel, railJig } from './guide.mjs';
 export { WHEEL_DEFAULTS, wheels, trackFit, wheelsModel, wheelPlate, vWheel, wheelMargin, sliderModel, slider } from './wheels.mjs';
+export { BELT_DEFAULTS, beltPlateModel, beltPlate, beltClampModel, beltClamp, beltIdlerModel, beltIdler, beltLayout, path as beltPath, beltRub } from './belts.mjs';
 export { ROD_DEFAULTS, rodsLayout, rodHolderModel, rodHolder, motorPlateModel, motorPlate, rodCarriageModel, rodCarriage, endstopMountModel, endstopMount, rodMargin } from './rods.mjs';
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';
 export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';

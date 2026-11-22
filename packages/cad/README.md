@@ -25,7 +25,8 @@ measured into rules, an optimised arm, a board, and a mechanism printed flat, ea
 rules/                     shared facts, one file per set: x1c.json (printer), mx.json (Cherry MX). A set from
                            @rulecad/rules is copied here the first time a design uses it: yours to keep and correct
 projects/<project>/
-  project.json             name, description, default material, printer, objects, filaments (AMS slots)
+  project.json             name, title, description, default material, printer, objects, filaments (AMS slots)
+                           (schemas/project.schema.json; written by cad new <project>, changed by cad set <project>)
   objects/<object>.json    variables (value, unit, rule, source, label, show, interface, tweak), variants, parts
   objects/<object>.js      main(v): the shape, from variables only
   layouts/<name>.json      where the keys go, with each key's own properties (@rulecad/keyboard-layout)
@@ -66,6 +67,65 @@ npx cad check bathroom/soap-tray --json          # findings as data: each with a
 schema, or variables that no longer resolve. Options go before or after the names; a misspelt command or option is
 refused by name. `cad --version` says which cad this is. Two switches for the tool itself: `CAD_NO_CACHE=1` builds
 afresh, and `CAD_TRUST=1` runs designs in the tool's own process (see Sandbox).
+
+### Projects and assemblies, by command
+
+Every edit to a project's or an assembly's file has a command that makes it and checks it, so neither file need be
+written by hand, and a program (or a graphical front end) can drive the same edits:
+
+```sh
+npx cad new bench --title "A bench rig" --material PETG --printer x1c       # projects/bench/project.json
+npx cad set bench material=PLA "filaments.legend.slot=2"                    # its own fields
+npx cad new bench/rig --assembly --title "The rig"                          # an empty assembly that checks
+npx cad new bench/box --assembly --frame box --inside 300,300,350 --profile 2020-misumi-hfs5 --join blind --feet levelling
+npx cad add beam bench/rig --id x1 --profile 2020-misumi-hfs5 --from 0,10,10 --to 300,10,10
+npx cad add guide bench/box --kind rail rail=rail-mgn12 carriage=MGN12H on=x3.top from=25 length=250
+npx cad add load bench/box --mass 5 --at x3.top@50%
+npx cad set bench/box frame.join.fitting=printed "frame.inside=[300,300,400]" loads.0.mass=8
+npx cad move bench/rig x1 --at 0,10,40                                       # a beam by its ends: both move
+npx cad remove bench/rig x1 --with-refs                                      # and the joins that name it
+```
+
+| Command | What it writes |
+|---|---|
+| `cad new <project> [--title] [--description] [--material] [--printer]` | `project.json`, PLA unless told; refused if it is there, or the printer has no rule set |
+| `cad set <project> field=value …` | A project's title, description, material, printer or `filaments.<name>.slot`; its objects are kept by `cad new <project>/<object>` |
+| `cad new <project>/<assembly> --assembly [--title] [--frame <kind> --inside x,y,z --profile <set> --join … --fitting … --feet … --caps …] [field=value …]` | An assembly, empty or a generated frame, expanded and checked before it is written; its project too, where there is none. A kind other than fit is refused (a mechanism is a fit with joints, a plate is written by `cad plates`) |
+| `cad add fit\|joint\|item\|beam\|loop\|pose\|fasten\|join\|guide\|load\|wire <project>/<assembly> --option … [field=value …]` | An entry, any field as `field=value` (`motor.model=nema17` nests); every name it gives checked against the assembly's items, a generated frame's beams included |
+| `cad set <project>/<assembly> <address>=<value> …` | A field. An address is an entry's id and a field (`x1.at`, `hinge.max`), an entry by its place (`joins.3.kind`, `fits.0.min`), or a field of the assembly's own (`title`, `frame.join`, `task.speed`); a key with a dot in it goes in brackets and quotes (`frame.supports["z1.a"]`) |
+| `cad move <project>/<assembly> <id> --at x,y,z \| --to <address> [--rotate x,y,z]` | An item to a point or an address (a beam placed by its ends moves both ends, as one), or a guide to another face (`--to x4.top`) or along its own (`--at 40`) |
+| `cad remove <project>/<assembly> <id \| list.n \| id.field> [--with-refs]` | An entry or a field; refused while other entries name it, listing them, unless `--with-refs` removes them too |
+
+A value is JSON where it is JSON (`8`, `true`, `[300, 300, 400]`, `{"kind": "bracket"}`), a list in brackets
+without quotes (`[1515-openbeam, 2020-misumi-hfs5]`), and otherwise text; quote one with brackets or spaces for the
+shell. A text standing where an object is asked for is its kind: `"join": "blind"` is `{ "kind": "blind" }`, so
+`frame.join.fitting=printed` keeps the blind.
+
+Each command keeps the file's layout, checks the edit against the schema and against what it could break (a
+generated frame must still expand; a join's beams, a fit's parts, a fasten's items, a guide's beam, a joint's parent
+and child, a pose's joints, a wire's ends and route (its anchors, path joints and runs along a beam's slot), a loop's
+anchors, a load's joint and anchor, and a placed or mounted item's address must be there, in the entry changed and in every other entry
+that had them before), and refuses a bad one by name with nothing written: `--json` gives the refusal as `{ "error": {
+"code", "message", "file", "path", "refs" } }`. `--dry-run` does it all and writes nothing. Done, it prints each change
+(`set frame.feet: "levelling" → "foot"`) and the checks; `--json` gives `{ "command", "file", "written", "dryRun",
+"changes": [{ "op", "path", "before", "after" }], "findings" }`, the findings in the kit's one shape. A generated
+frame's beams are not in the file, so `cad set` and `cad move` refuse them by name (`edit.generated`): change the
+frame's own fields, or write it out with `cad frame <ref> --expand` first.
+
+| Refusal | When |
+|---|---|
+| `project.exists`, `assembly.exists` | `cad new` of one that is there, or a field given to `cad new <project>` or `--material` or `--printer` given to `cad new <project>/<assembly> --assembly` that differs from the project's own (they are the project's: `cad set <project> material=PETG`, as the refusal names). Fields that match it change nothing and pass, so a step can run twice. Where the project is not there, the assembly makes it with them, each checked as `cad new <project>` checks it |
+| `project.printer` | A printer with no rule set |
+| `project.material` | A material printed fittings cannot be sized from: anything but PLA, PETG or a rule set in `rules/` giving strength, modulus and density. Every frame command reads the project's material as it builds the joins, guides and panels, so one it cannot read would stop them all |
+| `edit.kind` | An assembly kind other than `fit` |
+| `frame.refused` | A generated frame the generator refuses (a portal with nothing holding its feet, an end-tap join its profile cannot take) |
+| `edit.address`, `edit.ambiguous`, `edit.generated` | An address nothing has, an id two lists share, a generated frame's part |
+| `edit.part`, `edit.incomplete`, `edit.duplicate` | A name that is not in the assembly, an entry missing what it needs, an id already taken. A name the build makes counts as there only where an entry makes it, by its exact pattern: a repeated item's copies (`key-0`, `key-0-3`), a mounted item's mount (`psu-mount`), a panel's clips, hinges, leaves, handle and catch, a levelling foot's pad, a join's fitting (`y1-x1-bracket`), a wire's clips, a guide's parts (`g1-carriage-1`) and joints (`g1-1`, `door-hinge`). So `rail-3` is no name where `rail` is one beam |
+| `edit.referenced` | `cad remove` of what other entries name (each listed in `refs`) |
+| `edit.renumber` | `cad remove` of a guide while guides after it have no id of their own: they are named g1, g2 .. by place, so they would be renamed |
+| `edit.dangling` | An edit that leaves another entry naming what is no longer there: a beam renamed or removed that a join, a load, a wire or a mount names, a frame changed or removed whose beams a join or a guide uses (each listed in `refs`). A name that was already missing before the edit is left to `cad check` |
+| `edit.move` | A move its entry cannot take (a beam placed by its ends sent to an address) |
+| `schema` | The edit leaves the file outside its schema |
 
 ## The workspace
 
@@ -587,6 +647,8 @@ walks one from a spec sheet to a checked box; this section is the reference. In 
 | `cad measure <beam.stl> --profile <name>` (or a DXF) | A profile from the maker's model or a DXF of its section |
 | `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0` | A beam placed by its ends |
 | `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120` | Two beams joined (Joins, below) |
+| `cad new <project>/<assembly> --assembly --frame box --inside 300,300,350 --profile 2020-misumi-hfs5` | A generated frame, expanded and checked as it is made (A frame from a size, below) |
+| `cad set`, `cad move`, `cad remove` | A frame's fields, a beam moved by its ends, a beam taken out (refused, naming them, while joins use it) (Projects and assemblies, by command, above) |
 | `cad frame <project>/<assembly>` | A generated frame's beams and joins (`--expand` writes them out; `--size` chooses the lightest profiles) |
 | `cad check <project>/<assembly>` | The joins, screws and nuts, then the frame solved: `frame.deflection`, `frame.stress`, `frame.buckling`, `frame.rack`, `frame.frequency`, `frame.square`, `frame.heat`, `beam.printable`; `--sweep` slides each guide through its travel |
 | `cad list`, `cad beams` (`--jigs`), `cad order`, `cad plates`, `cad kit` | The cut list and what to buy, a sheet per beam and the jigs, the build from bars to a square frame, the printed parts on plates, and all of it in one folder (Building it, below) |
@@ -1320,13 +1382,53 @@ it, the switch's mount where its address says:
   `nut`. The motor drives the carriage's joint with `leadscrew` from the screw's set (its lead and diameter) and
   `friction` (default the set's, an estimate), so `motor.torque`, `motor.speed` and `motor.holds` read the drive's
   ratio as they do any lead screw. `guide.drive` and `guide.coupler` (how far the shaft reaches into the coupler) say
-  what was placed. A belt is not built yet; a screw on a rail or wheels is refused.
+  what was placed. A screw on a rail or wheels is refused: a rail's carriage is driven by a belt.
 - An endstop's printed mount (`endstop-mount`) goes at a side face's address (`endstop.at`), the switch (`switch`,
   default `endstop-10t85`) on it; a flag on the carriage's far end meets its lever. Where that happens is the joint's
   lower end and its `home` (`guide.endstop`). A switch the flag cannot reach, or a mount over a holder's leg, is
   refused, naming the address where it trips at the travel's start.
 - Each carriage's loads are shared between its bearings at every pose (`joint.moment`) against their static rating;
   a moment on one bush is taken as a couple along it, an estimate, said as one.
+
+A timing belt drives a rail's one carriage: a pulley on a motor at the beam's end a, a toothed idler past the rail's
+end, both belt ends in a printed clamp on the carriage. The belt guide names the rail guide and the motor, and places
+the rest by addresses (`examples/bench` `axes/x-belt` is one, written by the edit commands):
+
+```json
+"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x1.top", "from": 30, "length": 300 },
+           { "kind": "belt", "guide": "g1", "motor": { "model": "nema17", "microsteps": 16, "current": 1.2 }, "accel": 3000 }]
+```
+
+- It adds a printed motor plate (`belt-plate`, `<id>-plate`) at `<beam>.<face>@0`, its tab screwed into the face's slot
+  and the motor (`<id>-motor`) hanging under it past the beam's end; the pulley (`pulley`, default `pulley-gt2-20`;
+  `<id>-pulley`) on the motor's shaft; a printed clamp (`belt-clamp`, `<id>-clamp`) at the carriage's `top`, screwed
+  into the carriage's own tapped holes; and the idler (`idler`, default `idler-gt2-toothed-20`; `<id>-idler`) on a
+  printed block (`belt-idler`, `<id>-idler-block`) past the rail's end, which is the tensioner: its two screws go into
+  slot nuts in the beam's slot, so loosened it slides along it. `idlerAt` places the block (default room short of the
+  beam's end b), `across` moves the idler's axle off the belt's square line, `tension` sets each span (default 25 N, an
+  estimate), `cut` says the length the belt is cut to, `height` raises the belt's middle over the face (the pulley
+  further up its shaft), `belt` its set (default `gt2-belt-6`). The rail starts after
+  the plate's tab and ends before the block, or the guide is refused naming where to put it.
+- The motor drives the carriage's joint with `belt` from the sets (the pulley's teeth, the belt's pitch, stiffness and
+  width), so `motor.torque`, `motor.speed` and the step's term in the error budget read 20 × 2 = 40 mm a turn. Its
+  load is what the belt pushes: everything the carriage carries at `accel` (the guide's, else the task's, else 1000
+  mm/s²), a load on the joint that `motor.holds` leaves out (it is not there at rest). The push goes either way along
+  the travel, so on an upright or sloping axis it adds to the weight: 1.04 kg on an upright 2020 at 5000 mm/s² needs
+  10.18 + 5.19 = 15.37 N. Its shaft turns square to the travel (`motor.axis`).
+- `belt.length` gives the path by the belt's pitch line, the length to cut it (whole teeth that stretch to the path at
+  the tension) and to buy, rounded up to whole metres (`cad list` shows `gt2-belt-6 x 1000 mm`). `belt.tension` holds
+  each span, with the push and the weight along the travel, between the belt's least static tension and its rated
+  tension. `belt.rub` fails a run that rubs the beam, the rail, the carriage, the clamp or anything else on the
+  carriage (by its box) anywhere through the travel, naming the run, the part and where; for a part on the carriage it
+  gives the `height` that clears it by 1 mm. Its pass says how far the return run passes over the carriage's top
+  (3.4 mm for an MGN12H on a 2020), the room a part on the carriage's free holes has under it.
+  `belt.line` fails an idler off the pulley's line past 0.25° (an estimate). `belt.tensioner` says where the block
+  must slide along its slot to tension the belt as cut, and fails when the slot has no room left there, saying how
+  much shorter or longer to cut it. `belt.stretch` gives the belt's stretch under the push, the term `belt stretch` in
+  a task's error budget.
+- The belt is drawn where the carriage starts its travel and left out of the overlap check: its runs move with the
+  carriage, so `belt.rub` holds them through the whole travel. The plate, the clamp and the block each report their
+  grams, their margin and how they print, and pass printcheck as drawn.
 
 ## Optimised parts
 

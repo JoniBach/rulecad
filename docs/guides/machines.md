@@ -122,7 +122,17 @@ examples: use what your bench says, not these.
 The arm stands on its own base. A machine with axes along beams (a slider, a plotter, a gantry) stands on a frame
 instead, and the frame is part of its error budget: the beam the axis runs on sags, is never quite straight, and
 twists. Build the frame first, from [the frames guide](../building-frames/), then put the axis and the task on it in
-the same assembly. Here, the box from that guide with a rail along its top front beam:
+the same assembly. Here, the box from that guide with a rail along its top front beam, a tool's mass on its
+carriage and the task, each written by a command that checks it first:
+
+```sh
+npx cad new frame/slide --assembly --title "Box frame with an axis" --frame box --inside 300,300,350 --profile 2020-misumi-hfs5 --join blind --feet levelling
+npx cad add guide frame/slide --kind rail rail=rail-mgn12 carriage=MGN12H on=x3.top from=25 length=250 nut=drop-in
+npx cad add load frame/slide --mass 1 --at g1-carriage-1.top --note "A 1 kg tool on the carriage"
+npx cad set frame/slide task.tool=g1-carriage-1.top "task.volume.x=[100,240]" "task.volume.y=[10,10]" "task.volume.z=[421.5,421.5]" task.accuracy=0.5 task.speed=100 task.accel=1000
+```
+
+The assembly they write, laid out shorter here:
 
 ```json
 {
