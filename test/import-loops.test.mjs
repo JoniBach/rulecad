@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { transformSync } from 'esbuild';
 import { loader } from './no-cycle-loader.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -31,9 +32,14 @@ function sources(dir, out = new Map()) {
 
 // A static import or re-export of a relative path, one statement at a time: import { a, b } from './x.mjs' (over
 // several lines too), import x, * as y from, export * from, export { a } from, and import './x.mjs' for its effect.
-// Comments are dropped first, so an example in one isn't read as an import.
+// The source is first read by a JavaScript parser (esbuild, the one test/no-cycle-loader.mjs uses) and printed back
+// without its comments, so an example in a comment isn't read as an import, and a "/*" or "//" inside a string, a
+// template or a line comment (packages/cad/lib/schema.mjs opens on "// ... (schemas/*.schema.json)") hides none.
+// A regular expression over the raw text cannot tell those apart: one stripping /* ... */ first lost every import up
+// to the next "*/". The parser keeps every import as written, used or not, as it does for any .js or .mjs file.
 const IMPORT = /(?:^|[;\n])\s*(?:import|export)\s*(?:[\w$]+\s*,?\s*)?(?:\{[^}]*\}|\*(?:\s*as\s+[\w$]+)?)?\s*from\s*(['"])(\.{1,2}\/[^'"]+)\1|(?:^|[;\n])\s*import\s*(['"])(\.{1,2}\/[^'"]+)\3/g;
-export const importsOf = (src) => [...src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').matchAll(IMPORT)].map((m) => m[2] ?? m[4]);
+const uncommented = (src) => transformSync(src, { loader: 'js', legalComments: 'none', logLevel: 'silent' }).code;
+export const importsOf = (src) => [...uncommented(src).matchAll(IMPORT)].map((m) => m[2] ?? m[4]);
 
 /** The loops among some modules (file -> source): each a sorted list of the files that import each other round. */
 export function loops(files) {
@@ -73,6 +79,15 @@ test('the walk finds a loop when one is put back', () => {
   assert.deepEqual(loops(new Map([[at('d.mjs'), "import './d.mjs';"]])), [[at('d.mjs')]]);
   // what isn't a loop: an import in a comment, import() as it runs, a chain that ends
   assert.deepEqual(loops(new Map([[at('e.mjs'), "// import { f } from './f.mjs';\n/* export * from './f.mjs' */\nexport const e = () => import('./f.mjs');"], [at('f.mjs'), "import { e } from './e.mjs';"]])), []);
+  // a "/*" that opens no comment: in a line comment, a string or a template (and a "*/" later on), with real imports
+  // between; each pair is a loop all the same
+  const hid = (where) => loops(new Map([[at('g.mjs'), `${where}\nimport { h } from './h.mjs';\nexport const g = 1; // ends */`], [at('h.mjs'), "import { g } from './g.mjs';"]]));
+  for (const where of ['// the schemas (schemas/*.schema.json)', "const glob = 'schemas/*.json';", 'const glob = `a/*${1}`;', 'const re = /a\\/*b/;'])
+    assert.deepEqual(hid(where), [[at('g.mjs'), at('h.mjs')]], where);
+  // the repository's own case: cad's schema.mjs (whose line 1 is such a comment) and errors.mjs importing it back
+  const cad = sources(path.join(packages, 'cad', 'lib')), errors = path.join(packages, 'cad', 'lib', 'errors.mjs');
+  cad.set(errors, "import { validate } from './schema.mjs';\n" + cad.get(errors));
+  assert.equal(shown(loops(cad)), 'packages/cad/lib/errors.mjs <-> packages/cad/lib/schema.mjs');
 });
 
 // Each module a package offers (its package.json exports): what a design imports
