@@ -30,7 +30,7 @@ export function motorBuilt(spec, num, id) {
   const anchors = Object.fromEntries(Object.entries(model.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis }]));
   const values = Object.fromEntries(Object.entries(model.figures).filter(([, f]) => typeof f.value === 'number').map(([k, f]) => [k, f.value]));
   const entries = Object.entries(model.figures).map(([k, f]) => ({ name: `${model.name}.${k}`, value: f.value, unit: f.unit, rule: f.rule, kind: f.kind, source: f.source, checked: f.checked, set: model.name }));
-  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: null, part: 'motor', mass: model.mass ?? null } } });
+  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: String(spec.model).toLowerCase() === model.name.toLowerCase() ? null : String(spec.model), part: 'motor', mass: model.mass ?? null } } });
 }
 
 // Which joint each motor drives, checked by name; a servo's range and a stepper's step go on the joint. The shaft

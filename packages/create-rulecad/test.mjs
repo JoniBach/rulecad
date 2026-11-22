@@ -99,6 +99,21 @@ test('--machine arm: a fresh workspace, sized from the sheet and the accuracy, c
     const fails = r.findings.filter((x) => x.level === 'fail');
     assert.equal(fails.length, 0, fails.map((x) => x.text).join('\n'));
     assert.equal(r.findings.find((x) => x.code === 'task.reach').level, 'pass');
+    // The elbow on a 17HS4401, the shoulder's motor, on 12 V at 0.5 A, by hand. What it must do (arm.elbow_torque): the
+    // pen's 0.3 N of drag at 115 mm, 0.035 N m, the forearm's 0.0006 kg m2 at 500 mm/s2 over 115 mm (4.35 rad/s2),
+    // 0.003 N m, and the band's 0.04 N m bias: 0.077, so 0.08 N m. What it gives: 0.4 N m holding (the 17HS4401's,
+    // community) / √2 = 0.2828 N m moving, flat to 60 × 12 / (2 × 0.0042 H × 1.5 A × 200) = 285.7 rpm on 12 V; at
+    // 300 rpm 0.2828 × 285.7 / 300 = 0.2694 N m, at 0.5 of its 1.5 A 0.0898 N m, through 38:1 at the gears' 47% forwards
+    // 0.0898 × 38 × 0.469 = 1.60 N m: 20 times the 0.08. (The NEMA 14 it replaces gave 1.419 N m on 24 V, 17.7 times.)
+    const elbow = r.findings.find((x) => x.code === 'motor.torque' && x.refs?.joint === 'elbow');
+    assert.equal(elbow.level, 'pass', elbow.text); assert.equal(elbow.values.supply, 12);
+    const byHand = (0.4 / Math.SQRT2) * ((60 * 12) / (2 * 0.0042 * 1.5 * 200) / 300) * (0.5 / 1.5) * 38 * 0.469;
+    assert.ok(Math.abs(elbow.values.available - byHand) / byHand < 0.005, `${elbow.values.available} N m against ${byHand} by hand`);
+    assert.equal(elbow.values.needed, 0.08); assert.ok(elbow.values.margin > 19.9 && elbow.values.margin < 20.2, String(elbow.values.margin));
+    assert.match(r.findings.find((x) => x.code === 'motor.model' && x.refs?.item === 'm2').text, /m2: nema17, 280 g/, 'the 17HS4401 at the elbow');
+    // the drivers at 1/8 step and 0.5 A: 0.25 V on each trimmer for the DRV8825's 0.1 ohm sense resistors (Vref = I / 2)
+    assert.deepEqual(r.findings.filter((x) => x.code === 'motor.driver' && x.level === 'pass').map((x) => x.values.vref), [0.25, 0.25]);
+    assert.match(r.findings.find((x) => x.code === 'power.supply').text, /at 12 V/);
     const plot = execFileSync(process.execPath, [CAD, 'plot', 'arm/arm', 'projects/arm/drawings/test.svg'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.match(plot, /s|step|plot/i);
     assert.ok(fs.readdirSync(path.join(dir, 'exports/arm')).some((f) => f.endsWith('.steps.json')), 'a step file for the streamer');
