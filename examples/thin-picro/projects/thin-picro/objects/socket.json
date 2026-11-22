@@ -1,0 +1,15 @@
+{
+  "name": "socket",
+  "title": "0.1 in female socket (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "orientation": "Not printed: a female socket strip soldered into a board, its pins along y. The board's top is z = 0.",
+  "parts": { "body": { "label": "Socket" }, "pins": { "label": "Pins" } },
+  "variables": {
+    "pins": { "value": 8, "rule": "Pins in the strip", "tweak": { "min": 1, "max": 40 } },
+    "pitch": { "value": 2.54, "unit": "mm", "rule": "Pin pitch, 0.1 in" },
+    "height": { "value": 8.5, "unit": "mm", "rule": "A standard socket's height", "source": "KiCad footprint library, Connector_PinSocket_2.54mm (8.5 mm sockets)", "interface": true },
+    "pin": { "value": 0.64, "unit": "mm", "rule": "A square pin's side" },
+    "below": { "value": 3, "unit": "mm", "rule": "Pins below the board they're soldered into: through the module and into the board under it" }
+  }
+}
