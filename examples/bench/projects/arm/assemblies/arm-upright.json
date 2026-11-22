@@ -7,7 +7,7 @@
   "uses": ["arm", "lift"],
   "items": [
     { "id": "base", "object": "base", "rotate": [90, 0, 0] },
-    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 1, "microsteps": 8 }, "have": true },
+    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.8, "microsteps": 8 }, "have": true },
     { "id": "housing", "object": "housing", "at": [0, "0 - arm.face", 0], "rotate": [90, 0, 0] },
     { "id": "sun", "object": "sun" },
     { "id": "carrier", "object": "speck" },

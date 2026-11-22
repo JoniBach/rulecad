@@ -6041,7 +6041,7 @@ test('the bench arm on the parts its builder has: a 17HS4401 at each joint on 12
     const asm = (name) => JSON.parse(fs.readFileSync(path.join(ws, `projects/arm/assemblies/${name}.json`), 'utf8'));
     // what is on the bench (2026-11-20): 17HS4401 steppers, DRV8825s on a CNC Shield V3 with M0 and M1 jumpered (1/8),
     // a 12 V bench supply, one SG90
-    for (const [name, currents] of [['arm', [0.5, 0.5]], ['arm-upright', [1, 0.5]]]) {
+    for (const [name, currents] of [['arm', [0.5, 0.5]], ['arm-upright', [0.8, 0.5]]]) {
       const a = asm(name), item = (id) => a.items.find((x) => x.id === id);
       assert.deepEqual(['m1', 'm2'].map((id) => [item(id).motor.model, item(id).motor.current, item(id).motor.microsteps, item(id).have]), [['17HS4401', currents[0], 8, true], ['17HS4401', currents[1], 8, true]], name);
       assert.equal(item('psu').bought, 'supply-12v'); assert.ok(item('psu').set.output_current < 2, 'the bench supply\'s limit, under 2 A');
