@@ -4449,9 +4449,10 @@ test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carr
     run('add', 'guide', 'axes/x-belt', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x1.top', 'from=30', 'length=300');
     run('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g1', 'motor.model=nema17', 'motor.microsteps=16', 'motor.current=1.2', 'accel=3000');
     run('add', 'load', 'axes/x-belt', 'mass=0.5', 'at=g1-carriage-1.top');
-    // the commands write the bench example's file (examples/bench axes/x-belt), byte for byte
-    const benchFile = path.join(path.dirname(ROOT_MODULES), 'examples/bench/projects/axes/assemblies/x-belt.json');
-    assert.equal(fs.readFileSync(path.join(ws, 'projects/axes/assemblies/x-belt.json'), 'utf8'), fs.readFileSync(benchFile, 'utf8'));
+    // the commands write the bench example's file (examples/bench axes/x-belt), line for line (a Windows checkout
+    // gives the example CRLF line endings; the commands write LF, as every file the kit writes)
+    const benchFile = path.join(path.dirname(ROOT_MODULES), 'examples/bench/projects/axes/assemblies/x-belt.json'), lf = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    assert.equal(lf(path.join(ws, 'projects/axes/assemblies/x-belt.json')), lf(benchFile));
     // the same axis with its idler moved 12 mm across, and with its belt cut 22 mm long
     const dir = path.join(ws, 'projects/axes/assemblies');
     for (const n of ['x-moved', 'x-long']) fs.copyFileSync(path.join(dir, 'x-belt.json'), path.join(dir, `${n}.json`));
