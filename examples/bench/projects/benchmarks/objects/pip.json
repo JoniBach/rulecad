@@ -188,7 +188,7 @@
     "plate": {
       "value": 4.5,
       "unit": "mm",
-      "rule": "Each post's top over its window, under the motor: 4.5 mm so an M3 head can't pull through, and an M3x8 hex-head screw then has 3.5 mm in the motor's 4.5 mm thread"
+      "rule": "Each post's top over its window, under the motor: one and a half of its screws' diameters, the least v.motors' mountModel takes before a head pulls through. pipScrews (shoulder-pip-parts.js) names the screw through v.fixings, the motor's own thread at the longest length sold that stays in its tapped holes, and fails the build if mountModel finds the screw short or the plate thin"
     },
     "hub": {
       "value": 12,
@@ -237,12 +237,12 @@
     "window_w": {
       "value": 10,
       "unit": "mm",
-      "rule": "Each post's window across: an M3 hex head's 6.4 mm corners and an open spanner's jaws round them"
+      "rule": "Each post's window across: the motor's screw's hexagon head across its corners (v.fixings' screwModel, held to it by pipScrews) and an open spanner's jaws round them"
     },
     "window_h": {
       "value": 5,
       "unit": "mm",
-      "rule": "Each post's window, upright, before its top rises: the hex head's 2 mm and a spanner's thickness"
+      "rule": "Each post's window, upright, before its top rises: the hexagon head's height (v.fixings' screwModel, held to it by pipScrews) and a spanner's thickness"
     },
     "bridge": {
       "value": "x1c.bridge",

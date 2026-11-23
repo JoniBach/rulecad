@@ -9,6 +9,22 @@ const { cylinder, cylinderElliptic, cuboid } = jscad.primitives
 const { hull } = jscad.hulls
 const { translate, rotateX, rotateZ } = jscad.transforms
 
+// The motor's four screws, from v.motors and v.fixings: its own thread, hexagon-headed so a spanner turns them in the
+// posts' windows, at the longest length sold that mountModel lets through the posts' tops (plate) without bottoming out
+// in the motor's thread. The figures the posts are drawn to (plate, window_w, window_h) are held to that screw here: the
+// thread and its head are never typed in the .json
+export function pipScrews (v) {
+  const motor = v.motors.motorModel('17HS4401'), thread = motor.mount.thread
+  const most = v.motors.mountModel(motor, { plate: v.plate, screw: `${thread} hex` }).screwLength
+  const length = Math.max(...v.fixings.fixingModel(thread).figures.lengths.value.filter((l) => l <= most))
+  const screw = v.fixings.screwModel(`${thread}x${length} hex`), mount = v.motors.mountModel(motor, { plate: v.plate, screw: screw.name })
+  const said = mount.findings.filter((f) => f.level === 'fail' || f.level === 'warn').map((f) => f.text)
+  if (said.length) throw new Error(`the posts' tops (plate, ${v.plate} mm) under the motor: ${said.join('; ')}`)
+  if (v.window_w < screw.headDiameter + 2 * v.gap) throw new Error(`each post's window (window_w, ${v.window_w} mm) is narrower than ${screw.name}'s head across its corners (${screw.headDiameter} mm) and a print gap each side`)
+  if (v.window_h < screw.headHeight + v.gap) throw new Error(`each post's window (window_h, ${v.window_h} mm) is lower than ${screw.name}'s head (${screw.headHeight} mm) and a print gap`)
+  return { thread, screw, mount }
+}
+
 export function pipParts (v) {
   const motor = v.motors.motorModel('17HS4401')
   const deg = Math.PI / v.half_turn
@@ -73,7 +89,7 @@ export function pipParts (v) {
     const teeth = v.ops.union(plainRing(v.ring, z1 + s0, 2 * R), translate([0, 0, z1 + s0], ring(v.ring, 'left', v.high - s0, 2 * R, 0)))
     const below = v.ops.union(v.ops.intersect(cone(under, under - top, 0, top), disc(skirt, 0, top)), cone(skirt + c, skirt, 0, c))
     const roof = v.ops.subtract(disc(R, top, roofTop), cone(reach + g, v.opening / 2, top, roofAt - v.opening / 2), disc(v.opening / 2, top, roofTop + 1))
-    const hole = v.fixings.holeModel('M3').diameter, rise = (v.window_w - v.bridge) / 2
+    const hole = v.fixings.holeModel(pipScrews(v).thread).diameter, rise = (v.window_w - v.bridge) / 2
     const block = (x0, x1, y0, y1, z0, z2) => translate([(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z2) / 2], cuboid({ size: [x1 - x0, y1 - y0, z2 - z0] }))
     const post = (x, y) => {
       const r = Math.hypot(x, y), x0 = r - v.post_r / 2, x1 = r + v.post_r / 2
