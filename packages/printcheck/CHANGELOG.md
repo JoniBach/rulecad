@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. Releases before this file was started are described
 in their pull requests on GitHub.
 
-## Unreleased
+## 0.3.3: gaps and bridges in a print-in-place part (#162)
 
 ### Changed
 
