@@ -9,6 +9,13 @@ and head, the parts it passes through and the part it ends in.
 
 ### Fixed
 
+- `--dry-run` never writes. It was a flag every command accepted, and four that did not handle it wrote the file
+  anyway: `cad set <project>/<object>` (an object's variables), `cad add fasten --from-fits`, `cad frame --expand` and
+  `cad frame --size --write`. Each now runs every check and writes nothing on a dry run, saying what it would write;
+  with `--json` it answers `written: false, dryRun: true`. Any other command given `--dry-run` (`cad measured`,
+  `cad check`, `cad export` and the rest) refuses it by name and runs nothing, listing the commands that take one.
+  `setVariables(ref, changes, { dryRun })` and `fastenFromFitsEdit(ref, found, { dryRun })` in `lib/edit.mjs` take it
+  too, and `setVariables` now checks the edit before it writes, so a refused one never touches the file.
 - `cad new <project>/<object>` takes `--dry-run` and `--json` as the other edits do. Before, a dry run made the
   object's files anyway, and `--json` printed a line of words. Now a dry run writes nothing and says what it would make;
   `--json` answers `{ command, file, written, dryRun, made, changes, findings }`; an object already there is refused

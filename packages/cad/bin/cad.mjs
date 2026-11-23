@@ -57,7 +57,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
   cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
-  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
+  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one] [--dry-run]
   cad set <project>/<assembly> <address>=<value> …   change an assembly's fields: an entry's by its id or place (x1.at=[0,0,20],
                                     joins.3.kind=bracket), or its own (title=…, frame.join.fitting=printed, frame.inside=[300,300,400]);
                                     a value is JSON, a [list, of, names] or text
@@ -69,7 +69,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad remove <project>/<assembly> <id | list.n | id.field>   take an entry or a field out; refused, naming them, while other
                                     entries name it, unless --with-refs takes them out too
   Every edit (new, set, add, move, remove): checked against the schema and what it could break before it is written,
-  refused by name with nothing written; --dry-run shows it without writing; --json says what changed, and the checks
+  refused by name with nothing written; --dry-run shows it without writing (also add fasten --from-fits, frame --expand and
+  frame --size --write; any other command refuses --dry-run); --json says what changed, and the checks
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
@@ -115,9 +116,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad kit <project>/<assembly>      the folder to build it from without the model, in exports/: README.md (checks, what to buy and print, cut list, drilling, the build step by step), buy.csv, the plates' 3MFs, the jigs, each beam's sheet [--pictures] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad frame <project>/<assembly>    a generated frame ("frame": { "kind": "box", "inside": [..] }): its size, its beams by length, its joins and ends
-                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json]
+                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json] [--dry-run]
                                      --size: any frame's beams, by group, each given the lightest profile from frame.size.profiles that meets
-                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json]
+                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json] [--dry-run]
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
                                      --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
                                      guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]

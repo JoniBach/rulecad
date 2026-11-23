@@ -200,6 +200,12 @@ Each tool is one command. A tool's picks fill its arguments; its options pane fi
 | Release | Release, history, compare | Write the release note; pick two versions | `cad release -m …`, `history`, `diff`, `compare` |
 | Release | Share and print | Get a link, a 3MF, a picture | `cad link`, `cad export`, `cad preview` |
 
+Every tool in the Project, Object, Assembly and Frame workspaces that writes runs a command that takes `--dry-run`:
+`cad new`, `set`, `add`, `remove`, `move`, `frame --expand` and `frame --size --write` (and `cad release` in the
+Release workspace). Measured is the one edit without a dry run: `cad measured` records a figure in the project's
+ledger and its rule sets, and takes no `--dry-run`, so the page shows the figures typed and sends them once, on
+"Apply". Any command given `--dry-run` that does not take it refuses it by name and runs nothing (gap 2 says why).
+
 ## 5. How a session works
 
 1. **Open.** `cad studio` (a name to decide) in the workspace starts a server on `127.0.0.1` and opens the page. It
@@ -209,7 +215,7 @@ Each tool is one command. A tool's picks fill its arguments; its options pane fi
    A pick on a beam's face is turned into an address by projecting the hit point on the beam's axis and choosing the
    face whose outward direction is nearest the surface's (`x1.top@142`).
 3. **Edit.** The user chooses a tool and gives what it needs. As they do, each change of an option or each step of a
-   drag sends a dry run (`dryRun: true`). At about 5 ms a dry run, the pane shows the changes and the checks as the
+   drag sends a dry run (`dryRun: true`); Measured, whose command takes none, sends nothing until "Apply" (section 4). At about 5 ms a dry run, the pane shows the changes and the checks as the
    pointer moves, and the view shows where the item would go. A refusal shows in place of the changes, by its code,
    with what would be accepted.
 4. **Commit.** On release of the drag, or "Apply", the same request goes again without `dryRun`; the file is written,
@@ -250,11 +256,17 @@ with nothing installed, is the last phase, not the first.
 1. **No session server.** Commands run one process each (1.24 s an edit). The argument handling that turns `--at`,
    `field=value` and lists into an entry lives in `bin/cad.mjs`, mixed with printing. A function that takes a command
    as data and returns the `--json` answer, shared by the command line and the server, is the first piece of work.
-2. **Object edits answer in another shape.** `cad set <project>/<object>` returns `{ file, changed }`, with no
-   `--dry-run` and no `changes` or `findings`. It needs the assembly edits' shape so the Object workspace can preview
-   and undo. `cad new <project>/<object>` (the New object tool) had the same gap until cad's Unreleased changes: it
-   wrote the object's files on a dry run and answered `--json` with a line of words. It now answers in the edits' shape
-   and writes nothing on a dry run, so the runner of phase 1, "One runner", can call it as it calls the others.
+2. **Three edits answer in other shapes, and one has no dry run.** `cad set <project>/<object>` answers
+   `{ file, changed, written, dryRun }`, `cad add fasten --from-fits` answers `{ file, added, written, dryRun }` and
+   `cad frame <ref> --expand` answers with the expanded assembly: none gives `changes` or `findings`, which the Object
+   workspace and the journal need to preview and undo. Each takes `--dry-run` only from cad's Unreleased changes.
+   Before them `--dry-run` was a flag every command accepted, and these three, with `cad frame <ref> --size --write`,
+   passed it over and wrote the file: `cad set shed/hinge width=45 --dry-run` set the width to 45. `cad measured`
+   still takes none, as it records a figure rather than editing a design. Now each of the four writes nothing on a dry
+   run, and any other command given `--dry-run`, `cad measured` among them, refuses it by name and runs nothing, so a
+   dry run can never write. `cad new <project>/<object>` (the New object tool) had the same gap: it wrote the object's
+   files on a dry run and answered `--json` with a line of words. It now answers in the edits' shape and writes
+   nothing on a dry run, so the runner of phase 1, "One runner", can call it as it calls the others.
 3. **No command yet** for an object's parts and anchors, rule sets, problems or variants (listed as follow-ups in
    [#291](https://github.com/JoniBach/rulecad/pull/291)). A tool for each needs its command first, so the terminal
    and the page stay equal.
@@ -284,7 +296,7 @@ four days, **L** a week or more. Each phase is useful on its own, and each is a 
 
 | Phase | What it gives | Size (estimate) |
 |---|---|---|
-| 1. One runner | Every edit command callable as data, `{ command, ref, args, dryRun }` in, the `--json` answer out, used by `bin/cad.mjs` itself; object variable edits in the same shape with `--dry-run`, `cad new <project>/<object>` among the commands it runs (gaps 1 and 2) | M |
+| 1. One runner | Every edit command callable as data, `{ command, ref, args, dryRun }` in, the `--json` answer out, used by `bin/cad.mjs` itself; object variable edits, `cad add fasten --from-fits` and `cad frame <ref> --expand` answering in the same shape with `changes` and `findings`, `cad new <project>/<object>` among the commands it runs (gaps 1 and 2) | M |
 | 2. Studio, read only | `cad studio`: the server (127.0.0.1, a token), the page with tabs, tree, the model page's view and findings drawn on the model; rebuilds when files change (gaps 8, 9, 10) | M |
 | 3. Studio, editing | The palette for the Assembly and Frame workspaces as in section 4, dry runs while choosing, apply, the journal with undo and copy as command | L |
 | 4. Picks and handles | Picks as addresses, beams drawn by two clicks, items dragged along slots with snapping, handles to turn (gaps 4 and 6) | L |
