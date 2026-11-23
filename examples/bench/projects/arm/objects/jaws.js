@@ -1,9 +1,9 @@
 // The arm's gripper made from the flexures kit's gripperJaws: two jaws, each on a parallel guide (two leaves), resting
-// closed on a 1 mm gap and opened by the SG90's double horn turning between their bars. The springs grip; the servo
+// closed on a 2 mm gap and opened by the SG90's double horn turning between their bars. The springs grip; the servo
 // only opens, so it holds with the power off. Each guide has a stop both ways (a tongue in a slot in its fork).
 // Around the generator: the block in the forearm's yoke (as the hand-built gripper's), a plate joining the two root
 // blocks, a spine down the middle under the horn's plane, and two posts up from the bed to the servo's tabs. The
-// servo's case sits above the print; its horn turns in the print's plane, 3 mm above the middle (the guides' leaves,
+// servo's case sits above the print; its horn turns in the print's plane, 4 mm above the middle (the guides' leaves,
 // 16 mm wide, take the small twist that leaves). The front post's side keeps clear of the horn's arm at rest.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder, polygon } = jscad.primitives
@@ -13,7 +13,7 @@ const { measureBoundingBox } = jscad.measurements
 
 export function main (v) {
   const W = v.width, box = (x0, x1, y0, y1, z0 = 0, z1 = W) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
-  const p = { width: W, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { close: v.stop_close }, base: v.base }
+  const p = { width: W, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close }, base: v.base }
   const jaws = (part) => translate([v.xs, 0, 0], v.flexures.gripperJaws(p, { part }))
   const ground = jaws('ground'), back = measureBoundingBox(ground)[0][0], wide = measureBoundingBox(ground)[1][1]
   if (Math.abs(back - v.block_x) > v.tol) throw new Error(`jaws: the root blocks start at x ${back.toFixed(2)}, not at the yoke block's front ${v.block_x}: set xs to ${(v.xs + v.block_x - back).toFixed(2)}`)

@@ -1007,6 +1007,24 @@ test('gripper jaws: the model says when the servo cannot open the springs, when 
   assert.deepEqual(printed.filter((f) => f.code.startsWith('flexure.')).map((f) => [f.code, f.level]), [['flexure.lines', 'pass'], ['flexure.stop', 'pass'], ['flexure.strain', 'pass']], 'the leaves print in whole lines and layers');
 });
 
+test('gripper jaws: a stop takes the servo\'s full stall torque, whatever share of it is counted on to open', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const stop = (p, o) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === 'gripper.stop');
+  // A servo driven onto a stop stalls there and pushes with all of its torque. The stop at the stroke and 0.5,
+  // 4.5635 + 0.5 = 5.0635 mm: the tip there puts the arm at sin a = (14 - 2.25 + 5.0635) / 18 = 0.934083, cos a =
+  // 0.357057, so it pushes 176.5 / (2 x 18 x 0.357057) = 13.7311 N; the guide takes 0.57872 x 5.0635 = 2.9303 N back,
+  // and the tongue the rest, 10.8008 N
+  const s = stop(jawsP, {});
+  near(s.values.onStop, 10.8008, 1e-3, 'the push on the stop'); near(s.values.open, 5.0635, 1e-4, 'the stop'); near(s.values.most, s.values.open + s.values.onStop / s.values.tongue, 1e-9, 'with the tongue\'s give');
+  assert.match(s.text, /at its full stall torque \(0\.1765 N m\) the horn pushes 10\.8 N more/);
+  for (const share of [0.3, 1]) assert.deepEqual(stop(jawsP, { share }), s, `share ${share} leaves the stop as it is`);
+  // the arm's leaves (37 mm with 1 mm rounds, a 2 mm gap, closing stop 0.85): at the default stop the full stall
+  // torque gives the leaves 5.46 mm, 83% of their 6.62 mm limit, past travelStop's 0.8 (60% of it would read 79%)
+  const arm = { ...jawsP, leaf: { ...jawsP.leaf, length: 37, fillet: 1 }, horn: { reach: 18, tip: 2.25, open: 65 }, jaws: { from: 20, to: 30, gap: 2 }, stop: { close: 0.85 }, base: 6 };
+  const warn = stop(arm, {});
+  assert.equal(warn.level, 'warn'); assert.match(warn.text, /gives to 5\.46 mm: 83% of the leaves' limit of 6\.62 mm, past the 0\.8 travelStop allows/);
+});
+
 test('gripper jaws: bad input is refused by name, before any sums', async () => {
   const { gripperJaws, gripperJawsModel } = await import('@rulecad/flexures');
   const bad = (p, re) => { assert.throws(() => gripperJaws(p), re); assert.throws(() => gripperJawsModel(p, petgJ, { torque: 0.1765 }), re); };
@@ -1056,12 +1074,12 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   const read = (rel) => JSON.parse(fs.readFileSync(new URL(`../../examples/bench/${rel}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
   const v = Object.fromEntries(Object.entries(read('projects/arm/objects/jaws.json').variables).map(([k, x]) => [k, x.value]));
   const lift = read('rules/lift.json').rules;
-  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { close: v.stop_close }, base: v.base };
+  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close }, base: v.base };
   // PETG as the bench has it: E 1810 MPa, 34 MPa, a strain limit of 34 / 1810 / 1.5; the SG90's stall torque 0.1765 N m
   const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
   const m = gripperJawsModel(p, petg, { torque: 0.1765, payload: lift.payload.value, accel: 300, printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } });
   assert.deepEqual(m.findings.filter((f) => f.level !== 'pass').map((f) => f.code), [], 'every finding passes');
-  // the root blocks start at the yoke block's front: xs = block_x - back (8 + 71.97)
+  // the root blocks start at the yoke block's front: xs = block_x - back (8 + 71.92)
   near(v.xs, v.block_x - m.at.back, 0.01, 'xs'); near(measureBoundingBox(gripperJaws(p, { part: 'ground' }))[0][0] + v.xs, v.block_x, 0.01, 'the drawn back');
   // the rest angle the anchors use is the model's: asin((14 - 2.25) / 18) = 40.75°
   near(v.rest_a, m.rest, 0.01, 'rest_a');
@@ -1069,6 +1087,17 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   // 2 × 1.0107 / (2 × 0.4) = 2.5267 N a jaw; at k 0.6824 N/mm that is (w - 2) / 2 × 0.6824 >= 2.5267, w >= 9.405.
   // The widest that goes in: 2 + 2 × 4.5635 - 2 × 0.3 = 10.527
   near(m.rated, 9.41, 0.01, '100 g held twice over from 9.41 mm'); near(m.widest, 10.53, 0.01, 'up to 10.53 mm');
+  // the opening stop at 4.8 mm: the tip there puts the arm at sin a = (14 - 2.25 + 4.8) / 18 = 0.919444, cos a =
+  // 0.393220; the SG90 stalled on it pushes 176.5 / (2 x 18 x 0.393220) = 12.468 N, less the guide's 0.737 x 4.8 =
+  // 3.538 N: 8.93 N on the tongue, which gives to 5.15 mm, 78% of the leaves' 6.62 mm limit
+  const st = m.findings.find((f) => f.code === 'gripper.stop');
+  near(st.values.onStop, 8.93, 0.01, 'the push on the stop'); assert.match(st.text, /gives to 5\.15 mm: 78% of the leaves' limit of 6\.62 mm$/);
+  // the words say what the figures are: the gap at rest, and the horn's plane (width + 0.3 - 4.3 = 12) above the
+  // middle of the 16 mm print (8), so 4 mm
+  const jj = read('projects/arm/objects/jaws.json'), js = fs.readFileSync(new URL('../../examples/bench/projects/arm/objects/jaws.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(jj.variables.horn_z.value, 'width + 0.3 - 4.3', 'the horn\'s plane as worked out below');
+  for (const text of [jj.description, js]) assert.ok(text.includes(`closed on a ${v.jaw_gap} mm gap`), `the gap at rest is ${v.jaw_gap} mm`);
+  assert.ok(js.includes(`${v.width + 0.3 - 4.3 - v.width / 2} mm above the middle`), 'the horn\'s plane above the middle');
   // the posts between the forks: they close to 7.58 - 0.85 = 6.73 at their stops, the posts are 5.9 each side
   assert.ok(m.at.guide - (p.leaf.apart / 2 + p.leaf.thickness / 2 + p.leaf.fillet + 0.5) - v.stop_close - v.post_y >= 0.3, 'the posts clear the closed forks by a print gap');
   // the README's example is these jaws: its figures are the code's

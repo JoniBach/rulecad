@@ -9,7 +9,7 @@
   "engine": "manifold",
   "material": "PETG",
   "orientation": "Flat on the bed, the leaves upright in their layers: the same outline from the bed to the top, and two posts rising straight from the bed to the servo",
-  "description": "The flexures kit's gripperJaws in place of the hand-built gripper: the same yoke block and screws, the same SG90 and double horn. Two jaws on parallel guides rest closed on a 1 mm gap; the horn opens them, the springs grip, so it holds with the servo off. Each guide stops both ways on a tongue in its fork. Drawn at rest, the leaves straight.",
+  "description": "The flexures kit's gripperJaws in place of the hand-built gripper: the same yoke block and screws, the same SG90 and double horn. Two jaws on parallel guides rest closed on a 2 mm gap; the horn opens them, the springs grip, so it holds with the servo off. Each guide stops both ways on a tongue in its fork. Drawn at rest, the leaves straight.",
   "anchors": {
     "mount": {
       "at": [
@@ -167,7 +167,7 @@
       "rule": "The root blocks behind the guides, along the arm, and the plate joining them"
     },
     "xs": {
-      "value": 79.97,
+      "value": 79.92,
       "unit": "mm",
       "rule": "From the bolts to the horn's axis: the root blocks start at the yoke block's front (the design refuses another value and says which)"
     },
@@ -235,6 +235,11 @@
       "value": 2,
       "unit": "mm",
       "rule": "The gap between the jaws at rest: each jaw grips with its guide's spring times how far the object holds it open, so this sets the sizes held. 2 mm: 50 g twice over from 5.7 mm across, 100 g from 9.4 mm, up to 10.5 mm"
+    },
+    "stop_open": {
+      "value": 4.8,
+      "unit": "mm",
+      "rule": "How far a jaw may open before its stop: past the horn's 4.56 mm stroke by 0.24, so the horn opens the jaws fully first, and short enough that the SG90 driven onto it at its full stall torque (0.1765 N m) bends the leaves to 5.15 mm, 78% of their 6.62 mm strain limit, within travelStop's 0.8 (the generator's default, the stroke and 0.5, gives 83%)"
     },
     "stop_close": {
       "value": 0.85,

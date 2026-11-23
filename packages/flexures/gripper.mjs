@@ -149,7 +149,7 @@ export function gripperJaws(p, { part = 'all' } = {}) {
  * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m flexureMaterial(rules)
  * @param {{ torque: number, share?: number, payload?: number, accel?: number, friction?: number, margin?: number,
  *   printer?: { line: number, layer: number, wall_min?: number } }} o torque: the servo's stall torque (N m); share:
- *   the part of it counted on (default 0.6, as the kit's grip check); payload: the object's mass (kg, default 0);
+ *   the part of it counted on to open the jaws (default 0.6, as the kit's grip check; the stops take the full stall torque); payload: the object's mass (kg, default 0);
  *   accel: the arm's (mm/s², default 0); friction: jaw on object (default 0.4, an estimate); margin: asked of the
  *   servo against the springs and of the grip against the load (default 2); printer: for the leaves' lines and layers
  * @returns {{ at: { back: number, root: number, fork: number[], pin: number[], guide: number, jaw: number[], bar: number[] },
@@ -214,12 +214,13 @@ export function gripperJawsModel(p, m, o) {
   for (let i = 0; i < steps; i++) { const s = ((i + 0.5) * ell) / steps, [lo, hi] = s < k.L - k.fx - 1 ? tongueEdges(k, s) : [0, 2 * k.rp]; flex += ((ell - s) ** 2 / (m.E * (k.W * (hi - lo) ** 3) / 12)) * (ell / steps); }
   const tongue = 1 / flex;
   // driven on past full open, the horn pushes a jaw onto its stop: with the tip at the stop's travel the arm stands
-  // at asin((inner - tip + stop) / reach), its push T / (2 r cos a) less the guide's spring is what the tongue takes,
-  // and it gives a little more travel, over = that / its stiffness (no angle reaches it if the tip can't get there)
-  const sinStop = (k.inner - k.rt + k.so) / k.r, onStop = sinStop < 1 ? Math.max(0, push(Math.asin(sinStop) / rad) - kg * k.so) : 0, most = k.so + onStop / tongue;
+  // at asin((inner - tip + stop) / reach), its push less the guide's spring is what the tongue takes, and it gives a
+  // little more travel, over = that / its stiffness (no angle reaches it if the tip can't get there). A servo driven
+  // onto a stop stalls there, so the push is from its full stall torque, Ts / (2 r cos a), not the share counted on
+  const Ts = torque * 1000, sinStop = (k.inner - k.rt + k.so) / k.r, onStop = sinStop < 1 ? Math.max(0, Ts / (2 * k.r * Math.sqrt(1 - sinStop ** 2)) - kg * k.so) : 0, most = k.so + onStop / tongue;
   const stopLevel = most <= 0.8 * limit ? 'pass' : most <= limit ? 'warn' : 'fail';
   if (k.so < k.stroke) f('fail', `the opening stop at ${n2(k.so)} mm is short of the horn's ${n2(k.stroke)} mm stroke: the stop takes the servo's push before the jaws are open`, 'gripper.stop', { stop: k.so, stroke: k.stroke });
-  else f(stopLevel, `the stops: each jaw stops ${n2(k.so)} mm open and ${n2(k.sc)} mm closed, a tongue's round end in a slot in its fork (${n2(tongue, 1)} N/mm, ${n2(tongue / kg, 0)} times the guide). ${sinStop < 1 ? `Driven onto it the horn pushes ${n2(onStop)} N more, and the tongue gives to ${n2(most)} mm` : 'The horn\'s tip can\'t reach it'}: ${n2((most / limit) * 100, 0)}% of the leaves' limit of ${n2(limit)} mm${stopLevel === 'pass' ? '' : `, past the 0.8 travelStop allows${stopLevel === 'fail' ? ' and past the limit' : ''}`}`, 'gripper.stop', { open: k.so, close: k.sc, limit, tongue, onStop, most });
+  else f(stopLevel, `the stops: each jaw stops ${n2(k.so)} mm open and ${n2(k.sc)} mm closed, a tongue's round end in a slot in its fork (${n2(tongue, 1)} N/mm, ${n2(tongue / kg, 0)} times the guide). ${sinStop < 1 ? `Driven onto it at its full stall torque (${torque} N m) the horn pushes ${n2(onStop)} N more, and the tongue gives to ${n2(most)} mm` : 'The horn\'s tip can\'t reach it'}: ${n2((most / limit) * 100, 0)}% of the leaves' limit of ${n2(limit)} mm${stopLevel === 'pass' ? '' : `, past the 0.8 travelStop allows${stopLevel === 'fail' ? ' and past the limit' : ''}`}`, 'gripper.stop', { open: k.so, close: k.sc, limit, tongue, onStop, most });
   if (o.printer) for (const x of printable({ thickness: k.t, width: k.W, travel: +k.stroke.toFixed(2), stop: +k.so.toFixed(2) }, o.printer, m, guide)) out.push(x);
   else { const e = guide.strain(k.stroke); f(e <= m.strainLimit ? 'pass' : 'fail', `fully open the leaves see ${n2(e * 100, 2)}% strain, ${e <= m.strainLimit ? 'within' : 'over'} the limit of ${n2(m.strainLimit * 100, 2)}%`, 'flexure.strain', { strain: e, limit: m.strainLimit }); }
 
