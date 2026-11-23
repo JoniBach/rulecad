@@ -1,0 +1,54 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-pip",
+  "title": "Shoulder printed in place",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "benchmarks/pip"
+  ],
+  "engine": "manifold",
+  "printInPlace": true,
+  "description": "The bench shoulder's compound planetary printed as one piece on a 17HS4401: housing and held ring, sun, three stepped planets and the output ring, every gap the printer's print gap, herringbone teeth so nothing walks off, no carrier. Free it with a turn by hand, then set the motor face down on the four posts on the roof and drive an M3x8 hex-head screw up through each, turned from outside with a 5.5 mm spanner in the post's window. 44.3:1 where the assembled shoulder is 38:1.",
+  "orientation": "As drawn: the output ring, the planets' lower steps, the sun's hub and the housing's skirt on the bed, the motor's face up. Everything above another part rises at 45°: no supports.",
+  "parts": {
+    "housing": {
+      "label": "Housing and held ring"
+    },
+    "sun": {
+      "label": "Sun"
+    },
+    "planet_a": {
+      "label": "Planet"
+    },
+    "planet_b": {
+      "label": "Planet"
+    },
+    "planet_c": {
+      "label": "Planet"
+    },
+    "output": {
+      "label": "Output ring"
+    }
+  },
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {}
+}

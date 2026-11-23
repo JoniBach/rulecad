@@ -86,6 +86,24 @@ test('ops: the same booleans by JSCAD and by Manifold (faster, watertight)', asy
   await assert.rejects(ops('nope'), /no boolean engine "nope"/);
 });
 
+test('ops.gap: the least distance between two solids, by Manifold', async () => {
+  const { ops } = await import('@rulecad/shapes');
+  const { cuboid, cylinder } = jscad.primitives, { translate } = jscad.transforms;
+  const o = await ops('manifold'), a = cuboid({ size: [10, 10, 10] });
+  // faces 0.3 mm apart: the 10 mm cubes' centres 10.3 mm apart along x
+  assert.ok(Math.abs(o.gap(a, translate([10.3, 0, 0], a), 1) - 0.3) < 1e-4, 'face to face');
+  // corner to corner: centres (10.2, 10.2, 0) apart, so the nearest edges are 0.2 √2 = 0.28284 mm apart
+  assert.ok(Math.abs(o.gap(a, translate([10.2, 10.2, 0], a), 1) - 0.2 * Math.SQRT2) < 1e-4, 'edge to edge');
+  assert.equal(o.gap(a, translate([5, 0, 0], a), 1), 0, 'crossing: 0');
+  assert.equal(o.gap(a, translate([20, 0, 0], a), 1), 1, 'beyond within: within');
+  // a peg in a hole: a 4 mm peg in a 4.6 mm bore leaves 0.3 mm all round
+  const plate = o.subtract(cuboid({ size: [20, 20, 4] }), cylinder({ radius: 2.3, height: 6, segments: 128 })), peg = cylinder({ radius: 2, height: 8, segments: 128 });
+  assert.ok(Math.abs(o.gap(plate, peg, 1) - 0.3) < 0.002, `peg in its bore: ${o.gap(plate, peg, 1)}`);
+  assert.throws(() => o.gap(a, a, 0), /within is how far to look/);
+  const j = await ops('jscad');
+  assert.throws(() => j.gap(a, a), /gap needs the manifold engine/);
+});
+
 test('solidRegion: a teardrop points any way across its axis, 45° to a point r√2 out', async () => {
   const { solidRegion } = await import('@rulecad/shapes');
   const { measureBoundingBox } = jscad.measurements;

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-pip-sun",
+  "title": "Print-in-place shoulder: sun",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "benchmarks/pip"
+  ],
+  "engine": "manifold",
+  "description": "The sun alone, at the origin, as shoulder-pip prints it, with the D bore for the motor's shaft from the top.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {}
+}

@@ -61,12 +61,26 @@ export function check(polys, printer, { eps = 1e-3, parts = null, slice = true }
   for (const k of ['layer', 'line', 'bridge', 'support_gap']) if (printer[k] != null && !(Number(printer[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" must be a number above 0 (got ${JSON.stringify(printer[k])})`);
   polys = (Array.isArray(polys) ? polys : []).filter((p) => Array.isArray(p) && p.length >= 3 && p.every((v) => Array.isArray(v) && v.length >= 3 && v.every(Number.isFinite)));
   if (!polys.length) return [{ level: 'fail', text: 'nothing to check: the model has no faces (each face is three or more corners, each [x, y, z] in mm)', code: 'print.empty' }];
-  const solids = (parts || []).filter((p) => p.role !== 'support').map((p) => ({ tris: p.triangles, box: bounds(p.triangles) }));
+  const solids = (parts || []).filter((p) => p.role !== 'support').map((p) => ({ tris: p.triangles, box: bounds(p.triangles), grid: null }));
+  // Each part's faces filed by where they lie across the bed, on a grid, so a ray straight up meets only those near it
+  // (a gearbox printed in place has hundreds of thousands of faces: every face against every other is hours)
+  const CELL = 2, cellKey = (i, j) => `${i},${j}`;
+  const gridOf = (s) => {
+    if (s.grid) return s.grid;
+    const g = new Map();
+    for (const t of s.tris) {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const v of t) { x0 = Math.min(x0, v[0]); x1 = Math.max(x1, v[0]); y0 = Math.min(y0, v[1]); y1 = Math.max(y1, v[1]); }
+      for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(y0 / CELL); j <= Math.floor(y1 / CELL); j++) { const k = cellKey(i, j); if (!g.has(k)) g.set(k, []); g.get(k).push(t); }
+    }
+    return (s.grid = g);
+  };
   // Is the point inside one of the parts? A ray straight up crosses its surface an odd number of times
-  const inPart = (pt) => solids.length > 1 && solids.some(({ tris, box }) => {
+  const inPart = (pt) => solids.length > 1 && solids.some((s) => {
+    const { box } = s;
     if (pt.some((c, k) => c < box.lo[k] - eps || c > box.hi[k] + eps)) return false;
     let n = 0;
-    for (const t of tris) for (let i = 1; i < t.length - 1; i++) {
+    for (const t of gridOf(s).get(cellKey(Math.floor(pt[0] / CELL), Math.floor(pt[1] / CELL))) || []) for (let i = 1; i < t.length - 1; i++) {
       const [a, b, c] = [t[0], t[i], t[i + 1]], d = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
       if (Math.abs(d) < 1e-12) continue;
       const u = ((pt[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (pt[1] - a[1])) / d, v = ((b[0] - a[0]) * (pt[1] - a[1]) - (pt[0] - a[0]) * (b[1] - a[1])) / d;

@@ -1952,6 +1952,16 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
     assert.ok(code(findings('thin'), 'shaft.hoop').some((x) => x.level === 'fail'), JSON.stringify(findings('thin')));
     hub('thick', { wall: 4, press: 1 }, 'press');
     assert.ok(code(findings('thick'), 'shaft.hoop').some((x) => x.level === 'pass'), JSON.stringify(findings('thick')));
+    // a slide fit, as a part printed in place needs: bore() draws a slide 5 + 2 × 0.05 + 0.1 = 5.2 mm across, 0.1 mm a
+    // side; printed 0.1 mm smaller across (hole_comp), 0.05 mm a side is left. Its press bore, 5 − 2 × 0.02 + 0.1 =
+    // 5.06 mm, 0.03 mm a side drawn, prints 0.02 mm a side tighter than the shaft: no slide, and no hoop check either
+    hub('slid', {}, 'slide');
+    const slid = code(findings('slid'), 'shaft.slide')[0];
+    assert.equal(slid.level, 'pass', slid.text); assert.ok(Math.abs(slid.values.printed - 0.05) < 0.01, `${slid.values.printed}`); assert.equal(slid.values.holeComp, 0.1);
+    hub('stuck', { press: 1 }, 'slide');
+    const stuck = findings('stuck');
+    assert.equal(code(stuck, 'shaft.slide')[0].level, 'fail'); assert.ok(Math.abs(code(stuck, 'shaft.slide')[0].values.printed + 0.02) < 0.01, JSON.stringify(code(stuck, 'shaft.slide')[0].values));
+    assert.equal(code(stuck, 'shaft.hoop').length, 0, 'a slide is never pressed on');
     // refusals by name
     write('projects/home/assemblies/nojoint.json', arm({ drives: 'nope' }));
     assert.match(cad('check', 'home/nojoint'), /drives "nope", which isn't a joint/);
@@ -2006,6 +2016,25 @@ test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflec
     const bad = engaged('short'); assert.equal(bad.length, 1); assert.equal(bad[0].level, 'fail');
     assert.match(bad[0].text, /^m on plate: 4 M3x6 cap screws through 6 mm of plate do not reach the motor's thread: M3x6 cap ends at its face\. An M3x10 cap would engage 4 mm/);
     assert.match(cad('list', 'home/short'), /4 ×\s+M3x6 cap/, 'the screw the item names is the one listed');
+    // "screw": "M3x10 hex": hexagon heads, bought and fitted as named, turned with a spanner on their 5.5 mm flats (ISO 4017's M3), not a hex key
+    const hex = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/assemblies/thick.json'), 'utf8'));
+    hex.items.find((x) => x.id === 'm').motor.screw = 'M3x10 hex'; write('projects/home/assemblies/hexhead.json', hex);
+    assert.match(cad('list', 'home/hexhead'), /4 ×\s+M3x10 hex\s/);
+    const hexOrder = cad('order', 'home/hexhead');
+    assert.match(hexOrder, /m to plate \(4 × M3x10 hex\) with a 5\.5 mm socket or spanner/, hexOrder); assert.doesNotMatch(hexOrder, /hex key/);
+    // printInPlace: the wall and the arm come off the bed as one print, so the order fits them as one step, first, and
+    // the list gives them one row, their grams and minutes added (each part's own, summed: one print's)
+    const alone = JSON.parse(cad('list', 'home/thick', '--json')).printed;
+    write('projects/home/assemblies/pip.json', { ...hex, printInPlace: ['wall', 'arm'] });
+    const steps = JSON.parse(cad('order', 'home/pip', '--json')).steps;
+    assert.deepEqual(steps[0].items, ['wall', 'arm'], JSON.stringify(steps.map((x) => x.items)));
+    assert.equal(steps.filter((x) => x.items.includes('wall') || x.items.includes('arm')).length, 1, 'one step for the one print');
+    assert.match(cad('order', 'home/pip'), /1\. wall, arm, printed together in place \(one print\), first/);
+    const rows = JSON.parse(cad('list', 'home/pip', '--json')).printed, row = rows.find((x) => x.inPlace);
+    assert.deepEqual(row.inPlace, ['wall', 'arm']); assert.equal(rows.length, alone.length - 1, 'two rows become one');
+    const sum = (k) => alone.filter((x) => x.id === 'wall' || x.id === 'arm').reduce((t, x) => t + x[k], 0);
+    assert.ok(Math.abs(row.grams - sum('grams')) < 0.1, `${row.grams} g against ${sum('grams')}`); assert.ok(Math.abs(row.minutes - sum('minutes')) <= 1);
+    assert.match(cad('list', 'home/pip'), /about \d+ min\s+wall, arm \(printed together in place: one print\)/);
   } finally { done(); }
 });
 
@@ -6076,6 +6105,95 @@ test('the bench arm on the parts its builder has: a 17HS4401 at each joint on 12
     assert.deepEqual(l.bought.filter((b) => !b.have).map(line).sort(), ['bearing-6800 x1', 'endstop-10t85 x2']);
     assert.deepEqual(l.bought.filter((b) => b.have).map(line).sort(), ['cnc-shield-v3 x1', 'drv8825 x2', 'nema17 (17HS4401) x2', 'sg90 x1', 'supply-12v x1']);
     assert.ok(l.fasteners.length && l.wires.length, 'screws and wire, which are to buy');
+  } finally { done(); }
+});
+
+test('printed in place: each part on the bed, every two the print gap apart by Manifold, nothing needing a support', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/demo/objects'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['pair'] }));
+    // Two blocks side by side, gap apart; a cube that may be lifted off the bed; a table whose top spans span
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify({ name: 'pair', title: 'Parts printed in place', version: '0.1.0', uses: ['x1c'], engine: 'manifold', printInPlace: true,
+      parts: { left: {}, right: {}, hat: {}, table: {} },
+      variables: { side: { value: 10, unit: 'mm', rule: 'Each block' }, high: { value: 5, unit: 'mm', rule: 'Each block' }, gap: { value: 0.7, unit: 'mm', rule: 'Between the blocks' },
+        lift: { value: 0, unit: 'mm', rule: 'The cube off the bed' }, cube: { value: 4, unit: 'mm', rule: 'The cube' }, at: { value: 30, unit: 'mm', rule: 'Where the cube and the table stand' },
+        span: { value: 4, unit: 'mm', rule: 'Under the table top' }, leg: { value: 2, unit: 'mm', rule: 'Each leg' }, top: { value: 1, unit: 'mm', rule: 'The table top' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.js'), `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+const box = (x0, x1, y0, y1, z0, z1) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
+export function main (v) {
+  const left = box(0, v.side, 0, v.side, 0, v.high), right = box(v.side + v.gap, 2 * v.side + v.gap, 0, v.side, 0, v.high)
+  const hat = box(v.at, v.at + v.cube, 0, v.cube, v.lift, v.lift + v.cube)
+  const x = v.at + v.at, w = 2 * v.leg + v.span
+  const table = v.ops.union(box(x, x + v.leg, 0, v.cube, 0, v.high), box(x + v.leg + v.span, x + w, 0, v.cube, 0, v.high), box(x, x + w, 0, v.cube, v.high, v.high + v.top))
+  return { left, right, hat, table }
+}
+`);
+    const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/pair', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { of: (code) => j.findings.filter((x) => x.code === code) }; };
+    // Apart by 0.7 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
+    let r = run();
+    assert.equal(r.of('inplace.bed')[0].level, 'pass'); assert.equal(r.of('inplace.support')[0].level, 'pass');
+    const g = r.of('inplace.gap')[0];
+    assert.equal(g.level, 'pass'); assert.ok(Math.abs(g.values.gap - 0.7) < 1e-4, `the nearest, ${g.values.gap}`); assert.equal(g.values.need, 0.3, 'the X1C\'s print_gap'); assert.deepEqual(g.refs.parts, ['left', 'right']);
+    // the first layer needs the print gap and the X1C's 0.15 mm foot each side: 0.3 + 2 × 0.15 = 0.6 mm
+    assert.equal(r.of('inplace.first-layer')[0].level, 'pass'); assert.ok(Math.abs(r.of('inplace.first-layer')[0].values.need - 0.6) < 1e-9);
+    // 0.45 mm apart: clear of each other above, but on the bed the first layer spreads them into one
+    cad('set', 'demo/pair', 'gap=0.45');
+    r = run();
+    assert.equal(r.of('inplace.gap')[0].level, 'pass');
+    const first = r.of('inplace.first-layer')[0];
+    assert.equal(first.level, 'fail'); assert.ok(Math.abs(first.values.gap - 0.45) < 1e-4, `${first.values.gap}`); assert.deepEqual(first.refs.parts, ['left', 'right']);
+    // 0.2 mm apart: under the 0.3 mm print gap, they fuse
+    cad('set', 'demo/pair', 'gap=0.2');
+    r = run();
+    const near = r.of('inplace.gap')[0];
+    assert.equal(near.level, 'fail'); assert.ok(Math.abs(near.values.gap - 0.2) < 1e-4, `${near.values.gap}`); assert.deepEqual(near.refs.parts, ['left', 'right']); assert.ok(near.at && near.box, 'where');
+    // the cube 2 mm up: off the bed, and its underside in mid-air
+    cad('set', 'demo/pair', 'gap=0.7', 'lift=2');
+    r = run();
+    const bed = r.of('inplace.bed');
+    assert.deepEqual(bed.map((x) => [x.level, x.refs.part]), [['fail', 'hat']]); assert.match(bed[0].text, /its lowest point is 2 mm up/);
+    assert.ok(r.of('inplace.support').some((x) => x.level === 'fail' && x.values.was === 'print.mid-air'), 'a support it cannot have');
+    // the table's top over 8 mm: a bridge the printer can't span, which no support can come out from under
+    cad('set', 'demo/pair', 'lift=0', 'span=8');
+    r = run();
+    const s = r.of('inplace.support');
+    assert.deepEqual(s.map((x) => [x.level, x.values.was]), [['fail', 'print.bridge']]); assert.ok(Math.abs(s[0].values.span - 8) < 0.05, `${s[0].values.span}`);
+    // not printed in place: none of these
+    const o = JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/pair.json'), 'utf8')); delete o.printInPlace;
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify(o));
+    r = run();
+    assert.equal(r.of('inplace.gap').length + r.of('inplace.bed').length + r.of('inplace.support').length + r.of('inplace.first-layer').length, 0);
+  } finally { done(); }
+});
+
+test('a compound planetary whose planets mesh the output ring a tooth of their first step on: each planet takes the tooth that meshes both rings', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  try {
+    // Sun 18, planets 21 on it and the held ring of 60, 18 on the output ring of 57 (the print-in-place shoulder's
+    // teeth). With both steps drawn alike, a planet 120° round meshes the output ring only if
+    // 120° × (1 + P2 S / (P1 R2)) is a whole number of the ring's pitches: 120 × (1 + 18 × 18 / (21 × 57)) = 152.48°,
+    // 24.14 pitches of 6.316°. A tooth of the first step on (360 / 21 = 17.143°) turns the second step's phase by
+    // (18 / 57) × 17.143 = 5.414°, which the 0.902° left over needs: 5.414 + 0.902 = 6.316, one pitch
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['sun', 'planet', 'held', 'out', 'speck'] });
+    const gear = (name, js, anchors = { axis: { at: [0, 0, 0], axis: [0, 0, 1] } }, extra = {}) => { write(`projects/home/objects/${name}.json`, { name, version: '0.1.0', anchors, variables: { w: { value: 4, unit: 'mm', rule: 'Face' }, up: { value: 5, unit: 'mm', rule: 'The second stage' }, turn: { value: 9, unit: 'deg', rule: 'The held ring, in phase' }, rim: { value: 70, unit: 'mm', rule: 'Rim' }, c: { value: 19.5, unit: 'mm', rule: 'Centre' }, s: { value: 60, unit: 'deg', rule: 'Planets' } }, ...extra }); write(`projects/home/objects/${name}.js`, `import jscad from '@jscad/modeling'\nconst { translate } = jscad.transforms\nexport function main (v) { return ${js} }\n`); };
+    gear('sun', 'v.gears.spur({ module: 1, teeth: 18, width: v.w })');
+    gear('planet', 'v.ops.union(v.gears.spur({ module: 1, teeth: 21, width: v.w }), translate([0, 0, v.up], v.gears.spur({ module: 1, teeth: 18, width: v.w })))');
+    gear('held', 'v.gears.internal({ module: 1, teeth: 60, width: v.w, rim: v.rim })', { axis: { at: [0, 0, 0], axis: [0, 0, 1], ref: ['cosd(turn)', '0 - sind(turn)', 0] } });
+    gear('out', 'translate([0, 0, v.up], v.gears.internal({ module: 1, teeth: 57, width: v.w, rim: v.rim }))');
+    gear('speck', 'jscad.primitives.sphere({ radius: 0.2, center: [0, 0, 0 - v.rim] })', { axis: { at: [0, 0, 0], axis: [0, 0, 1] }, a: { at: ['c', 0, 0], axis: [0, 0, 1] }, b: { at: ['0 - c / 2', 'c * sind(s)', 0], axis: [0, 0, 1] }, c: { at: ['0 - c / 2', '0 - c * sind(s)', 0], axis: [0, 0, 1] } }, { role: 'reference' });
+    const box = (extra = {}) => ({ title: 'Compound', kind: 'fit', items: [{ id: 'held', object: 'held' }, { id: 'sun', object: 'sun' }, { id: 'carrier', object: 'speck' }, { id: 'p1', object: 'planet' }, { id: 'p2', object: 'planet' }, { id: 'p3', object: 'planet' }, { id: 'out', object: 'out' }],
+      joints: [{ id: 'drive', type: 'revolute', parent: 'held.axis', child: 'sun.axis' }, { id: 'turn', type: 'revolute', parent: 'held.axis', child: 'carrier.axis' }, { id: 's1', type: 'revolute', parent: 'carrier.a', child: 'p1.axis' }, { id: 's2', type: 'revolute', parent: 'carrier.b', child: 'p2.axis' }, { id: 's3', type: 'revolute', parent: 'carrier.c', child: 'p3.axis' }, { id: 'o', type: 'revolute', parent: 'held.axis', child: 'out.axis' }],
+      planetary: [{ sun: 'sun', carrier: 'carrier', ring: 'held', planets: ['p1', 'p2', 'p3'], drive: 'sun', module: 1, teeth: [18, 21, 60], output: { ring: 'out', planet: 18, teeth: 57 } }], poses: { home: { drive: 0 } }, ...extra });
+    write('projects/home/assemblies/box.json', box());
+    const r = JSON.parse(cad('check', 'home/box', '--json')), of = (c) => r.findings.filter((x) => x.code === c);
+    assert.deepEqual(of('planetary.phase').filter((x) => x.level === 'fail').map((x) => x.text), [], 'every planet meshes both rings');
+    assert.ok(!r.findings.some((x) => x.level === 'fail' && /overlap/.test(x.text)), r.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+    // printInPlace names items printed together; a name that isn't one is refused
+    write('projects/home/assemblies/box.json', box({ printInPlace: ['held', 'sun', 'nope'] }));
+    assert.match(cad('check', 'home/box'), /printInPlace names "nope", which isn't an item \(held, sun, carrier, p1, p2, p3, out\)/);
   } finally { done(); }
 });
 

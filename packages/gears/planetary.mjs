@@ -3,7 +3,7 @@
 // −R / S). planetary() finds the teeth for a wanted ratio that also put together: the ring is the sun and two planets
 // across (R = S + 2P), the planets go in evenly spaced ((S + R) a whole number of times the planets), and they clear
 // each other. It lays the gearbox out with every planet in phase with the sun and the ring.
-import { gearModel, internalModel, mesh, phase } from './core.mjs';
+import { gearModel, internalModel, mesh, phase, DEFAULTS } from './core.mjs';
 
 const DEG = Math.PI / 180;
 const MEMBERS = ['sun', 'carrier', 'ring'];
@@ -103,9 +103,16 @@ export function compoundEfficiency({ planet: P1, planet2: P2, ring: R1, ring2: R
  * what printed robot joints use. Stepped planets (P2 = P1 + the rings' difference) keep one centre distance with no
  * profile shift: a single planet on two rings can't, at sizes that print, without a shift far past what a tooth takes.
  * Every tooth count is a multiple of the planets, so identical planets go in evenly and in phase on both rings.
- * @param {{ module: number, ratio: number, planets?: number, size?: number, least?: number, most?: number, step?: number, pressureAngle?: number, backlash?: number }} spec
+ *
+ * Printed in place (printInPlace: true), the gearbox comes off the bed in one piece with nothing to assemble but the
+ * motor: every gap is widened to the print gap (gap, mm each side, default DEFAULTS.printGap), so the backlash is
+ * the one that leaves that gap normal to every flank, 2 gap / (cos α cos β_b), and the dedendum leaves it under every
+ * tip; the teeth are herringbones (helix, default DEFAULTS.helix), the sun's one hand and the planets' and rings' the
+ * other, so the rings can't walk off the planets; and there is no carrier: the two rings hold the planets.
+ * @param {{ module: number, ratio: number, planets?: number, size?: number, least?: number, most?: number, step?: number, pressureAngle?: number, backlash?: number, printInPlace?: boolean, gap?: number, helix?: number }} spec
  *   ratio: turns of the sun for one of the output ring, in size (a negative one turns the other way); step: the rings' difference, in planets (default tries 1 and 2)
- * @returns {{ best: object, others: object[], findings: object[] }}
+ * @returns {{ best: object, others: object[], findings: object[] }} best.play: the output ring's free turn with the
+ *   sun and the held ring still (compoundPlay); best.printInPlace: the gap, backlash, dedendum and helix it was drawn to
  */
 export function compoundPlanetary(spec) {
   const what = 'compoundPlanetary';
@@ -115,7 +122,8 @@ export function compoundPlanetary(spec) {
   if (!(typeof ratio === 'number' && Number.isFinite(ratio) && Math.abs(ratio) > 1)) throw new Error(`${what}: ratio is turns of the sun for one of the output, more than 1 either way (got ${JSON.stringify(ratio)})`);
   if (!(Number.isInteger(n) && n >= 2 && n <= 6)) throw new Error(`${what}: planets is a whole number from 2 to 6 (got ${JSON.stringify(n)})`);
   const least = spec.least ?? 17, most = spec.most ?? 90, pa = spec.pressureAngle ?? 20, steps = spec.step != null ? [spec.step] : [1, -1, 2, -2];
-  const common = { module: m, pressureAngle: pa, ...(spec.backlash != null ? { backlash: spec.backlash } : {}) };
+  const inPlace = printedInPlace(what, spec, m, pa);
+  const common = { module: m, pressureAngle: pa, ...(inPlace ? { backlash: inPlace.backlash, dedendum: inPlace.dedendum, helix: inPlace.helix, herringbone: true } : spec.backlash != null ? { backlash: spec.backlash } : {}) };
   const multiple = (x, k) => Math.ceil(x / k) * k, sets = [];
   for (let S = multiple(least, n); S <= most; S += n) for (let P1 = multiple(least, n); P1 <= most; P1 += n) {
     const R1 = S + 2 * P1;
@@ -131,13 +139,66 @@ export function compoundPlanetary(spec) {
   }
   if (!sets.length) throw new Error(`${what}: no teeth put together${spec.size != null ? ` within a rim of ${spec.size} mm` : ''} with ${n} planets of ${least} teeth or more: a larger size, or a smaller module`);
   sets.sort((x, y) => x.off - y.off || x.rim - y.rim);
-  const b = sets[0], sun = gearModel({ ...common, teeth: b.sun }), planet = gearModel({ ...common, teeth: b.planet }), planet2 = gearModel({ ...common, teeth: b.planet2 }), ring = internalModel({ ...common, teeth: b.ring }), ring2 = internalModel({ ...common, teeth: b.ring2 });
+  // (helical teeth: two outer gears in mesh are of opposite hands, a ring and its pinion of the same)
+  const hand = (h) => (inPlace ? { hand: h } : {});
+  const b = sets[0], sun = gearModel({ ...common, ...hand('right'), teeth: b.sun }), planet = gearModel({ ...common, ...hand('left'), teeth: b.planet }), planet2 = gearModel({ ...common, ...hand('left'), teeth: b.planet2 }), ring = internalModel({ ...common, ...hand('left'), teeth: b.ring }), ring2 = internalModel({ ...common, ...hand('left'), teeth: b.ring2 });
   const sunMesh = mesh(sun, planet), ringMesh = mesh(planet, ring), ring2Mesh = mesh(planet2, ring2), a = sunMesh.centre, out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
   const planets = Array.from({ length: n }, (_, k) => { const at = (360 * k) / n; return { at: [a * Math.cos(at * DEG), a * Math.sin(at * DEG)], angle: phase(sun, planet, at), place: at }; });
   const ringAngle = (b.planet / b.ring) * planets[0].angle + phase(planet, ring, 180), ring2Angle = (b.planet2 / b.ring2) * planets[0].angle + phase(planet2, ring2, 180);
+  // Each planet's second step in phase with the output ring. The rings are set from the first planet; another planet
+  // meshes the sun and the held ring as well a whole tooth of its first step on (360 / P1 degrees), and that turns its
+  // second step too, so it takes the first such tooth that also puts its second step in a space of the output ring,
+  // whose angle for a planet at place θ turned ψ is (P2 / R2) ψ + phase(planet2, ring2, θ + 180), to a whole pitch
+  // (360 / R2). Every tooth count a multiple of the planets puts some in phase as they stand (chapter 11's 18/21 and
+  // 54/57 all are) and others not: 57/39/36/135/132's second planet stood 0.11 mm from the output ring at a 0.3 mm gap.
+  const pitch2 = 360 / b.ring2, missAt = (p, t) => { const d = (b.planet2 / b.ring2) * (p.angle + (360 * t) / b.planet) + phase(planet2, ring2, p.place + 180) - ring2Angle; return ((((d % pitch2) + pitch2 * 1.5) % pitch2) - pitch2 / 2); };
+  for (const p of planets.slice(1)) {
+    const t = Array.from({ length: b.planet }, (_, i) => i).find((i) => Math.abs(missAt(p, i)) < 1e-6);
+    if (t == null) f('fail', `the planet at ${fmt(p.place, 1)}° can't mesh with the output ring, whichever tooth of its first step meets the sun`, 'compound.phase', { place: p.place });
+    else p.angle += (360 * t) / b.planet;
+  }
   f(b.off < 0.05 ? 'pass' : b.off < 0.2 ? 'warn' : 'fail', `${fmt(b.ratio, 2)} : 1 (sun to the output ring, the other ring held), ${b.off < 0.01 ? 'as asked' : `${fmt(b.off * 100, 1)}% from the ${fmt(ratio)} asked`}: sun ${b.sun}, stepped planets ${b.planet}/${b.planet2} × ${n}, rings ${b.ring} and ${b.ring2}`, 'compound.ratio', { ratio: b.ratio, asked: ratio });
   f('info', `about ${fmt(b.efficiency * 100, 0)}% efficient (an estimate): ${b.efficiency <= 0.5 ? 'under 50%, so it can\'t be driven backwards' : 'it can be driven backwards'}`, 'compound.efficiency', { efficiency: b.efficiency });
   if (Math.abs(ring2Mesh.centre - a) > 1e-9) f('fail', `the output ring's centre distance is ${fmt(ring2Mesh.centre)} mm and the planets' ${fmt(a)} mm: the rings' difference must equal the planets'`, 'compound.centre');
   for (const [pair, ms] of [['sun and planet', sunMesh], ['planet and held ring', ringMesh], ['planet and output ring', ring2Mesh]]) for (const x of ms.findings) out.push({ ...x, text: `${pair}: ${x.text}` });
-  return { best: { sun: { teeth: b.sun, model: sun }, planet: { teeth: b.planet, model: planet }, planet2: { teeth: b.planet2, model: planet2 }, ring: { teeth: b.ring, model: ring, angle: ringAngle }, ring2: { teeth: b.ring2, model: ring2, angle: ring2Angle }, planets, centre: a, ratio: b.ratio, efficiency: b.efficiency, rim: Math.max(ring.rim, ring2.rim), module: m }, others: sets.slice(1, 6).map(({ off, ...x }) => x), findings: out };
+  const play = compoundPlay({ sun: b.sun, planet: b.planet, planet2: b.planet2, ring: b.ring, ring2: b.ring2, module: m }, { sun: sunMesh.backlash, ring: ringMesh.backlash, ring2: ring2Mesh.backlash });
+  if (inPlace) f('info', `printed in place: ${fmt(inPlace.gap)} mm clear normal to every flank and under every tip (a backlash of ${fmt(inPlace.backlash)} mm and a dedendum of ${fmt(inPlace.dedendum)} modules), herringbone teeth at ${fmt(inPlace.helix)}° so the rings stay on the planets, and no carrier: the rings hold the planets`, 'compound.inPlace', { gap: inPlace.gap, backlash: inPlace.backlash, dedendum: inPlace.dedendum, helix: inPlace.helix });
+  f('info', `the output ring turns ${fmt(play.degrees, 2)}° (${fmt(play.mm)} mm at its pitch circle) with the sun and the held ring still: its play, from the three meshes' backlash`, 'compound.play', { degrees: play.degrees, mm: play.mm });
+  return { best: { sun: { teeth: b.sun, model: sun }, planet: { teeth: b.planet, model: planet }, planet2: { teeth: b.planet2, model: planet2 }, ring: { teeth: b.ring, model: ring, angle: ringAngle }, ring2: { teeth: b.ring2, model: ring2, angle: ring2Angle }, planets, centre: a, ratio: b.ratio, efficiency: b.efficiency, rim: Math.max(ring.rim, ring2.rim), module: m, play, ...(inPlace ? { printInPlace: inPlace } : {}) }, others: sets.slice(1, 6).map(({ off, ...x }) => x), findings: out };
+}
+
+// Printed in place: the gap, checked by name, and the backlash, dedendum and helix it sets
+function printedInPlace(what, spec, m, pa) {
+  if (spec.printInPlace == null || spec.printInPlace === false) {
+    for (const k of ['gap', 'helix']) if (spec[k] != null) throw new Error(`${what}: ${k} is for a gearbox printed in place: add printInPlace: true, or leave ${k} out`);
+    return null;
+  }
+  if (spec.printInPlace !== true) throw new Error(`${what}: printInPlace is true or false (got ${JSON.stringify(spec.printInPlace)})`);
+  if (spec.backlash != null) throw new Error(`${what}: printed in place, the backlash comes from the gap (2 gap / (cos α cos β_b)): give gap, the print gap each side in mm, not backlash`);
+  const gap = spec.gap ?? DEFAULTS.printGap.value, helix = spec.helix ?? DEFAULTS.helix.value;
+  if (!(typeof gap === 'number' && gap > 0 && gap < m / 2)) throw new Error(`${what}: gap is the print gap each side, above 0 and under half the module (${fmt(m / 2)} mm) (got ${JSON.stringify(spec.gap)})`);
+  if (!(typeof helix === 'number' && helix >= 10 && helix <= 45)) throw new Error(`${what}: helix is the herringbone's angle, from 10 to 45° (got ${JSON.stringify(spec.helix)})`);
+  // The gap normal to a flank: the transverse backlash j_t at the pitch circle, times cos α_t across the involute,
+  // times cos β_b along the helix (ISO/TR 10064-2: j_bn = j_t cos α_t cos β_b), shared by the two flanks of a space
+  const a = pa * DEG, betaB = Math.atan(Math.tan(helix * DEG) * Math.cos(a)), backlash = (2 * gap) / (Math.cos(a) * Math.cos(betaB));
+  // Under each tip: the dedendum less the addendum, in modules
+  const dedendum = Math.max(DEFAULTS.dedendum.value, DEFAULTS.addendum.value + gap / m);
+  return { gap, helix, backlash, dedendum, carrier: false };
+}
+
+/**
+ * How far a compound planetary's output ring turns with the sun and the held ring still: the three meshes' backlash
+ * taken up all one way. With stepped planets of pitch radii r1 (on the sun and the held ring) and r2 (on the output
+ * ring), the planets float on their two meshes (no carrier), and the output ring's travel at its pitch circle is
+ * j_sun |1 − r2/r1| / 2 + j_ring (1 + r2/r1) / 2 + j_ring2. Worked out from the three contacts' slips along the pitch
+ * circles; a play, not a twist: the teeth bending under load add to it.
+ * @param {{ sun: number, planet: number, planet2: number, ring: number, ring2: number, module: number }} t
+ * @param {{ sun: number, ring: number, ring2: number }} backlash each mesh's, mm at the pitch circle
+ * @returns {{ mm: number, degrees: number, radians: number }} mm at the output ring's pitch circle
+ */
+export function compoundPlay({ planet: P1, planet2: P2, ring2: R2, module: m }, backlash) {
+  for (const k of ['sun', 'ring', 'ring2']) if (!(typeof backlash?.[k] === 'number' && backlash[k] >= 0)) throw new Error(`compoundPlay: backlash.${k} is the ${k === 'sun' ? 'sun\'s' : k === 'ring' ? 'held ring\'s' : 'output ring\'s'} mesh's, 0 or more mm (got ${JSON.stringify(backlash?.[k])})`);
+  if (!(typeof m === 'number' && m > 0)) throw new Error(`compoundPlay: module is a size above 0 (got ${JSON.stringify(m)})`);
+  const k = P2 / P1, mm = (backlash.sun * Math.abs(1 - k)) / 2 + (backlash.ring * (1 + k)) / 2 + backlash.ring2, radians = mm / ((m * R2) / 2);
+  return { mm, radians, degrees: radians / DEG };
 }

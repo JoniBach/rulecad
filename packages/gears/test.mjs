@@ -428,3 +428,67 @@ test('a compound planetary: stepped planets on two rings, one centre distance, t
   assert.throws(() => compoundPlanetary({ module: 1, ratio: 0.5 }), /more than 1/);
   assert.throws(() => compoundPlanetary({ module: 1, ratio: 50, size: 10 }), /no teeth put together within a rim of 10/);
 });
+
+test('a compound planetary: every planet takes the tooth of its first step that also meshes the output ring', async () => {
+  const { compoundPlanetary } = await import('@rulecad/gears');
+  // 57/39/36/135/132 (ratio 60, step -1, 3 planets): the rings are set from the planet at 0°. The one at 120° meshes the
+  // sun where phase() puts it, but its 36-tooth step then stands 0.004 mm into the output ring with the default 0.15 mm
+  // backlash (0.114 mm off it where 0.3 is drawn, printed in place). Turned 12 teeth of its 39 (110.77°), it meshes all
+  // three. Spur sections at the layout returned: the second step inside the output ring's space, no ring point in it;
+  // printed in place, the planet grown 0.25 mm all round still clear of the ring (0.3 drawn).
+  const deg = Math.PI / 180;
+  for (const [spec, grow] of [[{ module: 1, ratio: 60, planets: 3, step: -1, most: 80 }, 0], [{ module: 1, ratio: 60, planets: 3, step: -1, most: 80, printInPlace: true }, 0.25]]) {
+    const { best: b, findings } = compoundPlanetary(spec);
+    assert.deepEqual([b.sun.teeth, b.planet.teeth, b.planet2.teeth, b.ring.teeth, b.ring2.teeth], [57, 39, 36, 135, 132]);
+    assert.ok(!findings.some((x) => x.level === 'fail'), findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+    const prm = (g) => ({ module: 1, teeth: g.teeth, backlash: g.model.backlash, ...(b.printInPlace ? { dedendum: b.printInPlace.dedendum } : {}) });
+    const sun = spurProfile(prm(b.sun)).loops[0], r1 = place(internalProfile(prm(b.ring)).loops[1], b.ring.angle * deg), r2 = place(internalProfile(prm(b.ring2)).loops[1], b.ring2.angle * deg);
+    b.planets.forEach((p, k) => {
+      const c = [b.centre * Math.cos(p.place * deg), b.centre * Math.sin(p.place * deg)];
+      const P1 = place(spurProfile(prm(b.planet), grow).loops[0], p.angle * deg, c), P2 = place(spurProfile(prm(b.planet2), grow).loops[0], p.angle * deg, c);
+      const at = `${b.printInPlace ? 'printed in place' : 'assembled'}, planet ${k} at ${p.place}°`;
+      assert.ok(!P1.some((q) => inside(q, sun)) && !sun.some((q) => inside(q, P1)), `${at}: clear of the sun`);
+      assert.ok(P1.every((q) => inside(q, r1)) && !r1.some((q) => inside(q, P1)), `${at}: clear of the held ring`);
+      assert.ok(P2.every((q) => inside(q, r2)) && !r2.some((q) => inside(q, P2)), `${at}: clear of the output ring`);
+    });
+  }
+});
+
+test('a compound planetary printed in place: the print gap normal to every flank and under every tip, herringbones, no carrier; its play from the backlash', async () => {
+  const { compoundPlanetary, compoundPlay, DEFAULTS } = await import('@rulecad/gears');
+  // By hand, at a gap g of 0.3 mm, a 20° pressure angle and a 30° helix:
+  //   the base helix, tan β_b = tan 30° cos 20° = 0.57735 × 0.93969 = 0.54253, so β_b = 28.48° and cos β_b = 0.87899
+  //   the backlash that leaves g normal to each flank, j_t = 2 g / (cos α cos β_b) = 0.6 / (0.93969 × 0.87899) = 0.72642 mm
+  //   the dedendum that leaves g under each tip, at module 1: 1 + 0.3 = 1.3 modules (ISO 53's 1.25 leaves 0.25 mm)
+  const { best: b, findings } = compoundPlanetary({ module: 1, ratio: 44.33, planets: 3, step: -1, printInPlace: true });
+  assert.deepEqual([b.sun.teeth, b.planet.teeth, b.planet2.teeth, b.ring.teeth, b.ring2.teeth], [18, 21, 18, 60, 57], 'the bigger step on the sun and the held ring');
+  near(b.printInPlace.backlash, 0.72642, 1e-4, 'backlash from the gap');
+  near(b.printInPlace.dedendum, 1.3, 1e-12, 'dedendum from the gap');
+  assert.equal(b.printInPlace.carrier, false, 'no carrier');
+  for (const g of [b.sun, b.planet, b.planet2, b.ring, b.ring2]) { assert.equal(g.model.herringbone, true, 'herringbone'); assert.equal(g.model.helix, 30); near(g.model.backlash, 0.72642, 1e-4, 'drawn with it'); }
+  assert.equal(b.sun.model.hand, 'right'); for (const g of [b.planet, b.planet2, b.ring, b.ring2]) assert.equal(g.model.hand, 'left', 'outer gears in mesh of opposite hands, a ring of its pinion\'s');
+  // a module-1 ring of 60 under the 1.3 dedendum: its root diameter is 60 + 2 × 1.3 = 62.6 mm (62.5 at 1.25)
+  near(b.ring.model.root, 62.6, 1e-9, 'the ring\'s root moved out');
+  assert.ok(!findings.some((x) => x.level === 'fail'), findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+  assert.ok(findings.some((x) => x.code === 'compound.inPlace' && x.values.gap === 0.3));
+  // Its play, with the sun and the held ring still. Planets of pitch radii r1 = 10.5 (21 teeth, on the sun and the held
+  // ring) and r2 = 9 (18, on the output ring), every mesh at j = 0.72642 mm:
+  //   j |1 − r2/r1| / 2 + j (1 + r2/r1) / 2 + j = j (0.07143 + 0.92857 + 1) = 2 j = 1.45285 mm at the output's pitch
+  //   circle, 28.5 mm out: 1.45285 / 28.5 = 0.050977 rad, 2.921°
+  near(b.play.mm, 1.45285, 1e-4, 'play, mm'); near(b.play.degrees, 2.921, 1e-3, 'play, degrees');
+  // The assembled gearbox beside it (chapter 11's: planets 18/21, rings 54/57, the 0.15 mm default backlash):
+  //   r1 = 9, r2 = 10.5: 0.15 × (0.16667 / 2 + 2.16667 / 2 + 1) = 0.15 × 2.16667 = 0.325 mm, / 28.5 = 0.011404 rad, 0.6534°
+  const asm = compoundPlanetary({ module: 1, ratio: -38, planets: 3, size: 75 }).best;
+  near(asm.play.mm, 0.325, 1e-9, 'assembled play, mm'); near(asm.play.degrees, 0.6534, 1e-3, 'assembled play, degrees');
+  assert.equal(asm.sun.model.herringbone, false, 'assembled: spur teeth, as before');
+  near(asm.sun.model.backlash, DEFAULTS.backlash.value, 1e-12, 'assembled: the default backlash, as before');
+  // a plain planet (r2 = r1): the sun's mesh adds nothing, the two rings' all of theirs
+  near(compoundPlay({ sun: 18, planet: 18, planet2: 18, ring: 54, ring2: 57, module: 1 }, { sun: 0.2, ring: 0.1, ring2: 0.1 }).mm, 0.2, 1e-12, 'plain planets');
+  // refused by name
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 44, printInPlace: true, backlash: 0.2 }), /the backlash comes from the gap/);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 44, printInPlace: 'yes' }), /printInPlace is true or false/);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 44, printInPlace: true, gap: 0.6 }), /gap is the print gap each side, above 0 and under half the module/);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 44, printInPlace: true, helix: 5 }), /helix is the herringbone's angle, from 10 to 45/);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 44, gap: 0.3 }), /gap is for a gearbox printed in place/);
+  assert.throws(() => compoundPlay({ planet: 18, planet2: 21, ring2: 57, module: 1 }, { sun: 0.1, ring: -1, ring2: 0.1 }), /backlash.ring is the held ring's mesh's/);
+});

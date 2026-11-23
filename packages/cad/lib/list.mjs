@@ -40,9 +40,21 @@ export function printedParts(s) {
   return [...by.values()].map((o) => ({ ...o, volume: n(o.volume, 0), grams: n((o.volume / 1000) * mat.density), minutes: n(o.volume / flow / 60, 0) }));
 }
 
+// The items printed together in place (the assembly's printInPlace) as the one print they are: one row, their grams and
+// the minutes of the whole, in the place of the first of them
+function inPlaceRow(s, printed) {
+  const ids = Array.isArray(s.a?.printInPlace) ? s.a.printInPlace : [], members = printed.filter((p) => ids.includes(p.id));
+  if (members.length < 2) return printed;
+  const mat = materialOf(s.project); let flow = 12;
+  try { flow = loadRuleSet('x1c').rules.print_flow?.value ?? flow; } catch {}
+  const volume = members.reduce((t, p) => t + p.volume, 0), row = { id: members.map((p) => p.id).join(', '), object: null, volume: n(volume, 0), grams: n((volume / 1000) * mat.density), minutes: n(volume / flow / 60, 0), inPlace: members.map((p) => p.id) };
+  const at = printed.indexOf(members[0]);
+  return [...printed.slice(0, at), row, ...printed.slice(at).filter((p) => !members.includes(p))];
+}
+
 /** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], cut: object | null, totals: object }} */
 export function shoppingList(s) {
-  const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
+  const mat = materialOf(s.project), printed = inPlaceRow(s, printedParts(s)), bought = new Map(), fasteners = new Map();
   for (const o of s.objects) if (o.bought && !o.unplaced) {
     // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
     // (a panel by its sheet and size: lib/panels.mjs)
@@ -109,7 +121,7 @@ export function listText(ref, l) {
     if (l.totals.pack) out.push(`  (packs of ${l.totals.pack.size}: ${l.totals.pack.rule}, ${/^[aeiou]/.test(l.totals.pack.kind) ? 'an' : 'a'} ${l.totals.pack.kind}; masses are estimates from each piece's outline)`);
   }
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
-  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}${p.bolt ? ` (${p.count} printed bolt${p.count > 1 ? 's' : ''}, standing on ${p.count > 1 ? 'their heads' : 'its head'}: ${p.from.join('; ')})` : ''}`]); }
+  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.inPlace ? ' (printed together in place: one print)' : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}${p.bolt ? ` (${p.count} printed bolt${p.count > 1 ? 's' : ''}, standing on ${p.count > 1 ? 'their heads' : 'its head'}: ${p.from.join('; ')})` : ''}`]); }
   out.push('', `Total: ${l.totals.printedGrams} g printed, about ${l.totals.minutes} min of printing (an estimate from volume and the printer's flow), ${l.totals.fixingsGrams ? `${l.totals.fixingsGrams} g of fixings, ` : ''}${l.totals.machineGrams} g as a machine${l.totals.noMassFor ? ` (no mass given for ${l.totals.noMassFor.join(', ')})` : ''}`);
   if (l.cost) {
     const c = l.cost, parts = [];

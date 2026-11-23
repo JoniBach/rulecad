@@ -1,0 +1,268 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "pip",
+  "title": "Shoulder printed in place: its numbers, and the carrier (not printed)",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "Nothing to print: the numbers the print-in-place shoulder's parts are drawn from (shoulder-pip and the assembly's shoulder-pip-* objects read them), and a speck that carries the planets' joints in the assembly, where they ride on the sun and the two rings.",
+  "role": "reference",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "a": {
+      "at": [
+        "centre",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "b": {
+      "at": [
+        "0 - centre / 2",
+        "centre * sind(sixty)",
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "c": {
+      "at": [
+        "0 - centre / 2",
+        "0 - centre * sind(sixty)",
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The gears': the assembled shoulder's"
+    },
+    "ratio": {
+      "value": 44.33,
+      "rule": "Turns of the sun for one of the output: the nearest compoundPlanetary finds with the bigger planet step on the sun and the held ring, so the planets and the sun print on what is below them"
+    },
+    "planets": {
+      "value": 3,
+      "rule": "Three, as the assembled shoulder"
+    },
+    "step": {
+      "value": -1,
+      "rule": "The output ring's teeth fewer than the held ring's, by the planets: the planets' lower step smaller, on the output ring"
+    },
+    "sun": {
+      "value": 18,
+      "rule": "Teeth on the sun, as compoundPlanetary finds them"
+    },
+    "planet": {
+      "value": 21,
+      "rule": "Teeth on the planets' upper step, on the sun and the held ring"
+    },
+    "planet2": {
+      "value": 18,
+      "rule": "Teeth on the planets' lower step, on the output ring"
+    },
+    "ring": {
+      "value": 60,
+      "rule": "Teeth on the held ring, in the housing"
+    },
+    "ring2": {
+      "value": 57,
+      "rule": "Teeth on the output ring"
+    },
+    "helix": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "The herringbones' angle: @rulecad/gears' DEFAULTS.helix"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "Between every two parts, each side: what prints apart"
+    },
+    "spare": {
+      "value": 0.03,
+      "unit": "mm",
+      "rule": "Drawn on top of the print gap, so the straight facets of drawn rounds don't eat into it: a 96-sided circle 35 mm across the middle falls 0.019 mm inside its round, and Manifold measured the gaps drawn at the bare print gap 0.292 to 0.297 mm"
+    },
+    "clear": {
+      "value": "gap + spare",
+      "unit": "mm",
+      "rule": "Every gap as drawn: the print gap and the facets' allowance"
+    },
+    "foot": {
+      "value": "x1c.foot",
+      "unit": "mm",
+      "rule": "How far the first layer spreads each side as it is squashed on"
+    },
+    "layer": {
+      "value": "x1c.layer",
+      "unit": "mm",
+      "rule": "The first layer: the teeth on the bed are cut straight, with the gap it needs, for this high"
+    },
+    "bed_addendum": {
+      "value": 0.6,
+      "rule": "The teeth's height over the pitch circle on the first layer, in modules: teeth thinned to the first layer's gap come to a point at ISO 53's 1; the layers above carry the drive"
+    },
+    "chamfer": {
+      "value": "x1c.chamfer",
+      "unit": "mm",
+      "rule": "Off the bed edges that face another part, against the first layer's spread"
+    },
+    "comp": {
+      "value": "x1c.hole_comp",
+      "unit": "mm",
+      "rule": "How much a printed hole shrinks, for the sun's bore"
+    },
+    "low": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The output stage's face: the assembled shoulder's"
+    },
+    "high": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The held stage's face, as the assembled shoulder's"
+    },
+    "rim2": {
+      "value": 69,
+      "unit": "mm",
+      "rule": "Round the output ring: its 59.8 mm root, the arm's pilots and two lines of wall each side of them"
+    },
+    "bolt": {
+      "value": 32.2,
+      "unit": "mm",
+      "rule": "Radius of the arm's pilots, between the output ring's root and its rim"
+    },
+    "bolts": {
+      "value": 4,
+      "rule": "The arm's screws"
+    },
+    "pilot_depth": {
+      "value": 3.6,
+      "unit": "mm",
+      "rule": "The arm's pilots, as deep as the output ring's cut-back top leaves"
+    },
+    "wall": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The housing's skirt round the output ring: six lines"
+    },
+    "opening": {
+      "value": 36,
+      "unit": "mm",
+      "rule": "The roof's hole, for the sun's hub: as wide as the motor's posts leave, so the roof's cone is short"
+    },
+    "lip": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The roof's inner edge above its cone: five layers"
+    },
+    "plate": {
+      "value": 4.5,
+      "unit": "mm",
+      "rule": "Each post's top over its window, under the motor: one and a half of its screws' diameters, the least v.motors' mountModel takes before a head pulls through. pipScrews (shoulder-pip-parts.js) names the screw through v.fixings, the motor's own thread at the longest length sold that stays in its tapped holes, and fails the build if mountModel finds the screw short or the plate thin"
+    },
+    "hub": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The sun's hub up to the motor, round the 5 mm shaft"
+    },
+    "centre": {
+      "value": "module * (sun + planet) / 2",
+      "unit": "mm",
+      "rule": "Sun to planet"
+    },
+    "face": {
+      "value": "low + clear + high + clear + centre + module * (planet + 2) / 2 + clear - opening / 2 + lip + window_h + (window_w - bridge) / 2 + plate",
+      "unit": "mm",
+      "rule": "The motor's face, on its posts: the roof's cone rising at 45° from a gap over the planets' upper step, its lip, then the posts' windows and tops"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "deg",
+      "rule": "Degrees to radians"
+    },
+    "segments": {
+      "value": 96,
+      "rule": "Facets round the solids"
+    },
+    "r": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "A speck"
+    },
+    "far": {
+      "value": -10,
+      "unit": "mm",
+      "rule": "Under the bed, clear of every part and the motor"
+    },
+    "sixty": {
+      "value": 60,
+      "unit": "deg",
+      "rule": "Each planet from the x axis"
+    },
+    "straight": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "The held stage's first six layers cut straight, not as a herringbone: where the housing's underside and the planets' upper step widen at 45° (up to 1.1 mm above the stage's foot at the held ring's tips) a twist as well leans past what prints"
+    },
+    "window_w": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Each post's window across: the motor's screw's hexagon head across its corners (v.fixings' screwModel, held to it by pipScrews) and an open spanner's jaws round them"
+    },
+    "window_h": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Each post's window, upright, before its top rises: the hexagon head's height (v.fixings' screwModel, held to it by pipScrews) and a spanner's thickness"
+    },
+    "bridge": {
+      "value": "x1c.bridge",
+      "unit": "mm",
+      "rule": "The widest flat the window's top may span"
+    },
+    "post_r": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "Each post, along its window: the screw's hole and two lines of wall each side"
+    },
+    "post_w": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Each post, across its window: the window and two millimetres of wall each side"
+    },
+    "ring_turn": {
+      "value": 9,
+      "unit": "deg",
+      "rule": "How far the held ring is turned from the sun's frame so the planets mesh it, as compoundPlanetary lays the gearbox out (its ring.angle): the housing's axis is turned back by this, so the parts on it sit as they print"
+    }
+  }
+}

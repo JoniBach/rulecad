@@ -33,6 +33,8 @@ export const DEFAULTS = {
   chamfer: { value: 0.3, unit: 'mm', rule: 'A chamfer round the bed face, so the first layer\'s squish (elephant\'s foot) doesn\'t widen the teeth there', kind: 'estimate' },
   efficiency: { value: 0.95, unit: 'per mesh', rule: 'Power a printed mesh passes on, dry: metal spur gears pass 98 to 99%, and dry plastic teeth rub more. Measure yours', kind: 'estimate' },
   module: { value: 0.8, unit: 'mm at a 0.4 mm nozzle', rule: 'The smallest module worth printing: twice the nozzle, so a tooth is three lines at the pitch circle', kind: 'estimate' },
+  printGap: { value: 0.3, unit: 'mm', rule: 'The gap each side between gears printed in place, in mesh, that still prints apart: the X1C\'s print_gap. An estimate until the fit test plate measures it; the sampler plate\'s gears bound on pegs printed 0.105 mm clear each side, so it is no smaller than that', kind: 'estimate' },
+  helix: { value: 30, unit: 'deg', rule: 'The helix angle of a herringbone printed in place: steep enough that the rings cannot walk off the planets, and each half prints at 30° from the layers', kind: 'default' },
 };
 const D = (k) => DEFAULTS[k].value;
 

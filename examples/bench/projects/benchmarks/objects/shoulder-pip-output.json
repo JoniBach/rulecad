@@ -1,0 +1,44 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-pip-output",
+  "title": "Print-in-place shoulder: output ring",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "benchmarks/pip"
+  ],
+  "engine": "manifold",
+  "description": "The output ring alone, at the origin, as shoulder-pip prints it: on the bed, its top cut back under the housing, four pilots for the arm.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "tip": {
+      "at": [
+        150,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {}
+}

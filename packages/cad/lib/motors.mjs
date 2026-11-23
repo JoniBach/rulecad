@@ -276,7 +276,8 @@ function screwsFor(d, plate, t = plate) {
  * at the length mountModel works out for the plate as drawn taken to a length sold (the longest that does not pass it
  * into the motor's own thread; through plain holes, the shortest that reaches), or the length the motor item names.
  * @param {object} s a built assembly @param {{ placeItems: Function, jointValues: Function }} helpers
- * @returns {{ item: string, other: string, fit: object, thread: string, head: string, name: string, key: number | null, length: number, wanted: number, count: number }[]}
+ * @returns {{ item: string, other: string, fit: object, thread: string, head: string, name: string, key: number | null, tool: string | null, length: number, wanted: number, count: number }[]}
+ *   tool: what turns them, as the order says it: a hex key in a socket head, a socket or spanner on a hexagon head
  */
 export function motorScrews(s, { placeItems, jointValues }) {
   const drives = s.motion?.drives || [], top = (n) => String(n).split(/[.@]/)[0];
@@ -288,7 +289,8 @@ export function motorScrews(s, { placeItems, jointValues }) {
     const p = mountPlate(s, d, worlds[d.item]); if (!p || p.t === Infinity) continue;
     const { fx, length, wanted, name } = screwsFor(d, +p.plate.toFixed(2), +p.t.toFixed(2));
     if (!(wanted > 0)) continue;
-    out.push({ item: d.id, other: p.other, fit: p.fit, thread: fx.thread, head: fx.head.form, name, key: fx.head.key ?? null, length, wanted, count: d.model.mount.holes.length });
+    const tool = fx.head.form === 'hex' && fx.head.flats ? `${+fx.head.flats.toFixed(3)} mm socket or spanner` : fx.head.key != null ? `${+fx.head.key.toFixed(3)} mm hex key` : null;
+    out.push({ item: d.id, other: p.other, fit: p.fit, thread: fx.thread, head: fx.head.form, name, key: fx.head.key ?? null, tool, length, wanted, count: d.model.mount.holes.length });
   }
   return out;
 }
@@ -461,10 +463,17 @@ export function shaftFit(x, s, f, { placeItems, jointValues, mul, materialName, 
   const gapAt = (psi) => Math.min(...inner.map(([a, h]) => h - section(a, psi)));
   let gap = S.flats ? -Infinity : gapAt(0);
   if (S.flats) for (let k = 0; k < N; k++) gap = Math.max(gap, gapAt((2 * Math.PI * k) / N));
-  const code = (c) => ({ code: c, refs: { item: d.id, part: other } }), press = x.shaft === 'press' || gap < 0;
+  const code = (c) => ({ code: c, refs: { item: d.id, part: other } }), press = x.shaft === 'press' || (x.shaft !== 'slide' && gap < 0);
   if (S.flats) {
     const radial = inner.map(([, h]) => h);
     if (Math.max(...radial) - Math.min(...radial) < 0.2) return f('fail', `${label}: the bore is round and the shaft has a flat: nothing turns the part but friction. Cut the flat in the bore (bore() in @rulecad/motors), or add a grub screw`, `${label}: round bore`, { ...code('shaft.flat') });
+  }
+  // A slide fit, as a part printed in place needs (it can't be pressed on: the push would go through its teeth, or
+  // whatever holds it in place): the bore as printed, hole_comp smaller across than drawn, still clear of the shaft
+  if (x.shaft === 'slide') {
+    const printed = gap - holeComp / 2;
+    if (printed < 0) f('fail', `${label}: a slide fit, but printed the bore comes out ${n3(holeComp, 2)} mm smaller across than drawn, ${n3(-printed, 3)} mm a side tighter than the shaft: it won't slide on, and it can't be pressed on. Draw the bore as bore() in @rulecad/motors does for a slide (the shaft, its fit each side and hole_comp)`, `${label}: no slide`, { ...code('shaft.slide'), values: { drawn: gap, printed, holeComp } });
+    else f('pass', `${label}: slides on by hand, ${n3(printed, 3)} mm a side as printed (${n3(gap, 3)} mm drawn, less half of hole_comp's ${n3(holeComp, 2)} mm)`, null, { ...code('shaft.slide'), values: { drawn: gap, printed, holeComp } });
   }
   if (gap > 0.5) f('fail', `${label}: the bore is ${n3(gap, 2)} mm clear of the shaft at its closest: too slack to hold`, `${label}: slack`, code('shaft.bore'));
   if (gap < -0.2) f('fail', `${label}: the bore is ${n3(-gap, 2)} mm tighter than the shaft: it won't go on`, `${label}: too tight`, code('shaft.bore'));

@@ -3,6 +3,7 @@
 // faster, and always watertight). Each op takes shapes or arrays of them, like JSCAD's. With Manifold, a shape that
 // can't be read as a closed solid falls back to JSCAD for that op (counted in stats.fallbacks).
 //   const o = await ops('manifold'); o.union(a, b); o.subtract(a, b, c); o.intersect(a, b); o.stats
+// and with Manifold, the least distance between two solids: o.gap(a, b, within)
 import jscad from '@jscad/modeling';
 
 const { geom3, poly3 } = jscad.geometries;
@@ -15,7 +16,9 @@ const flat = (args) => args.flat(Infinity).filter((g) => g != null);
 export async function ops(engine = 'jscad') {
   const stats = { ops: 0, fallbacks: 0 };
   const { union, subtract, intersect } = jscad.booleans;
-  if (engine === 'jscad') return { engine, stats, union: (...a) => (stats.ops++, union(...flat(a))), subtract: (...a) => (stats.ops++, subtract(...flat(a))), intersect: (...a) => (stats.ops++, intersect(...flat(a))) };
+  // (the gap between two solids needs Manifold: JSCAD has no distance query, so it says so by name)
+  const noGap = () => { throw Object.assign(new Error('gap needs the manifold engine: ops(\'manifold\'), with manifold-3d installed'), { code: 'engine.gap' }); };
+  if (engine === 'jscad') return { engine, stats, union: (...a) => (stats.ops++, union(...flat(a))), subtract: (...a) => (stats.ops++, subtract(...flat(a))), intersect: (...a) => (stats.ops++, intersect(...flat(a))), gap: noGap };
   if (engine !== 'manifold') throw new Error(`no boolean engine "${engine}" (jscad or manifold)`);
   let wasm;
   try { wasm = await (await import('manifold-3d')).default(); } catch (e) {
@@ -57,5 +60,12 @@ export async function ops(engine = 'jscad') {
       return jscadOp(...shapes);
     } finally { for (const m of made) m.delete(); }
   };
-  return { engine, stats, union: (...a) => run('union', union, a), subtract: (...a) => run('subtract', subtract, a), intersect: (...a) => run('intersect', intersect, a) };
+  // The least distance between two solids' surfaces, by Manifold's minGap, up to `within` mm (beyond it, within is
+  // returned: nothing nearer). 0 when they touch or cross.
+  const gap = (a, b, within = 1) => {
+    if (!(typeof within === 'number' && within > 0)) throw new Error(`gap: within is how far to look, in mm above 0 (got ${JSON.stringify(within)})`);
+    let ma = null, mb = null;
+    try { ma = toManifold(a); mb = toManifold(b); return Math.max(0, ma.minGap(mb, within)); } finally { ma?.delete(); mb?.delete(); }
+  };
+  return { engine, stats, union: (...a) => run('union', union, a), subtract: (...a) => run('subtract', subtract, a), intersect: (...a) => run('intersect', intersect, a), gap };
 }
