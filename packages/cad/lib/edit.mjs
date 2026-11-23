@@ -553,6 +553,41 @@ export function setProject(project, changes, { dryRun = false } = {}) {
 }
 
 /**
+ * Make an object from the kit's template: projects/<project>/objects/<name>.js and .json, listed in its project's
+ * objects; its project is made first where there is none (PLA, as cad new <project> makes one). With dryRun it writes
+ * nothing and says what it would make, in the shape the other edits answer in. Refused by name: a name not in lower
+ * case with dashes, an object already there.
+ * @param {string} ref project/object @param {{ dryRun?: boolean }} [options]
+ */
+export function newObject(ref, { dryRun = false } = {}) {
+  const [project, name] = String(ref || '').split('/');
+  if (!NAME.test(project || '') || !NAME.test(name || '')) throw new CadError('edit.name', `an object is <project>/<name>, each lower case with dashes (got ${JSON.stringify(ref)})`);
+  const objects = path.join(paths.project(project), 'objects'), pj = projectFile(project);
+  const files = ['js', 'json'].map((ext) => path.join(objects, `${name}.${ext}`));
+  const there = files.find((f) => fs.existsSync(f));
+  if (there) throw new CadError('object.exists', `projects/${project}/objects/${path.basename(there)} is already there: change its variables with cad set ${ref} name=value`, { file: there });
+  const texts = ['js', 'json'].map((ext) => fs.readFileSync(new URL(`../templates/object.${ext}`, import.meta.url), 'utf8').replaceAll('NAME', name));
+  const object = JSON.parse(texts[1]);
+  const problems = validate(object, schema('object'));
+  if (problems.length) throw new CadError('schema', `not made: ${name}.json: ${problems[0].path}: ${problems[0].message}`, { file: files[1], path: problems[0].path });
+  // its project: made where there is none, else the object added to its list (keeping the file's layout)
+  const made = fs.existsSync(pj) ? null : newProject(project, { dryRun: true });
+  const before = made ? '' : fs.readFileSync(pj, 'utf8');
+  let text = made ? laidOut(made.changes[0].after) : before, listed = [];
+  const own = JSON.parse(text);
+  if (!Array.isArray(own.objects)) { text = setAt(text, ['objects'], [name]); listed = [{ op: 'add', path: 'objects.0', after: name }]; }
+  else if (!own.objects.includes(name)) { text = appendAt(text, ['objects'], name); listed = [{ op: 'add', path: `objects.${own.objects.length}`, after: name }]; }
+  const changes = [...(made ? made.changes : []), ...files.map((f, i) => ({ op: 'make', path: `projects/${project}/objects/${path.basename(f)}`, ...(i === 1 ? { after: object } : {}) })), ...listed];
+  const findings = [...(made ? made.findings.filter((f) => f.code !== 'schema') : []), { level: 'pass', text: 'matches the object schema', code: 'schema' }];
+  if (!dryRun) {
+    fs.mkdirSync(objects, { recursive: true });
+    files.forEach((f, i) => fs.writeFileSync(f, texts[i]));
+    if (text !== before) fs.writeFileSync(pj, text);
+  }
+  return { file: files[1], written: !dryRun, ...(dryRun ? { dryRun: true } : {}), made: [...(made ? [pj] : []), ...files], changes, findings };
+}
+
+/**
  * Make an assembly: projects/<project>/assemblies/<name>.json, empty (items: []) or a generated frame, checked as it
  * is made; its project is made first where there is none, with the material and printer given for it (checked as cad new
  * <project> checks them). Refused by name: an assembly already there, a kind that is not fit, a frame the generator

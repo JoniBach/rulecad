@@ -20,7 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
-import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
+import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, newObject, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
@@ -429,21 +429,9 @@ async function main() {
   if (configError) throw configError;
 
   if (cmd === 'new' && (opt('assembly') || !String(ref || '').includes('/'))) return newCommand(ref ?? (typeof opt('assembly') === 'string' ? opt('assembly') : undefined));
-  if (cmd === 'new') {
-    const [project, name] = String(ref || '').split('/');
-    if (!/^[a-z][a-z0-9-]*$/.test(project || '') || !/^[a-z][a-z0-9-]*$/.test(name || '')) throw new Error('usage: cad new <project>/<object>, lower-case names with dashes');
-    const dir = paths.project(project), objects = path.join(dir, 'objects');
-    fs.mkdirSync(objects, { recursive: true });
-    const pj = path.join(dir, 'project.json');
-    const p = fs.existsSync(pj) ? JSON.parse(fs.readFileSync(pj, 'utf8')) : { name: project, description: '', material: 'PLA', objects: [] };
-    for (const ext of ['js', 'json']) {
-      const to = path.join(objects, `${name}.${ext}`);
-      if (fs.existsSync(to)) throw new Error(`${path.relative(WS, to)} already exists`);
-      fs.writeFileSync(to, fs.readFileSync(path.join(TOOL, 'templates', `object.${ext}`), 'utf8').replaceAll('NAME', name));
-    }
-    if (!p.objects.includes(name)) p.objects.push(name);
-    fs.writeFileSync(pj, JSON.stringify(p, null, 2) + '\n');
-    return console.log(`made projects/${project}/objects/${name}.{js,json}`);
+  if (cmd === 'new') { // an object, from the template; --dry-run and --json as the other edits
+    const r = newObject(ref, { dryRun: !!opt('dry-run') }), [project, name] = String(ref).split('/');
+    return edited(r, 'new', {}, `${r.dryRun ? 'would make' : 'made'} projects/${project}/objects/${name}.{js,json}`);
   }
 
   if (cmd === 'rules' && ['check', 'draw', 'draft'].includes(ref)) return ruleSheets(ref, pos.slice(2));

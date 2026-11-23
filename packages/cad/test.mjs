@@ -177,6 +177,32 @@ test('the quick start: new, check, tweak, export, link, with the printer rules c
   } finally { done(); }
 });
 
+test('cad new <project>/<object> answers as the other edits: --dry-run writes nothing, --json says what it makes, refused by name', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), json = (...a) => JSON.parse(cad(...a, '--json'));
+  try {
+    // a dry run on a project that is not there yet: nothing on disk, the project, both files and the listing named
+    const d = json('new', 'shelf/widget', '--dry-run');
+    assert.deepEqual([d.command, d.file, d.written, d.dryRun, d.made], ['new', 'projects/shelf/objects/widget.json', false, true, ['projects/shelf/project.json', 'projects/shelf/objects/widget.js', 'projects/shelf/objects/widget.json']]);
+    assert.deepEqual(d.changes.map((c) => [c.op, c.path]), [['make', 'projects/shelf/project.json'], ['make', 'projects/shelf/objects/widget.js'], ['make', 'projects/shelf/objects/widget.json'], ['add', 'objects.0']]);
+    assert.equal(d.changes[2].after.name, 'widget');
+    assert.ok(d.findings.some((f) => f.code === 'schema' && f.level === 'pass'), JSON.stringify(d.findings));
+    assert.ok(!fs.existsSync(file('shelf')), 'a dry run writes nothing');
+    assert.match(cad('new', 'shelf/widget', '--dry-run'), /^dry run, nothing written: would make projects\/shelf\/objects\/widget\.\{js,json\}/);
+    assert.ok(!fs.existsSync(file('shelf')), 'a dry run in words writes nothing');
+    // made for real, then a second object is added to the project's list, keeping its layout
+    assert.match(cad('new', 'shelf/widget'), /^made projects\/shelf\/objects\/widget\.\{js,json\}/);
+    const second = json('new', 'shelf/bracket');
+    assert.deepEqual([second.written, second.made, second.changes.at(-1)], [true, ['projects/shelf/objects/bracket.js', 'projects/shelf/objects/bracket.json'], { op: 'add', path: 'objects.1', after: 'bracket' }]);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file('shelf/project.json'), 'utf8')).objects, ['widget', 'bracket']);
+    // refused by name, with nothing written
+    const before = fs.readFileSync(file('shelf/objects/widget.json'), 'utf8');
+    assert.equal(JSON.parse(cad('new', 'shelf/widget', '--json')).error.code, 'object.exists');
+    assert.equal(fs.readFileSync(file('shelf/objects/widget.json'), 'utf8'), before);
+    assert.equal(JSON.parse(cad('new', 'shelf/Widget', '--json')).error.code, 'edit.name');
+  } finally { done(); }
+});
+
 test('a raw number in a design fails the check', () => {
   const { ws, cad, done } = workspace();
   try {

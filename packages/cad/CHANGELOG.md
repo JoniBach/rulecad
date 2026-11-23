@@ -5,6 +5,16 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Fixed
+
+- `cad new <project>/<object>` takes `--dry-run` and `--json` as the other edits do. Before, a dry run made the
+  object's files anyway, and `--json` printed a line of words. Now a dry run writes nothing and says what it would make;
+  `--json` answers `{ command, file, written, dryRun, made, changes, findings }`; an object already there is refused
+  as `object.exists` and a bad name as `edit.name`. A project made for a new object is made as `cad new <project>`
+  makes one, with its `$schema`. A program can call it as `newObject(ref, { dryRun })` from `lib/edit.mjs`.
+
 ## 0.7.65: the arm on the parts its builder has
 
 ### Changed
