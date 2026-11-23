@@ -586,6 +586,21 @@ test('a corner slows to the junction speed; an axis rate limit slows a move and 
   assert.ok(slow.blocks.filter((x) => x.type === 'move').every((m) => m.rate.peak <= 200 * Math.max(1, m.major / Math.abs(m.steps[0] || 1)) * 1.000001 || m.steps[0] === 0));
 });
 
+test('minBlockTime slows a short move until it lasts that long, so a streamer taking a line a block keeps up', () => {
+  // A 10 mm circle at 0.05 mm tolerance is many chords well under a millimetre; at 100 mm/s a 0.5 mm chord lasts 5 ms,
+  // and with minBlockTime 0.01 its peak is held to 0.5 / 0.01 = 50 mm/s, so it lasts at least 10 ms
+  const arm = planar2R(150, 120), pts = Array.from({ length: 61 }, (_, i) => [120 + 5 * Math.cos((i * Math.PI) / 30), 100 + 5 * Math.sin((i * Math.PI) / 30)]);
+  const plan = planToolpath(arm, [{ points: pts }], { tolerance: 0.05 }), axes = [{ name: 'shoulder', stepsPerUnit: 71 }, { name: 'elbow', stepsPerUnit: 71 }];
+  const free = stepBlocks(plan, { axes, speed: 100, accel: 5000 }), held = stepBlocks(plan, { axes, speed: 100, accel: 5000, minBlockTime: 0.01 });
+  const draws = (b) => b.blocks.filter((x) => x.type === 'move' && x.kind === 'draw');
+  assert.ok(draws(free).some((m) => m.time < 0.01), 'without it, some chords last under 10 ms');
+  for (const m of draws(held)) { assert.ok(m.time >= 0.01 - 1e-12, `a block of ${m.time} s`); assert.ok(m.length / m.peak >= 0.01 - 1e-12); }
+  const f = held.findings.find((x) => x.code === 'steps.blockTime');
+  assert.ok(f && f.level === 'info' && f.values.slowed > 0 && f.values.minBlockTime === 0.01, JSON.stringify(held.findings));
+  assert.equal(free.findings.find((x) => x.code === 'steps.blockTime'), undefined);
+  refused(() => stepBlocks(plan, { axes, speed: 1, accel: 1, minBlockTime: -1 }), 'steps.minBlockTime');
+});
+
 test('an SVG with a 100 mm square and a circle replays from its step blocks within 0.1 mm', () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210">
     <rect x="24" y="55" width="100" height="100" id="square"/>

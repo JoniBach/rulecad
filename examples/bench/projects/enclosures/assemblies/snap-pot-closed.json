@@ -1,0 +1,13 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Pot with its lid on",
+  "kind": "fit",
+  "description": "The lid clicked on: its top on the pot's rim and the bead in the groove, clear all round by the printer's fit, so neither part is strained at rest.",
+  "items": [
+    { "id": "pot", "object": "snap-pot", "set": { "piece": 1 } },
+    { "id": "lid", "object": "snap-pot", "set": { "piece": 2 }, "at": [0, 0, 41.6], "rotate": [180, 0, 0] }
+  ],
+  "fits": [
+    { "a": "lid", "b": "pot", "fastens": true, "min": -0.2, "note": "The lid, on its annular snap: its top rests on the rim, and the bead passes 0.2 mm into the skirt as it snaps on (the undercut annularSnapModel sizes)" }
+  ]
+}

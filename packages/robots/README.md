@@ -93,7 +93,7 @@ right-handed. `fk` returns each link's `matrix` in the same 12 numbers.
 | `svgToStrokes(text, { tolerance, unit })` | `{ strokes, width, height, findings }`, strokes `{ name, points, closed }` in mm |
 | `orderStrokes(strokes, { start })` | `{ strokes, travel: { before, after } }`, nearest next with reversal |
 | `planToolpath(chain, strokes, { tolerance, elbow, sheet, transform, zUp, home })` | `{ ok, chain, tolerance, elbow, moves: [{ kind, stroke, name, q, points }], length, findings }` |
-| `stepBlocks(plan, { axes, speed, accel, travelSpeed, penUp, penDown, corner })` | The block file (below) |
+| `stepBlocks(plan, { axes, speed, accel, travelSpeed, penUp, penDown, corner, minBlockTime })` | The block file (below) |
 | `replay(blocks, chain, axes?)` | `{ strokes, travels, steps, q, pen }`, the tool at every step |
 | `estimate(blocks)` | `{ time, draw, travel, pen, moves, steps }`: seconds, mm, seconds, and steps per axis |
 
@@ -156,7 +156,10 @@ finding naming the stroke and the point, and `stepBlocks` will not take it.
 ```
 
 An axis takes `stepsPerUnit`, or `stepAngle` and `microsteps` (with the joint's `ratio`, or its own `ratio`, and for a
-prismatic the `lead`, mm per turn). `maxRate` (steps/s) slows any block that would exceed it.
+prismatic the `lead`, mm per turn). `maxRate` (steps/s) slows any block that would exceed it. `minBlockTime` (seconds, default 0)
+slows any move that would be over sooner: its peak tool speed is held to its length over `minBlockTime`. A streamer that
+takes a line a block, over a serial line, needs this: a block must last as long as its line takes to arrive and be
+answered, or the queue runs dry. The finding `steps.blockTime` counts the moves slowed.
 
 To run a block, take the rate up from `entry` for `accelSteps` ticks, hold `peak`, take it down over `decelSteps` to
 `exit`. Each tick, for each axis: `acc[k] += abs(steps[k]); if (acc[k] >= major) { acc[k] -= major; step axis k }`,

@@ -22,6 +22,14 @@ and head, the parts it passes through and the part it ends in.
   as `object.exists` and a bad name as `edit.name`. A project made for a new object is made as `cad new <project>`
   makes one, with its `$schema`. A program can call it as `newObject(ref, { dryRun })` from `lib/edit.mjs`.
 
+## 0.7.66: the Uno streamer keeps time (#181)
+
+### Added
+
+- An assembly's `task` takes `blockTime`, seconds: `cad plot` plans no move shorter (robots' `minBlockTime`), for a
+  streamer that takes one line a block over serial. `cad machine` writes it into the machine's `task`. No printed size
+  moved.
+
 ## 0.7.65: the arm on the parts its builder has
 
 ### Changed
