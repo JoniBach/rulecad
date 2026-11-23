@@ -59,6 +59,15 @@ unsigned long nextAt = 0, waitUntil = 0;
 bool waiting = false;
 bool chained = false; // the last block ended on a step with the next due one gap after it: the next block keeps that time
 float rate = 0, gap = 0; // steps/s, and the µs from this step to the next
+// The block's speed figures as floats, worked out once at its start: the acceleration per µs, the peak, the least exit
+// rate, and the step from which it slows down
+float accelUs = 0, peakF = 0, floorF = 0;
+long downFrom = 0;
+// A gap shorter than this (faster than 5000 steps/s), µs: the speed is worked out every other step, over both steps' time.
+// A speed change costs a float multiply and a division, about half the 125 µs between steps at MAX_RATE, and the loop
+// reads the serial line too; done every step the streamer fell behind slowing down from MAX_RATE with lines arriving.
+const float FINE_GAP = 200;
+bool skipped = false; // the last step in a ramp left its speed change to this one
 
 void setup() {
   Serial.begin(115200);
@@ -160,6 +169,7 @@ void start() {
   for (uint8_t i = 0; i < 3; i++) { if (cur.steps[i] >= 0) dirs |= DIR_MASK[i]; acc[i] = cur.major >> 1; }
   PORTD = (PORTD & ~(DIR_MASK[0] | DIR_MASK[1] | DIR_MASK[2])) | dirs;
   rate = max(cur.entry, MIN_RATE); gap = 1000000.0 / rate;
+  accelUs = cur.accel * 1e-6f; peakF = cur.peak; floorF = max(cur.exit_, MIN_RATE); downFrom = cur.major - cur.down; skipped = false;
   done = 0; running = true;
   if (!chained) nextAt = micros(); // from rest, its first step now; following a block, one gap after that block's last
   chained = false;
@@ -175,12 +185,18 @@ void tick() {
   pulse(mask);
   done++;
   if (done >= cur.major) { running = false; nextAt += (unsigned long)gap; chained = true; return; }
-  // Constant acceleration: dv = a dt, and dt is this step's gap, 1 / v
-  bool changed = true;
-  if (done < cur.up) { rate += cur.accel * gap * 1e-6f; if (rate > cur.peak) rate = cur.peak; }
-  else if (done >= cur.major - cur.down) { rate -= cur.accel * gap * 1e-6f; float floor_ = max(cur.exit_, MIN_RATE); if (rate < floor_) rate = floor_; }
-  else changed = false;
-  if (changed) gap = 1000000.0 / rate;
+  // Constant acceleration: dv = a dt, dt this step's gap (1 / v), or two gaps when the last step left its change to this one
+  // (the gap is the same for both: it changes only here). The last step speeding up always changes, so the cruise is at peak.
+  bool up = done < cur.up;
+  if (up || done >= downFrom) {
+    if (gap >= FINE_GAP || skipped || done + 1 == cur.up) {
+      float dv = accelUs * (skipped ? gap + gap : gap);
+      skipped = false;
+      if (up) { rate += dv; if (rate > peakF) rate = peakF; }
+      else { rate -= dv; if (rate < floorF) rate = floorF; }
+      gap = 1000000.0 / rate;
+    } else skipped = true;
+  }
   nextAt += (unsigned long)gap;
 }
 

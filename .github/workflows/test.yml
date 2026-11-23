@@ -39,7 +39,10 @@ jobs:
     # The Arduino sketches (every folder with a .ino of its own name) compiled for an Uno: a compile error fails the run.
     # Then the arm's streamer runs on a simulated Uno (avr8js, installed for this job only), homed and fed the worked arm's
     # step file through send.mjs's own lines: every line answered "ok", every step counted against the file, a block past
-    # MAX_RATE refused, and the loop's fastest rate above what the machine description asks. A toolchain download that
+    # MAX_RATE refused, and the loop's fastest rate, at the cruise, speeding up and slowing down on one to three axes, above
+    # MAX_RATE and what the machine description asks. Then the shortest blocks the sender passes are streamed at MAX_RATE on
+    # three axes, at the cruise and slowing down every step, each line sent when the last was answered: they must keep to
+    # their planned time within 1%, or the streamer falls behind on short blocks. A toolchain download that
     # still fails after three tries is a warning and skips the rest: the compile is what this job is for, not the download.
     runs-on: ubuntu-latest
     timeout-minutes: 20

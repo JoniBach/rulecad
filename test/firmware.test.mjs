@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck } from '../scripts/firmware.mjs';
+import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck, shortBlock } from '../scripts/firmware.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (f) => fs.readFileSync(`${ROOT}${f}`, 'utf8').replace(/\r\n/g, '\n');
@@ -98,12 +98,13 @@ test('firmware: the loop\'s ceiling is measured speeding up and slowing down as 
   // steps/s, and the rate is clamped back to the peak of 50000, so the division runs on all 4000 steps
   assert.throws(() => ceilingLine(4, 'up'), /axes 4: a block steps 1, 2 or 3 axes/);
   assert.throws(() => ceilingLine(1, 'coast'), /phase "coast": one of cruise, up, down/);
-  // the figures measured on the simulated Uno (arduino:avr 1.8.8, RATE_LIMIT=1000000): the cruise alone is 2.7 times
-  // MAX_RATE (21505 / 8000), and the slowest, three axes slowing down, is 8904 / 8000 = 1.11 times
-  const measured = { cruise: [24615, 22956, 21505], up: [9484, 9227, 8984], down: [9395, 9143, 8904] };
+  // the figures measured on the simulated Uno (arduino:avr 1.8.8, RATE_LIMIT=1000000), each the mean over a block's middle
+  // steps: the cruise alone is 2.65 times MAX_RATE (21237 / 8000), and the slowest, three axes slowing down, is
+  // 12428 / 8000 = 1.55 times (it was 8904, 1.11 times, before the speed was worked out every other step past 5000 steps/s)
+  const measured = { cruise: [24290, 22658, 21237], up: [13530, 13009, 12526], down: [13415, 12904, 12428] };
   const held = ceilingCheck(measured, 8000);
-  assert.deepEqual(held.slowest, { phase: 'down', axes: 3, rate: 8904 });
-  assert.equal(held.margin.toFixed(2), '1.11');
+  assert.deepEqual(held.slowest, { phase: 'down', axes: 3, rate: 12428 });
+  assert.equal(held.margin.toFixed(2), '1.55');
   assert.deepEqual(held.problems, []);
   // a loop fast at its cruise and slow while speeding up fails: the old check read the cruise's three axes only
   const slow = ceilingCheck({ ...measured, up: [8200, 7900, 7600] }, 8000);
@@ -116,4 +117,54 @@ test('firmware: the loop\'s ceiling is measured speeding up and slowing down as 
   assert.match(script, /ceilings: Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, \[1, 2, 3\]\.map\(\(a\) => ceiling\(fast, avr, a, p\)\)\]\)\)/);
   assert.match(script, /for \(const p of held\.problems\) fail\(p\)/);
   assert.doesNotMatch(script, /r\.ceilings\[2\] < max/);
+});
+
+test('firmware: a block must last as long as its line and answer take, and the sender refuses a shorter one before anything moves', async () => {
+  const send = await import(pathToFileURL(`${ROOT}${ARM}/send.mjs`).href);
+  // 115200 baud at 10 bits a byte is 86.8 µs a byte. A 36-character line, its newline and the 4-byte answer "ok\r\n" are
+  // 41 bytes: 41 x 10 / 115200 = 3.559 ms on the wire, and 3.559 + 5.1 = 8.659 ms with the USB turnaround
+  const line = 'm 20 20 20 8000 8000 8000 100000 0 0';
+  assert.equal(line.length, 36);
+  assert.equal((send.leastBlockTime(line, { turnaround: 0 }) * 1000).toFixed(3), '3.559');
+  assert.equal((send.leastBlockTime(line) * 1000).toFixed(3), '8.659');
+  // the checker's case: 20 steps at 8000 steps/s are over in 2.5 ms; the streamer fell 55% behind on them
+  assert.throws(() => send.dryRun(['e', line]), /line 2 .*20 steps at up to 8000 steps\/s can be over in 2\.50 ms, and the streamer needs 8\.66 ms for each block's line and answer: it would fall behind/);
+  assert.throws(() => send.dryRun([line], { turnaround: 0 }), /needs 3\.56 ms/);
+  // 70 steps at 8000 steps/s last 8.75 ms, over 8.659 (the line is still 36 characters): taken
+  assert.equal(send.dryRun(['m 70 70 70 8000 8000 8000 100000 0 0']).m, 1);
+  // the soonest a block can be over is at its fastest of entry, peak and exit: 70 steps at a peak of 4000 last 17.5 ms
+  assert.equal(send.dryRun(['m 70 0 0 0 4000 0 100000 35 35']).m, 1);
+  // send.mjs checks the whole file before it opens the port, not only on a dry run
+  assert.match(read(`${ARM}/send.mjs`), /let r;\n  try \{ r = dryRun\(lines, \{ machine \}\); \} catch \(e\) \{ console\.error\(`\$\{has\('dry-run'\) \? 'dry run' : 'not sent'\}/);
+  // the worked arm plans with a least block time that covers a 60-character line: (60 + 1 + 4) x 10 / 115200 + 0.0051 =
+  // 0.01074 s, under its task.blockTime of 0.011 (the worked file's lines are 34 to 41 characters)
+  for (const f of [ARM, COPY]) {
+    const task = JSON.parse(read(`${f}/assemblies/arm.json`)).task;
+    assert.equal(task.blockTime, 0.011, f);
+    assert.ok(send.leastBlockTime('m'.padEnd(60, ' ')) <= task.blockTime, f);
+  }
+});
+
+test('firmware: CI streams the shortest blocks the sender passes, and the streamer reads a line a character at a time', () => {
+  // with no USB link (the simulation), at 8000 steps/s on three axes: the 36-character cruise line needs 3.559 ms, so 28
+  // steps (3.5 ms) are too few and 29 (3.625 ms) do; the 40-character slowing line needs 45 x 10 / 115200 = 3.906 ms, so
+  // 31 steps (3.875 ms) are too few and 32 (4.0 ms) do
+  const least = (l) => ((l.length + 1 + 4) * 10) / 115200;
+  assert.deepEqual(shortBlock(3, 'cruise', 8000, least), { n: 29, line: 'm 29 29 29 8000 8000 8000 100000 0 0', seconds: 29 / 8000 });
+  assert.deepEqual(shortBlock(3, 'down', 8000, least), { n: 32, line: 'm 32 32 32 8000 8000 8000 100000000 0 32', seconds: 32 / 8000 });
+  assert.throws(() => shortBlock(3, 'up', 8000, least), /phase "up": cruise or down/);
+  assert.throws(() => shortBlock(4, 'down', 8000, least), /axes 4/);
+  const script = read('scripts/firmware.mjs');
+  assert.match(script, /const least = \(l\) => send\.leastBlockTime\(l, \{ turnaround: 0 \}\)/);
+  assert.match(script, /if \(b\.seconds > b\.planned \* 1\.01\) fail\(/);
+  // the streamer: no strtol over a whole line at its end (it held the steps 520 to 600 µs), a character taken as it comes,
+  // and a block that follows another keeps its time
+  const ino = read(`${ARM}/firmware/arm/arm.ino`);
+  assert.doesNotMatch(ino, /strtol\(/);
+  assert.match(ino, /    take\(c\);/);
+  assert.match(ino, /if \(done >= cur\.major\) \{ running = false; nextAt \+= \(unsigned long\)gap; chained = true; return; \}/);
+  assert.match(ino, /if \(!chained\) nextAt = micros\(\);/);
+  // the job's comment says so
+  const yml = read('.github/workflows/test.yml');
+  assert.match(yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n    runs-on:', yml.indexOf('\n  firmware:'))), /shortest blocks the sender passes/);
 });

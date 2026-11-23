@@ -13,6 +13,26 @@ import { fileURLToPath } from 'node:url';
 /** The fastest block the streamer takes, steps/s on its major axis: arm.ino's RATE_LIMIT (a test holds the two equal). */
 export const MAX_RATE = 8000;
 
+/** The serial line's time for one byte, s: 115200 baud, 10 bits a byte (a start bit, 8 data bits, a stop bit). */
+export const BYTE_TIME = 10 / 115200;
+/** The bytes of the streamer's answer to a block: "ok", then CR and LF (Serial.println). */
+export const ANSWER_BYTES = 4;
+/** The time a line and its answer wait in the USB link, past their own bytes on the wire, s: an estimate. The Uno's
+ * USB chip (an ATmega16U2 running Arduino-usbserial) passes the streamer's answer on to the computer when its timer 0
+ * overflows, every 256 x 256 / 16 MHz = 4.1 ms (Arduino-usbserial.c in ArduinoCore-avr, "TCCR0B = (1 << CS02)" and the
+ * TOV0 flush, read 2026-11-23), and the computer sends the next line in a USB frame, every 1 ms at full speed. A board
+ * with another USB chip (a CH340 on many copies) differs: the bench test times it. */
+export const TURNAROUND = 0.0051;
+
+/** The least time a block must last for the streamer to keep up, s: its line's bytes and newline, then the answer, on the
+ * wire, and the turnaround. The sender sends a line only after the last was answered, so a run of shorter blocks empties
+ * the queue and the motors stop between blocks. On a simulated Uno the streamer answers a line as soon as its last byte
+ * is in (it parses each character as it arrives), so the line and its answer are the whole of its cost there.
+ * @param {string} line @param {{ turnaround?: number }} [o] turnaround 0 for a board with no USB link (the simulation) */
+export function leastBlockTime(line, { turnaround = TURNAROUND } = {}) {
+  return (line.length + 1 + ANSWER_BYTES) * BYTE_TIME + turnaround;
+}
+
 /** One step file as the protocol's lines, in order. @param {object} file @param {{ pen?: { up: number, down: number }, axes?: number }} [o] */
 export function linesOf(file, { pen = { up: 90, down: 30 }, axes = 3 } = {}) {
   if (file?.format !== 'rulecad.steps/1') throw new Error(`not a step file (format is ${JSON.stringify(file?.format)}, wanted rulecad.steps/1)`);
@@ -35,12 +55,12 @@ export function homeLines(machine) {
 }
 
 /** What the streamer would answer to each line, so the protocol can be tested with no board. Throws at the first line it
- * would refuse, naming it. With a machine (cad machine's description), each axis's share of a block's rate is held to that
- * axis's maxRate too. A dry run has no clock, so it takes each block as finished before the next line: `?` answers the
+ * would refuse, naming it, and at a block too short for the streamer to keep up with (leastBlockTime). With a machine
+ * (cad machine's description), each axis's share of a block's rate is held to that axis's maxRate too. A dry run has no clock, so it takes each block as finished before the next line: `?` answers the
  * positions summed from the blocks so far (a home sets its axis to 0) with 0 blocks queued, and `!` answers `ok`.
- * @param {string[]} lines @param {{ machine?: object }} [o]
+ * @param {string[]} lines @param {{ machine?: object, turnaround?: number }} [o] turnaround as leastBlockTime takes it
  * @returns {{ lines: number, m: number, p: number, w: number, h: number, e: number, d: number, '?': number, '!': number, peakRate: number, axisPeaks: number[], position: number[], said: string[] }} */
-export function dryRun(lines, { machine } = {}) {
+export function dryRun(lines, { machine, turnaround = TURNAROUND } = {}) {
   const seen = { m: 0, p: 0, w: 0, h: 0, e: 0, d: 0, '?': 0, '!': 0 }, axisPeaks = [0, 0, 0], position = [0, 0, 0], said = [];
   let peak = 0;
   for (const [i, l] of lines.entries()) {
@@ -61,6 +81,9 @@ export function dryRun(lines, { machine } = {}) {
         axisPeaks[k] = Math.max(axisPeaks[k], r);
         if (axis?.maxRate && r > axis.maxRate * (1 + 1e-6) + 0.5) throw new Error(`${at}: axis ${axis.name ?? k} at ${Math.round(r)} steps/s, past the machine's ${axis.maxRate} for it`);
       }
+      // the block is over in major / fastest seconds at the soonest
+      const least = leastBlockTime(l, { turnaround });
+      if (major / fastest < least) throw new Error(`${at}: ${major} steps at up to ${fastest} steps/s can be over in ${(major / fastest * 1000).toFixed(2)} ms, and the streamer needs ${(least * 1000).toFixed(2)} ms for each block's line and answer: it would fall behind and stop between blocks (plan with a least block time, task.blockTime for cad plot, or a lower speed)`);
       peak = Math.max(peak, fastest);
       for (const k of [0, 1, 2]) position[k] += n[k];
     }
@@ -92,9 +115,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (!fileName) { console.error('usage: node send.mjs <file.steps.json> --port <device> [--machine <file>] [--no-home] | --dry-run'); process.exit(2); }
   const file = JSON.parse(fs.readFileSync(fileName, 'utf8')), machine = opt('machine') ? JSON.parse(fs.readFileSync(opt('machine'), 'utf8')) : null;
   const lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, machine?.pen ? { pen: machine.pen } : {}), 'd'];
+  // the whole file is checked before anything moves: a block refused halfway through a drawing would spoil it
+  let r;
+  try { r = dryRun(lines, { machine }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   if (has('dry-run')) {
-    let r;
-    try { r = dryRun(lines, { machine }); } catch (e) { console.error(`dry run: ${e.message}`); process.exit(1); }
     if (!has('quiet')) for (const s of r.said) console.log(s);
     console.log(`dry run: ${r.lines} lines, ${r.m} blocks, ${r.p} pen moves, ${r.h} homes, peak ${r.peakRate} steps/s (the streamer takes ${MAX_RATE})${machine ? `, axes at most ${r.axisPeaks.slice(0, machine.axes.length).map((x, k) => `${Math.round(x)} of ${machine.axes[k].maxRate}`).join(', ')} steps/s` : ''}`);
     process.exit(0);

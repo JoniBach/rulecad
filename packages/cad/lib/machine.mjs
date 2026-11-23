@@ -24,7 +24,7 @@ export function machineOf(s) {
   });
   const kinematics = c.names.length === 2 && motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'revolute') ? 'scara' : motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'prismatic') ? 'cartesian' : 'serial';
   const pen = s.a.task.pen ?? null;
-  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics, tool: s.task.tool, elbow: sample(s).elbow, axes, task: { sheet: s.a.task.sheet ?? null, region: s.a.task.region ?? null, volume: s.a.task.volume ?? null, speed: s.task.speed, accuracy: s.task.accuracy, accel: s.task.accel ?? 500 }, ...(pen ? { pen } : {}) };
+  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics, tool: s.task.tool, elbow: sample(s).elbow, axes, task: { sheet: s.a.task.sheet ?? null, region: s.a.task.region ?? null, volume: s.a.task.volume ?? null, speed: s.task.speed, accuracy: s.task.accuracy, accel: s.task.accel ?? 500, ...(s.task.blockTime ? { blockTime: s.task.blockTime } : {}) }, ...(pen ? { pen } : {}) };
 }
 
 // A drawing's size against the sheet: the first stroke that leaves it, named
@@ -59,7 +59,7 @@ export function plot(s, svg, { tolerance, name } = {}) {
   findings.push(...plan.findings);
   if (!plan.ok) return { ok: false, findings, plan };
   const speed = s.task.speed ?? 50, accel = m.task.accel, axes = m.axes.map((a) => ({ name: a.name, stepsPerUnit: a.stepsPerUnit, maxRate: a.maxRate }));
-  const steps = stepBlocks(plan, { axes, speed, accel, travelSpeed: speed * 2 });
+  const steps = stepBlocks(plan, { axes, speed, accel, travelSpeed: speed * 2, ...(m.task.blockTime ? { minBlockTime: m.task.blockTime } : {}) });
   // The pen-down lines, with what the budget predicts along them
   const { list } = s.task.accuracy != null ? accuracyOf(s) : { list: null }, drawn = plan.moves.filter((x) => x.kind === 'draw').map((x) => ({ stroke: x.stroke, name: x.name, points: x.points.map((p) => p.map(r6)), error: list ? x.q.map((q) => +jacobianError(c, q, list, s.task.deflection).toFixed(4)) : null }));
   const time = estimate(steps), out = { ...steps, machine: m.name, drawing: name, drawn };
