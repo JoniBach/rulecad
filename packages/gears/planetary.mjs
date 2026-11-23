@@ -145,6 +145,18 @@ export function compoundPlanetary(spec) {
   const sunMesh = mesh(sun, planet), ringMesh = mesh(planet, ring), ring2Mesh = mesh(planet2, ring2), a = sunMesh.centre, out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
   const planets = Array.from({ length: n }, (_, k) => { const at = (360 * k) / n; return { at: [a * Math.cos(at * DEG), a * Math.sin(at * DEG)], angle: phase(sun, planet, at), place: at }; });
   const ringAngle = (b.planet / b.ring) * planets[0].angle + phase(planet, ring, 180), ring2Angle = (b.planet2 / b.ring2) * planets[0].angle + phase(planet2, ring2, 180);
+  // Each planet's second step in phase with the output ring. The rings are set from the first planet; another planet
+  // meshes the sun and the held ring as well a whole tooth of its first step on (360 / P1 degrees), and that turns its
+  // second step too, so it takes the first such tooth that also puts its second step in a space of the output ring,
+  // whose angle for a planet at place θ turned ψ is (P2 / R2) ψ + phase(planet2, ring2, θ + 180), to a whole pitch
+  // (360 / R2). Every tooth count a multiple of the planets puts some in phase as they stand (chapter 11's 18/21 and
+  // 54/57 all are) and others not: 57/39/36/135/132's second planet stood 0.11 mm from the output ring at a 0.3 mm gap.
+  const pitch2 = 360 / b.ring2, missAt = (p, t) => { const d = (b.planet2 / b.ring2) * (p.angle + (360 * t) / b.planet) + phase(planet2, ring2, p.place + 180) - ring2Angle; return ((((d % pitch2) + pitch2 * 1.5) % pitch2) - pitch2 / 2); };
+  for (const p of planets.slice(1)) {
+    const t = Array.from({ length: b.planet }, (_, i) => i).find((i) => Math.abs(missAt(p, i)) < 1e-6);
+    if (t == null) f('fail', `the planet at ${fmt(p.place, 1)}° can't mesh with the output ring, whichever tooth of its first step meets the sun`, 'compound.phase', { place: p.place });
+    else p.angle += (360 * t) / b.planet;
+  }
   f(b.off < 0.05 ? 'pass' : b.off < 0.2 ? 'warn' : 'fail', `${fmt(b.ratio, 2)} : 1 (sun to the output ring, the other ring held), ${b.off < 0.01 ? 'as asked' : `${fmt(b.off * 100, 1)}% from the ${fmt(ratio)} asked`}: sun ${b.sun}, stepped planets ${b.planet}/${b.planet2} × ${n}, rings ${b.ring} and ${b.ring2}`, 'compound.ratio', { ratio: b.ratio, asked: ratio });
   f('info', `about ${fmt(b.efficiency * 100, 0)}% efficient (an estimate): ${b.efficiency <= 0.5 ? 'under 50%, so it can\'t be driven backwards' : 'it can be driven backwards'}`, 'compound.efficiency', { efficiency: b.efficiency });
   if (Math.abs(ring2Mesh.centre - a) > 1e-9) f('fail', `the output ring's centre distance is ${fmt(ring2Mesh.centre)} mm and the planets' ${fmt(a)} mm: the rings' difference must equal the planets'`, 'compound.centre');

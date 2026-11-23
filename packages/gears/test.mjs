@@ -429,6 +429,31 @@ test('a compound planetary: stepped planets on two rings, one centre distance, t
   assert.throws(() => compoundPlanetary({ module: 1, ratio: 50, size: 10 }), /no teeth put together within a rim of 10/);
 });
 
+test('a compound planetary: every planet takes the tooth of its first step that also meshes the output ring', async () => {
+  const { compoundPlanetary } = await import('@rulecad/gears');
+  // 57/39/36/135/132 (ratio 60, step -1, 3 planets): the rings are set from the planet at 0°. The one at 120° meshes the
+  // sun where phase() puts it, but its 36-tooth step then stands 0.004 mm into the output ring with the default 0.15 mm
+  // backlash (0.114 mm off it where 0.3 is drawn, printed in place). Turned 12 teeth of its 39 (110.77°), it meshes all
+  // three. Spur sections at the layout returned: the second step inside the output ring's space, no ring point in it;
+  // printed in place, the planet grown 0.25 mm all round still clear of the ring (0.3 drawn).
+  const deg = Math.PI / 180;
+  for (const [spec, grow] of [[{ module: 1, ratio: 60, planets: 3, step: -1, most: 80 }, 0], [{ module: 1, ratio: 60, planets: 3, step: -1, most: 80, printInPlace: true }, 0.25]]) {
+    const { best: b, findings } = compoundPlanetary(spec);
+    assert.deepEqual([b.sun.teeth, b.planet.teeth, b.planet2.teeth, b.ring.teeth, b.ring2.teeth], [57, 39, 36, 135, 132]);
+    assert.ok(!findings.some((x) => x.level === 'fail'), findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+    const prm = (g) => ({ module: 1, teeth: g.teeth, backlash: g.model.backlash, ...(b.printInPlace ? { dedendum: b.printInPlace.dedendum } : {}) });
+    const sun = spurProfile(prm(b.sun)).loops[0], r1 = place(internalProfile(prm(b.ring)).loops[1], b.ring.angle * deg), r2 = place(internalProfile(prm(b.ring2)).loops[1], b.ring2.angle * deg);
+    b.planets.forEach((p, k) => {
+      const c = [b.centre * Math.cos(p.place * deg), b.centre * Math.sin(p.place * deg)];
+      const P1 = place(spurProfile(prm(b.planet), grow).loops[0], p.angle * deg, c), P2 = place(spurProfile(prm(b.planet2), grow).loops[0], p.angle * deg, c);
+      const at = `${b.printInPlace ? 'printed in place' : 'assembled'}, planet ${k} at ${p.place}°`;
+      assert.ok(!P1.some((q) => inside(q, sun)) && !sun.some((q) => inside(q, P1)), `${at}: clear of the sun`);
+      assert.ok(P1.every((q) => inside(q, r1)) && !r1.some((q) => inside(q, P1)), `${at}: clear of the held ring`);
+      assert.ok(P2.every((q) => inside(q, r2)) && !r2.some((q) => inside(q, P2)), `${at}: clear of the output ring`);
+    });
+  }
+});
+
 test('a compound planetary printed in place: the print gap normal to every flank and under every tip, herringbones, no carrier; its play from the backlash', async () => {
   const { compoundPlanetary, compoundPlay, DEFAULTS } = await import('@rulecad/gears');
   // By hand, at a gap g of 0.3 mm, a 20° pressure angle and a 30° helix:

@@ -109,7 +109,9 @@ gives the ratio exactly, the nearest is returned and `planetary.ratio` says how 
 the output, each meshing its own step of a stepped planet, so a ratio of 30 to 200 fits in one stage. The ratio is
 Willis's twice over, `(S + R1) / S / (1 − R1 P2 / (P1 R2))` (`compoundRatio`). The planets' steps differ by what the
 rings do, so one centre distance serves both, and every tooth count is a multiple of the planets, so identical planets
-go in evenly and in phase. (Profile shift can't do this job alone: moving one ring by three teeth on one set of planets
+go in evenly and in phase. The rings are set from the first planet; each other planet takes the first tooth of its
+first step (on the sun and the held ring) that also puts its second step in a space of the output ring, and a
+`compound.phase` finding fails where none does. (Profile shift can't do this job alone: moving one ring by three teeth on one set of planets
 needs a shift near two modules at the sizes that print, far past what a tooth takes.) It finds the efficiency too,
 `compoundEfficiency`, an estimate: the rings pass power relative to the carrier many times the output's, so a high ratio is
 well under 50%, and can't be driven backwards.
