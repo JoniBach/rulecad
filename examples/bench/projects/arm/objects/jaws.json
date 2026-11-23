@@ -1,0 +1,352 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "jaws",
+  "title": "Gripper jaws: the flexures generator on the arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "material": "PETG",
+  "orientation": "Flat on the bed, the leaves upright in their layers: the same outline from the bed to the top, and two posts rising straight from the bed to the servo",
+  "description": "The flexures kit's gripperJaws in place of the hand-built gripper: the same yoke block and screws, the same SG90 and double horn. Two jaws on parallel guides rest closed on a 2 mm gap; the horn opens them, the springs grip, so it holds with the servo off. Each guide stops both ways on a tongue in its fork. Drawn at rest, the leaves straight.",
+  "anchors": {
+    "mount": {
+      "at": [
+        0,
+        0,
+        "half"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "tool": {
+      "at": [
+        "jaw_at",
+        0,
+        "half"
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "ref": [
+        0,
+        1,
+        0
+      ]
+    },
+    "servo": {
+      "at": [
+        "xs",
+        0,
+        "face"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "horn": {
+      "at": [
+        "xs",
+        0,
+        "horn_z"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        "cosd(rest_a)",
+        "sind(rest_a)",
+        0
+      ]
+    },
+    "cable": {
+      "at": [
+        "xs",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "upper": {
+      "at": [
+        "xs + jaw_from",
+        "jaw_gap / 2",
+        "half"
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "lower": {
+      "at": [
+        "xs + jaw_from",
+        "0 - jaw_gap / 2",
+        "half"
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "part": {
+      "value": 0,
+      "rule": "0 the whole print, 1 the palm with the root blocks and the stops, 2 the upper jaw, 3 the lower: the opening check moves the jaws apart from the palm",
+      "tweak": {
+        "min": 0,
+        "max": 3
+      }
+    },
+    "width": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The print's thickness, and the width of the leaves: the yoke's slot, as the hand-built gripper's",
+      "interface": true
+    },
+    "half": {
+      "value": "width / 2",
+      "unit": "mm",
+      "rule": "Half of it"
+    },
+    "block_x": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Half the block in the yoke, along the arm: the hand-built gripper's"
+    },
+    "block_y": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "Half the block across it"
+    },
+    "bolt_x": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Half the spacing of the yoke's two screws, as the pen holder's"
+    },
+    "base": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The root blocks behind the guides, along the arm, and the plate joining them"
+    },
+    "xs": {
+      "value": 79.92,
+      "unit": "mm",
+      "rule": "From the bolts to the horn's axis: the root blocks start at the yoke block's front (the design refuses another value and says which)"
+    },
+    "leaf_l": {
+      "value": 37,
+      "unit": "mm",
+      "rule": "A guide's leaves: as short (so as stiff, so as strong a grip) as lets the servo open them 2.1 times over (the flexures model's gripper.servo), and the stop stay within 0.8 of the leaves' strain limit"
+    },
+    "leaf_t": {
+      "value": 0.84,
+      "unit": "mm",
+      "rule": "A leaf's thickness: two lines of 0.42"
+    },
+    "apart": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "A guide's two leaves, middle to middle: room for the stop's tongue between them"
+    },
+    "fillet": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The round where each leaf meets a block"
+    },
+    "bar_in": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "A bar's inner face from the middle, where the horn's tip pushes"
+    },
+    "bar_w": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "A bar's width outward"
+    },
+    "reach": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "The horn's arm from the axis to the middle of its tip, as ghorn draws it (an estimate there: measure yours)"
+    },
+    "tip": {
+      "value": 2.25,
+      "unit": "mm",
+      "rule": "Half the horn's arm: its tip's round"
+    },
+    "open_a": {
+      "value": 65,
+      "unit": "deg",
+      "rule": "The horn's arm fully open, from the jaws' line"
+    },
+    "rest_a": {
+      "value": 40.75,
+      "unit": "deg",
+      "rule": "The horn's arm at rest, its tip on the bar: asin((14 - 2.25) / 18), the flexures model's rest"
+    },
+    "jaw_from": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The jaws begin, from the horn's axis: past its sweep (15.9 mm) and the front post"
+    },
+    "jaw_to": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The jaws end, from the axis"
+    },
+    "jaw_gap": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The gap between the jaws at rest: each jaw grips with its guide's spring times how far the object holds it open, so this sets the sizes held. 2 mm: 50 g twice over from 5.7 mm across, 100 g from 9.4 mm, up to 10.5 mm"
+    },
+    "stop_open": {
+      "value": 4.8,
+      "unit": "mm",
+      "rule": "How far a jaw may open before its stop: past the horn's 4.56 mm stroke by 0.24, so the horn opens the jaws fully first. The SG90 driven on at its full stall torque (0.1765 N m) turns the horn to 69° before the stops hold it, and a jaw goes to 4.98 mm, 75% of the leaves' 6.62 mm strain limit, within travelStop's 0.8"
+    },
+    "stop_tongue": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The stop's tongue at its widest, as far as the leaves let it be (the generator's default is 6): stiff enough that the stops resist 2.16 times the SG90's stall torque before the horn's toggle at 90°, so a stronger servo still stalls on them. At 6 they resist only 1.05 times, and a servo driven through to 90° would take a jaw to 5.91 mm, 89% of the leaves' limit"
+    },
+    "stop_close": {
+      "value": 0.85,
+      "unit": "mm",
+      "rule": "How far a jaw may be pushed closed before its stop: short of the jaws meeting (1 mm each), and leaving room for the posts between the forks"
+    },
+    "jaw_at": {
+      "value": "xs + (jaw_from + jaw_to) / 2",
+      "unit": "mm",
+      "rule": "Halfway along the jaws: the payload's point and the tool's anchor"
+    },
+    "post_y": {
+      "value": 5.9,
+      "unit": "mm",
+      "rule": "Half a post across, under the servo's tabs (12.2 wide): the rear post stands between the forks, which close to 6.73 at their stops (7.58 less 0.85), so 0.83 clear, over a print gap"
+    },
+    "spine_w": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Half the spine down the middle, from the plate to the front post: it carries only the servo's turn (0.11 N m) back to the plate"
+    },
+    "spine_z": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The spine's height: well under the horn's plane, with room for the rounds where it meets the posts"
+    },
+    "horn_z": {
+      "value": "width + 0.3 - 4.3",
+      "unit": "mm",
+      "rule": "The horn's plane: as high as puts the servo's case (4.3 mm above the plane) a print gap clear of the print's top"
+    },
+    "horn_t": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The horn's thickness"
+    },
+    "horn_top": {
+      "value": "horn_z + horn_t / 2",
+      "unit": "mm",
+      "rule": "The side of the horn toward the servo"
+    },
+    "face": {
+      "value": "horn_top + 13.3",
+      "unit": "mm",
+      "rule": "The servo's mounting tabs: its case and boss reach down 13.3 mm to the horn (as the hand-built gripper's)"
+    },
+    "post_f": {
+      "value": 6.8,
+      "unit": "mm",
+      "rule": "The front post, from the axis: the case's pocket ahead of the shaft (6.6) and 0.2 of air"
+    },
+    "post_b": {
+      "value": 17.5,
+      "unit": "mm",
+      "rule": "The rear post, behind the axis: the case's pocket behind the shaft (17.3) and 0.2 of air"
+    },
+    "post_x": {
+      "value": 5.6,
+      "unit": "mm",
+      "rule": "Each post along the arm: past its screw by 4 mm"
+    },
+    "pad_front": {
+      "value": 8.4,
+      "unit": "mm",
+      "rule": "The servo's front screw, from the shaft"
+    },
+    "pad_back": {
+      "value": 19.1,
+      "unit": "mm",
+      "rule": "The servo's rear screw, from the shaft"
+    },
+    "pilot_d": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "How deep each of the servo's screws goes into its post"
+    },
+    "clear": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "The front post's slanted side, clear of the horn's arm at rest"
+    },
+    "round": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Every inside corner the palm adds: block to plate, and spine to plate and posts, in plan and in elevation"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Round enough"
+    },
+    "arc": {
+      "value": 16,
+      "rule": "Steps round a corner's quarter circle"
+    },
+    "tol": {
+      "value": 0.01,
+      "unit": "mm",
+      "rule": "How near the root blocks must start to the yoke block"
+    },
+    "deg": {
+      "value": 0.017453293,
+      "rule": "Radians in a degree"
+    }
+  }
+}

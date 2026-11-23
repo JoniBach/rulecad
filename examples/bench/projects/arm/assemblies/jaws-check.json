@@ -1,0 +1,34 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Gripper jaws: opening check",
+  "kind": "fit",
+  "description": "The compliant jaws' three pieces moved apart so the horn's opening can be swept: the palm with its root blocks, stops and posts, and each jaw on a slide that follows the servo by how far the horn pushes it. The real part is one print, at rest; this is the check, not the build. The flexures model (gripperJawsModel) gives the grip, the springs, the stops and the strain.",
+  "gravity": [0, 0, -1],
+  "items": [
+    { "id": "palm", "object": "jaws", "set": { "part": 1 } },
+    { "id": "upper", "object": "jaws", "set": { "part": 2 } },
+    { "id": "lower", "object": "jaws", "set": { "part": 3 } },
+    { "id": "gservo", "motor": { "model": "sg90", "drives": "open", "duty": 0.05 } },
+    { "id": "ghorn", "object": "ghorn" }
+  ],
+  "joints": [
+    { "id": "servo_on", "type": "fixed", "parent": "palm.servo", "child": "gservo.face" },
+    { "id": "open", "type": "revolute", "parent": "palm.horn", "child": "ghorn.axis", "min": 0, "max": 24.25, "label": "Open" },
+    { "id": "open_up", "type": "prismatic", "parent": "palm.upper", "child": "upper.upper", "min": 0, "max": 4.6, "follow": "open", "ratio": 0.188 },
+    { "id": "open_low", "type": "prismatic", "parent": "palm.lower", "child": "lower.lower", "min": 0, "max": 4.6, "follow": "open", "ratio": 0.188 }
+  ],
+  "fits": [
+    { "a": "gservo", "b": "palm", "fastens": true, "min": -0.3, "note": "The servo on its two posts, above the print" },
+    { "a": "ghorn", "b": "palm", "min": 0.3, "note": "The horn clears the posts and the spine" },
+    { "a": "ghorn", "b": "upper", "min": -0.5, "note": "The horn's tip on the bar's inner face: the slide follows the horn in a straight line, the tip rises as r sin a, so they cross a little between rest and open" },
+    { "a": "ghorn", "b": "lower", "min": -0.5, "note": "The horn's tip on the bar's inner face" },
+    { "a": "gservo", "b": "upper", "min": 0.3, "note": "The servo clears the upper jaw" },
+    { "a": "gservo", "b": "lower", "min": 0.3, "note": "The servo clears the lower jaw" },
+    { "a": "upper", "b": "palm", "min": -2, "note": "The leaves' roots run into the root blocks: the jaws slide here as a check, the leaves really bend" },
+    { "a": "lower", "b": "palm", "min": -2, "note": "The leaves' roots run into the root blocks" }
+  ],
+  "poses": {
+    "rest": { "open": 0 },
+    "open": { "open": 24.25 }
+  }
+}

@@ -953,3 +953,187 @@ test('snap pins live in @rulecad/fixings: flexures re-exports the very functions
   assert.ok(pkg.dependencies['@rulecad/fixings'], 'flexures depends on fixings');
   assert.ok(!JSON.parse(fs.readFileSync(new URL('../fixings/package.json', import.meta.url), 'utf8')).dependencies['@rulecad/flexures'], 'and never the other way');
 });
+
+// ---------- gripper jaws (#77) ----------
+// A gripper like the arm's (examples/bench arm/jaws, whose leaves are 37 mm with rounds): an SG90's double horn (18 mm
+// to the middle of a tip of 2.25), the bars' inner faces 14 mm out, the horn opening to 65°, PETG, leaves 39 x 0.84 x
+// 16 (square-ended here, so the guide is the textbook one), 14 apart.
+const jawsP = { width: 16, leaf: { length: 39, thickness: 0.84, apart: 14, fillet: 0 }, bar: { inner: 14, width: 5 }, horn: { reach: 18, open: 65 }, jaws: { from: 20, to: 30, gap: 1 } };
+const petgJ = { E: 1810, strainLimit: 34 / 1810 / 1.5, density: 1.27, name: 'PETG' };
+const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (within ${tol})`);
+
+test('gripper jaws: the horn\'s stroke and push, the springs, the grip and what it holds, worked by hand', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const m = gripperJawsModel(jawsP, petgJ, { torque: 0.1765, payload: 0.05, accel: 300 });
+  // At rest the tip's top touches the bar: 18 sin a + 2.25 = 14, a = asin(11.75 / 18) = 40.751°. Fully open, 65°: the
+  // tip's top is at 18 sin 65° + 2.25 = 16.3135 + 2.25, so each bar has moved 18 × 0.906308 - 11.75 = 4.5635 mm.
+  near(m.rest, 40.7514, 1e-3, 'rest angle'); near(m.stroke, 4.56354, 1e-4, 'stroke');
+  // The push: 60% of 0.1765 N m is 105.9 N mm, half on each arm, over the lever 18 cos a across the push:
+  // at rest 105.9 / (2 × 18 × 0.757549) = 3.8831 N; open, 105.9 / (2 × 18 × 0.422618) = 6.9606 N
+  near(m.push(m.rest), 3.8831, 1e-3, 'push at rest'); near(m.push(65), 6.9606, 1e-3, 'push open');
+  // Each guide: two fixed-guided leaves, 2 E w t³ / L³ = 2 × 1810 × 16 × 0.592704 / 59319 = 0.57872 N/mm. Fully open
+  // it pulls back 0.57872 × 4.5635 = 2.6410 N: the servo pushes 6.9606, 2.64 times
+  near(m.spring / m.stroke, 0.57872, 1e-4, 'the guide'); near(m.findings.find((f) => f.code === 'gripper.servo').values.margin, 2.6356, 1e-3, 'servo margin');
+  // The bar, a cantilever from the fork's front (-(18 + 2.25 + 1) = -21.25) to the jaws' middle (25): 46.25 mm,
+  // 3 E I / l³ with I = 16 × 5³ / 12 = 166.67: 905000 / 98931.6 = 9.1478 N/mm. In series with the guide: 0.54428
+  near(m.bar, 9.1478, 1e-3, 'bar'); near(m.stiffness, 0.54428, 1e-4, 'jaw stiffness');
+  // An 8 mm object in a 1 mm gap holds each jaw 3.5 mm open: 0.54428 × 3.5 = 1.905 N
+  near(m.grip(8), 1.905, 1e-3, 'grip at 8 mm'); assert.equal(m.grip(0.8), 0, 'narrower than the gap: nothing');
+  // 50 g at 300 mm/s² needs 0.05 × (9.80665 + 0.3) = 0.50533 N; held by friction on two jaws, 2 × 0.4 × grip, twice
+  // over: grip >= 1.2633 N, an object 1 + 2 × 1.2633 / 0.54428 = 5.642 mm across or more. The widest that goes in:
+  // the gap and both strokes, less the print gap each side, 1 + 9.1271 - 0.6 = 9.527
+  near(m.need, 0.505333, 1e-5, 'need'); near(m.rated, 5.642, 1e-3, 'narrowest held twice over'); near(m.widest, 9.5271, 1e-3, 'widest');
+  const grip = m.findings.find((f) => f.code === 'gripper.grip');
+  assert.equal(grip.level, 'pass'); assert.match(grip.text, /holds 50 g \(0\.505 N with the arm's 300 mm\/s²\) 2 times over on objects 5\.64 to 9\.53 mm across/);
+  assert.deepEqual(m.findings.map((f) => f.code), ['gripper.drive', 'gripper.servo', 'gripper.grip', 'gripper.holds', 'gripper.stop', 'flexure.strain', 'gripper.mass']);
+  assert.ok(m.findings.every((f) => ['pass', 'warn', 'fail'].includes(f.level) && f.text && f.code), 'the kit\'s one shape');
+  assert.ok(m.rests.some((r) => /^friction 0\.4/.test(r)) && m.rests.some((r) => /^share 0\.6/.test(r)), 'the defaults it rests on, by name');
+  assert.deepEqual(gripperJawsModel(jawsP, petgJ, { torque: 0.1765, friction: 0.8, share: 0.5, payload: 0.05 }).rests.filter((r) => /friction|share/.test(r)), [], 'given, they are not rested on');
+});
+
+test('gripper jaws: the model says when the servo cannot open the springs, when the grip drops the load, and when a stop is short or past the limit', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const of = (p, o, code) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === code);
+  // leaves twice as thick are eight times as stiff: 4.63 N/mm × 4.56 = 21 N against 6.96: it can't open them
+  const thick = of({ ...jawsP, leaf: { ...jawsP.leaf, thickness: 1.68, apart: 16 } }, {}, 'gripper.servo');
+  assert.equal(thick.level, 'fail'); assert.match(thick.text, /can't open them fully/);
+  assert.equal(of(jawsP, { payload: 0.1, accel: 300 }, 'gripper.grip').level, 'warn', '100 g: held, but not twice over on anything that fits');
+  assert.equal(of(jawsP, { payload: 0.3 }, 'gripper.grip').level, 'fail', '300 g: dropped');
+  assert.equal(of({ ...jawsP, stop: { open: 4 } }, {}, 'gripper.stop').level, 'fail', 'a stop short of the stroke takes the servo\'s push');
+  // the horn driven onto a stop far out: past 0.8 of the leaves' limit with the tongue's give, then past the limit
+  assert.equal(of({ ...jawsP, horn: { reach: 18, open: 72 } }, {}, 'gripper.stop').level, 'warn');
+  assert.equal(of({ ...jawsP, leaf: { ...jawsP.leaf, length: 30 }, horn: { reach: 18, open: 72 } }, {}, 'gripper.stop').level, 'fail');
+  const printed = gripperJawsModel(jawsP, petgJ, { torque: 0.1765, printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } }).findings;
+  assert.deepEqual(printed.filter((f) => f.code.startsWith('flexure.')).map((f) => [f.code, f.level]), [['flexure.lines', 'pass'], ['flexure.stop', 'pass'], ['flexure.strain', 'pass']], 'the leaves print in whole lines and layers');
+});
+
+test('gripper jaws: a stop takes the servo\'s full stall torque, whatever share of it is counted on to open', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const stop = (p, o) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === 'gripper.stop');
+  // A servo driven on past its target stalls and pushes with all of its torque, so the share counted on to open
+  // changes nothing at the stops
+  const s = stop(jawsP, {});
+  for (const share of [0.3, 1]) assert.deepEqual(stop(jawsP, { share }), s, `share ${share} leaves the stop as it is`);
+  assert.match(s.text, /at its full stall torque \(0\.1765 N m\)/);
+});
+
+test('gripper jaws: a stalled servo turns its horn on until the stops hold it, or through to its toggle at 90°, the bars bending between', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const stop = (p, o) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === 'gripper.stop');
+  // The arm's leaves (37 mm with 1 mm rounds, a 2 mm gap, stops 4.8 open and 0.85 closed), the tongue at its default 6.
+  // The guide kg 0.73739 N/mm and the tongue kt 25.1708 N/mm are the model's (the tongue an integral over its width).
+  // Each bar a cantilever from the fork's front at x -21.25, 3 E I / l^3 with E I = 1810 x 16 x 5^3 / 12 = 301666.7.
+  // The stops hold the horn at 73.904°: cos 0.27725, sin 0.96080, so each tip is 18 x 0.96080 - 11.75 = 5.5444 out.
+  // The upper tip meets its bar at x 18 x 0.27725 = 4.99, l 26.240: kb 905000 / 18067 = 50.09 N/mm; its jaw goes
+  // (50.09 x 5.5444 + 25.1708 x 4.8) / (50.09 + 0.7374 + 25.1708) = 5.2440 mm, F 0.7374 x 5.2440 + 25.1708 x 0.4440 =
+  // 15.044 N. The lower tip meets its bar at x -4.99, l 16.260, kb 210.53: its jaw goes (210.53 x 5.5444 + 120.82) /
+  // 236.44 = 5.4478 mm, F 4.017 + 25.1708 x 0.6478 = 20.324 N. The torque asked: (15.044 + 20.324) x 18 x 0.27725 =
+  // 176.50 N mm, the SG90's stall torque. The lower jaw goes furthest: 5.4478 / 6.6167 = 82%, past travelStop's 0.8.
+  // (Kept at the angle where the tip first meets the stop, and with no bar, the push 12.47 N gave 5.15 mm, 78%.)
+  // At 90° both bars are 21.25 long, kb 905000 / 9595.7 = 94.31, and a jaw goes (94.31 x 6.25 + 120.82) / 120.22 = 5.9081 mm
+  const arm = { ...jawsP, leaf: { ...jawsP.leaf, length: 37, fillet: 1 }, horn: { reach: 18, tip: 2.25, open: 65 }, jaws: { from: 20, to: 30, gap: 2 }, stop: { open: 4.8, close: 0.85 }, base: 6 };
+  const six = stop(arm, {});
+  near(six.values.tongue, 25.1708, 1e-3, 'the tongue'); near(six.values.angle, 73.904, 0.01, 'held at'); near(six.values.tip, 5.5444, 1e-3, 'the tip');
+  near(six.values.most, 5.4478, 1e-3, 'the lower jaw'); near(six.values.onStop, 25.1708 * (5.4478 - 4.8), 0.01, 'its tongue\'s load'); near(six.values.toggle, 5.9081, 1e-3, 'at the toggle');
+  assert.ok(six.values.held && six.values.resists > 1 && six.values.resists < 1.1, 'it stalls, but only just: 1.05 times');
+  assert.equal(six.level, 'warn'); assert.match(six.text, /turns to 73\.9°, where the stops hold it .* its jaw goes to 5\.45 mm.*: 82% of the leaves' limit of 6\.62 mm, past the 0\.8 travelStop allows; but they hold it under 2 times, and a servo that drove through to 90° would take a jaw to 5\.91 mm, 89%/);
+  // the tongue at 8 (57.6 N/mm): held at 76%, inside 0.8, but the stops resist only 1.75 times the stall torque, and
+  // driven through a jaw would reach 86%: a warning; asked for 1.5 times, it passes
+  const eight = { ...arm, stop: { ...arm.stop, tongue: 8 } };
+  assert.equal(stop(eight, {}).level, 'warn'); assert.ok(stop(eight, {}).values.most < 0.8 * six.values.limit);
+  assert.equal(stop(eight, { margin: 1.5 }).level, 'pass');
+  // the tongue at 10 (83.69 N/mm): held at 68.974°, cos 0.35879, sin 0.93342, tip 5.0515; upper l 27.708, kb 42.54,
+  // jaw 4.8564, F 8.301; lower l 14.792, kb 279.64, jaw (279.64 x 5.0515 + 83.6934 x 4.8) / 364.07 = 4.9835, F 19.029;
+  // (8.301 + 19.029) x 18 x 0.35879 = 176.50 N mm. 4.9835 / 6.6167 = 75%, and the stops resist 2.16 times
+  const ten = stop({ ...arm, stop: { ...arm.stop, tongue: 10 } }, {});
+  near(ten.values.angle, 68.974, 0.01, 'held at'); near(ten.values.most, 4.9835, 1e-3, 'the lower jaw');
+  assert.equal(ten.level, 'pass'); assert.ok(ten.values.resists >= 2, `resists ${ten.values.resists}`);
+  // leaves too soft for the stops to hold the servo: it drives through to 90°, a jaw at 5.96 mm; on 40 mm leaves
+  // (a limit of 7.75 mm) that is still inside 0.8, so it passes whatever the servo
+  const through = stop({ ...arm, leaf: { ...arm.leaf, length: 40 } }, {});
+  assert.equal(through.values.held, false); assert.equal(through.level, 'pass'); near(through.values.most, through.values.toggle, 1e-9, 'the toggle');
+  assert.match(through.text, /drives through to 90°, its toggle: the stops resist at most 0\.87 times that .*the tip goes 6\.25 mm out and a jaw to 5\.96 mm/);
+});
+
+test('gripper jaws: bad input is refused by name, before any sums', async () => {
+  const { gripperJaws, gripperJawsModel } = await import('@rulecad/flexures');
+  const bad = (p, re) => { assert.throws(() => gripperJaws(p), re); assert.throws(() => gripperJawsModel(p, petgJ, { torque: 0.1765 }), re); };
+  bad({ ...jawsP, leaf: undefined }, /leaf is an object/);
+  bad({ ...jawsP, width: 0 }, /width is a size above 0/);
+  bad({ ...jawsP, horn: { reach: 18, open: 30 } }, /horn\.open is the arm's angle with the jaws open, between its rest angle 40\.8°/);
+  bad({ ...jawsP, horn: { reach: 10, open: 80 } }, /doesn't get its tip to the bar at 14: a reach over 11\.75 mm/);
+  bad({ ...jawsP, jaws: { from: 12, to: 30, gap: 1 } }, /the jaws start at x 12, in the horn's sweep/);
+  bad({ ...jawsP, jaws: { from: 20, to: 30, gap: 0.1 } }, /under the print gap 0\.3: the jaws would print fused/);
+  bad({ ...jawsP, leaf: { ...jawsP.leaf, apart: 8 } }, /leaf\.apart 8 leaves no room for the stop's tongue/);
+  bad({ ...jawsP, bar: { inner: 6, width: 5 }, horn: { reach: 18, open: 25 }, jaws: { from: 22, to: 30, gap: 1 } }, /the two guides meet in the middle/);
+  bad({ ...jawsP, guide: { end: -10 } }, /guide\.end -10 is in the horn's sweep/);
+  assert.throws(() => gripperJaws(jawsP, { part: 'finger' }), /part is all, ground, upper or lower/);
+  assert.throws(() => gripperJawsModel(jawsP, petgJ), /give the servo \{ torque \}/);
+  assert.throws(() => gripperJawsModel(jawsP, { E: 1810 }, { torque: 0.1765 }), /needs a strainLimit/);
+  for (const [o, re] of [[{ torque: 0 }, /torque is the servo's stall torque/], [{ torque: 0.1765, share: 1.5 }, /share is the part/], [{ torque: 0.1765, friction: 0 }, /friction is the friction/], [{ torque: 0.1765, payload: -1 }, /payload is the object's mass/], [{ torque: 0.1765, margin: 0.5 }, /margin is the margin asked, 1 or more/]]) assert.throws(() => gripperJawsModel(jawsP, petgJ, o), re);
+});
+
+test('gripper jaws: drawn flat at rest, the stops stop where the model says, the leaves bent to the stops clear the tongue, and every inside corner of a jaw is rounded', async () => {
+  const { gripperJaws, gripperJawsModel } = await import('@rulecad/flexures');
+  const { ready, flat, intersect, area, moved, shift } = await import('./plane.mjs');
+  await ready();
+  const p = { ...jawsP, leaf: { ...jawsP.leaf, fillet: 1 } }, m = gripperJawsModel(p, petgJ, { torque: 0.1765 });
+  const all = gripperJaws(p), box = measureBoundingBox(all);
+  near(box[1][2], 16, 1e-6, 'as tall as the leaves are wide'); near(box[0][2], 0, 1e-6, 'on the bed');
+  near(box[1][0], 30, 1e-3, 'the jaws end at jaws.to'); near(box[0][0], m.at.back, 1e-3, 'the root blocks are the back');
+  near(measureBoundingBox(gripperJaws(p, { part: 'upper' }))[0][1], 0.5, 1e-3, 'the upper jaw\'s face at half the gap');
+  near(measureVolume(all), measureVolume(gripperJaws(p, { part: 'ground' })) + 2 * measureVolume(gripperJaws(p, { part: 'upper' })), 200, 'the three pieces make the whole (the leaves run 1 mm into the roots)');
+  assert.equal(pieces(jscad.geometries.geom3.toPolygons(all).map((q) => q.vertices)).pieces.length, 2, 'two halves, each a jaw on its root, until a palm joins the roots');
+  // the fork against the ground, moved as the guide moves it (out d, back 3d²/5L), away from the leaves' ends
+  const ground = flat(gripperJaws(p, { part: 'ground' })), fork = intersect(flat(gripperJaws(p, { part: 'upper' })), [[[m.at.fork[0] + 1.05, 0], [m.at.fork[1], 0], [m.at.fork[1], 40], [m.at.fork[0] + 1.05, 40]]]);
+  const hit = (d) => area(intersect(ground, moved(shift([-(3 * d * d) / (5 * p.leaf.length), d]), fork)));
+  assert.equal(hit(m.stop.open - 0.05), 0, 'open to just short of the stop: free'); assert.ok(hit(m.stop.open + 0.1) > 0.01, 'just past it: the slot meets the pin');
+  assert.equal(hit(-(m.stop.close - 0.05)), 0, 'closed to just short of the stop: free'); assert.ok(hit(-(m.stop.close + 0.1)) > 0.01, 'past it: the pin');
+  // each leaf bent as a guided beam to its stop (the inner one opening, the outer closing) clears the tongue
+  const bent = (y0, d) => { const pts = [], back = []; for (let i = 0; i <= 80; i++) { const s = (p.leaf.length * i) / 80, u = s / p.leaf.length, y = y0 + d * (3 * u * u - 2 * u ** 3); pts.push([m.at.root + s, y - 0.42]); back.push([m.at.root + s, y + 0.42]); } return [[...pts, ...back.reverse()]]; };
+  const away = (a) => intersect(a, [[[m.at.root + 1.2, -60], [m.at.fork[0], -60], [m.at.fork[0], 60], [m.at.root + 1.2, 60]]]); // past the leaves' rounds at the root
+  assert.equal(area(away(intersect(ground, bent(m.at.guide - 7, m.stop.open)))), 0, 'the inner leaf, opened to the stop');
+  assert.equal(area(away(intersect(ground, bent(m.at.guide + 7, -m.stop.close)))), 0, 'the outer leaf, closed to the stop');
+  assert.ok(area(away(intersect(ground, bent(m.at.guide - 7, m.stop.open + 1)))) > 0, 'a millimetre further, it would touch: the tongue is as wide as it may be');
+  // three inside corners on a jaw (fork to bar, both sides, and jaw to bar), each r² (1 - π/4) filled, 16 mm tall
+  near(measureVolume(gripperJaws({ ...p, round: 1.5 }, { part: 'upper' })) - measureVolume(gripperJaws({ ...p, round: 0 }, { part: 'upper' })), 3 * 2.25 * (1 - Math.PI / 4) * 16, 0.3, 'the rounds');
+});
+
+test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke block where the design says, and hold the upright arm\'s 100 g twice over', async () => {
+  const { gripperJaws, gripperJawsModel, flexureMaterial } = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const read = (rel) => JSON.parse(fs.readFileSync(new URL(`../../examples/bench/${rel}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  const v = Object.fromEntries(Object.entries(read('projects/arm/objects/jaws.json').variables).map(([k, x]) => [k, x.value]));
+  const lift = read('rules/lift.json').rules;
+  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close, tongue: v.stop_tongue }, base: v.base };
+  // PETG as the bench has it: E 1810 MPa, 34 MPa, a strain limit of 34 / 1810 / 1.5; the SG90's stall torque 0.1765 N m
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  const m = gripperJawsModel(p, petg, { torque: 0.1765, payload: lift.payload.value, accel: 300, printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } });
+  assert.deepEqual(m.findings.filter((f) => f.level !== 'pass').map((f) => f.code), [], 'every finding passes');
+  // the root blocks start at the yoke block's front: xs = block_x - back (8 + 71.92)
+  near(v.xs, v.block_x - m.at.back, 0.01, 'xs'); near(measureBoundingBox(gripperJaws(p, { part: 'ground' }))[0][0] + v.xs, v.block_x, 0.01, 'the drawn back');
+  // the rest angle the anchors use is the model's: asin((14 - 2.25) / 18) = 40.75°
+  near(v.rest_a, m.rest, 0.01, 'rest_a');
+  // 100 g at 300 mm/s²: 0.1 × (9.80665 + 0.3) = 1.0107 N; twice over by friction 0.4 on two jaws needs
+  // 2 × 1.0107 / (2 × 0.4) = 2.5267 N a jaw; at k 0.6824 N/mm that is (w - 2) / 2 × 0.6824 >= 2.5267, w >= 9.405.
+  // The widest that goes in: 2 + 2 × 4.5635 - 2 × 0.3 = 10.527
+  near(m.rated, 9.41, 0.01, '100 g held twice over from 9.41 mm'); near(m.widest, 10.53, 0.01, 'up to 10.53 mm');
+  // the opening stop at 4.8 mm and the tongue at 10 mm: the SG90 driven on at its full stall torque turns the horn to
+  // 68.97°, where the stops hold it (worked by hand in the test above): the lower jaw at 4.98 mm, 75% of the leaves'
+  // 6.62 mm limit, and the stops resist 2.16 times the stall torque, so a stronger servo still stalls on them
+  const st = m.findings.find((f) => f.code === 'gripper.stop');
+  near(st.values.most, 4.9835, 1e-3, 'the lower jaw'); assert.ok(st.values.held && st.values.resists >= 2); assert.match(st.text, /jaw goes to 4\.98 mm.*: 75% of the leaves' limit of 6\.62 mm$/);
+  // the words say what the figures are: the gap at rest, and the horn's plane (width + 0.3 - 4.3 = 12) above the
+  // middle of the 16 mm print (8), so 4 mm
+  const jj = read('projects/arm/objects/jaws.json'), js = fs.readFileSync(new URL('../../examples/bench/projects/arm/objects/jaws.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(jj.variables.horn_z.value, 'width + 0.3 - 4.3', 'the horn\'s plane as worked out below');
+  for (const text of [jj.description, js]) assert.ok(text.includes(`closed on a ${v.jaw_gap} mm gap`), `the gap at rest is ${v.jaw_gap} mm`);
+  assert.ok(js.includes(`${v.width + 0.3 - 4.3 - v.width / 2} mm above the middle`), 'the horn\'s plane above the middle');
+  // the posts between the forks: they close to 7.58 - 0.85 = 6.73 at their stops, the posts are 5.9 each side
+  assert.ok(m.at.guide - (p.leaf.apart / 2 + p.leaf.thickness / 2 + p.leaf.fillet + 0.5) - v.stop_close - v.post_y >= 0.3, 'the posts clear the closed forks by a print gap');
+  // the README's example is these jaws: its figures are the code's
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(readme.includes(`stalls at ${Math.round(st.values.angle)}° with a jaw at ${st.values.most.toFixed(2)} mm, which bends the leaves to ${Math.round((st.values.most / m.limit) * 100)}% of their strain limit; the stops resist ${st.values.resists.toFixed(2)} times`), 'the README\'s stop is the model\'s');
+  assert.ok(readme.includes(`${m.grams.toFixed(1)} g of jaws and stops`), 'the README\'s jaws weigh what the model says');
+  assert.ok(readme.includes(`stop: { open: ${v.stop_open}, close: ${v.stop_close}, tongue: ${v.stop_tongue} }`), 'the README\'s example has the arm\'s stops');
+  for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+});
