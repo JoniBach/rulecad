@@ -107,6 +107,30 @@
       "unit": "mm",
       "rule": "Between every two parts, each side: what prints apart"
     },
+    "spare": {
+      "value": 0.03,
+      "unit": "mm",
+      "rule": "Drawn on top of the print gap, so the straight facets of drawn rounds don't eat into it: a 96-sided circle 35 mm across the middle falls 0.019 mm inside its round, and Manifold measured the gaps drawn at the bare print gap 0.292 to 0.297 mm"
+    },
+    "clear": {
+      "value": "gap + spare",
+      "unit": "mm",
+      "rule": "Every gap as drawn: the print gap and the facets' allowance"
+    },
+    "foot": {
+      "value": "x1c.foot",
+      "unit": "mm",
+      "rule": "How far the first layer spreads each side as it is squashed on"
+    },
+    "layer": {
+      "value": "x1c.layer",
+      "unit": "mm",
+      "rule": "The first layer: the teeth on the bed are cut straight, with the gap it needs, for this high"
+    },
+    "bed_addendum": {
+      "value": 0.6,
+      "rule": "The teeth's height over the pitch circle on the first layer, in modules: teeth thinned to the first layer's gap come to a point at ISO 53's 1; the layers above carry the drive"
+    },
     "chamfer": {
       "value": "x1c.chamfer",
       "unit": "mm",
@@ -177,7 +201,7 @@
       "rule": "Sun to planet"
     },
     "face": {
-      "value": "low + gap + high + gap + centre + module * (planet + 2) / 2 + gap - opening / 2 + lip + window_h + (window_w - bridge) / 2 + plate",
+      "value": "low + clear + high + clear + centre + module * (planet + 2) / 2 + clear - opening / 2 + lip + window_h + (window_w - bridge) / 2 + plate",
       "unit": "mm",
       "rule": "The motor's face, on its posts: the roof's cone rising at 45° from a gap over the planets' upper step, its lip, then the posts' windows and tops"
     },
@@ -204,11 +228,6 @@
       "value": 60,
       "unit": "deg",
       "rule": "Each planet from the x axis"
-    },
-    "tooth_chamfer": {
-      "value": 0.2,
-      "unit": "mm",
-      "rule": "Off the bed edges of the teeth on the bed (the planets' lower step, the output ring), against the first layer's spread: @rulecad/gears' 0.3 mm draws no closed solid on these 18-tooth planets with the print gap's backlash, so a layer's worth"
     },
     "straight": {
       "value": 1.2,

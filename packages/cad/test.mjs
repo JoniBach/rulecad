@@ -6084,7 +6084,7 @@ test('printed in place: each part on the bed, every two the print gap apart by M
     // Two blocks side by side, gap apart; a cube that may be lifted off the bed; a table whose top spans span
     fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify({ name: 'pair', title: 'Parts printed in place', version: '0.1.0', uses: ['x1c'], engine: 'manifold', printInPlace: true,
       parts: { left: {}, right: {}, hat: {}, table: {} },
-      variables: { side: { value: 10, unit: 'mm', rule: 'Each block' }, high: { value: 5, unit: 'mm', rule: 'Each block' }, gap: { value: 0.5, unit: 'mm', rule: 'Between the blocks' },
+      variables: { side: { value: 10, unit: 'mm', rule: 'Each block' }, high: { value: 5, unit: 'mm', rule: 'Each block' }, gap: { value: 0.7, unit: 'mm', rule: 'Between the blocks' },
         lift: { value: 0, unit: 'mm', rule: 'The cube off the bed' }, cube: { value: 4, unit: 'mm', rule: 'The cube' }, at: { value: 30, unit: 'mm', rule: 'Where the cube and the table stand' },
         span: { value: 4, unit: 'mm', rule: 'Under the table top' }, leg: { value: 2, unit: 'mm', rule: 'Each leg' }, top: { value: 1, unit: 'mm', rule: 'The table top' } } }));
     fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.js'), `import jscad from '@jscad/modeling'
@@ -6099,18 +6099,26 @@ export function main (v) {
 }
 `);
     const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/pair', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { of: (code) => j.findings.filter((x) => x.code === code) }; };
-    // Apart by 0.5 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
+    // Apart by 0.7 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
     let r = run();
     assert.equal(r.of('inplace.bed')[0].level, 'pass'); assert.equal(r.of('inplace.support')[0].level, 'pass');
     const g = r.of('inplace.gap')[0];
-    assert.equal(g.level, 'pass'); assert.ok(Math.abs(g.values.gap - 0.5) < 1e-4, `the nearest, ${g.values.gap}`); assert.equal(g.values.need, 0.3, 'the X1C\'s print_gap'); assert.deepEqual(g.refs.parts, ['left', 'right']);
+    assert.equal(g.level, 'pass'); assert.ok(Math.abs(g.values.gap - 0.7) < 1e-4, `the nearest, ${g.values.gap}`); assert.equal(g.values.need, 0.3, 'the X1C\'s print_gap'); assert.deepEqual(g.refs.parts, ['left', 'right']);
+    // the first layer needs the print gap and the X1C's 0.15 mm foot each side: 0.3 + 2 × 0.15 = 0.6 mm
+    assert.equal(r.of('inplace.first-layer')[0].level, 'pass'); assert.ok(Math.abs(r.of('inplace.first-layer')[0].values.need - 0.6) < 1e-9);
+    // 0.45 mm apart: clear of each other above, but on the bed the first layer spreads them into one
+    cad('set', 'demo/pair', 'gap=0.45');
+    r = run();
+    assert.equal(r.of('inplace.gap')[0].level, 'pass');
+    const first = r.of('inplace.first-layer')[0];
+    assert.equal(first.level, 'fail'); assert.ok(Math.abs(first.values.gap - 0.45) < 1e-4, `${first.values.gap}`); assert.deepEqual(first.refs.parts, ['left', 'right']);
     // 0.2 mm apart: under the 0.3 mm print gap, they fuse
     cad('set', 'demo/pair', 'gap=0.2');
     r = run();
     const near = r.of('inplace.gap')[0];
     assert.equal(near.level, 'fail'); assert.ok(Math.abs(near.values.gap - 0.2) < 1e-4, `${near.values.gap}`); assert.deepEqual(near.refs.parts, ['left', 'right']); assert.ok(near.at && near.box, 'where');
     // the cube 2 mm up: off the bed, and its underside in mid-air
-    cad('set', 'demo/pair', 'gap=0.5', 'lift=2');
+    cad('set', 'demo/pair', 'gap=0.7', 'lift=2');
     r = run();
     const bed = r.of('inplace.bed');
     assert.deepEqual(bed.map((x) => [x.level, x.refs.part]), [['fail', 'hat']]); assert.match(bed[0].text, /its lowest point is 2 mm up/);
@@ -6124,6 +6132,6 @@ export function main (v) {
     const o = JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/pair.json'), 'utf8')); delete o.printInPlace;
     fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify(o));
     r = run();
-    assert.equal(r.of('inplace.gap').length + r.of('inplace.bed').length + r.of('inplace.support').length, 0);
+    assert.equal(r.of('inplace.gap').length + r.of('inplace.bed').length + r.of('inplace.support').length + r.of('inplace.first-layer').length, 0);
   } finally { done(); }
 });

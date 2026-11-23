@@ -13,7 +13,7 @@ export function pipParts (v) {
   const motor = v.motors.motorModel('17HS4401')
   const deg = Math.PI / v.half_turn
   // The teeth, as compoundPlanetary finds them printed in place: the .json's are the ones it must find
-  const box = v.gears.compoundPlanetary({ module: v.module, ratio: v.ratio, planets: v.planets, step: v.step, printInPlace: true, gap: v.gap, helix: v.helix }), b = box.best
+  const box = v.gears.compoundPlanetary({ module: v.module, ratio: v.ratio, planets: v.planets, step: v.step, printInPlace: true, gap: v.clear, helix: v.helix }), b = box.best
   const found = [b.sun.teeth, b.planet.teeth, b.planet2.teeth, b.ring.teeth, b.ring2.teeth], given = [v.sun, v.planet, v.planet2, v.ring, v.ring2]
   if (found.some((t, k) => t !== given[k])) throw new Error(`compoundPlanetary finds teeth ${found.join('/')}, the .json says ${given.join('/')}: set sun, planet, planet2, ring and ring2 to its`)
   const pip = b.printInPlace, spec = { module: v.module, backlash: pip.backlash, dedendum: pip.dedendum }
@@ -21,13 +21,20 @@ export function pipParts (v) {
   const plain = (teeth, width) => v.gears.spur({ ...spec, teeth, width, chamfer: 0 })
   const ring = (teeth, hand, width, rim, chamfer) => v.gears.internal({ ...spec, teeth, hand, helix: pip.helix, herringbone: true, width, rim, chamfer })
   const plainRing = (teeth, width, rim) => v.gears.internal({ ...spec, teeth, width, rim, chamfer: 0 })
+  // The first layer of the teeth on the bed, straight-cut with the gap the first layer needs (it spreads foot each side
+  // as it is squashed on): the backlash and tip room for that gap, as compoundPlanetary works them out for the rest
+  const firstGap = v.clear + 2 * v.foot, alpha = b.sun.model.pressureAngle * deg
+  // (teeth that thin come to a point at a full addendum: the bed layer's tips are cut back to bed_addendum)
+  const bedSpec = { module: v.module, backlash: (2 * firstGap) / Math.cos(alpha), addendum: v.bed_addendum, dedendum: Math.max(pip.dedendum, v.bed_addendum + firstGap / v.module), chamfer: 0 }
+  const bedGear = (teeth) => v.gears.spur({ ...bedSpec, teeth, width: v.layer })
+  const bedRing = (teeth, rim) => v.gears.internal({ ...bedSpec, teeth, width: v.layer, rim })
   const disc = (r, z0, z1) => cylinder({ radius: r, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: v.segments })
   const cone = (r0, r1, z0, z1) => cylinderElliptic({ startRadius: [r0, r0], endRadius: [r1, r1], height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: v.segments })
 
   // Heights: the output stage on the bed, the held stage a gap above it, the roof's cone over the planets
   // (the held stage's teeth run straight for s0 before they turn, so where the housing's underside and the planets'
   // upper step widen at 45° the teeth don't twist as well: the two together lean past what prints)
-  const g = v.gap, c = v.chamfer, a = b.centre, z1 = v.low + g, top = z1 + v.high, s0 = v.straight
+  const g = v.clear, c = v.chamfer, a = b.centre, z1 = v.low + g, top = z1 + v.high, s0 = v.straight
   const tipP1 = b.planet.model.tip / 2, tipP2 = b.planet2.model.tip / 2, rootR1 = b.ring.model.root / 2, rootR2 = b.ring2.model.root / 2
   const reach = a + tipP1 + g // the planets' upper step, at its widest, and a gap
   const under = z1 + g + a + tipP2 + g // the housing's underside: z = under − r, a gap above the planets' lower step everywhere
@@ -39,7 +46,7 @@ export function pipParts (v) {
   // The planet: its lower step (on the output ring) on the bed and on up a gap, its upper step (on the sun and the
   // held ring) where it stands on the lower's teeth, and widening at 45° from the lower's root, so it prints on it
   const rootP2 = b.planet2.model.root / 2
-  const planet = () => v.ops.union(gear(v.planet2, 'left', v.low, v.tooth_chamfer), translate([0, 0, v.low], plain(v.planet2, g)),
+  const planet = () => v.ops.union(bedGear(v.planet2), translate([0, 0, v.layer], gear(v.planet2, 'left', v.low - v.layer, 0)), translate([0, 0, v.low], plain(v.planet2, g)),
     v.ops.intersect(v.ops.union(translate([0, 0, z1], plain(v.planet, s0)), translate([0, 0, z1 + s0], gear(v.planet, 'left', v.high - s0, 0))), v.ops.union(cone(rootP2, rootP2 + v.high, z1, top), translate([0, 0, z1], plain(v.planet2, v.high)))))
   // The sun: a hub on the bed inside the planets' lower step, its teeth widening at 45° once over it, a hub on up to
   // the motor with the shaft's D bore, from the top
@@ -56,7 +63,7 @@ export function pipParts (v) {
     const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
     const outline = v.ops.intersect(v.ops.union(cone(R2 - c, R2, 0, c), disc(R2, c, v.low)), cone(under - g * Math.SQRT2, under - g * Math.SQRT2 - v.low, 0, v.low))
     const holes = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: pilot / 2, height: v.pilot_depth + c, center: [v.bolt * Math.cos((2 * k + 1) * Math.PI / v.bolts), v.bolt * Math.sin((2 * k + 1) * Math.PI / v.bolts), (v.pilot_depth - c) / 2], segments: v.segments / 2 }))
-    return v.ops.subtract(v.ops.intersect(ring(v.ring2, 'left', v.low, v.rim2 + 2 * v.wall, v.tooth_chamfer), outline), holes)
+    return v.ops.subtract(v.ops.intersect(v.ops.union(bedRing(v.ring2, v.rim2 + 2 * v.wall), translate([0, 0, v.layer], ring(v.ring2, 'left', v.low - v.layer, v.rim2 + 2 * v.wall, 0))), outline), holes)
   }
   // The housing: the held ring standing on its skirt, its underside at 45° over the output ring, the roof's cone over the
   // planets, and on the roof four posts the motor sits on, face down. Each post has a window through it, its top rising

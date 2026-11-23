@@ -3,12 +3,14 @@
 // hold for that, checked here on the parts as drawn:
 //   - each part stands on the bed itself (inplace.bed): a part that starts on another is printed onto it and fuses;
 //   - every two parts stand at least the printer's print_gap apart (inplace.gap), measured exactly by Manifold's
-//     minGap; the first layer, where the plastic spreads, is printcheck's (print.first-layer);
+//     minGap, and on the first layer, where the plastic spreads by the printer's foot each side as it is squashed on,
+//     print_gap and twice the foot (inplace.first-layer: the parts cut at half a layer up, where the spread is);
 //   - nothing needs a support (inplace.support): none can come out from between parts that enclose each other, so a
 //     bridge wider than the printer spans, an underside in mid-air or on another part, a ledge or an island fails here,
 //     where for a part printed alone printcheck only warns.
 import { bounds } from '@rulecad/printcheck';
 import { ops as booleans } from '@rulecad/shapes';
+import jscad from '@jscad/modeling';
 
 const mm = (n, d = 2) => `${Number(n.toFixed(d))}`;
 const BED = 1e-3; // mm: a face this near z = 0 is on the bed
@@ -68,7 +70,7 @@ export async function inPlaceChecks(b, printer, printed = [], o = {}) {
   if (!ops) { try { ops = await booleans('manifold'); } catch { ops = null; } }
   if (!ops) { f('warn', 'the gaps between the parts are not measured: they need manifold-3d (npm install manifold-3d in the workspace)', 'inplace.gap'); }
   else {
-    const within = 2 * need, gaps = [];
+    const within = need + 1, gaps = []; // (looking a millimetre past the gap: a pair further apart reads as that)
     for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
       const a = parts[i], c = parts[j], ba = boxes.get(a.name), bc = boxes.get(c.name);
       if (boxGap(ba, bc) >= within) continue;
@@ -82,6 +84,23 @@ export async function inPlaceChecks(b, printer, printed = [], o = {}) {
       const least = gaps.reduce((m, g) => (!m || g.gap < m.gap ? g : m), null);
       f('pass', least ? `every two parts stand ${mm(need)} mm (print_gap) apart or more: the nearest, ${least.a} and ${least.b}, ${mm(least.gap, 3)} mm` : `no two parts come within ${mm(within)} mm of each other`, 'inplace.gap', { values: { gap: least ? least.gap : within, need, pairs: gaps.map(({ a, b: c, gap }) => ({ a, b: c, gap })) }, ...(least ? { refs: { parts: [least.a, least.b] } } : {}) });
     }
+  }
+
+  // On the first layer: the parts as cut half a layer up, apart by the print gap and the spread each side
+  const layer = printer.layer ?? 0.2, foot = printer.foot ?? 0, firstNeed = need + 2 * foot;
+  if (ops && foot > 0) {
+    const slab = (p) => { const bx = boxes.get(p.name); return ops.intersect(p.geometry, jscad.primitives.cuboid({ size: [bx.hi[0] - bx.lo[0] + 2, bx.hi[1] - bx.lo[1] + 2, layer / 2], center: [(bx.lo[0] + bx.hi[0]) / 2, (bx.lo[1] + bx.hi[1]) / 2, layer / 4] })); };
+    const low = parts.filter((p) => boxes.get(p.name).lo[2] <= BED).map((p) => ({ name: p.name, g: slab(p), box: boxes.get(p.name) })), near = [];
+    let least = null;
+    for (let i = 0; i < low.length; i++) for (let j = i + 1; j < low.length; j++) {
+      const a = low[i], c = low[j];
+      if (boxGap(a.box, c.box) >= firstNeed + 1) continue;
+      let gap; try { gap = ops.gap(a.g, c.g, firstNeed + 1); } catch { continue; }
+      if (!least || gap < least.gap) least = { a: a.name, b: c.name, gap };
+      if (gap < firstNeed - 1e-3) near.push({ a: a.name, b: c.name, gap, box: between(a.box, c.box) });
+    }
+    for (const g of near) f('fail', `on the first layer, ${g.a} and ${g.b} are ${mm(g.gap, 3)} mm apart half a layer up, under the ${mm(firstNeed)} mm they need there (print_gap and the first layer's ${mm(foot)} mm spread each side): they print as one. Chamfer their bed edges, or move them apart`, 'inplace.first-layer', { values: { gap: g.gap, need: firstNeed }, at: [(g.box.lo[0] + g.box.hi[0]) / 2, (g.box.lo[1] + g.box.hi[1]) / 2, 0], box: { lo: [g.box.lo[0], g.box.lo[1], 0], hi: [g.box.hi[0], g.box.hi[1], layer] }, refs: { parts: [g.a, g.b] } });
+    if (!near.length && least) f('pass', `on the first layer, every two parts stand ${mm(firstNeed)} mm apart or more half a layer up (print_gap and the ${mm(foot)} mm spread each side): the nearest, ${least.a} and ${least.b}, ${mm(least.gap, 3)} mm`, 'inplace.first-layer', { values: { gap: least.gap, need: firstNeed }, refs: { parts: [least.a, least.b] } });
   }
 
   // Nothing that needs a support
