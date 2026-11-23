@@ -47,12 +47,13 @@ const remote = (end, d, t) => { const far = 1.8 * Math.sqrt(d * t), k = DEFAULTS
  *   how much of the interference it takes (on the diameter) and the hoop strain that leaves in it
  */
 /**
- * @typedef {{ kind: 'annular snap', diameter: number, wall: number, skirt: number, clearance: number, bead: number, undercut: number,
+ * @typedef {{ kind: 'annular snap', diameter: number, wall: number, skirt: number, clearance: number, bead: number, length: number, undercut: number,
  *   interference: number, lead: number, back: number, land: number, sized: boolean, uses: 'often' | 'once', material: string,
  *   lidMaterial: string, friction: number, permissible: number, box: SnapPart, lid: SnapPart, force: number, insertion: number,
  *   removal: number, holds: boolean, pull: number | null, margin: number | null, most: { undercut: number, removal: number },
  *   groove: { inner: number, outer: number, depth: number }, rests: object[], findings: object[] }} AnnularSnap
- *   diameter: the box's wall outside at the joint; bead: how far the bead stands off it (radial); undercut: the
+ *   diameter: the box's wall outside at the joint; bead: how far the bead stands off it (radial); length: the bead's
+ *   height along the axis, return face, land and lead face; undercut: the
  *   bead less the clearance, the radial overlap the skirt is spread by; interference: the same on the diameter, shared
  *   between the parts; force: the transverse force P that takes; insertion and removal: along the push, N;
  *   permissible: the hoop strain each part may see; most: the largest undercut that strain allows and the removal
@@ -125,7 +126,7 @@ export function annularSnapModel(p, o = {}) {
     if (undercut > mostUndercut) { sizeSays += `, more than the ${mm(r3(mostUndercut))} mm the strain allows, so held to that`; undercut = Math.max(mostUndercut, 0); }
     undercut = r3(undercut);
   }
-  const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y;
+  const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = r3(bead / tan(back) + land + bead / tan(lead));
   for (const q of [B, L]) { q.deflection = r3(P / q.stiffness); q.strain = n4(P / q.stiffness / q.diameter); q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
   const insertion = along(P, lead, mu), removal = along(P, back, mu), holds = !Number.isFinite(removal), most = { undercut: r3(mostUndercut), removal: Number.isFinite(back1) ? n1(back1 * Pmost) : Infinity };
 
@@ -158,7 +159,7 @@ export function annularSnapModel(p, o = {}) {
   out.push(finding(prints ? 'pass' : 'fail', prints ? `the box printed standing on its floor and the lid on its top print with no support: the bead's ${mm(back)}° return face and the groove's mating face are within ${pr.cite('overhang')} ${mm(overhang)}°, and the ${mm(lead)}° lead face leans the way that always prints`
     : `the ${mm(back)}° return face is past ${pr.cite('overhang')} ${mm(overhang)}°: under the box's bead and over the lid's groove it needs support. Give back ${mm(overhang)}° or less; a steeper face holds harder, so let the bead be taller instead`, 'snap.printable', { values: { back, overhang } }));
   const groove = { inner: r3(dh / 2), outer: r3(dh / 2 + bead), depth: bead };
-  return { kind: 'annular snap', diameter: d, wall: t, skirt: s, clearance: c, bead, undercut, interference: r3(Y), lead, back, land, sized, uses, material: box.name, lidMaterial: lidMat.name, friction: mu,
+  return { kind: 'annular snap', diameter: d, wall: t, skirt: s, clearance: c, bead, length, undercut, interference: r3(Y), lead, back, land, sized, uses, material: box.name, lidMaterial: lidMat.name, friction: mu,
     permissible: n4(permissible), box: B, lid: L, force: n1(P), insertion: Number.isFinite(insertion) ? n1(insertion) : Infinity, removal: Number.isFinite(removal) ? n1(removal) : Infinity, holds, pull, margin, most, groove, rests, findings: out };
 }
 

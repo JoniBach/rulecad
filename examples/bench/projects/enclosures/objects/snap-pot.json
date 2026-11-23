@@ -1,0 +1,30 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "snap-pot",
+  "title": "Pot with a snap-on lid",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "orientation": "The pot standing on its floor, the lid beside it on its top with its skirt up: each starts on one plain disc",
+  "description": "A round pot 60 mm across and 40 mm tall for screws and small parts, and its lid, which clicks on over a bead round the pot's rim and comes off at a tilt by its tab. The bead's height, the forces to push the lid on and pull it off, and the hoop strain in the pot's wall and the lid's skirt come from @rulecad/fixings' annularSnapModel (the Bayer snap-fit guide's annular joint), sized from the pull the lid must stay on against, twice over. Print both in one go.",
+  "variables": {
+    "diameter": { "value": 60, "unit": "mm", "rule": "The pot's outside at the bead: a handful of M3 screws, small enough to print in under an hour", "interface": true },
+    "height": { "value": 40, "unit": "mm", "rule": "The pot's height to its rim, where the lid's top sits", "interface": true },
+    "wall": { "value": "x1c.wall_min * 2", "unit": "mm", "rule": "The pot's wall: four print lines, stiff enough to keep round, and thin enough to give a little as the lid snaps on", "interface": true },
+    "skirt": { "value": "x1c.line * 3", "unit": "mm", "rule": "The lid's skirt: three print lines, thinner than the wall, so the skirt takes most of the snap's spread", "interface": true },
+    "floor": { "value": "x1c.layer * 6", "unit": "mm", "rule": "The pot's floor: six layers, a solid first layer and a floor that does not flex" },
+    "lid": { "value": "x1c.layer * 8", "unit": "mm", "rule": "The lid's top: eight layers, so it stays flat as the skirt spreads" },
+    "fillet": { "value": 1, "unit": "mm", "rule": "Each inside corner's round: the pot's floor into its wall and the lid's top into its skirt" },
+    "rim": { "value": 1.2, "unit": "mm", "rule": "The pot's rim chamfered outside, more than the lid's inside round, so the two clear as the lid seats" },
+    "below_rim": { "value": 1.5, "unit": "mm", "rule": "The bead's top under the rim: just past the rim's chamfer, so the bead is near the wall's free end" },
+    "below_bead": { "value": 1.5, "unit": "mm", "rule": "The skirt past the groove to its mouth: room for the lead-in, and near the skirt's free end" },
+    "pull": { "value": 10, "unit": "N", "rule": "The pull the lid stays on against: a pot of 300 g of screws lifted by its lid is 3 N, and a jerk three times that, an estimate. The bead is sized to hold twice this" },
+    "tab": { "value": 4, "unit": "mm", "rule": "The tab to lift the lid by: half its width and how far it stands out" },
+    "gap": { "value": 5, "unit": "mm", "rule": "Between the pot and the lid on the bed" },
+    "corner_facets": { "value": 8, "rule": "Facets on each quarter round: an inside corner's round and the tab's corners" },
+    "segments": { "value": 96, "rule": "Facets round: the bead and the groove are drawn with the same count, so they follow the wall face for face" },
+    "piece": { "value": 0, "rule": "0 the whole print, 1 the pot, 2 the lid as printed: the assembly puts the lid on the pot", "tweak": { "min": 0, "max": 2, "step": 1 } }
+  }
+}
