@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { sketches, sizes, hexBytes, sketchMaxRate } from '../scripts/firmware.mjs';
+import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck } from '../scripts/firmware.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (f) => fs.readFileSync(`${ROOT}${f}`, 'utf8').replace(/\r\n/g, '\n');
@@ -86,4 +86,34 @@ test('firmware: the streamer refuses a block past MAX_RATE by name, and steps it
   assert.match(ino, /const uint8_t STEP\[3\] = \{ 2, 3, 4 \}/, 'D2 to D4 are PD2 to PD4, as STEP_MASK has them');
   assert.match(ino, /STEP_MASK\[3\] = \{ _BV\(PD2\), _BV\(PD3\), _BV\(PD4\) \}/);
   assert.match(read(`${ARM}/STREAMER.md`), /\| `m` \|.*`error: rate` if a rate is past MAX_RATE \|/);
+});
+
+test('firmware: the loop\'s ceiling is measured speeding up and slowing down as well as at the cruise, and the slowest is held to MAX_RATE', () => {
+  // arm.ino's tick() divides (gap = 1000000 / rate) only on a step that changes the rate, that is while done < up or
+  // done >= major - down. A block with up = down = 0 never takes that path, so each phase gets its own block.
+  assert.equal(ceilingLine(3, 'cruise', 4000), 'm 4000 4000 4000 50000 50000 50000 1000000 0 0');
+  assert.equal(ceilingLine(2, 'up', 4000), 'm 4000 4000 0 50000 50000 50000 100000000 4000 0');
+  assert.equal(ceilingLine(1, 'down', 4000), 'm 4000 0 0 50000 50000 50000 100000000 0 4000');
+  // every step of an 'up' block changes the rate: a = 1e8 steps/s² over a gap of 1 / 50000 s adds 1e8 x 20e-6 = 2000
+  // steps/s, and the rate is clamped back to the peak of 50000, so the division runs on all 4000 steps
+  assert.throws(() => ceilingLine(4, 'up'), /axes 4: a block steps 1, 2 or 3 axes/);
+  assert.throws(() => ceilingLine(1, 'coast'), /phase "coast": one of cruise, up, down/);
+  // the figures measured on the simulated Uno (arduino:avr 1.8.8, RATE_LIMIT=1000000): the cruise alone is 2.7 times
+  // MAX_RATE (21505 / 8000), and the slowest, three axes slowing down, is 8904 / 8000 = 1.11 times
+  const measured = { cruise: [24615, 22956, 21505], up: [9484, 9227, 8984], down: [9395, 9143, 8904] };
+  const held = ceilingCheck(measured, 8000);
+  assert.deepEqual(held.slowest, { phase: 'down', axes: 3, rate: 8904 });
+  assert.equal(held.margin.toFixed(2), '1.11');
+  assert.deepEqual(held.problems, []);
+  // a loop fast at its cruise and slow while speeding up fails: the old check read the cruise's three axes only
+  const slow = ceilingCheck({ ...measured, up: [8200, 7900, 7600] }, 8000);
+  assert.deepEqual(slow.problems, [
+    'the loop steps 2 axes at 7900 steps/s at most while speeding up, under MAX_RATE (8000)',
+    'the loop steps 3 axes at 7600 steps/s at most while speeding up, under MAX_RATE (8000)']);
+  assert.throws(() => ceilingCheck({ cruise: [1, 2, 3], up: [1, 2] }, 8000), /ceilings\.up: three rates/);
+  // and the simulation run in CI uses this check, not the cruise's three-axis figure alone
+  const script = read('scripts/firmware.mjs');
+  assert.match(script, /ceilings: Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, \[1, 2, 3\]\.map\(\(a\) => ceiling\(fast, avr, a, p\)\)\]\)\)/);
+  assert.match(script, /for \(const p of held\.problems\) fail\(p\)/);
+  assert.doesNotMatch(script, /r\.ceilings\[2\] < max/);
 });
