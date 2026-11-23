@@ -20,7 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
-import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
+import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, newObject, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
@@ -57,7 +57,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
   cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
-  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
+  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one] [--dry-run]
   cad set <project>/<assembly> <address>=<value> …   change an assembly's fields: an entry's by its id or place (x1.at=[0,0,20],
                                     joins.3.kind=bracket), or its own (title=…, frame.join.fitting=printed, frame.inside=[300,300,400]);
                                     a value is JSON, a [list, of, names] or text
@@ -69,7 +69,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad remove <project>/<assembly> <id | list.n | id.field>   take an entry or a field out; refused, naming them, while other
                                     entries name it, unless --with-refs takes them out too
   Every edit (new, set, add, move, remove): checked against the schema and what it could break before it is written,
-  refused by name with nothing written; --dry-run shows it without writing; --json says what changed, and the checks
+  refused by name with nothing written; --dry-run shows it without writing (also add fasten --from-fits, frame --expand and
+  frame --size --write; any other command refuses --dry-run); --json says what changed, and the checks
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
@@ -115,9 +116,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad kit <project>/<assembly>      the folder to build it from without the model, in exports/: README.md (checks, what to buy and print, cut list, drilling, the build step by step), buy.csv, the plates' 3MFs, the jigs, each beam's sheet [--pictures] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad frame <project>/<assembly>    a generated frame ("frame": { "kind": "box", "inside": [..] }): its size, its beams by length, its joins and ends
-                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json]
+                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json] [--dry-run]
                                      --size: any frame's beams, by group, each given the lightest profile from frame.size.profiles that meets
-                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json]
+                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json] [--dry-run]
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
                                      --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
                                      guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
@@ -168,6 +169,10 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting', // cad add join
   'title', 'description', 'printer', 'frame', 'inside', 'outside', 'join', 'feet', 'caps', 'with-refs', 'mass', 'joint']; // cad new, cad remove, cad add load
+// The commands that take --dry-run (each checks its edit and writes nothing); any other is refused with it, as a flag
+// it passed over would let the command write
+const takesDryRun = (cmd) => ['new', 'set', 'add', 'remove', 'move', 'release'].includes(cmd) || (cmd === 'frame' && (opt('expand') || (opt('size') && opt('write'))));
+const DRY_RUNS = 'the commands that take one are cad new, set, add, remove, move, release, frame --expand and frame --size --write';
 // What a command takes, where that isn't <project>/<object>
 const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join|guide|load|wire <project>/<assembly> --key value … [field=value …]', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …, <project>/<assembly> <address>=<value> …, or <project> field=value …',
   remove: '<project>/<assembly> <id | list.n | id.field> [--with-refs] [--dry-run]', move: '<project>/<assembly> <id> --at x,y,z | --to <address> [--rotate x,y,z] [--dry-run]',
@@ -427,23 +432,12 @@ async function main() {
   const odd = args.find((a) => a.startsWith('--') && !OPTIONS.includes(a.slice(2)));
   if (odd) { const guess = near(odd.slice(2), OPTIONS); throw new Error(`no option ${odd}${guess ? ` (did you mean --${guess}?)` : ''}: cad help lists them`); }
   if (configError) throw configError;
+  if (opt('dry-run') && !takesDryRun(cmd)) throw new Error(`cad ${cmd}${opt('size') ? ' --size' : ''} takes no --dry-run, so nothing is run: ${DRY_RUNS}`);
 
   if (cmd === 'new' && (opt('assembly') || !String(ref || '').includes('/'))) return newCommand(ref ?? (typeof opt('assembly') === 'string' ? opt('assembly') : undefined));
-  if (cmd === 'new') {
-    const [project, name] = String(ref || '').split('/');
-    if (!/^[a-z][a-z0-9-]*$/.test(project || '') || !/^[a-z][a-z0-9-]*$/.test(name || '')) throw new Error('usage: cad new <project>/<object>, lower-case names with dashes');
-    const dir = paths.project(project), objects = path.join(dir, 'objects');
-    fs.mkdirSync(objects, { recursive: true });
-    const pj = path.join(dir, 'project.json');
-    const p = fs.existsSync(pj) ? JSON.parse(fs.readFileSync(pj, 'utf8')) : { name: project, description: '', material: 'PLA', objects: [] };
-    for (const ext of ['js', 'json']) {
-      const to = path.join(objects, `${name}.${ext}`);
-      if (fs.existsSync(to)) throw new Error(`${path.relative(WS, to)} already exists`);
-      fs.writeFileSync(to, fs.readFileSync(path.join(TOOL, 'templates', `object.${ext}`), 'utf8').replaceAll('NAME', name));
-    }
-    if (!p.objects.includes(name)) p.objects.push(name);
-    fs.writeFileSync(pj, JSON.stringify(p, null, 2) + '\n');
-    return console.log(`made projects/${project}/objects/${name}.{js,json}`);
+  if (cmd === 'new') { // an object, from the template; --dry-run and --json as the other edits
+    const r = newObject(ref, { dryRun: !!opt('dry-run') }), [project, name] = String(ref).split('/');
+    return edited(r, 'new', {}, `${r.dryRun ? 'would make' : 'made'} projects/${project}/objects/${name}.{js,json}`);
   }
 
   if (cmd === 'rules' && ['check', 'draw', 'draft'].includes(ref)) return ruleSheets(ref, pos.slice(2));
@@ -631,9 +625,9 @@ async function editVariables(ref) {
   const extra = Object.fromEntries(['unit', 'rule', 'label'].filter((k) => typeof opt(k) === 'string').map((k) => [k, opt(k)]));
   if (pairs.length > 1 && (extra.rule || extra.label)) throw new Error(`--${extra.rule ? 'rule' : 'label'} describes one variable: set ${pairs.map((p) => p.split('=')[0]).join(' and ')} one at a time`);
   const changes = Object.fromEntries(pairs.map((p) => { const i = p.indexOf('='); return [p.slice(0, i).trim(), { value: parseValue(p.slice(i + 1).trim()), ...extra }]; }));
-  const r = await setVariables(ref, changes, { create: !!opt('new') });
+  const r = await setVariables(ref, changes, { create: !!opt('new'), dryRun: !!opt('dry-run') });
   if (opt('json')) return console.log(JSON.stringify(r));
-  console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
+  console.log(`${r.dryRun ? `dry run, nothing written: would set` : 'set'} ${r.changed.join(', ')} in ${rel(r.file)}`);
 }
 
 // cad add fit|joint|item|loop|pose|fasten|join <project>/<assembly> --key value …: add to an assembly, keeping its layout
@@ -654,9 +648,10 @@ async function editAssembly(what, ref) {
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
   else if (what === 'fasten' && opt('from-fits')) { // a holes fit and a fit that fastens, put as one fasten
     const s = await buildAssembly(ref), { fastenFromFits } = await import('../lib/fasten.mjs');
-    const r = fastenFromFitsEdit(ref, fastenFromFits(s), { screw: typeof opt('screw') === 'string' ? opt('screw') : undefined });
+    const r = fastenFromFitsEdit(ref, fastenFromFits(s), { screw: typeof opt('screw') === 'string' ? opt('screw') : undefined, dryRun: !!opt('dry-run') });
     if (opt('json')) return console.log(JSON.stringify(r));
-    for (const x of r.added) console.log(`added a fasten to ${path.relative(WS, r.file)} in place of its holes fit and its fit that fastens: ${JSON.stringify(x)}`);
+    if (r.dryRun) console.log('dry run, nothing written:');
+    for (const x of r.added) console.log(`${r.dryRun ? 'would add' : 'added'} a fasten to ${rel(r.file)} in place of its holes fit and its fit that fastens: ${JSON.stringify(x)}`);
     return console.log(`check its screws: cad check ${ref}`);
   }
   else if (what === 'fasten') { // --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2 | --holes bracket.body [--nut [hex] --washer --length 12 --torque 0.5 --note …]
@@ -1201,6 +1196,11 @@ async function frameCommand(ref) {
     const rows = r.rows, out = { assembly: ref, ok: r.ok, total: r.total, drawn: r.drawn, tried: r.tried, search: r.search, groups: rows, limits: r.limits };
     if (opt('write')) {
       if (!r.ok) throw new Error(`${ref}: no profile in the list meets every limit, so nothing is written (cad frame ${ref} --size says how near it comes)`);
+      if (opt('dry-run')) { // the sizing and the check above, nothing written
+        if (opt('json')) return console.log(JSON.stringify({ ...out, file: rel(file), written: false, dryRun: true }, null, 2));
+        console.log(sizingText(r).join('\n'));
+        return console.log(`dry run, nothing written: would write ${rel(file)}`);
+      }
       fs.writeFileSync(file, `${JSON.stringify(writeSizing(raw, raw.frame?.kind != null ? expandFrame(raw, s.num).a : raw, r), null, 2)}\n`);
       if (opt('json')) return console.log(JSON.stringify({ ...out, file: path.relative(WS, file) }, null, 2));
       console.log(sizingText(r).join('\n'));
@@ -1211,6 +1211,10 @@ async function frameCommand(ref) {
   }
   if (raw.frame?.kind == null) throw new Error(`${ref} asks for no generated frame: give it "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind" }`);
   const s = await buildAssembly(ref), m = s.generated, out = expandFrame(raw, s.num).a;
+  if (opt('expand') && opt('dry-run')) {
+    if (opt('json')) return console.log(JSON.stringify({ assembly: ref, file: rel(file), written: false, dryRun: true, frame: m, expanded: out }, null, 2));
+    return console.log(`dry run, nothing written: would write ${rel(file)}: the ${m.kind} as ${m.beams.length + (m.moving ? 1 : 0)} beams, ${m.joins.length} joins and ${m.ends.length + m.panels.length} fittings`);
+  }
   if (opt('expand')) {
     fs.writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`);
     if (opt('json')) return console.log(JSON.stringify({ assembly: ref, file: path.relative(WS, file), frame: m }, null, 2));

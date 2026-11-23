@@ -16,21 +16,22 @@ import { plasticNamed } from './fittings.mjs';
 // A value from the command line: a number if it is one, otherwise an expression (or a name) as text
 export const parseValue = (s) => (s === undefined ? undefined : /^-?(\d+\.?\d*|\.\d+)(e-?\d+)?$/i.test(String(s).trim()) ? Number(s) : String(s));
 
-function write(file, text, kind) {
+// The edited text, parsed and held to its schema: refused by name, nothing written
+function checked(file, text, kind) {
   let json;
   try { json = JSON.parse(text); } catch (e) { throw new CadError('edit.broken', `the edit would break ${file}'s JSON: ${e.message}`, { file }); }
   const problems = validate(json, schema(kind));
   if (problems.length) throw new CadError('schema', `${path.basename(file)}: ${problems[0].path}: ${problems[0].message}`, { file, path: problems[0].path });
-  fs.writeFileSync(file, text);
   return json;
 }
 
 /**
  * Set variables of an object: { name: value }, each with optional unit, rule, label; new ones only with create.
  * @param {string} ref project/object @param {Record<string, { value?: any, unit?: string, rule?: string, label?: string }>} changes
- * @param {{ create?: boolean }} [options] @returns {Promise<{ file: string, changed: string[] }>}
+ * Every check runs before anything is written; dryRun runs them all and writes nothing.
+ * @param {{ create?: boolean, dryRun?: boolean }} [options] @returns {Promise<{ file: string, changed: string[], written: boolean, dryRun?: true }>}
  */
-export async function setVariables(ref, changes, { create = false } = {}) {
+export async function setVariables(ref, changes, { create = false, dryRun = false } = {}) {
   const d = locate(ref), before = fs.readFileSync(d.json, 'utf8');
   let text = before;
   for (const [name, c] of Object.entries(changes)) {
@@ -40,8 +41,8 @@ export async function setVariables(ref, changes, { create = false } = {}) {
     if (!exists) { text = setAt(text, ['variables', name], { value: c.value, ...(c.unit !== undefined ? { unit: c.unit } : {}), rule: c.rule, ...(c.label ? { label: c.label } : {}) }); continue; }
     for (const k of ['value', 'unit', 'rule', 'label']) if (c[k] !== undefined) text = setAt(text, ['variables', name, k], c[k]);
   }
-  const json = write(d.json, text, 'object');
-  try { // the variables must still resolve: an unknown name or a loop puts the file back as it was
+  const json = checked(d.json, text, 'object');
+  try { // the variables must still resolve: an unknown name or a loop is refused (the edit changes no uses, so the sets are the file's own)
     const { values } = resolve(json, { sets: (await objectSets(d, readObject(d))).sets });
     // and each changed value must lie within the variable's own range, where it has one (a tweak's min and max)
     for (const name of Object.keys(changes)) {
@@ -50,8 +51,10 @@ export async function setVariables(ref, changes, { create = false } = {}) {
       const lo = typeof t.min === 'number' ? t.min : -Infinity, hi = typeof t.max === 'number' ? t.max : Infinity;
       if (v < lo || v > hi) throw new CadError('edit.range', `${name} = ${v} is outside its range, ${t.min ?? '…'} to ${t.max ?? '…'} (change the range first if it should go there)`, { file: d.json, path: `variables.${name}` });
     }
-  } catch (e) { fs.writeFileSync(d.json, before); throw Object.assign(e, { file: d.json, message: `not changed: ${e.message}` }); }
-  return { file: d.json, changed: Object.keys(changes) };
+  } catch (e) { throw Object.assign(e, { file: d.json, message: `not changed: ${e.message}` }); }
+  const written = !dryRun && text !== before;
+  if (written) fs.writeFileSync(d.json, text);
+  return { file: d.json, changed: Object.keys(changes), written, ...(dryRun ? { dryRun: true } : {}) };
 }
 
 const assemblyFile = (ref) => {
@@ -92,10 +95,11 @@ export function addToAssembly(ref, what, entry, { dryRun = false } = {}) {
  * Put a fasten in place of each holes fit and the fit that fastens the same two items (as lib/fasten.mjs's fastenFromFits
  * finds them): the holes fit goes, the fit that fastens goes too, or keeps its gap range (min, max) with "fastens",
  * "fastener" and "count" taken off, and the fasten is added. A screw given replaces the one found.
- * @param {string} ref project/assembly @param {{ fasten: object, holes: number, fastens: number }[]} found @param {{ screw?: string }} [options]
- * @returns {{ file: string, added: object[] }}
+ * dryRun checks it all and writes nothing.
+ * @param {string} ref project/assembly @param {{ fasten: object, holes: number, fastens: number }[]} found @param {{ screw?: string, dryRun?: boolean }} [options]
+ * @returns {{ file: string, added: object[], written: boolean, dryRun?: true }}
  */
-export function fastenFromFitsEdit(ref, found, { screw } = {}) {
+export function fastenFromFitsEdit(ref, found, { screw, dryRun = false } = {}) {
   const file = assemblyFile(ref);
   if (!found.length) throw new CadError('edit.nothing', `${ref} has no holes fit with a fit that fastens the same two items (and no fasten for them yet): nothing to put a fasten in place of`, { file });
   let text = fs.readFileSync(file, 'utf8');
@@ -109,8 +113,9 @@ export function fastenFromFitsEdit(ref, found, { screw } = {}) {
   if (getAt(text, ['fasten']) === undefined) text = setAt(text, ['fasten'], []);
   const added = found.map((g) => ({ ...g.fasten, ...(screw ? { screw } : {}) }));
   for (const x of added) text = appendAt(text, ['fasten'], x);
-  write(file, text, 'assembly');
-  return { file, added };
+  checked(file, text, 'assembly');
+  if (!dryRun) fs.writeFileSync(file, text);
+  return { file, added, written: !dryRun, ...(dryRun ? { dryRun: true } : {}) };
 }
 
 // ---------- the workspace's own files: projects and assemblies, made, changed, moved and removed ----------
@@ -550,6 +555,41 @@ export function setProject(project, changes, { dryRun = false } = {}) {
     done.push({ op: 'set', path: shownPath(p), ...(was !== undefined ? { before: was } : {}), after: value });
   }
   return finish({ file, before, text, kind: 'project', changes: done, dryRun, findings: projectFindings(JSON.parse(text), project) });
+}
+
+/**
+ * Make an object from the kit's template: projects/<project>/objects/<name>.js and .json, listed in its project's
+ * objects; its project is made first where there is none (PLA, as cad new <project> makes one). With dryRun it writes
+ * nothing and says what it would make, in the shape the other edits answer in. Refused by name: a name not in lower
+ * case with dashes, an object already there.
+ * @param {string} ref project/object @param {{ dryRun?: boolean }} [options]
+ */
+export function newObject(ref, { dryRun = false } = {}) {
+  const [project, name] = String(ref || '').split('/');
+  if (!NAME.test(project || '') || !NAME.test(name || '')) throw new CadError('edit.name', `an object is <project>/<name>, each lower case with dashes (got ${JSON.stringify(ref)})`);
+  const objects = path.join(paths.project(project), 'objects'), pj = projectFile(project);
+  const files = ['js', 'json'].map((ext) => path.join(objects, `${name}.${ext}`));
+  const there = files.find((f) => fs.existsSync(f));
+  if (there) throw new CadError('object.exists', `projects/${project}/objects/${path.basename(there)} is already there: change its variables with cad set ${ref} name=value`, { file: there });
+  const texts = ['js', 'json'].map((ext) => fs.readFileSync(new URL(`../templates/object.${ext}`, import.meta.url), 'utf8').replaceAll('NAME', name));
+  const object = JSON.parse(texts[1]);
+  const problems = validate(object, schema('object'));
+  if (problems.length) throw new CadError('schema', `not made: ${name}.json: ${problems[0].path}: ${problems[0].message}`, { file: files[1], path: problems[0].path });
+  // its project: made where there is none, else the object added to its list (keeping the file's layout)
+  const made = fs.existsSync(pj) ? null : newProject(project, { dryRun: true });
+  const before = made ? '' : fs.readFileSync(pj, 'utf8');
+  let text = made ? laidOut(made.changes[0].after) : before, listed = [];
+  const own = JSON.parse(text);
+  if (!Array.isArray(own.objects)) { text = setAt(text, ['objects'], [name]); listed = [{ op: 'add', path: 'objects.0', after: name }]; }
+  else if (!own.objects.includes(name)) { text = appendAt(text, ['objects'], name); listed = [{ op: 'add', path: `objects.${own.objects.length}`, after: name }]; }
+  const changes = [...(made ? made.changes : []), ...files.map((f, i) => ({ op: 'make', path: `projects/${project}/objects/${path.basename(f)}`, ...(i === 1 ? { after: object } : {}) })), ...listed];
+  const findings = [...(made ? made.findings.filter((f) => f.code !== 'schema') : []), { level: 'pass', text: 'matches the object schema', code: 'schema' }];
+  if (!dryRun) {
+    fs.mkdirSync(objects, { recursive: true });
+    files.forEach((f, i) => fs.writeFileSync(f, texts[i]));
+    if (text !== before) fs.writeFileSync(pj, text);
+  }
+  return { file: files[1], written: !dryRun, ...(dryRun ? { dryRun: true } : {}), made: [...(made ? [pj] : []), ...files], changes, findings };
 }
 
 /**
