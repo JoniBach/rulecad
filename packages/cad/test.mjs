@@ -1952,6 +1952,16 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
     assert.ok(code(findings('thin'), 'shaft.hoop').some((x) => x.level === 'fail'), JSON.stringify(findings('thin')));
     hub('thick', { wall: 4, press: 1 }, 'press');
     assert.ok(code(findings('thick'), 'shaft.hoop').some((x) => x.level === 'pass'), JSON.stringify(findings('thick')));
+    // a slide fit, as a part printed in place needs: bore() draws a slide 5 + 2 × 0.05 + 0.1 = 5.2 mm across, 0.1 mm a
+    // side; printed 0.1 mm smaller across (hole_comp), 0.05 mm a side is left. Its press bore, 5 − 2 × 0.02 + 0.1 =
+    // 5.06 mm, 0.03 mm a side drawn, prints 0.02 mm a side tighter than the shaft: no slide, and no hoop check either
+    hub('slid', {}, 'slide');
+    const slid = code(findings('slid'), 'shaft.slide')[0];
+    assert.equal(slid.level, 'pass', slid.text); assert.ok(Math.abs(slid.values.printed - 0.05) < 0.01, `${slid.values.printed}`); assert.equal(slid.values.holeComp, 0.1);
+    hub('stuck', { press: 1 }, 'slide');
+    const stuck = findings('stuck');
+    assert.equal(code(stuck, 'shaft.slide')[0].level, 'fail'); assert.ok(Math.abs(code(stuck, 'shaft.slide')[0].values.printed + 0.02) < 0.01, JSON.stringify(code(stuck, 'shaft.slide')[0].values));
+    assert.equal(code(stuck, 'shaft.hoop').length, 0, 'a slide is never pressed on');
     // refusals by name
     write('projects/home/assemblies/nojoint.json', arm({ drives: 'nope' }));
     assert.match(cad('check', 'home/nojoint'), /drives "nope", which isn't a joint/);
@@ -6063,5 +6073,57 @@ test('the bench arm on the parts its builder has: a 17HS4401 at each joint on 12
     assert.deepEqual(l.bought.filter((b) => !b.have).map(line).sort(), ['bearing-6800 x1', 'endstop-10t85 x2']);
     assert.deepEqual(l.bought.filter((b) => b.have).map(line).sort(), ['cnc-shield-v3 x1', 'drv8825 x2', 'nema17 (17HS4401) x2', 'sg90 x1', 'supply-12v x1']);
     assert.ok(l.fasteners.length && l.wires.length, 'screws and wire, which are to buy');
+  } finally { done(); }
+});
+
+test('printed in place: each part on the bed, every two the print gap apart by Manifold, nothing needing a support', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/demo/objects'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['pair'] }));
+    // Two blocks side by side, gap apart; a cube that may be lifted off the bed; a table whose top spans span
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify({ name: 'pair', title: 'Parts printed in place', version: '0.1.0', uses: ['x1c'], engine: 'manifold', printInPlace: true,
+      parts: { left: {}, right: {}, hat: {}, table: {} },
+      variables: { side: { value: 10, unit: 'mm', rule: 'Each block' }, high: { value: 5, unit: 'mm', rule: 'Each block' }, gap: { value: 0.5, unit: 'mm', rule: 'Between the blocks' },
+        lift: { value: 0, unit: 'mm', rule: 'The cube off the bed' }, cube: { value: 4, unit: 'mm', rule: 'The cube' }, at: { value: 30, unit: 'mm', rule: 'Where the cube and the table stand' },
+        span: { value: 4, unit: 'mm', rule: 'Under the table top' }, leg: { value: 2, unit: 'mm', rule: 'Each leg' }, top: { value: 1, unit: 'mm', rule: 'The table top' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.js'), `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+const box = (x0, x1, y0, y1, z0, z1) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
+export function main (v) {
+  const left = box(0, v.side, 0, v.side, 0, v.high), right = box(v.side + v.gap, 2 * v.side + v.gap, 0, v.side, 0, v.high)
+  const hat = box(v.at, v.at + v.cube, 0, v.cube, v.lift, v.lift + v.cube)
+  const x = v.at + v.at, w = 2 * v.leg + v.span
+  const table = v.ops.union(box(x, x + v.leg, 0, v.cube, 0, v.high), box(x + v.leg + v.span, x + w, 0, v.cube, 0, v.high), box(x, x + w, 0, v.cube, v.high, v.high + v.top))
+  return { left, right, hat, table }
+}
+`);
+    const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/pair', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { of: (code) => j.findings.filter((x) => x.code === code) }; };
+    // Apart by 0.5 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
+    let r = run();
+    assert.equal(r.of('inplace.bed')[0].level, 'pass'); assert.equal(r.of('inplace.support')[0].level, 'pass');
+    const g = r.of('inplace.gap')[0];
+    assert.equal(g.level, 'pass'); assert.ok(Math.abs(g.values.gap - 0.5) < 1e-4, `the nearest, ${g.values.gap}`); assert.equal(g.values.need, 0.3, 'the X1C\'s print_gap'); assert.deepEqual(g.refs.parts, ['left', 'right']);
+    // 0.2 mm apart: under the 0.3 mm print gap, they fuse
+    cad('set', 'demo/pair', 'gap=0.2');
+    r = run();
+    const near = r.of('inplace.gap')[0];
+    assert.equal(near.level, 'fail'); assert.ok(Math.abs(near.values.gap - 0.2) < 1e-4, `${near.values.gap}`); assert.deepEqual(near.refs.parts, ['left', 'right']); assert.ok(near.at && near.box, 'where');
+    // the cube 2 mm up: off the bed, and its underside in mid-air
+    cad('set', 'demo/pair', 'gap=0.5', 'lift=2');
+    r = run();
+    const bed = r.of('inplace.bed');
+    assert.deepEqual(bed.map((x) => [x.level, x.refs.part]), [['fail', 'hat']]); assert.match(bed[0].text, /its lowest point is 2 mm up/);
+    assert.ok(r.of('inplace.support').some((x) => x.level === 'fail' && x.values.was === 'print.mid-air'), 'a support it cannot have');
+    // the table's top over 8 mm: a bridge the printer can't span, which no support can come out from under
+    cad('set', 'demo/pair', 'lift=0', 'span=8');
+    r = run();
+    const s = r.of('inplace.support');
+    assert.deepEqual(s.map((x) => [x.level, x.values.was]), [['fail', 'print.bridge']]); assert.ok(Math.abs(s[0].values.span - 8) < 0.05, `${s[0].values.span}`);
+    // not printed in place: none of these
+    const o = JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/pair.json'), 'utf8')); delete o.printInPlace;
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/pair.json'), JSON.stringify(o));
+    r = run();
+    assert.equal(r.of('inplace.gap').length + r.of('inplace.bed').length + r.of('inplace.support').length, 0);
   } finally { done(); }
 });

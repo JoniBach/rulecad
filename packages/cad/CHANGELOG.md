@@ -5,6 +5,25 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Added
+
+- `"printInPlace": true` on an object (#162): its parts print together in the pose they are drawn in and move apart
+  once freed. `cad check` (and the check before `cad release`) adds `inplace.bed` (each part has a face of its own on
+  the bed), `inplace.gap` (every two parts stand the printer's `print_gap` apart, measured by Manifold through
+  @rulecad/shapes' new `ops.gap`) and `inplace.support` (a bridge wider than the printer's `bridge`, an underside in
+  mid-air or printed onto another part, a ledge or an island fails, since no support can come out from between the
+  parts). This is the bridge-span finding #133 asked for.
+- A `"shaft": "slide"` fit holds the bore to a slide fit as printed (`shaft.slide`): the drawn gap less half the
+  printer's `hole_comp` must clear the shaft. A slide fit is never pressed on, so it has no hoop check. The shaft fits
+  now read `hole_comp` from the assembly's printer rules (0.1 mm on the X1C, as before).
+
+### The print-in-place actuator (examples/bench/projects/benchmarks)
+
+- `shoulder-pip`, the bench shoulder printed in one piece on a 17HS4401, and its assembly beside the assembled one.
+  New objects only: no printed size of an existing part moved.
+
 ## 0.7.65: the arm on the parts its builder has
 
 ### Changed

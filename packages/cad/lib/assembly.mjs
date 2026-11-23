@@ -37,7 +37,7 @@ import { DOFS, frame, turn, mul, inv, pathLength, jointValues, placeItems, joint
 import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh, compoundEfficiency } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
 import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axisOf } from './motors.mjs';
-import { runningChecks, seatFit } from './seats.mjs';
+import { runningChecks, seatFit, printerRules } from './seats.mjs';
 import { seatSize } from '@rulecad/shapes';
 import { wiresOf, wireChecks } from './wires.mjs';
 import { printedParts } from './list.mjs';
@@ -857,7 +857,7 @@ export function checkAssembly(s) {
     if (x.seat != null) { seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }); continue; }
     if (x.pin && pinning) pinFit(x); // (and its gap, as any fit's)
     if (x.magnet && pinning) magnetFit(x);
-    if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project) }); continue; }
+    if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project), holeComp: printerRules(s).hole_comp ?? 0.1 }); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
