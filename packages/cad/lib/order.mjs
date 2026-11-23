@@ -77,7 +77,9 @@ function blockers(p, q, d, h, rasterOf) {
 
 // A pair meant to overlap (a press fit) tells nothing about what stands in whose way
 const names = (x) => [x].flat().map(top);
-const allowedPair = (s, a, b) => s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((names(x.a).includes(a.id) && names(x.b).includes(b.id)) || (names(x.a).includes(b.id) && names(x.b).includes(a.id))));
+// (items printed together in place come off the bed together: nothing takes them apart from each other)
+const together = (s, a, b) => Array.isArray(s.a?.printInPlace) && s.a.printInPlace.includes(a.id) && s.a.printInPlace.includes(b.id);
+const allowedPair = (s, a, b) => together(s, a, b) || s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((names(x.a).includes(a.id) && names(x.b).includes(b.id)) || (names(x.a).includes(b.id) && names(x.b).includes(a.id))));
 
 function hitsAlong(origin, dir, tris) {
   for (const t of tris) {
@@ -148,7 +150,8 @@ export function assemblyOrder(s) {
     if (first.length) { if (acc.tilt == null) bad.push({ fit: { note: rel.label }, wall: first[0], at: acc.top, later, fasten: rel.index, screw: sc.index, member: screwed.includes(first[0]), fixed: !by.has(first[0]) }); continue; }
     for (const q of walls) { add(later, q, `${q} covers the screws of ${rel.label}`); covers.push({ fasten: rel.index, fit: rel.label, screwed, wall: q }); }
   }
-  const box = (g) => { const p = g.tris.flat(); return [0, 1, 2].map((k) => { const v = p.map((x) => x[k]); return (Math.min(...v) + Math.max(...v)) / 2; }); };
+  // (the middle of a part's box, by a loop: spreading a big part's hundreds of thousands of corners into Math.min runs out of stack)
+  const box = (g) => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const t of g.tris) for (const x of t) for (let k = 0; k < 3; k++) { if (x[k] < lo[k]) lo[k] = x[k]; if (x[k] > hi[k]) hi[k] = x[k]; } return [0, 1, 2].map((k) => (lo[k] + hi[k]) / 2); };
   if (bad.length) {
     const b = bad[0], label = b.fit.note || `${b.fit.a} to ${b.fit.b}`, why = b.member ? 'it is one of the parts the screw joins' : b.fixed ? 'it is in place before anything is fitted' : `goes on first (${[...before.get(b.wall)].slice(0, 1).map(([, w]) => w)})`;
     return { steps: [], stuck: { item: b.later, screw: label, wall: b.wall, at: b.at, ...(b.fasten != null ? { fasten: b.fasten, screws: bad.filter((x) => x.fasten === b.fasten).map((x) => x.screw) } : {}),

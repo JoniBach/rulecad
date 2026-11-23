@@ -186,9 +186,9 @@
       "rule": "The roof's inner edge above its cone: five layers"
     },
     "plate": {
-      "value": 4,
+      "value": 4.5,
       "unit": "mm",
-      "rule": "Each post's top over its window, under the motor: an M3x8 hex-head screw then has 4 mm in the motor's 4.5 mm thread"
+      "rule": "Each post's top over its window, under the motor: 4.5 mm so an M3 head can't pull through, and an M3x8 hex-head screw then has 3.5 mm in the motor's 4.5 mm thread"
     },
     "hub": {
       "value": 12,
@@ -220,9 +220,9 @@
       "rule": "A speck"
     },
     "far": {
-      "value": 70,
+      "value": -10,
       "unit": "mm",
-      "rule": "Well clear of the gears"
+      "rule": "Under the bed, clear of every part and the motor"
     },
     "sixty": {
       "value": 60,
@@ -258,6 +258,11 @@
       "value": 14,
       "unit": "mm",
       "rule": "Each post, across its window: the window and two millimetres of wall each side"
+    },
+    "ring_turn": {
+      "value": 9,
+      "unit": "deg",
+      "rule": "How far the held ring is turned from the sun's frame so the planets mesh it, as compoundPlanetary lays the gearbox out (its ring.angle): the housing's axis is turned back by this, so the parts on it sit as they print"
     }
   }
 }

@@ -6135,3 +6135,32 @@ export function main (v) {
     assert.equal(r.of('inplace.gap').length + r.of('inplace.bed').length + r.of('inplace.support').length + r.of('inplace.first-layer').length, 0);
   } finally { done(); }
 });
+
+test('a compound planetary whose planets mesh the output ring a tooth of their first step on: each planet takes the tooth that meshes both rings', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  try {
+    // Sun 18, planets 21 on it and the held ring of 60, 18 on the output ring of 57 (the print-in-place shoulder's
+    // teeth). With both steps drawn alike, a planet 120° round meshes the output ring only if
+    // 120° × (1 + P2 S / (P1 R2)) is a whole number of the ring's pitches: 120 × (1 + 18 × 18 / (21 × 57)) = 152.48°,
+    // 24.14 pitches of 6.316°. A tooth of the first step on (360 / 21 = 17.143°) turns the second step's phase by
+    // (18 / 57) × 17.143 = 5.414°, which the 0.902° left over needs: 5.414 + 0.902 = 6.316, one pitch
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['sun', 'planet', 'held', 'out', 'speck'] });
+    const gear = (name, js, anchors = { axis: { at: [0, 0, 0], axis: [0, 0, 1] } }, extra = {}) => { write(`projects/home/objects/${name}.json`, { name, version: '0.1.0', anchors, variables: { w: { value: 4, unit: 'mm', rule: 'Face' }, up: { value: 5, unit: 'mm', rule: 'The second stage' }, turn: { value: 9, unit: 'deg', rule: 'The held ring, in phase' }, rim: { value: 70, unit: 'mm', rule: 'Rim' }, c: { value: 19.5, unit: 'mm', rule: 'Centre' }, s: { value: 60, unit: 'deg', rule: 'Planets' } }, ...extra }); write(`projects/home/objects/${name}.js`, `import jscad from '@jscad/modeling'\nconst { translate } = jscad.transforms\nexport function main (v) { return ${js} }\n`); };
+    gear('sun', 'v.gears.spur({ module: 1, teeth: 18, width: v.w })');
+    gear('planet', 'v.ops.union(v.gears.spur({ module: 1, teeth: 21, width: v.w }), translate([0, 0, v.up], v.gears.spur({ module: 1, teeth: 18, width: v.w })))');
+    gear('held', 'v.gears.internal({ module: 1, teeth: 60, width: v.w, rim: v.rim })', { axis: { at: [0, 0, 0], axis: [0, 0, 1], ref: ['cosd(turn)', '0 - sind(turn)', 0] } });
+    gear('out', 'translate([0, 0, v.up], v.gears.internal({ module: 1, teeth: 57, width: v.w, rim: v.rim }))');
+    gear('speck', 'jscad.primitives.sphere({ radius: 0.2, center: [0, 0, 0 - v.rim] })', { axis: { at: [0, 0, 0], axis: [0, 0, 1] }, a: { at: ['c', 0, 0], axis: [0, 0, 1] }, b: { at: ['0 - c / 2', 'c * sind(s)', 0], axis: [0, 0, 1] }, c: { at: ['0 - c / 2', '0 - c * sind(s)', 0], axis: [0, 0, 1] } }, { role: 'reference' });
+    const box = (extra = {}) => ({ title: 'Compound', kind: 'fit', items: [{ id: 'held', object: 'held' }, { id: 'sun', object: 'sun' }, { id: 'carrier', object: 'speck' }, { id: 'p1', object: 'planet' }, { id: 'p2', object: 'planet' }, { id: 'p3', object: 'planet' }, { id: 'out', object: 'out' }],
+      joints: [{ id: 'drive', type: 'revolute', parent: 'held.axis', child: 'sun.axis' }, { id: 'turn', type: 'revolute', parent: 'held.axis', child: 'carrier.axis' }, { id: 's1', type: 'revolute', parent: 'carrier.a', child: 'p1.axis' }, { id: 's2', type: 'revolute', parent: 'carrier.b', child: 'p2.axis' }, { id: 's3', type: 'revolute', parent: 'carrier.c', child: 'p3.axis' }, { id: 'o', type: 'revolute', parent: 'held.axis', child: 'out.axis' }],
+      planetary: [{ sun: 'sun', carrier: 'carrier', ring: 'held', planets: ['p1', 'p2', 'p3'], drive: 'sun', module: 1, teeth: [18, 21, 60], output: { ring: 'out', planet: 18, teeth: 57 } }], poses: { home: { drive: 0 } }, ...extra });
+    write('projects/home/assemblies/box.json', box());
+    const r = JSON.parse(cad('check', 'home/box', '--json')), of = (c) => r.findings.filter((x) => x.code === c);
+    assert.deepEqual(of('planetary.phase').filter((x) => x.level === 'fail').map((x) => x.text), [], 'every planet meshes both rings');
+    assert.ok(!r.findings.some((x) => x.level === 'fail' && /overlap/.test(x.text)), r.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+    // printInPlace names items printed together; a name that isn't one is refused
+    write('projects/home/assemblies/box.json', box({ printInPlace: ['held', 'sun', 'nope'] }));
+    assert.match(cad('check', 'home/box'), /printInPlace names "nope", which isn't an item \(held, sun, carrier, p1, p2, p3, out\)/);
+  } finally { done(); }
+});

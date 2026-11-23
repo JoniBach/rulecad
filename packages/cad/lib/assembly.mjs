@@ -242,6 +242,8 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
   }
   const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints), task = taskOf(a, motion, num), gait = gaitOf(a, motion, num);
+  // (items printed together in place, which the assembly order never takes apart: each by its id)
+  for (const id of a.printInPlace || []) if (!motion.items.some((x) => x[0] === id)) throw new Error(`printInPlace names "${id}", which isn't an item (${motion.items.map((x) => x[0]).join(', ')})`);
   fits.push(...shaftFits(motion.drives, motion.joints, placed.map(([, c]) => c.id)).map((x) => ({ ...x, num })));
   for (const [it, c] of placed) {
     const src = c.src, id = c.id;
@@ -577,7 +579,15 @@ function planetaries(list, joints, items, num) {
       j2.follow = [lead.id, k, o]; free(j2);
       const eff = compoundEfficiency({ planet: P, planet2: P2, ring: R, ring2: R2 }), fails = [], ff = (level, text, code) => fails.push({ level, text, code, between: [O, O] });
       for (const x of meshOf(p2, r2, { centre: pl[0].r }).findings) ff(x.level, `${pl[0].id} and the output ring: ${x.text}`, x.code);
-      pl.forEach((p, i) => { const t2 = (P2 / R2) * ((-(S / P) * sigma0 + p.beta * (1 + S / P) + Math.PI - Math.PI / P)) + p.beta * (1 - P2 / R2) - ps, pitch2 = (2 * Math.PI) / R2, miss = (((t2 - (P2 / R2) * ((-(S / P) * sigma0 + p0.beta * (1 + S / P) + Math.PI - Math.PI / P)) - p0.beta * (1 - P2 / R2) + ps) % pitch2) + pitch2 * 1.5) % pitch2 - pitch2 / 2; if (Math.abs(miss) > 1e-6) ff('fail', `planet ${p.id} can't mesh with the output ring where it is: every tooth count a multiple of the planets puts them all in phase`, 'planetary.phase'); });
+      // Each planet's second step in phase with the output ring. A planet meshes the sun as well a whole tooth of its
+      // first step on (2π/P), and that turns its second step too: the first of those turns that puts it in phase with
+      // the ring is the one it takes (none, where every planet is in phase as it stands, as chapter 11's are)
+      pl.forEach((p, i) => {
+        const pitch2 = (2 * Math.PI) / R2, missAt = (m) => { const t2 = (P2 / R2) * ((-(S / P) * sigma0 + p.beta * (1 + S / P) + Math.PI - Math.PI / P + (2 * Math.PI * m) / P)) + p.beta * (1 - P2 / R2) - ps; return (((t2 - (P2 / R2) * ((-(S / P) * sigma0 + p0.beta * (1 + S / P) + Math.PI - Math.PI / P)) - p0.beta * (1 - P2 / R2) + ps) % pitch2) + pitch2 * 1.5) % pitch2 - pitch2 / 2; };
+        const m = i === 0 ? 0 : Array.from({ length: P }, (_, k) => k).find((k) => Math.abs(missAt(k)) <= 1e-6);
+        if (m == null) ff('fail', `planet ${p.id} can't mesh with the output ring where it is, whichever tooth of its first step meets the sun: every tooth count a multiple of the planets puts them all in phase`, 'planetary.phase');
+        else if (m) p.joint.follow = [p.joint.follow[0], p.joint.follow[1], (((p.joint.follow[2] + (p.s * 360 * m) / P + 180) % 360) + 360) % 360 - 180];
+      });
       out.push({ joint: j2.id, with: lead.id, kind: 'planetary', efficiency: eff, text: `the second ring turns ${Number(Math.abs(k).toFixed(5))} of the ${drive}'s turn, ${k * s2 * sg[drive] < 0 ? 'the other way' : 'the same way'} (${Number((1 / Math.abs(k)).toFixed(2))}:1, about ${Math.round(eff * 100)}% efficient, an estimate)`, findings: fails, between: [O, O], planetary: true });
     }
   });

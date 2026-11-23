@@ -22,8 +22,8 @@
         1
       ],
       "ref": [
-        1,
-        0,
+        "cosd(pip.ring_turn)",
+        "0 - sind(pip.ring_turn)",
         0
       ]
     },
