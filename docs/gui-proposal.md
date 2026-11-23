@@ -258,10 +258,10 @@ with nothing installed, is the last phase, not the first.
    as data and returns the `--json` answer, shared by the command line and the server, is the first piece of work.
 2. **Three edits answer in other shapes, and one has no dry run.** `cad set <project>/<object>` answers
    `{ file, changed, written, dryRun }`, `cad add fasten --from-fits` answers `{ file, added, written, dryRun }` and
-   `cad frame <ref> --expand` answers with the expanded assembly: none gives `changes` or `findings`, which the Object
+   `cad frame <ref> --expand` answers `{ assembly, file, frame }`, where `frame` is the generated frame's summary (kind, profile, beams, joins, ends) and not the expanded assembly (only its dry run adds `expanded`): none gives `changes` or `findings`, which the Object
    workspace and the journal need to preview and undo. Each takes `--dry-run` only from cad's Unreleased changes.
    Before them `--dry-run` was a flag every command accepted, and these three, with `cad frame <ref> --size --write`,
-   passed it over and wrote the file: `cad set shed/hinge width=45 --dry-run` set the width to 45. `cad measured`
+   passed it over and wrote the file: `cad set <project>/<object> width=45 --dry-run` set an object's width to 45. `cad measured`
    still takes none, as it records a figure rather than editing a design. Now each of the four writes nothing on a dry
    run, and any other command given `--dry-run`, `cad measured` among them, refuses it by name and runs nothing, so a
    dry run can never write. `cad new <project>/<object>` (the New object tool) had the same gap: it wrote the object's
