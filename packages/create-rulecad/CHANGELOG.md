@@ -5,6 +5,19 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Changed
+
+- `--machine arm`'s streamer, `projects/arm/firmware/arm/arm.ino`, refuses a block faster than its `MAX_RATE` (8000
+  steps/s) with `error: rate`, steps every axis due on a tick in one write to the Uno's port D, and divides once a step
+  instead of twice. On a simulated Uno its loop now keeps up with 21505 steps/s on three axes at once, up from 9417.
+  Its STEP pulse is 3.06 µs high (it was 6.3 µs), over the DRV8825's 1.9 µs minimum.
+- `projects/arm/send.mjs --dry-run` prints each line it would send with the answer the streamer would give (`--quiet`
+  for the summary only), and with `--machine` holds each axis's share of a block's rate to that axis's `maxRate`.
+- `projects/arm/STREAMER.md` writes up the serial protocol, the timing and how the sketch is checked. No printed size
+  moved.
+
 ## 0.3.21: the arm on a 17HS4401 elbow and 12 V
 
 ### Changed
