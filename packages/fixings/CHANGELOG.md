@@ -15,6 +15,16 @@ why.
   is sized from `pull` with twice the margin. `annularBead` and `annularGroove` draw the bead and the groove (with a
   lead-in at the skirt's mouth). Findings: `snap.undercut`, `snap.strain`, `snap.least`, `snap.forces`, `snap.remote`,
   `snap.hold`, `snap.printable`. `SNAP_USES`. Bound in `fixingsFor`.
+- **A closed end near an annular snap** (`boxFloor`, `lidTop`): `tubeRing` works out a ring load on a tube's wall as
+  Hetényi's beam on an elastic foundation, each end free, closed or long. A lid's top within a few times 1/β of its
+  groove holds the skirt round, so the skirt is stiffer and the box's wall takes more of the snap; the bending strain
+  at the closed end's root is held to the same limit. Findings `snap.closed` and `snap.root`. `snap.remote` reports
+  the free ends' share alone.
+- Refused by name: a lead that friction locks (μ tan α of 1 or more), and a bead as deep as the skirt, whose groove
+  would cut through it. `snap.skirt` fails where the groove leaves less than one of the printer's `line` behind it.
+  Given `push`, `snap.push` warns where pushing the lid on square takes more.
+- A sized bead is rounded up to what its pull needs and down to what its strain allows, so it always passes its own
+  strain check (rounded to the nearest, a bead capped by the strain could fail it by a rounding).
 - `DEFAULTS` gains `snap_brief` (70% of the yield strain) and `snap_often` (60% of that) and `snap_remote` (3), from
   the guide, and `snap_friction` (0.5) and `snap_least` (0.2 mm), estimates.
 

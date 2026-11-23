@@ -1341,3 +1341,77 @@ test('annular snap: the bead and the groove print without support on a pot and a
   prints(translate([0, 0, H + 1.6], rotateX(Math.PI, lid)), 'the lid on its top, its groove and lead-in included'); closed(lid, 'one closed solid');
   assert.throws(() => annularGroove(m, { at: foot, mouth: 9 }), /mouth is the z of the skirt's open end, below the groove's foot/);
 });
+
+test('annular snap fixes after check 1: tubeRing, the beam on an elastic foundation, checked against its textbook cases', () => {
+  // In ξ = βx the wall bends as w'''' + 4w = 0 and a ring load q steps w''' by 1 (in q / (D β³)). Hetényi (1946):
+  //   a long tube both ways, w = Pβ / 2k = q / (8 D β³), so 1/8; the load at a free end, 2Pβ / k = 1/2 (four times).
+  near(tubeRing(6, 6).w, 0.125, 1e-6, 'a long tube'); near(tubeRing(0, 6, { A: 'free' }).w, 0.5, 1e-6, 'at a free end');
+  // A short skirt is a cantilever: the foundation counts for little, so w = q L³ / 3 D, in units (βL)³ / 3, and the
+  //   curvature at its root q L / D, in units βL. βL = 0.1: 0.001 / 3 = 3.333e-4 and 0.1
+  const short = tubeRing(0, 0.1, { A: 'free', B: 'closed' });
+  near(short.w, 0.001 / 3, 2e-6, 'a short cantilever\'s tip'); near(short.bendB, 0.1, 1e-4, 'and its root\'s curvature');
+  near(tubeRing(0.5, 0, { A: 'long', B: 'closed' }).w + tubeRing(1e-9, 3, { A: 'closed' }).w, 0, 1e-6, 'nothing moves at a closed end');
+  assert.throws(() => tubeRing(-1, 2), /tubeRing: a is the load's distance from an end, in 1\/β, 0 or more/);
+  assert.throws(() => tubeRing(1, 2, { A: 'held' }), /ends\.A is free, closed or long/);
+});
+
+test('annular snap fixes after check 1: a lid\'s closed top near the groove stiffens the skirt and bends it at its root', () => {
+  // The pot's skirt: R = (60.4 + 62.92) / 4 = 30.83 mm, t = 1.26, ν 0.36; β⁴ = 3 × (1 − 0.1296) / (30.83² × 1.26²)
+  //   = 2.6112 / 1508.99 = 0.0017304, β = 0.20396 /mm, so 1/β = 4.903 mm. The groove 1.5 mm from the mouth (ξ 0.3059)
+  //   and 1.3 mm from the top (ξ 0.2651): open, w = 0.27714; closed, 0.0060336; 45.93 times as stiff.
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4, boxEnd: 1.5, lidEnd: 1.5 }, b = 0.20396;
+  near(tubeRing(1.5 * b, 12, { A: 'free' }).w / tubeRing(1.5 * b, 1.3 * b, { A: 'free', B: 'closed' }).w, 45.93, 0.02, 'the beam\'s ratio');
+  const free = annularSnapModel(p), top = annularSnapModel({ ...p, lidTop: 1.3 });
+  assert.equal(free.findings.find((f) => f.code === 'snap.strain' && f.refs.part === 'box').level, 'pass', 'as a free tube the wall passes');
+  assert.deepEqual([top.lid.decay, top.lid.stiffer, top.lid.factor], [4.9, 45.93, 54.71], '1.191 × 45.93 = 54.71');
+  // k_lid = 687.9 × 45.93 = 31,595 N/mm; k = 1 / (1/1159.8 + 1/31,595) = 1118.7; P = 0.4 × 1118.7 = 447.5 N; the wall
+  //   takes 447.5 / 1159.8 = 0.3858 mm, 0.643% hoop strain, over PLA's 0.611%: it fails
+  near(top.force, 447.5, 0.5, 'P with the skirt held round'); near(top.box.strain, 0.0064, 0.00005, 'the wall takes nearly all of it');
+  assert.equal(top.findings.find((f) => f.code === 'snap.strain' && f.refs.part === 'box').level, 'fail');
+  // The root: w''(ξ) at the top = 0.25862; q = P / (π d) = 447.5 / (π × 60.4) = 2.3583 N/mm; M = w'' q / β =
+  //   0.25862 × 2.3583 / 0.20396 = 2.9903 N mm/mm; ε = 6 M (1 − ν²) / (E t²) = 6 × 2.9903 × 0.8704 / (2680 × 1.5876) = 0.367%
+  near(top.lid.root, 0.0037, 0.00005, 'the bending at the skirt\'s root'); assert.equal(top.findings.find((f) => f.code === 'snap.root').level, 'pass');
+  assert.match(top.findings.find((f) => f.code === 'snap.closed').text, /the lid's skirt meets its top 1\.3 mm from the joint, where a tube's wall bends over about 1\/β = 4\.9 mm: held round there, it is 45\.93 times as stiff/);
+  // Sized, the strain holds it under the least the print holds, and says so
+  const sized = annularSnapModel({ ...p, bead: undefined, lidTop: 1.3 }, { pull: 10 });
+  assert.equal(sized.undercut, 0.19); assert.equal(sized.findings.find((f) => f.code === 'snap.least').level, 'warn');
+  // The example: the bead 6 mm under the rim, the groove 5.8 mm under the top: every strain passes, the root's at 0.32%
+  const ex = annularSnapModel({ ...p, bead: undefined, boxEnd: 6, lidTop: 5.8, boxFloor: 30.3 }, { pull: 10 });
+  assert.deepEqual([ex.bead, ex.lid.stiffer, ex.box.strain, ex.lid.strain, ex.lid.root, ex.insertion, ex.removal], [0.4, 1.3, 0.0023, 0.0043, 0.0032, 351.1, 695.4]);
+  assert.ok(ex.findings.every((f) => f.level === 'pass' || f.level === 'info'), 'nothing warns or fails');
+  // the free ends' share alone in snap.remote: 1 + 2 × 6 / 18.072 = 1.66 for the wall, 1.19 for the skirt (its 1.54 is
+  //   that times the top's 1.3, said in snap.closed)
+  assert.deepEqual(ex.findings.find((f) => f.code === 'snap.remote').values, { box: 1.66, lid: 1.19 }); assert.deepEqual([ex.lid.remote, ex.lid.factor], [1.19, 1.54]);
+  assert.match(ex.findings.find((f) => f.code === 'snap.closed' && f.refs.part === 'box').text, /far enough off to make no difference/);
+  // a root that bends too far fails by name, where the hoop strains pass: a stiff 4 mm wall and a 0.84 mm skirt whose
+  //   groove is 1.5 mm under its top bend the skirt's root 1.94%, over the 0.61%
+  const bent = annularSnapModel({ diameter: 60, wall: 4, skirt: 0.84, bead: 0.4, lidEnd: 1.5, lidTop: 1.5 });
+  assert.deepEqual(bent.findings.filter((f) => f.level === 'fail').map((f) => f.code), ['snap.root']); near(bent.lid.root, 0.0194, 0.00005, 'the root');
+  assert.match(bent.findings.find((f) => f.code === 'snap.root').text, /the lid's skirt bends where it meets its top: 1\.94% strain at the root where pla may see 0\.61%\. Move the joint further from the top \(the wall bends over about 1\/β, 3\.99 mm\), or a smaller bead: the most undercut the strain allows is 0\.063 mm/);
+  assert.throws(() => annularSnapModel({ ...p, lidTop: -1 }), /lidTop is how far the joint is from the lid's top, its closed end, 0 mm or more/);
+});
+
+test('annular snap fixes after check 1: a friction-locked lead, a groove through the skirt, a sized bead within its own strain, and the push', () => {
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26 };
+  // μ tan α: 0.6 × tan 60° = 1.039, 1 or more, so the lead locks; at μ 0.5, 0.866, it goes on (2435.1 N square)
+  assert.throws(() => annularSnapModel({ ...p, lead: 60 }, { friction: 0.6 }), /annularSnapModel: a 60° lead at friction 0\.6 locks: μ tan α is 1\.04, 1 or more, so no push slides the skirt over it\. Give a lead under 59° at that friction/);
+  near(annularSnapModel({ ...p, lead: 60 }).insertion, 2435.1, 0.5, 'steep, but it goes on');
+  // The checker's case: a 0.6 mm bead in a 0.4 mm skirt, its groove (outer radius 100.8) past the skirt's (100.6)
+  assert.throws(() => annularSnapModel({ diameter: 200, wall: 3, skirt: 0.4, bead: 0.6 }, { uses: 'once' }), /a bead of 0\.6 mm needs a groove as deep in the 0\.4 mm skirt, which cuts right through it/);
+  // A sized bead in a 0.5 mm skirt leaves 0.5 − 0.4 = 0.1 mm behind its groove, under one 0.42 mm line: it fails
+  const thin = annularSnapModel({ ...p, skirt: 0.5 }).findings.find((f) => f.code === 'snap.skirt');
+  assert.equal(thin.level, 'fail'); assert.match(thin.text, /the groove leaves 0\.1 mm of the 0\.5 mm skirt behind it, under the x1c\.line 0\.42 mm line/);
+  assert.equal(annularSnapModel({ ...p, boxEnd: 1.5, lidEnd: 1.5 }).findings.find((f) => f.code === 'snap.skirt').level, 'pass', '1.26 − 0.4 = 0.86 mm, two lines');
+  // A bead capped by the strain is rounded down: d 10, wall 0.8, skirt 2. The strain allows 0.0447 mm; rounded to
+  //   the nearest it was 0.045 and the wall's strain 0.0062 failed against 0.0061. Down, 0.044, and it passes
+  const small = annularSnapModel({ diameter: 10, wall: 0.8, skirt: 2 }, { pull: 50 });
+  assert.equal(small.undercut, 0.044); assert.ok(small.findings.filter((f) => f.code === 'snap.strain').every((f) => f.level === 'pass'), 'within its own strain');
+  // and a bead sized from the pull is rounded up, so it holds the pull twice over: 300 N wants 0.2316 mm, drawn 0.232
+  const pulled = annularSnapModel({ ...p, boxEnd: 1.5, lidEnd: 1.5 }, { pull: 300 });
+  assert.equal(pulled.undercut, 0.232); assert.ok(pulled.margin >= 2, `held ${pulled.margin} times`);
+  // Given push, the square push on is judged: 261.6 N for the pot's lid
+  const lid = { ...p, boxEnd: 1.5, lidEnd: 1.5 };
+  assert.equal(annularSnapModel(lid, { push: 300 }).findings.find((f) => f.code === 'snap.push').level, 'pass');
+  assert.match(annularSnapModel(lid, { push: 100 }).findings.find((f) => f.code === 'snap.push').text, /pushed with 100 N, the lid goes on only at a tilt: square it takes 261\.6 N/);
+  assert.throws(() => annularSnapModel(lid, { push: 0 }), /push \(along the axis, in N\) is a number above 0/);
+});

@@ -1,7 +1,8 @@
 // A round pot with a lid that clicks on: an annular snap. A bead runs round the outside of the pot's wall just under
 // its rim; the lid's skirt has a groove inside it, the bead's shape plus the printer's fit all round, and a lead-in at
 // its mouth. Pushed on, the bead spreads the skirt and squeezes the wall; past it, both spring back and the bead sits
-// in the groove with no stress left in either. The bead's height, the forces and the hoop strain in each part come
+// in the groove with no stress left in either. The groove sits 5.8 mm under the lid's top: nearer, the top holds the
+// skirt round so it cannot give, and the pot's wall takes the whole snap. The bead's height, the forces and the hoop strain in each part come
 // from v.fixings.annularSnapModel (the Bayer snap-fit guide's annular joint), sized from the pull the lid must stay on
 // against. The pot prints standing on its floor and the lid on its top: the bead's return face and the groove's mating
 // face are the only overhangs, at 45°. Each first layer is one plain disc (the lid's with its tab), its edge chamfered

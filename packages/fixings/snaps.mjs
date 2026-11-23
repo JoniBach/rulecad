@@ -86,9 +86,9 @@ const closedEnd = (free, shut, Rm, t, d, E, nu) => {
 
 /**
  * @typedef {{ diameter: number, inside: number, outside: number, wall: number, end: number, far: number, factor: number,
- *   X: number, stiffness: number, deflection: number, strain: number, closed: number | null, stiffer?: number, decay?: number, root?: number }} SnapPart
+ *   remote: number, X: number, stiffness: number, deflection: number, strain: number, closed: number | null, stiffer?: number, decay?: number, root?: number }} SnapPart
  *   one part of the joint: its diameters at the joint, wall, how far the joint is from its free end and the guide's
- *   "remote" distance, the stiffening factor that gives, the geometric factor, its stiffness (N per mm of diameter),
+ *   "remote" distance, the stiffening that gives (remote), and with a closed end's too (factor), the geometric factor, its stiffness (N per mm of diameter),
  *   how much of the interference it takes (on the diameter) and the hoop strain that leaves in it; with a closed end
  *   (closed, its distance from the joint), how much stiffer that end makes it, the length 1/β over which its wall
  *   bends, and the bending strain at the end's root
@@ -171,7 +171,7 @@ export function annularSnapModel(p, o = {}) {
   const part = (diameter, inside, outside, wall, endAt, closedAt, X, m) => {
     const r = remote(endAt, diameter, wall), E = m.modulus.value, nu = m.poisson.value;
     const ce = closedAt == null ? null : closedEnd(endAt, closedAt, (inside + outside) / 4, wall, diameter, E, nu), factor = r.factor * (ce ? ce.stiffer : 1);
-    return { diameter: r3(diameter), inside: r3(inside), outside: r3(outside), wall, end: endAt, far: r.far, factor: n2(factor), X, stiffness: factor * diameter * E * X,
+    return { diameter: r3(diameter), inside: r3(inside), outside: r3(outside), wall, end: endAt, far: r.far, remote: n2(r.factor), factor: n2(factor), X, stiffness: factor * diameter * E * X,
       closed: closedAt, ...(ce ? { stiffer: n2(ce.stiffer), decay: n2(1 / ce.beta), rootPerP: ce.perP } : {}) };
   };
   const B = part(d, di, d, t, boxEnd, boxFloor, shaftFactor(d / di, box.poisson.value), box), L = part(dh, dh, d0, s, lidEnd, lidTop, hubFactor(d0 / dh, lidMat.poisson.value), lidMat);
@@ -212,10 +212,10 @@ export function annularSnapModel(p, o = {}) {
   }
   for (const [q, name, m, endName] of [[B, 'the box\'s wall', box, 'floor'], [L, 'the lid\'s skirt', lidMat, 'top']]) {
     if (q.closed == null) continue;
-    out.push(finding('info', `${name} meets its ${endName} ${mm(q.closed)} mm from the joint, where a tube's wall bends over about 1/β = ${mm(q.decay)} mm: held round there, it is ${mm(q.stiffer)} times as stiff as the same tube open (Hetényi's beam on an elastic foundation, the ${endName} taken as fully closed, the stiffest it can be)`,
+    out.push(finding('info', `${name} meets its ${endName} ${mm(n2(q.closed))} mm from the joint, where a tube's wall bends over about 1/β = ${mm(q.decay)} mm: ${q.stiffer >= 1.01 ? `held round there, it is ${mm(q.stiffer)} times as stiff as the same tube open` : 'far enough off to make no difference to its stiffness'} (Hetényi's beam on an elastic foundation, the ${endName} taken as fully closed, the stiffest it can be)`,
       'snap.closed', { values: { closed: q.closed, decay: q.decay, stiffer: q.stiffer }, refs: { part: q === B ? 'box' : 'lid' } }));
     const ok = q.root <= permissible + 1e-9;
-    out.push(finding(ok ? 'pass' : 'fail', `${name} bends where it meets its ${endName}: ${pc(q.root)} strain at the root where ${m.name} may see ${pc(permissible)}${ok ? '' : `. Move the joint further from the ${endName}, at least ${mm(n1(2 * q.decay))} mm, or a smaller bead: the most undercut the strain allows is ${mm(most.undercut)} mm`}`,
+    out.push(finding(ok ? 'pass' : 'fail', `${name} bends where it meets its ${endName}: ${pc(q.root)} strain at the root where ${m.name} may see ${pc(permissible)}${ok ? '' : `. Move the joint further from the ${endName} (the wall bends over about 1/β, ${mm(q.decay)} mm), or a smaller bead: the most undercut the strain allows is ${mm(most.undercut)} mm`}`,
       'snap.root', { values: { strain: q.root, permissible: n4(permissible), closed: q.closed }, refs: { part: q === B ? 'box' : 'lid', material: m.name } }));
   }
   // The groove is cut the bead's depth into the skirt: what is left behind it must print as a wall of at least one line
@@ -225,7 +225,7 @@ export function annularSnapModel(p, o = {}) {
   if (undercut < least - 1e-9) out.push(finding('warn', `an undercut of ${mm(undercut)} mm is under fixings.snap_least, ${mm(least)} mm: the print's own error is that size, so the lid may not catch, or catch only in places`, 'snap.least', { values: { undercut, least } }));
   out.push(finding('info', `${mm(n1(insertion))} N to push the lid on square and ${holds ? 'it holds for good (a square return face)' : `${mm(n1(removal))} N to pull it off square`}: a transverse force of ${mm(n1(P))} N (P = y d Es X, Bayer's annular snap joint, X ${mm(B.X)} for the wall and ${mm(L.X)} for the skirt) through the ${mm(lead)}° lead and ${mm(back)}° return faces at μ ${mm(mu)}. Pressed on at a tilt, a part of the bead at a time, it takes much less, as the guide says of a lid put on by hand`,
     'snap.forces', { values: { force: n1(P), insertion: n1(insertion), removal: Number.isFinite(removal) ? n1(removal) : null, friction: mu } }));
-  if (B.factor > 1 || L.factor > 1) out.push(finding('info', `the joint lies in from a free end (box ${mm(boxEnd)} mm of ${mm(B.far)}, lid ${mm(lidEnd)} mm of ${mm(L.far)}, where 1.8 √(d t) counts as remote), so it is stiffer by ${mm(B.factor)} and ${mm(L.factor)} times: the guide gives 3 at a remote joint, and the line between is an estimate`, 'snap.remote', { values: { box: B.factor, lid: L.factor } }));
+  if (B.remote > 1 || L.remote > 1) out.push(finding('info', `the joint lies in from a free end (box ${mm(boxEnd)} mm of ${mm(B.far)}, lid ${mm(lidEnd)} mm of ${mm(L.far)}, where 1.8 √(d t) counts as remote), so it is stiffer by ${mm(B.remote)} and ${mm(L.remote)} times: the guide gives 3 at a remote joint, and the line between is an estimate`, 'snap.remote', { values: { box: B.remote, lid: L.remote } }));
   if (push != null) { const ok = insertion <= push; out.push(finding(ok ? 'pass' : 'warn', `pushed with ${mm(push)} N, the lid goes on ${ok ? `square, ${mm(n1(insertion))} N` : `only at a tilt: square it takes ${mm(n1(insertion))} N. A shallower lead or a smaller bead lowers it`}`, 'snap.push', { values: { push, insertion: n1(insertion) } })); }
   const margin = pull != null ? (holds ? Infinity : n2(removal / pull)) : null;
   if (pull != null) out.push(finding(margin >= want ? 'pass' : margin >= 1 ? 'warn' : 'fail', `pulled with ${mm(pull)} N, the lid stays on ${holds ? 'for good' : `${mm(margin)} times over (${mm(n1(removal))} N)`}${margin >= want ? '' : margin >= 1 ? `, under the ${mm(want)} times fixings.load_margin asks` : ': it comes off'}${margin >= want ? '' : `. The strain allows up to ${mm(most.undercut)} mm of undercut, which would hold ${mm(most.removal)} N`}`,
