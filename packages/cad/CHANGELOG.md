@@ -5,6 +5,24 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.67: the leg on the parts its builder has
+
+### Changed
+
+- The worked leg (`examples/bench/projects/leg`, EXAMPLES chapter 14) runs on the parts on the bench, as the arm does:
+  a 17HS4401 at the knee in place of the NEMA 14, the 12 V bench supply with its current limit at 1.5 A in place of
+  the Mean Well LRS-50-24, and `"have": true` on the motors, the DRV8825s, the CNC Shield V3 and the supply. The
+  quadruped's and the crawl's knees are 17HS4401s too, at 1 A as their hips.
+- The stand's gait is loaded with what rides its rods, `leg.stand_load`, the larger of the robot's share and
+  `leg.riding` (1.01 kg from `cad list`: the leg, its carriage, the bushings and the screws), not the share alone. The
+  stand's margins: knee 3.1 to 2.8 times, hip 11.4 to 8.5 times, at 0.5 A. `leg.robot_mass` is 4.2 kg (was 3.8):
+  the trot's worst knee goes from 1.7 times (a warning) to 2.3 times, the crawl's from 1.9 to 2.6.
+
+### Printed sizes
+
+- The thigh (`leg/thigh`): the knee motor's four M3 holes move from the NEMA 14's 26 mm square to the 17HS4401's
+  31 mm square, so the 17HS4401 bolts on. Reprint a thigh printed for a NEMA 14.
+
 ## 0.7.66: the Uno streamer keeps time (#181)
 
 ### Added
