@@ -1672,11 +1672,16 @@ checks to the print checks:
 - `inplace.gap`: every two parts stand the printer's `print_gap` apart or more, measured by Manifold (the nearest pair
   and its gap on a pass, each pair too near on a fail). The first layer, where the plastic spreads by the printer's
   `foot`, is printcheck's `print.first-layer`.
+- `inplace.first-layer`: on the bed, every two parts stand `print_gap` and twice the printer's `foot` apart, measured
+  half a layer up, where the first layer spreads as it is squashed on.
 - `inplace.support`: nothing needs a support, since none can come out from between parts that enclose each other. A
   bridge wider than the printer's `bridge`, an underside in mid-air or printed onto the part below, a ledge or an
   island fails here, where a part printed alone gets a warning.
 
-The gaps need `manifold-3d` in the workspace (`"engine": "manifold"` objects have it already).
+The gaps need `manifold-3d` in the workspace (`"engine": "manifold"` objects have it already). To move the parts in
+an assembly, draw each as an object of its own from the same numbers (the bench's `shoulder-pip-*` objects share a
+module and read `pip`'s variables) and name them in the assembly's `"printInPlace": [items]`: they came off the bed
+together, so the assembly order never takes them apart from each other.
 
 An assembly with a `gait` (EXAMPLES chapter 14) plays too: `cad animate <project>/<assembly>` writes the cycle as an animated SVG in `.preview/` (a side view of the legs and a plan of the feet and what they stand on) and its data as JSON. The model page plays the same cycle in its Motion panel.
 
