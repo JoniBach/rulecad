@@ -133,4 +133,8 @@ export function main (v) {
 }
 ```
 
+With Manifold, `gap(a, b, within)` gives the least distance between two solids' surfaces (Manifold's `minGap`), in
+mm: 0 where they touch or cross, `within` where nothing is nearer than that. cad checks parts printed in place with it.
+JSCAD has no distance query, so `gap` on the JSCAD engine refuses by name.
+
 A shape Manifold can't read as a closed solid falls back to JSCAD for that operation (`stats.fallbacks` counts them).
