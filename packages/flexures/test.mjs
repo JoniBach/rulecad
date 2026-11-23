@@ -1010,19 +1010,49 @@ test('gripper jaws: the model says when the servo cannot open the springs, when 
 test('gripper jaws: a stop takes the servo\'s full stall torque, whatever share of it is counted on to open', async () => {
   const { gripperJawsModel } = await import('@rulecad/flexures');
   const stop = (p, o) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === 'gripper.stop');
-  // A servo driven onto a stop stalls there and pushes with all of its torque. The stop at the stroke and 0.5,
-  // 4.5635 + 0.5 = 5.0635 mm: the tip there puts the arm at sin a = (14 - 2.25 + 5.0635) / 18 = 0.934083, cos a =
-  // 0.357057, so it pushes 176.5 / (2 x 18 x 0.357057) = 13.7311 N; the guide takes 0.57872 x 5.0635 = 2.9303 N back,
-  // and the tongue the rest, 10.8008 N
+  // A servo driven on past its target stalls and pushes with all of its torque, so the share counted on to open
+  // changes nothing at the stops
   const s = stop(jawsP, {});
-  near(s.values.onStop, 10.8008, 1e-3, 'the push on the stop'); near(s.values.open, 5.0635, 1e-4, 'the stop'); near(s.values.most, s.values.open + s.values.onStop / s.values.tongue, 1e-9, 'with the tongue\'s give');
-  assert.match(s.text, /at its full stall torque \(0\.1765 N m\) the horn pushes 10\.8 N more/);
   for (const share of [0.3, 1]) assert.deepEqual(stop(jawsP, { share }), s, `share ${share} leaves the stop as it is`);
-  // the arm's leaves (37 mm with 1 mm rounds, a 2 mm gap, closing stop 0.85): at the default stop the full stall
-  // torque gives the leaves 5.46 mm, 83% of their 6.62 mm limit, past travelStop's 0.8 (60% of it would read 79%)
-  const arm = { ...jawsP, leaf: { ...jawsP.leaf, length: 37, fillet: 1 }, horn: { reach: 18, tip: 2.25, open: 65 }, jaws: { from: 20, to: 30, gap: 2 }, stop: { close: 0.85 }, base: 6 };
-  const warn = stop(arm, {});
-  assert.equal(warn.level, 'warn'); assert.match(warn.text, /gives to 5\.46 mm: 83% of the leaves' limit of 6\.62 mm, past the 0\.8 travelStop allows/);
+  assert.match(s.text, /at its full stall torque \(0\.1765 N m\)/);
+});
+
+test('gripper jaws: a stalled servo turns its horn on until the stops hold it, or through to its toggle at 90°, the bars bending between', async () => {
+  const { gripperJawsModel } = await import('@rulecad/flexures');
+  const stop = (p, o) => gripperJawsModel(p, petgJ, { torque: 0.1765, ...o }).findings.find((f) => f.code === 'gripper.stop');
+  // The arm's leaves (37 mm with 1 mm rounds, a 2 mm gap, stops 4.8 open and 0.85 closed), the tongue at its default 6.
+  // The guide kg 0.73739 N/mm and the tongue kt 25.1708 N/mm are the model's (the tongue an integral over its width).
+  // Each bar a cantilever from the fork's front at x -21.25, 3 E I / l^3 with E I = 1810 x 16 x 5^3 / 12 = 301666.7.
+  // The stops hold the horn at 73.904°: cos 0.27725, sin 0.96080, so each tip is 18 x 0.96080 - 11.75 = 5.5444 out.
+  // The upper tip meets its bar at x 18 x 0.27725 = 4.99, l 26.240: kb 905000 / 18067 = 50.09 N/mm; its jaw goes
+  // (50.09 x 5.5444 + 25.1708 x 4.8) / (50.09 + 0.7374 + 25.1708) = 5.2440 mm, F 0.7374 x 5.2440 + 25.1708 x 0.4440 =
+  // 15.044 N. The lower tip meets its bar at x -4.99, l 16.260, kb 210.53: its jaw goes (210.53 x 5.5444 + 120.82) /
+  // 236.44 = 5.4478 mm, F 4.017 + 25.1708 x 0.6478 = 20.324 N. The torque asked: (15.044 + 20.324) x 18 x 0.27725 =
+  // 176.50 N mm, the SG90's stall torque. The lower jaw goes furthest: 5.4478 / 6.6167 = 82%, past travelStop's 0.8.
+  // (Kept at the angle where the tip first meets the stop, and with no bar, the push 12.47 N gave 5.15 mm, 78%.)
+  // At 90° both bars are 21.25 long, kb 905000 / 9595.7 = 94.31, and a jaw goes (94.31 x 6.25 + 120.82) / 120.22 = 5.9081 mm
+  const arm = { ...jawsP, leaf: { ...jawsP.leaf, length: 37, fillet: 1 }, horn: { reach: 18, tip: 2.25, open: 65 }, jaws: { from: 20, to: 30, gap: 2 }, stop: { open: 4.8, close: 0.85 }, base: 6 };
+  const six = stop(arm, {});
+  near(six.values.tongue, 25.1708, 1e-3, 'the tongue'); near(six.values.angle, 73.904, 0.01, 'held at'); near(six.values.tip, 5.5444, 1e-3, 'the tip');
+  near(six.values.most, 5.4478, 1e-3, 'the lower jaw'); near(six.values.onStop, 25.1708 * (5.4478 - 4.8), 0.01, 'its tongue\'s load'); near(six.values.toggle, 5.9081, 1e-3, 'at the toggle');
+  assert.ok(six.values.held && six.values.resists > 1 && six.values.resists < 1.1, 'it stalls, but only just: 1.05 times');
+  assert.equal(six.level, 'warn'); assert.match(six.text, /turns to 73\.9°, where the stops hold it .* its jaw goes to 5\.45 mm.*: 82% of the leaves' limit of 6\.62 mm, past the 0\.8 travelStop allows; but they hold it under 2 times, and a servo that drove through to 90° would take a jaw to 5\.91 mm, 89%/);
+  // the tongue at 8 (57.6 N/mm): held at 76%, inside 0.8, but the stops resist only 1.75 times the stall torque, and
+  // driven through a jaw would reach 86%: a warning; asked for 1.5 times, it passes
+  const eight = { ...arm, stop: { ...arm.stop, tongue: 8 } };
+  assert.equal(stop(eight, {}).level, 'warn'); assert.ok(stop(eight, {}).values.most < 0.8 * six.values.limit);
+  assert.equal(stop(eight, { margin: 1.5 }).level, 'pass');
+  // the tongue at 10 (83.69 N/mm): held at 68.974°, cos 0.35879, sin 0.93342, tip 5.0515; upper l 27.708, kb 42.54,
+  // jaw 4.8564, F 8.301; lower l 14.792, kb 279.64, jaw (279.64 x 5.0515 + 83.6934 x 4.8) / 364.07 = 4.9835, F 19.029;
+  // (8.301 + 19.029) x 18 x 0.35879 = 176.50 N mm. 4.9835 / 6.6167 = 75%, and the stops resist 2.16 times
+  const ten = stop({ ...arm, stop: { ...arm.stop, tongue: 10 } }, {});
+  near(ten.values.angle, 68.974, 0.01, 'held at'); near(ten.values.most, 4.9835, 1e-3, 'the lower jaw');
+  assert.equal(ten.level, 'pass'); assert.ok(ten.values.resists >= 2, `resists ${ten.values.resists}`);
+  // leaves too soft for the stops to hold the servo: it drives through to 90°, a jaw at 5.96 mm; on 40 mm leaves
+  // (a limit of 7.75 mm) that is still inside 0.8, so it passes whatever the servo
+  const through = stop({ ...arm, leaf: { ...arm.leaf, length: 40 } }, {});
+  assert.equal(through.values.held, false); assert.equal(through.level, 'pass'); near(through.values.most, through.values.toggle, 1e-9, 'the toggle');
+  assert.match(through.text, /drives through to 90°, its toggle: the stops resist at most 0\.87 times that .*the tip goes 6\.25 mm out and a jaw to 5\.96 mm/);
 });
 
 test('gripper jaws: bad input is refused by name, before any sums', async () => {
@@ -1074,7 +1104,7 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   const read = (rel) => JSON.parse(fs.readFileSync(new URL(`../../examples/bench/${rel}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
   const v = Object.fromEntries(Object.entries(read('projects/arm/objects/jaws.json').variables).map(([k, x]) => [k, x.value]));
   const lift = read('rules/lift.json').rules;
-  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close }, base: v.base };
+  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close, tongue: v.stop_tongue }, base: v.base };
   // PETG as the bench has it: E 1810 MPa, 34 MPa, a strain limit of 34 / 1810 / 1.5; the SG90's stall torque 0.1765 N m
   const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
   const m = gripperJawsModel(p, petg, { torque: 0.1765, payload: lift.payload.value, accel: 300, printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } });
@@ -1087,11 +1117,11 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   // 2 × 1.0107 / (2 × 0.4) = 2.5267 N a jaw; at k 0.6824 N/mm that is (w - 2) / 2 × 0.6824 >= 2.5267, w >= 9.405.
   // The widest that goes in: 2 + 2 × 4.5635 - 2 × 0.3 = 10.527
   near(m.rated, 9.41, 0.01, '100 g held twice over from 9.41 mm'); near(m.widest, 10.53, 0.01, 'up to 10.53 mm');
-  // the opening stop at 4.8 mm: the tip there puts the arm at sin a = (14 - 2.25 + 4.8) / 18 = 0.919444, cos a =
-  // 0.393220; the SG90 stalled on it pushes 176.5 / (2 x 18 x 0.393220) = 12.468 N, less the guide's 0.737 x 4.8 =
-  // 3.538 N: 8.93 N on the tongue, which gives to 5.15 mm, 78% of the leaves' 6.62 mm limit
+  // the opening stop at 4.8 mm and the tongue at 10 mm: the SG90 driven on at its full stall torque turns the horn to
+  // 68.97°, where the stops hold it (worked by hand in the test above): the lower jaw at 4.98 mm, 75% of the leaves'
+  // 6.62 mm limit, and the stops resist 2.16 times the stall torque, so a stronger servo still stalls on them
   const st = m.findings.find((f) => f.code === 'gripper.stop');
-  near(st.values.onStop, 8.93, 0.01, 'the push on the stop'); assert.match(st.text, /gives to 5\.15 mm: 78% of the leaves' limit of 6\.62 mm$/);
+  near(st.values.most, 4.9835, 1e-3, 'the lower jaw'); assert.ok(st.values.held && st.values.resists >= 2); assert.match(st.text, /jaw goes to 4\.98 mm.*: 75% of the leaves' limit of 6\.62 mm$/);
   // the words say what the figures are: the gap at rest, and the horn's plane (width + 0.3 - 4.3 = 12) above the
   // middle of the 16 mm print (8), so 4 mm
   const jj = read('projects/arm/objects/jaws.json'), js = fs.readFileSync(new URL('../../examples/bench/projects/arm/objects/jaws.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');

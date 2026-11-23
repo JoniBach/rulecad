@@ -151,7 +151,7 @@ export function gripperJaws(p, { part = 'all' } = {}) {
  *   printer?: { line: number, layer: number, wall_min?: number } }} o torque: the servo's stall torque (N m); share:
  *   the part of it counted on to open the jaws (default 0.6, as the kit's grip check; the stops take the full stall torque); payload: the object's mass (kg, default 0);
  *   accel: the arm's (mm/s², default 0); friction: jaw on object (default 0.4, an estimate); margin: asked of the
- *   servo against the springs and of the grip against the load (default 2); printer: for the leaves' lines and layers
+ *   servo against the springs, of the grip against the load and of the stops against the stalled servo (default 2); printer: for the leaves' lines and layers
  * @returns {{ at: { back: number, root: number, fork: number[], pin: number[], guide: number, jaw: number[], bar: number[] },
  *   stroke: number, rest: number, open: number, stop: { open: number, close: number }, drop: number,
  *   push: (angle: number) => number, stiffness: number, bar: number,
@@ -213,14 +213,43 @@ export function gripperJawsModel(p, m, o) {
   const ell = k.xp - k.xr, steps = 400; let flex = 0;
   for (let i = 0; i < steps; i++) { const s = ((i + 0.5) * ell) / steps, [lo, hi] = s < k.L - k.fx - 1 ? tongueEdges(k, s) : [0, 2 * k.rp]; flex += ((ell - s) ** 2 / (m.E * (k.W * (hi - lo) ** 3) / 12)) * (ell / steps); }
   const tongue = 1 / flex;
-  // driven on past full open, the horn pushes a jaw onto its stop: with the tip at the stop's travel the arm stands
-  // at asin((inner - tip + stop) / reach), its push less the guide's spring is what the tongue takes, and it gives a
-  // little more travel, over = that / its stiffness (no angle reaches it if the tip can't get there). A servo driven
-  // onto a stop stalls there, so the push is from its full stall torque, Ts / (2 r cos a), not the share counted on
-  const Ts = torque * 1000, sinStop = (k.inner - k.rt + k.so) / k.r, onStop = sinStop < 1 ? Math.max(0, Ts / (2 * k.r * Math.sqrt(1 - sinStop ** 2)) - kg * k.so) : 0, most = k.so + onStop / tongue;
-  const stopLevel = most <= 0.8 * limit ? 'pass' : most <= limit ? 'warn' : 'fail';
+  // Driven on past full open, a servo turns its horn until the torque the jaws ask equals its full stall torque (a
+  // servo held off its target stalls and pushes with all of it, not the share counted on to open). At an arm angle a
+  // each tip stands d = r sin a - (inner - tip) out; its jaw goes x, the bar bending between the fork's front and the
+  // tip (3EI / l³) in series with the guide and, past the stop, the tongue beside it: x + F(x) / kb = d,
+  // F(x) = kg x + tongue (x - stop). The horn's arms are one bar through its axis, so the upper tip meets its bar at
+  // x = r cos a, l = r cos a - front, and the lower one at x = -r cos a, nearer the fork and stiffer. The torque asked
+  // is (F upper + F lower) r cos a. It rises as the stops take hold, then falls to 0 at 90° as the lever goes: if it
+  // never reaches the stall torque, the horn drives through to 90° (its toggle) and each jaw sees the tip's whole
+  // travel there, r - (inner - tip). The figure is the jaw that goes furthest
+  const Ts = torque * 1000, EIb = m.E * (k.W * k.bw ** 3) / 12;
+  const jaw = (d, l) => {
+    const kb = (3 * EIb) / l ** 3, x0 = (d * kb) / (kb + kg), x = x0 <= k.so ? x0 : (kb * d + tongue * k.so) / (kb + kg + tongue);
+    return { x, F: kg * x + Math.max(0, x - k.so) * tongue };
+  };
+  const turned = (a) => {
+    const c = Math.cos(a * rad), d = k.r * Math.sin(a * rad) - (k.inner - k.rt), up = jaw(d, k.r * c - k.xf), low = jaw(d, -k.r * c - k.xf);
+    const x = Math.max(up.x, low.x), F = x === up.x ? up.F : low.F;
+    return { a, d, x, F, torque: (up.F + low.F) * k.r * c };
+  };
+  // the most the stops resist, over the whole turn to 90°, and where the stall torque first meets it
+  let held = null, peak = turned(k.aOpen);
+  for (let i = 1; i <= 2000; i++) {
+    const a = k.aOpen + ((90 - k.aOpen) * i) / 2000, here = turned(a);
+    if (here.torque > peak.torque) peak = here;
+    if (!held && here.torque >= Ts) { let lo = a - (90 - k.aOpen) / 2000, hi = a; for (let j = 0; j < 50; j++) { const mid = (lo + hi) / 2; if (turned(mid).torque >= Ts) hi = mid; else lo = mid; } held = turned(hi); }
+  }
+  // held short of the toggle by less than the margin asked, a servo stronger than its rating (or the estimates off)
+  // drives through: then the toggle's travel must keep within travelStop's 0.8 too, or the stop only warns
+  const toggle = turned(90), end = held ?? toggle, most = end.x, onStop = Math.max(0, end.F - kg * end.x), resists = peak.torque / Ts;
+  const thin = held && resists < want && toggle.x > 0.8 * limit;
+  const stopLevel = most > limit ? 'fail' : most > 0.8 * limit || thin ? 'warn' : 'pass';
+  const how = held
+    ? `Driven on at its full stall torque (${torque} N m) the horn turns to ${n2(end.a, 1)}°, where the stops hold it (they resist up to ${n2(resists, 2)} times that, at ${n2(peak.a, 1)}°): a tongue takes ${n2(onStop)} N and its jaw goes to ${n2(most)} mm, the tip ${n2(end.d)} mm out and the bar bending between`
+    : end.d <= k.so ? `The horn's tip reaches only ${n2(end.d)} mm out, at 90°: the jaws stop short of the stops, at ${n2(most)} mm`
+      : `Driven on at its full stall torque (${torque} N m) the horn drives through to 90°, its toggle: the stops resist at most ${n2(resists, 2)} times that (at ${n2(peak.a, 1)}°), so the tip goes ${n2(end.d)} mm out and a jaw to ${n2(most)} mm, its tongue taking ${n2(onStop)} N`;
   if (k.so < k.stroke) f('fail', `the opening stop at ${n2(k.so)} mm is short of the horn's ${n2(k.stroke)} mm stroke: the stop takes the servo's push before the jaws are open`, 'gripper.stop', { stop: k.so, stroke: k.stroke });
-  else f(stopLevel, `the stops: each jaw stops ${n2(k.so)} mm open and ${n2(k.sc)} mm closed, a tongue's round end in a slot in its fork (${n2(tongue, 1)} N/mm, ${n2(tongue / kg, 0)} times the guide). ${sinStop < 1 ? `Driven onto it at its full stall torque (${torque} N m) the horn pushes ${n2(onStop)} N more, and the tongue gives to ${n2(most)} mm` : 'The horn\'s tip can\'t reach it'}: ${n2((most / limit) * 100, 0)}% of the leaves' limit of ${n2(limit)} mm${stopLevel === 'pass' ? '' : `, past the 0.8 travelStop allows${stopLevel === 'fail' ? ' and past the limit' : ''}`}`, 'gripper.stop', { open: k.so, close: k.sc, limit, tongue, onStop, most });
+  else f(stopLevel, `the stops: each jaw stops ${n2(k.so)} mm open and ${n2(k.sc)} mm closed, a tongue's round end in a slot in its fork (${n2(tongue, 1)} N/mm, ${n2(tongue / kg, 0)} times the guide). ${how}: ${n2((most / limit) * 100, 0)}% of the leaves' limit of ${n2(limit)} mm${most > 0.8 * limit ? `, past the 0.8 travelStop allows${stopLevel === 'fail' ? ' and past the limit' : ''}` : ''}${thin ? `; but they hold it under ${want} times, and a servo that drove through to 90° would take a jaw to ${n2(toggle.x)} mm, ${n2((toggle.x / limit) * 100, 0)}%: a wider tongue (stop.tongue) or a stiffer bar` : ''}`, 'gripper.stop', { open: k.so, close: k.sc, limit, tongue, onStop, most, angle: end.a, tip: end.d, held: !!held, resists, resistsAt: peak.a, toggle: toggle.x });
   if (o.printer) for (const x of printable({ thickness: k.t, width: k.W, travel: +k.stroke.toFixed(2), stop: +k.so.toFixed(2) }, o.printer, m, guide)) out.push(x);
   else { const e = guide.strain(k.stroke); f(e <= m.strainLimit ? 'pass' : 'fail', `fully open the leaves see ${n2(e * 100, 2)}% strain, ${e <= m.strainLimit ? 'within' : 'over'} the limit of ${n2(m.strainLimit * 100, 2)}%`, 'flexure.strain', { strain: e, limit: m.strainLimit }); }
 

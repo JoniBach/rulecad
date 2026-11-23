@@ -13,7 +13,7 @@ const { measureBoundingBox } = jscad.measurements
 
 export function main (v) {
   const W = v.width, box = (x0, x1, y0, y1, z0 = 0, z1 = W) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
-  const p = { width: W, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close }, base: v.base }
+  const p = { width: W, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { open: v.stop_open, close: v.stop_close, tongue: v.stop_tongue }, base: v.base }
   const jaws = (part) => translate([v.xs, 0, 0], v.flexures.gripperJaws(p, { part }))
   const ground = jaws('ground'), back = measureBoundingBox(ground)[0][0], wide = measureBoundingBox(ground)[1][1]
   if (Math.abs(back - v.block_x) > v.tol) throw new Error(`jaws: the root blocks start at x ${back.toFixed(2)}, not at the yoke block's front ${v.block_x}: set xs to ${(v.xs + v.block_x - back).toFixed(2)}`)
