@@ -240,9 +240,10 @@ export function assemblyOrder(s) {
 /** One fastening of a step as the order and the build page say it: the fit, its screws by count and name, the key and how tight. */
 export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
 
-// Cached by what the parts are and where they are, with everything else that changes the answer
+// Cached by what the parts are and where they are, with everything else that changes the answer (a motor's screw
+// names the tool its step gives)
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([9, s.a?.printInPlace ?? null, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([9, s.a?.printInPlace ?? null, (s.a?.items || []).filter((x) => x.motor).map((x) => [x.id, x.motor.screw ?? null]), s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {
