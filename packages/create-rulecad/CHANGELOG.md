@@ -11,7 +11,9 @@ screw by thread and head, the parts it passes through and the part it ends in.
 
 - `--machine arm`'s streamer, `projects/arm/firmware/arm/arm.ino`, refuses a block faster than its `MAX_RATE` (8000
   steps/s) with `error: rate`, steps every axis due on a tick in one write to the Uno's port D, and divides once a step
-  instead of twice. On a simulated Uno its loop now keeps up with 21505 steps/s on three axes at once, up from 9417.
+  instead of twice. On a simulated Uno its loop now keeps up with 8904 steps/s on three axes at once while slowing
+  down, its slowest path (1.11 times MAX_RATE), and 21505 steps/s at a block's cruise, up from 9417. The simulation in
+  CI measures the loop speeding up and slowing down as well as at the cruise, and fails if any of them is under MAX_RATE.
   Its STEP pulse is 3.06 µs high (it was 6.3 µs), over the DRV8825's 1.9 µs minimum.
 - `projects/arm/send.mjs --dry-run` prints each line it would send with the answer the streamer would give (`--quiet`
   for the summary only), and with `--machine` holds each axis's share of a block's rate to that axis's `maxRate`. It

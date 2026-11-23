@@ -18,8 +18,9 @@
 //
 // Timing: steps are timed in the main loop from micros(), with serial read between them, so the servo library keeps its
 // timer. The step and direction pins are all on the Uno's port D (D2 to D7), so the axes due on a tick are stepped in one
-// write, and each step costs one division. MAX_RATE is the fastest block it takes: on a simulated 16 MHz Uno
-// (scripts/firmware.mjs --simulate, in CI) the loop keeps up with more than that with all three axes stepping at once.
+// write, and a step that changes speed costs one division (a step at the cruise none). MAX_RATE is the fastest block it
+// takes: on a simulated 16 MHz Uno (scripts/firmware.mjs --simulate, in CI) the loop keeps up with more than that with
+// all three axes stepping at once, speeding up and slowing down as well as at the cruise.
 // Compiled for the Uno and run on the simulated one in CI; moving hardware is a bench test (the machine's measured milestone).
 #include <Servo.h>
 

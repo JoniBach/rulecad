@@ -53,11 +53,16 @@ waits 2.5 s for it.
 |---|---|---|
 | MAX_RATE, the fastest block the streamer takes | 8000 steps/s on the major axis | `RATE_LIMIT` in `arm.ino`, and `MAX_RATE` in `send.mjs` (a test holds them equal) |
 | What the worked arm asks | up to 8000 steps/s an axis (`maxRate`: 300 rpm of a 200-step motor at 1/8 microstepping is 300 × 1600 / 60), 7799 steps/s in the test drawing | `cad machine arm/arm` and `cad plot` |
-| The loop's own ceiling, one, two and three axes stepping at once | 24615, 22956 and 21505 steps/s | measured on a simulated 16 MHz Uno (avr8js), the sketch built with RATE_LIMIT raised |
+| The loop's own ceiling while speeding up, one, two and three axes stepping at once | 9484, 9227 and 8984 steps/s | measured on a simulated 16 MHz Uno (avr8js), the sketch built with RATE_LIMIT raised |
+| The loop's own ceiling while slowing down, one, two and three axes | 9395, 9143 and 8904 steps/s | the same |
+| The loop's own ceiling at a block's cruise, one, two and three axes | 24615, 22956 and 21505 steps/s | the same |
 | STEP pulse width | 3.06 µs high | measured on the simulated Uno; the DRV8825 needs 1.9 µs, the A4988 1 µs (Pololu's DRV8825 carrier page, product 2133, from TI's datasheet) |
 | Uno clock | 16 MHz | Arduino Uno Rev3 |
 
-The loop's ceiling with three axes is 2.7 times MAX_RATE, so the streamer keeps up with any block it takes. A step that
+The slowest of these, three axes slowing down at 8904 steps/s, is the loop's ceiling: 1.11 times MAX_RATE, so the
+streamer keeps up with any block it takes, with little to spare. A step that changes speed costs a float multiply and
+a division (gap = 1000000 / rate), which is why speeding up and slowing down are slower than the cruise (2.7 times
+MAX_RATE), where the gap stays as it is. The simulation fails if any of the nine figures falls under MAX_RATE. A step that
 an interrupt (the serial line, the clock, the servo) delays is caught up at once, so the gap between two steps can be
 as short as the loop allows: about 40 µs. The simulation runs the compiled program an instruction at a time, each
 taking its cycles at 16 MHz. A real board has not yet been timed: your bench test does that.
