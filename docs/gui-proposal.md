@@ -1,8 +1,7 @@
 # A graphical front end for rulecad: a proposal
 
 rulecad designs are JSON files in a workspace, changed today by `cad` commands typed in a terminal or run by an agent.
-This proposal is for a graphical front end in the spirit of Onshape, a CAD system that runs in a web browser: a
-screen split into **workspaces** (a project, an object, an assembly, a frame, a machine, the build, the releases),
+This proposal is for a graphical front end that runs in a web browser: a screen split into **workspaces** (a project, an object, an assembly, a frame, a machine, the build, the releases),
 each with a **tool palette**, where every tool changes the workspace's JSON by running the same checked edit a
 command runs. Picking a beam and dragging it along a slot is `cad move`; ticking a fit is `cad add fit`. The JSON
 stays the one record, so the terminal, an agent and the front end can work on the same files.
@@ -12,8 +11,8 @@ It is a document to read and comment on: nothing here is built. Written against 
 0.1.11). Timings were measured on the owner's Mac with Node 24.21.0 on the same day; sizes of work are estimates
 and are marked so.
 
-Three things it is meant to be, from the request: a set of workspaces and tools, as Onshape's are; tools that
-manipulate the workspace's JSON directly; and something other than a form over the JSON or a text editor on it.
+Three things it is meant to be, from the request: a set of workspaces and tools; tools that manipulate the
+workspace's JSON directly; and something other than a form over the JSON or a text editor on it.
 
 ## 1. What there is to build on
 
@@ -106,25 +105,19 @@ Mac on 2026-11-23:
 The in-process figures come from a short script that imports `lib/edit.mjs` and `lib/assembly.mjs` and times each
 call with `performance.now()`; the others are the commands run as they are, timed by the shell.
 
-## 2. Onshape's ideas, in rulecad's terms
+## 2. What the front end works on
 
-Onshape describes its assemblies as built from "high-level kinematic relationships" (mates) placed with mate
-connectors, and its advice is to "design parts where they will live" ([Onshape Assemblies](https://www.onshape.com/en/features/assemblies),
-read 2026-11-23). It runs in a web browser, with phone apps, and its features can be written in a language of their
-own, FeatureScript ([Onshape on Wikipedia](https://en.wikipedia.org/wiki/Onshape), read 2026-11-23). Most of its
-ideas have a counterpart in rulecad already. The left column uses Onshape's names as its interface shows them;
-beyond the two pages cited, they were not checked against its help, which did not load as text:
+Each workspace shows one kind of thing rulecad already has, and its tools change that thing through its commands:
 
-| Onshape | rulecad | Where it differs |
+| rulecad has | What it is | What the front end does with it |
 |---|---|---|
-| Document, with tabs | A project (`projects/<name>/`), with objects and assemblies | Files in a folder under git, not a database |
-| Part Studio and its feature list | An object: `<object>.js` (the shape, as code) and `<object>.json` (its variables) | The shape is a program; its steps are not a list a tool can reorder |
-| Variable table, configurations | Variables (each with a rule and a source), tweak ranges, variants | Every rulecad value says why it is what it is |
-| Assembly, mates, mate connectors | An assembly: items, fits, joints, poses, fastens; addresses on a beam (`x1.top@50%`) | Fits check a gap; joints carry limits and drive the checks |
-| Named positions | Poses | The same |
-| Versions and branches | `cad release`, `history`, `diff`, git | Released by what fits, not by time |
-| Bill of materials, drawings | `cad list`, `cad beams` sheets, `cad order`, `cad kit` | Generated, never drawn by hand |
-| FeatureScript | A design's `main(v)` in JSCAD, run in a sandbox | The same idea: shapes from code |
+| A project (`projects/<name>/`), with objects and assemblies | Files in a folder under git | Opens it as a set of tabs; changes its own fields with `cad set <project>` |
+| An object: `<object>.js` (the shape, as code) and `<object>.json` (its variables) | The shape is a program; its variables say why each value is what it is | Shows the shape, changes variables within their ranges, picks variants |
+| An assembly: items, fits, joints, poses, fastens, joins, guides | Parts placed by addresses (`x1.top@50%`), checked as a whole | Places, joins, fastens, moves and removes, each a checked edit |
+| Poses | Named positions of the joints | Sets and plays them |
+| Releases: `cad release`, `history`, `diff`, git | Versions by what fits, not by time | Releases and compares |
+| `cad list`, `cad beams` sheets, `cad order`, `cad kit` | What to buy, cut, print and build, generated | Shows them; never drawn by hand |
+| A design's `main(v)` in JSCAD, run in a sandbox | Shapes from code | Runs it to draw the model; does not edit it |
 
 So the front end is less a modeller than an **assembler and checker**: it places, joins, fastens, moves, sizes and
 checks, and it changes variables. Drawing new shapes is an open question: section 9, question 2.
@@ -314,7 +307,7 @@ with its findings; phase 3, "Studio, editing", is when the user can build a fram
    live views are, with a browser-only version last. Or is a browser-only version (nothing installed) the point?
 2. **New shapes.** Should objects stay code, with the front end changing their variables only, or should there be a
    second kind of object made of features as JSON (a sketch, an extrusion, a hole by its thread, a fillet) that tools
-   can write, as Onshape's feature list? The second is a large piece of work and a new schema.
+   can write, kept as a list of steps? The second is a large piece of work and a new schema.
 3. **Which workspace first?** Frames and assemblies are where the commands are complete. Is that where you would
    use it first, or the arm and its machine?
 4. **The phone.** Full editing on the phone, or view, check and small changes (a value, a pose) there and building
@@ -350,5 +343,3 @@ with its findings; phase 3, "Studio, editing", is when the user can build a fram
   `--dry-run`, and the follow-ups.
 - Timings in section 1.6: measured 2026-11-23 on the owner's Mac (Node 24.21.0) on a box frame made by the frames
   guide's commands.
-- [Onshape Assemblies](https://www.onshape.com/en/features/assemblies), Onshape, read 2026-11-23.
-- [Onshape](https://en.wikipedia.org/wiki/Onshape), Wikipedia, read 2026-11-23.
