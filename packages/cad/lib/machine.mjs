@@ -17,7 +17,7 @@ export function machineOf(s) {
     const t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), j = motion.joints.find((x) => x.id === id), spec = specs.get(id) ?? {};
     if (!d?.model.stepAngle) throw new Error(`${s.project}/${s.name}: joint ${id} has no stepper driving it, and a step file needs one`);
     const micro = d.spec.microsteps ?? 16, per = (360 / d.model.stepAngle) * micro, stepsPerUnit = j.type === 'prismatic' ? (per * t.ratio) / t.slide / 360 : (per * t.ratio) / 360;
-    const rpm = workingSpeed(d.model, d.spec), maxRate = (rpm / 60) * per, home = spec.home;
+    const rpm = workingSpeed(d.model, d.spec, d.supply), maxRate = (rpm / 60) * per, home = spec.home;
     const homing = home ? { endstop: home.endstop, direction: home.direction ?? -1, rate: Math.round(maxRate / 8), back: Math.round(stepsPerUnit * 3) } : null;
     return { name: id, joint: id, motor: d.id, model: d.model.name, driver: d.spec.driver ?? null, stepAngle: d.model.stepAngle, microsteps: micro, ratio: r6(t.ratio), stepsPerUnit: r6(stepsPerUnit), unit: j.type === 'prismatic' ? 'mm' : 'deg', limits: (j.limits ?? j.dofs[0].slice(0, 2)).map(r6), maxRate: Math.round(maxRate), homing,
       _why: { stepAngle: `${d.model.name}.step_angle`, microsteps: d.spec.microsteps != null ? `the motor item's "microsteps" (resolution only, not accuracy)` : 'the default, 1/16 (resolution only, not accuracy)', ratio: t.stages.length ? `the train from ${t.root} to ${id}` : 'direct', maxRate: `${n3(rpm, 1)} rpm, ${d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}`}` } };

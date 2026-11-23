@@ -32,7 +32,7 @@ export function motorWork(s) {
 // The motor's curve at its output, the load and the working speed marked
 export function workCurve(w) {
   const slide = w.train.slide != null;
-  return curve(w.drive.model, { ratio: w.train.ratio, efficiency: w.train.efficiency, ...(w.rpm != null ? { at: { speed: w.rpm, ...(slide ? {} : { load: w.needed }) } } : {}) });
+  return curve(w.drive.model, { ratio: w.train.ratio, efficiency: w.train.efficiency, ...(w.drive.supply ? { supply: w.drive.supply } : {}), ...(w.rpm != null ? { at: { speed: w.rpm, ...(slide ? {} : { load: w.needed }) } } : {}) });
 }
 
 // The torque through the train: from the motor's shaft, stage by stage, to the joint with the load; the load's need

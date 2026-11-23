@@ -1647,8 +1647,14 @@ and what the error budget has to say. This chapter is a whole machine, so it is 
 `examples/bench/projects/arm` written out in full: the tests write every file here and run every command.
 
 The arm is a compound planetary at the shoulder (chapter 11's gearbox, on a 17HS4401) and the same gearbox at the
-elbow on a smaller motor. Its joints are vertical, so gravity never loads a motor. The base can bolt flat on a
+elbow on a second 17HS4401. Its joints are vertical, so gravity never loads a motor. The base can bolt flat on a
 bench to draw, or upright on a stand later, on the same four holes.
+
+It is built from parts already on the bench: Usongshine 17HS4401 steppers, DRV8825 drivers on a CNC Shield V3 over an
+Arduino Uno R3, microstepping set to 1/8 by the M0 and M1 jumpers (1600 steps a turn), a 12 V bench supply with a
+current limit, and one SG90. The assembly marks each of those `"have": true`, so `cad list` lists them as in hand and
+everything else as to buy: the 6800 bearing, the two home switches, the screws and the wire. Two rubber bands bias the
+joints (below); the assembly does not count them, so buy those too.
 
 ### The task, and where the sheet goes
 
@@ -1689,13 +1695,16 @@ Three ways to turn the elbow:
 |---|---|---|---|---|
 | Direct | NEMA 17 on the joint, no gears | 0.225° × 115 mm = 0.45 mm at 1/8 step | 280 g | over the 0.3 mm budget from one term |
 | Belt to the base | Motor at the base, a belt up to a pulley | depends on the ratio: 3:1 at most from pulleys that fit | No belt in the catalogue yet; the elbow couples to the shoulder and the sag of the belt is an error of its own | later |
-| Geared | NEMA 14 through the 38:1 gearbox | 0.0059° × 115 mm = 0.012 mm at 1/8 step | 190 g; the gearbox's play and twist | the choice |
+| Geared | 17HS4401 through the 38:1 gearbox | 0.0059° × 115 mm = 0.012 mm at 1/8 step | 280 g; the gearbox's play and twist | the choice |
 
 The geared elbow uses the shoulder's gearbox unchanged, so the sun, the planets and the output ring are the same prints
-and the same bench test measures both. NEMA 14 rather than a second 17 because the torque the elbow needs is tiny: 0.08 N m
-at the elbow (the pen's drag, the forearm's inertia, the bias) against 2.27 N m the small motor gives through 38:1,
-and it weighs 90 g less at the end of a 160 mm link. The fixed ring is printed into the upper arm itself: the elbow costs
-a sun, three planets, an output ring and three clips.
+and the same bench test measures both. Its motor is the shoulder's too: a 17HS4401 on the same `v.motors` mount, so one
+motor, one driver setting and one spare cover both joints. The torque the elbow needs is tiny: 0.08 N m at the elbow
+(the pen's drag, the forearm's inertia, the bias) against 1.6 N m the 17HS4401 gives through 38:1 at 0.5 A on 12 V.
+A NEMA 14 would do the same 90 g lighter; those 90 g sit at the end of the 160 mm upper arm, and the shoulder pays for
+them: its arm's inertia goes from 0.019 to 0.024 kg m², the bearing's load from 89 to 108 N, and it still has seven
+times the torque it needs. The fixed ring is printed into the upper arm itself: the elbow costs a sun, three planets, an
+output ring and three clips.
 
 ### The bearing
 
@@ -1729,8 +1738,8 @@ The rules: the reach, the stack of parts from the bench up, and what the budget 
     "twist_elbow": {"value": 0.01, "unit": "°", "rule": "The elbow's gear train twisting, the same", "kind": "estimate", "source": "A guess: bench test 15", "checked": "2026-11-09"},
     "deflection": {"value": 0.02, "unit": "mm", "rule": "The links bending sideways at the pen under its drag, from beam formulas", "kind": "estimate", "source": "0.3 N of drag on the forearm and holder as cantilevers: bench test 17 measures the whole budget at once", "checked": "2026-11-09"},
     "drag": {"value": 0.3, "unit": "N", "rule": "A pen's drag on paper, about, pulled sideways at the tip", "kind": "estimate", "source": "A hand guess from a pen on a spring scale: measure yours", "checked": "2026-11-09"},
-    "shoulder_torque": {"value": 0.2, "unit": "N m", "rule": "What the shoulder must do at the task's speed and accel: the pen's drag at 240 mm, the arm's inertia and the bias", "kind": "estimate", "source": "Drag 0.07 N m + inertia about 0.03 N m + the rubber band's bias 0.1 N m", "checked": "2026-11-09"},
-    "elbow_torque": {"value": 0.08, "unit": "N m", "rule": "What the elbow must do: the pen's drag at 110 mm, the forearm's inertia and the bias", "kind": "estimate", "source": "Drag 0.03 N m + inertia 0.01 N m + the rubber band's bias 0.04 N m", "checked": "2026-11-09"},
+    "shoulder_torque": {"value": 0.22, "unit": "N m", "rule": "What the shoulder must do at the task's speed and accel: the pen's drag at 242 mm, the arm's inertia and the bias", "kind": "estimate", "source": "Drag 0.3 N x 0.242 m = 0.073 N m + inertia 0.024 kg m2 (motor.accel's, with the 17HS4401 at the elbow) x 2.07 rad/s2 (500 mm/s2 at 242 mm) = 0.05 N m + the rubber band's bias 0.1 N m", "checked": "2026-11-22"},
+    "elbow_torque": {"value": 0.08, "unit": "N m", "rule": "What the elbow must do: the pen's drag at 115 mm, the forearm's inertia and the bias", "kind": "estimate", "source": "Drag 0.3 N x 0.115 m = 0.035 N m + inertia 0.0006 kg m2 (motor.accel's forearm) x 4.35 rad/s2 (500 mm/s2 at 115 mm) = 0.003 N m + the rubber band's bias 0.04 N m, 0.077 N m: the elbow's motor rides on the upper arm, so the change of motor leaves it", "checked": "2026-11-22"},
     "foot": {"value": 6, "unit": "mm", "rule": "The base plate's thickness", "kind": "default", "source": "Stiff enough for four M5 screws", "checked": "2026-11-09"},
     "room": {"value": 2, "unit": "mm", "rule": "Air between the shoulder motor's back and the base plate", "kind": "default", "source": "Design", "checked": "2026-11-09"},
     "motor17": {"value": 40, "unit": "mm", "rule": "The 17HS4401's body length", "kind": "community", "source": "nema17 variant 17HS4401 (https://market.samm.com/17hs4401-nema17-step-motor-en)", "checked": "2026-11-09"},
@@ -2284,7 +2293,8 @@ hexagon's socket, the elbow's fixed ring and posts. The elbow's motor bolts to t
 
 ```js projects/arm/objects/upper.js
 // The upper arm, drawn as it prints: its top face on the bed, the elbow's ring standing on it, the hub's socket opening
-// upward. The elbow's NEMA 14 bolts on the bed side, its shaft up through the plate, as chapter 11's housing does.
+// upward. The elbow's 17HS4401, the shoulder's motor, bolts on the bed side, its shaft up through the plate, on the same
+// v.motors mount as the shoulder's housing.
 // The screws' holes are v.fixings': an M3 clearance hole through the socket's floor for the screw into the spindle,
 // an M3 pilot in each post for its clip, and the elbow switch's M2 pilots.
 import jscad from '@jscad/modeling'
@@ -2295,7 +2305,7 @@ const { hull } = jscad.hulls
 
 export function main (v) {
   const screw = v.fixings.holeModel('M3').diameter, pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter, switchPilot = v.fixings.holeModel('M2', { kind: 'pilot' }).diameter
-  const motor = v.motors.motorModel('nema14')
+  const motor = v.motors.motorModel('17HS4401')
   const at = (r, a) => [v.long + r * Math.cos(a), r * Math.sin(a)]
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad)
   const round = (r, c) => translate([c, 0], circle({ radius: r, segments: v.segments }))
@@ -2612,7 +2622,7 @@ so an M3x30, the longest sold, reaches its nut on the far one.
   "uses": ["arm"],
   "items": [
     { "id": "base", "object": "base" },
-    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 } },
+    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "housing", "object": "housing", "at": [0, 0, "arm.face"] },
     { "id": "sun", "object": "sun" },
     { "id": "carrier", "object": "speck" },
@@ -2622,7 +2632,7 @@ so an M3x30, the longest sold, reaches its nut on the far one.
     { "id": "bridge", "object": "bridge", "at": [0, 0, "arm.bridge_low"] },
     { "id": "b1", "bought": "bearing-6800", "at": [0, 0, "arm.bridge_low + arm.bridge - arm.bearing_width"] },
     { "id": "upper", "object": "upper" },
-    { "id": "m2", "motor": { "model": "nema14", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 } },
+    { "id": "m2", "motor": { "model": "17HS4401", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "esun", "object": "sun", "set": { "tip": 11.7 } },
     { "id": "ecarrier", "object": "speck" }, { "id": "ering", "object": "speck" },
     { "id": "ep1", "object": "planet" }, { "id": "ep2", "object": "planet" }, { "id": "ep3", "object": "planet" },
@@ -2630,15 +2640,15 @@ so an M3x30, the longest sold, reaches its nut on the far one.
     { "id": "clip1", "object": "clip" }, { "id": "clip2", "object": "clip" }, { "id": "clip3", "object": "clip" },
     { "id": "forearm", "object": "forearm" },
     { "id": "holder", "object": "holder" },
-    { "id": "servo", "motor": { "model": "sg90", "drives": "lift_servo", "duty": 0.05 } },
+    { "id": "servo", "motor": { "model": "sg90", "drives": "lift_servo", "duty": 0.05 }, "have": true },
     { "id": "horn", "object": "horn" },
     { "id": "pen", "object": "pen" },
     { "id": "es1", "bought": "endstop-10t85" },
     { "id": "es2", "bought": "endstop-10t85" },
-    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8] },
-    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8] },
-    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0] },
-    { "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "at": [-330, 150, 0] }
+    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8], "have": true },
+    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8], "have": true },
+    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0], "have": true },
+    { "id": "psu", "bought": "supply-12v", "set": { "output_current": 1.5 }, "at": [-330, 150, 0], "have": true }
   ],
   "joints": [
     { "id": "m1_on", "type": "fixed", "parent": "housing.motor", "child": "m1.face" },
@@ -2712,7 +2722,7 @@ so an M3x30, the longest sold, reaches its nut on the far one.
     { "id": "pen", "from": "servo.connector", "to": "shield.Z", "via": ["forearm.cable", "upper.cable", "base.cable"], "gauge": "awg26", "colour": "brown, red, orange", "conductors": 3, "current": 0.7, "connectors": ["Servo JR 3 pin", "D11, 5 V, GND"], "note": "D11 is the Z limit pin on a V3.00 shield: arm.ino uses it for the servo" },
     { "id": "home1", "from": "es1.left", "to": "shield.X", "via": ["base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "X limit and GND"] },
     { "id": "home2", "from": "es2.left", "to": "shield.Y", "via": ["upper.cable", "base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "Y limit and GND"] },
-    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "24 V into the shield's motor terminals" }
+    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V from the bench supply, its current limit at 1.5 A, into the shield's motor terminals" }
   ],
   "loads": [
     { "joint": "out", "torque": "arm.shoulder_torque", "note": "The pen's drag at its reach, the arm's inertia at 500 mm/s², the bias" },
@@ -2723,14 +2733,25 @@ so an M3x30, the longest sold, reaches its nut on the far one.
 }
 ```
 
-Why each driver is set where it is: both motors run at 0.5 A a coil, under the 17HS4401's 1.5 A and the NEMA 14's
-0.8 A, and the number comes from what they must do rather than what they can. The shoulder needs 0.011 N m at the motor's
-shaft for the task (0.2 N m through 38:1 at 47%) and has about 0.09 N m at 0.5 A, turning, eight times over. More current
-would only heat the motor and the PLA it is bolted to. It also sets the worst the arm can do to itself: stalled against
-something, 0.5 A puts about 2.4 N m on the shoulder's output, and that is 12 MPa of shear in the spindle's printed 10 mm
-shaft, against PLA's 22, about twice over (at the current the shoulder could take, the shaft would break first). A
-DRV8825 runs 0.5 A with no heat sink. Set each trimmer to what `cad check` says for these 0.1 Ω sense resistors (0.25 V):
-read the resistors on your own board first, because clones differ.
+Why each driver is set where it is: both motors run at 0.5 A a coil, a third of the 17HS4401's 1.5 A, and the number
+comes from what they must do rather than what they can. On 12 V the motor's torque is flat up to its corner speed,
+60 × 12 V / (2 × 4.2 mH × 1.5 A × 200 steps) = 286 rpm, and falls as one over the speed past it; `motor.torque` reads the
+volts from the supply item. At the 300 rpm the task runs at, that is 0.2694 N m at full current and 0.0898 N m at 0.5 A.
+The shoulder needs 0.012 N m at the motor's shaft (0.22 N m through 38:1 at 47%), seven times under that; the elbow
+0.0045 N m, twenty times under. More current would only heat the motor and the PLA it is bolted to. It also sets the
+worst the arm can do to itself: stalled against something, 0.5 A puts about 2.4 N m on the shoulder's output, and that
+is 12 MPa of shear in the spindle's printed 10 mm shaft, against PLA's 22, about twice over (at the current the shoulder
+could take, the shaft would break first). A DRV8825 runs 0.5 A with no heat sink. The machine draws 0.5 A from the
+12 V supply: set the bench supply's current limit to 1.5 A, which is three times that and still under 2 A.
+
+Setting each driver's trimmer, the Pololu DRV8825 carrier's way (the `drv8825` rule set's source): the current limit is
+twice the reference voltage, Vref = I / 2, for its 0.1 Ω sense resistors, so 0.5 A is 0.25 V. Read the two small
+resistors beside the chip first (R100 is 0.1 Ω): clones differ, and a different one changes the formula. With the
+motors unplugged and the power off, seat the drivers, then switch on the 12 V supply and plug the Uno into USB. Set the
+meter to DC volts, put its black probe on the shield's GND and its red probe on the trimmer's metal top, and turn the
+trimmer with a small plastic or ceramic screwdriver until it reads 0.25 V. Switch off before plugging in each motor:
+plugging or unplugging a motor with the power on can destroy the driver. A trimmer whose reading will not move is a
+faulty driver: set it aside.
 
 ```xml projects/arm/drawings/test.svg
 <svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="148mm" viewBox="0 0 210 148"><rect id="square" x="55" y="24" width="100" height="100" fill="none"/><circle id="circle" cx="105" cy="74" r="35" fill="none"/></svg>
@@ -2759,21 +2780,27 @@ it without `--json` and read them. What it says:
   The worst case is 81% of the budget, under the 100% where the check would fail, over the 80% where it stops saying pass.
   Bench test 14 (play) and 17 (repeatability) decide whether this arm draws to 0.3 mm or to 0.5.
 - The rules that are guesses are named in one warning line, `uses estimates, not measurements`, and each settles with `cad measured arm/arm <name>=<value>`.
-- `joint.moment` puts 88.6 N equivalent on the 6800, against its 925 N static rating, ten times over; `fit.seat` says the
+- `joint.moment` puts 108.1 N equivalent on the 6800, against its 925 N static rating, 8.6 times over (89 N with a
+  NEMA 14 at the elbow); `fit.seat` says the
   pocket is drawn 19.038 mm, a press fit, with a 1.11 mm lip on the outer race and clear of the inner.
-- `m1 into out` gives 8.4 times the 0.2 N m the task asks at the shoulder, at the 0.5 A chosen, and `m2 into elbow` 17.7
-  times its 0.08 N m. Both joints hold with the power off: 38:1 at 47% can't be driven backwards.
+- `m1 into out` gives 7.3 times the 0.22 N m the task asks at the shoulder, at the 0.5 A chosen, and `m2 into elbow` 20
+  times its 0.08 N m, both at 300 rpm on the supply's 12 V. (On 24 V, with a NEMA 14 at the elbow and 0.2 N m asked at
+  the shoulder, they were 8.4 and 17.7 times.) Both joints hold with the power off: 38:1 at 47% can't be driven backwards.
+- `motor.accel` and `task.time`: the 12 V torque still accelerates the pen at up to 5898 mm/s² (7174 on 24 V), twelve
+  times the 500 the task plans, so a move across the sheet takes 5.24 s either way: the speed sets it, not the torque.
 - Each `fasten` is followed screw by screw: the holes line up, each far end is a pilot (an M3's 2.9 mm, `x1c.pilot_m3`,
   measured; an M2's 2.1 mm, `m2.pilot`, a community figure) or the yoke's nut, the length is the shortest sold that fits
   (M3x8 into the base's columns, M3x10 into the posts, M3x8 countersunk into the output's flange, M3x12 into the elbow's,
   M3x16 down into the spindle, M3x30 through the yoke, M2x10 for the switches, and an M3x3 set screw that clamps the
   pen), each cap screw in a pilot has the thread its rule set's `pilot_depth` asks, and a hex key reaches every head,
   the bridge's and the spindle's before the parts above them go on.
-- `motor.driver` gives 0.25 V on each trimmer for 0.5 A. `power.supply`: the machine draws under 1 A at 24 V, and an
-  LRS-50-24 gives 2.2 A.
-- `cad list` is the shopping list: 440 g of printing in 20 parts, about 8 hours, and everything bought, the screws
-  included: 33 of them and the yoke's two nuts, 30 g, each length the one the check chose. `cad wires` is the
-  wiring sheet: each wire's length through the arm's whole range, its gauge, its colours and its board pins.
+- `motor.driver` gives 0.25 V on each trimmer for 0.5 A at 1/8 step. `power.supply`: the machine draws 0.5 A at 12 V
+  (6 W), and the bench supply, its limit at 1.5 A, gives three times that.
+- `cad list` is the shopping list: 439 g of printing in 20 parts, about 8 hours, and everything bought, the screws
+  included: 33 of them and the yoke's two nuts, 30 g, each length the one the check chose. What is to buy comes first
+  (the 6800 and the two 10T85 switches, the screws, the wire), then what is in hand (the two 17HS4401s, the drivers,
+  the shield, the supply, the SG90). `cad wires` is the wiring sheet: each wire's length through the arm's whole range,
+  its gauge, its colours and its board pins, the supply's two wires carrying 12 V into the shield.
 - `cad machine` writes `exports/arm/arm.machine.json`: steps per degree, 168.9 at 1/8 step through 38:1, the rates and the
   homing. `cad plot` plans the test drawing, a 100 mm square and a circle, in 15 s, and the preview in `.preview/arm/`
   animates it. `cad plot --calibrate` writes the calibration drawing the same way.
@@ -2798,20 +2825,20 @@ The task is a box of points in front of the arm, 80 mm deep and 120 mm tall, wit
 
 | | Drawing (chapter 12) | Lifting (this chapter) |
 |---|---|---|
-| Load on the shoulder | 0.2 N m of pen drag, inertia and bias, no gravity | 1.02 N m, the arm's own weight and 100 g, at the far end of the box |
-| Shoulder motor at 0.5 A | 8 times over | 1.7 times over: under the 2 times the check asks for |
-| Current | 0.5 A a coil | 0.8 A a coil for the shoulder, 2.65 times over; the elbow stays at 0.5 A |
-| What the links do | 0.3 N of drag sideways, about 0.02 mm | 5.7 N of weight in their plane: the tool drops 1.8 mm, the biggest term in the budget |
-| What the 6800 sees | The pen's drag | 0.134 N m of tipping and 5.7 N across it: 24 N equivalent, against 925 N |
+| Load on the shoulder | 0.22 N m of pen drag, inertia and bias, no gravity | 1.15 N m, the arm's own weight and 100 g, at the far end of the box |
+| Shoulder motor at 0.5 A, 12 V | 7.3 times over | 1.4 times over: under the 2 times the check asks for |
+| Current | 0.5 A a coil | 0.8 A a coil for the shoulder, 2.2 times over; the elbow stays at 0.5 A |
+| What the links do | 0.3 N of drag sideways, about 0.02 mm | 6.6 N of weight in their plane: the tool drops 2.1 mm, the biggest term in the budget |
+| What the 6800 sees | The pen's drag | 0.189 N m of tipping and 6.6 N across it: 33 N equivalent, against 925 N |
 | The budget | 0.3 mm | 2.5 mm: a gripper, not a pen |
 
-The shoulder has to hold the arm up, and the way to read that is the worst pose: the arm stretched forward with its elbow up, the tool at the box's far side, the masses all as far out as they get. `motor.torque` looks at each loaded joint with its motor run through its range, and at each pose of the assembly. The assembly is drawn in that far pose (named `reach`), so that sweep passes through it. The shoulder needs 1.016 N m and has 2.69 N m at 0.8 A through the 38:1 gearbox: 2.65 times over. The kit's other torque figure, `motor.accel`, is worked out across all the box's sampled points: at the worst of them there is still 0.104 N m left at the motor to accelerate with.
+The shoulder has to hold the arm up, and the way to read that is the worst pose: the arm stretched forward with its elbow up, the tool at the box's far side, the masses all as far out as they get. `motor.torque` looks at each loaded joint with its motor run through its range, and at each pose of the assembly. The assembly is drawn in that far pose (named `reach`), so that sweep passes through it. The shoulder needs 1.153 N m and has 2.56 N m at 0.8 A on 12 V through the 38:1 gearbox: 2.2 times over. The kit's other torque figure, `motor.accel`, is worked out across all the box's sampled points: at the worst of them there is still 0.089 N m left at the motor to accelerate with. (With a NEMA 14 at the elbow on 24 V the shoulder needed 1.016 N m and had 2.69: 2.65 times. The 17HS4401's 90 g more at the elbow, 0.14 N m at 160 mm, and the 12 V supply's lower torque at 300 rpm take that down to 2.2.)
 
-Why 0.8 A and not more. Chapter 12 set the current from what the arm has to do, and the same reasoning sets it here. It also sets what the arm can do to itself when it stalls: at 0.8 A the shoulder can give about 3.8 N m stalled, and that is 19 MPa of shear in the spindle's printed 10 mm shaft, against PLA's 22. A person running this arm at 0.8 A should print the spindle in PETG or put a steel shaft through it. That is the first thing that changes in the parts, and it's the sort of number a check can't fix for you.
+Why 0.8 A and not more. Chapter 12 set the current from what the arm has to do, and the same reasoning sets it here: the shoulder gives 3.2 N m an amp at 300 rpm on 12 V, so 0.72 A is the least that keeps it over the check's 2 times, and 0.8 A rounds that up. It also sets what the arm can do to itself when it stalls: at 0.8 A the shoulder can give about 3.8 N m stalled, and that is 19 MPa of shear in the spindle's printed 10 mm shaft, against PLA's 22. At 1 A the torque would be 2.8 times over, but stalled it would put about 4.8 N m on the output, 24 MPa, past PLA's 22: the shaft would break before the motor slipped. Set the shoulder's trimmer to 0.4 V (0.8 A) and the elbow's to 0.25 V, the way chapter 12 says. The machine draws 0.64 A from the 12 V supply, so the same 1.5 A limit covers it. A person running this arm at 0.8 A should print the spindle in PETG or put a steel shaft through it. That is the first thing that changes in the parts, and it's the sort of number a check can't fix for you.
 
 The loads are written in the assembly as three masses at anchors, from the mass table that `joint.moment` prints:
 
-- `lift.upper_mass` 0.376 kg at `upper.elbow`: the upper arm, the elbow's gears and motor, treated as all at the elbow, which overstates it a little: the shoulder's figure is on the safe side.
+- `lift.upper_mass` 0.466 kg at `upper.elbow` (0.376 kg with a NEMA 14): the upper arm, the elbow's gears and motor, treated as all at the elbow, which overstates it a little: the shoulder's figure is on the safe side.
 - `lift.fore_mass` 0.07 kg at `forearm.cable`, about halfway along the forearm: the forearm and the elbow's output gear.
 - `lift.tool_mass` 0.148 kg at `gripper.tool`: the gripper, its servo and the 100 g payload.
 
@@ -2822,11 +2849,11 @@ The loads are written in the assembly as three masses at anchors, from the mass 
 | Real efficiency | Backward efficiency | Back at the motor | Against the 0.025 N m detent |
 |---|---|---|---|
 | 47% (the estimate) | under 0 | 0, it can't turn backwards | holds |
-| 60% | 33% | 0.009 N m | holds, 2.8 times over |
-| 75% | 67% | 0.018 N m | holds, 1.4 times over |
-| 85% | 82% | 0.022 N m | just holds |
+| 60% | 33% | 0.010 N m | holds, 2.5 times over |
+| 75% | 67% | 0.020 N m | holds, 1.2 times over |
+| 85% | 82% | 0.025 N m | on the edge |
 
-The back torque there is the shoulder's 1.016 N m worst load through 38:1, times the backward efficiency: the motor's own detent torque, 0.025 N m (the catalogue's figure, an `estimate`), carries it even if the gears run much freer than anything printed is likely to. The elbow, 0.233 N m through the same box against the NEMA 14's 0.008 N m detent, holds by the same arithmetic up to 85% too, with little in hand there.
+The back torque there is the shoulder's 1.153 N m worst load through 38:1, times the backward efficiency: the motor's own detent torque, 0.025 N m (the catalogue's figure, an `estimate`), carries it even if the gears run much freer than anything printed is likely to. The elbow, 0.233 N m through the same box against the 17HS4401's 0.025 N m detent, holds by the same arithmetic five times over at 85%: the bigger motor's detent leaves more in hand there than the NEMA 14's 0.008 N m did.
 
 Three things could hold the arm with the power off: the gears' friction, a counter-spring, or a brake. A counter-spring from `@rulecad/flexures` is the usual way to take gravity off a shoulder, and it earns its place when a joint is back-drivable; it would cost a leaf spring strong enough for a newton metre across 90° of swing, a large part, for a joint that already holds. A brake is a bought part and a coil to wire for a problem the gears already solve. So the chapter chooses friction, marks it `estimate`, and bench test 14 in `examples/bench/projects/benchmarks/MEASURE.md` (the gearbox's play, measured at both directions) is where a person learns whether the efficiency is what the figures assume.
 
@@ -2852,7 +2879,7 @@ The rules these figures come from:
   "name": "lift",
   "rules": {
     "payload": {"value": 0.1, "unit": "kg", "rule": "The most the arm is rated to carry at the tool", "kind": "default", "source": "Design: the top of the range the arm is for, 50 to 100 g", "checked": "2026-11-09"},
-    "upper_mass": {"value": 0.376, "unit": "kg", "rule": "The upper arm, the elbow's gears, the elbow's motor and the switch: as the shoulder sees them", "kind": "derived", "source": "joint.moment's carried mass in chapter 13, less what's beyond the elbow", "checked": "2026-11-09"},
+    "upper_mass": {"value": 0.466, "unit": "kg", "rule": "The upper arm, the elbow's gears, the elbow's motor (a 17HS4401, 280 g) and the switch: as the shoulder sees them", "kind": "derived", "source": "joint.moment's carried mass in chapter 13, less what's beyond the elbow: 0.376 kg with a 190 g NEMA 14, 90 g more with the 17HS4401", "checked": "2026-11-22"},
     "fore_mass": {"value": 0.07, "unit": "kg", "rule": "The forearm and the elbow's output gear, about", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
     "tool_mass": {"value": 0.148, "unit": "kg", "rule": "The gripper with its servo and horn, and the payload", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
     "grip_horn": {"value": 12.3, "unit": "mm", "rule": "The horn's lever at full close, where it's smallest (18 mm reach × cos 47°): what the servo's torque turns into the push on each finger", "kind": "derived", "source": "gripper's reach and close_a", "checked": "2026-11-09"},
@@ -3402,7 +3429,7 @@ The project lists the new objects:
 
 ### The upright assembly
 
-`arm-upright` is `arm` from chapter 12 with five differences: the base, the housing, the bridge and its bearing are rotated 90° about the x axis and the rest follows through the joints (their positions become `[0, "0 - arm.face", 0]` and so on: a rotation of x, y, z to x, -z, y); the pen holder is replaced by the gripper on the forearm's same anchor; the task is a box of points with `payload` and `grip`; `gravity` is set to `[0, 0, -1]` as the check needs the word down; and the elbow folds only to 140°, not 160°, for the reason under the commands below. Its one pose, `reach`, is the far corner of the box: the assembly is drawn there because the shoulder's load is worst there, and "drawn" is what `motor.torque` sweeps its motor from. The fingers are straight in it, as every flexure here is. Its `fasten` list is chapter 12's, with the yoke's two screws and their nuts through the gripper where they went through the pen holder, and no set screw, since there is no pen to clamp. The check chooses each screw's length and `cad list` counts it; chapter 15 explains `fasten` in full.
+`arm-upright` is `arm` from chapter 12 with five differences: the base, the housing, the bridge and its bearing are rotated 90° about the x axis and the rest follows through the joints (their positions become `[0, "0 - arm.face", 0]` and so on: a rotation of x, y, z to x, -z, y); the pen holder is replaced by the gripper on the forearm's same anchor; the task is a box of points with `payload` and `grip`; `gravity` is set to `[0, 0, -1]` as the check needs the word down; and the elbow folds only to 140°, not 160°, for the reason under the commands below. Its one pose, `reach`, is the far corner of the box: the assembly is drawn there because the shoulder's load is worst there, and "drawn" is what `motor.torque` sweeps its motor from. The fingers are straight in it, as every flexure here is. Its gripper's SG90 is the pen lift's, moved across: the upright arm has no pen to lift, so the one SG90 on the bench serves both builds, and `"have": true` keeps it off the buy list. Its `fasten` list is chapter 12's, with the yoke's two screws and their nuts through the gripper where they went through the pen holder, and no set screw, since there is no pen to clamp. The check chooses each screw's length and `cad list` counts it; chapter 15 explains `fasten` in full.
 
 ```json projects/arm/assemblies/arm-upright.json
 {
@@ -3414,7 +3441,7 @@ The project lists the new objects:
   "uses": ["arm", "lift"],
   "items": [
     { "id": "base", "object": "base", "rotate": [90, 0, 0] },
-    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.8, "microsteps": 8 } },
+    { "id": "m1", "motor": { "model": "17HS4401", "drives": "drive", "speed": 300, "duty": 0.3, "driver": "d1", "current": 0.8, "microsteps": 8 }, "have": true },
     { "id": "housing", "object": "housing", "at": [0, "0 - arm.face", 0], "rotate": [90, 0, 0] },
     { "id": "sun", "object": "sun" },
     { "id": "carrier", "object": "speck" },
@@ -3424,7 +3451,7 @@ The project lists the new objects:
     { "id": "bridge", "object": "bridge", "at": [0, "0 - arm.bridge_low", 0], "rotate": [90, 0, 0] },
     { "id": "b1", "bought": "bearing-6800", "at": [0, "0 - (arm.bridge_low + arm.bridge - arm.bearing_width)", 0], "rotate": [90, 0, 0] },
     { "id": "upper", "object": "upper" },
-    { "id": "m2", "motor": { "model": "nema14", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 } },
+    { "id": "m2", "motor": { "model": "17HS4401", "drives": "edrive", "speed": 300, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "esun", "object": "sun", "set": { "tip": 11.7 } },
     { "id": "ecarrier", "object": "speck" }, { "id": "ering", "object": "speck" },
     { "id": "ep1", "object": "planet" }, { "id": "ep2", "object": "planet" }, { "id": "ep3", "object": "planet" },
@@ -3432,14 +3459,14 @@ The project lists the new objects:
     { "id": "clip1", "object": "clip" }, { "id": "clip2", "object": "clip" }, { "id": "clip3", "object": "clip" },
     { "id": "forearm", "object": "forearm" },
     { "id": "gripper", "object": "gripper" },
-    { "id": "gservo", "motor": { "model": "sg90", "drives": "squeeze", "duty": 0.05 } },
+    { "id": "gservo", "motor": { "model": "sg90", "drives": "squeeze", "duty": 0.05 }, "have": true },
     { "id": "ghorn", "object": "ghorn" },
     { "id": "es1", "bought": "endstop-10t85" },
     { "id": "es2", "bought": "endstop-10t85" },
-    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8] },
-    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8] },
-    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0] },
-    { "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "at": [-330, 150, 0] }
+    { "id": "d1", "bought": "drv8825", "at": [-300, -30, 8], "have": true },
+    { "id": "d2", "bought": "drv8825", "at": [-300, 0, 8], "have": true },
+    { "id": "shield", "bought": "cnc-shield-v3", "at": [-300, 0, 0], "have": true },
+    { "id": "psu", "bought": "supply-12v", "set": { "output_current": 1.5 }, "at": [-330, 150, 0], "have": true }
   ],
   "joints": [
     { "id": "m1_on", "type": "fixed", "parent": "housing.motor", "child": "m1.face" },
@@ -3512,7 +3539,7 @@ The project lists the new objects:
     { "id": "grip", "from": "gservo.connector", "to": "shield.Z", "via": ["gripper.cable", "forearm.cable", "upper.cable", "base.cable"], "gauge": "awg26", "colour": "brown, red, orange", "conductors": 3, "current": 0.7, "connectors": ["Servo JR 3 pin", "D11, 5 V, GND"] },
     { "id": "home1", "from": "es1.left", "to": "shield.X", "via": ["base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "X limit and GND"] },
     { "id": "home2", "from": "es2.left", "to": "shield.Y", "via": ["upper.cable", "base.cable"], "gauge": "awg26", "colour": "white, black", "conductors": 2, "connectors": ["Crimped spade", "Y limit and GND"] },
-    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "24 V into the shield's motor terminals" }
+    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V from the bench supply, its current limit at 1.5 A, into the shield's motor terminals" }
   ],
   "loads": [
     { "mass": "lift.upper_mass", "at": "upper.elbow", "note": "The upper arm, the elbow's gears and its motor, worst placed at the elbow" },
@@ -4287,21 +4314,21 @@ npx cad list arm/arm-upright
 
 What it says:
 
-- `motor.torque` passes at 2.65 and 6.1 times over at the far pose; the shoulder needs 0.8 A here, not chapter 12's 0.5, and both figures rest on the catalogue's community motor figures, an estimate until measured.
+- `motor.torque` passes at 2.22 and 6.88 times over at the far pose, on 12 V (2.65 and 6.1 on 24 V with a NEMA 14 at the elbow); the shoulder needs 0.8 A here, not chapter 12's 0.5, and both figures rest on the catalogue's community motor figures, an estimate until measured.
 - `motor.holds` passes both joints with the power off, on the gears' 47% (an estimate): the table above says how much that figure can rise before it stops being true, and the detent torque carries it by a wide margin.
-- `joint.moment` gives the shoulder's 6800 38 times over, the elbow's clips 35. They aren't the limits; the arm's sag is.
-- `link.deflection` gives 1.8 mm at full stretch from coarse FE on the whole link, an `estimate` (see above): it's the largest error in the stack, and `task.accuracy` warns at 2.08 mm worst case against the 2.5 mm budget.
+- `joint.moment` gives the shoulder's 6800 28 times over (38 with the lighter NEMA 14), the elbow's clips 35. They aren't the limits; the arm's sag is.
+- `link.deflection` gives 2.1 mm at full stretch from coarse FE on the whole link, an `estimate` (see above), 1.8 mm with the NEMA 14: the elbow motor's 90 g more bends the upper arm. It's the largest error in the stack, and `task.accuracy` warns at 2.36 mm worst case against the 2.5 mm budget (2.08 before).
 - `task.reach` passes with 48.9 mm in hand.
 - `tool.grip` warns at 100 g (1.2 times over) on `arm-upright` and passes on `gripper-check` at 50 g (2.3 times over). `tool.strain` passes at 10% of PETG's strength at full close, in the leaf the check reads as a plain cantilever (`leafModel`).
 - The Z axis gives 512 steps a mm, 15.5 N of force at 6 times over its 2.45 N load, and holds with the power off because of the motor's gearbox. The belt gives 102.4 steps a mm and 5.1 N, 2 times over, with 0.07 mm of stretch in the budget.
 - `fasten` chooses every screw and passes each: the housing's three M3x8 caps into the base, the spindle's four M3x8 countersunk, the bridge's and the clips' six M3x10, the forearm's four M3x12, the upper arm's M3x16 into the hexagon, the home switches' four M2x10, and two M3x30 with their nuts through the yoke and the gripper. Each head has room for its hex key. The one warning, the twist on the hexagon's screw, is above.
-- `cad list` prints the same 444.2 g printed as `check`'s mass table, with the gripper's 37 g in it, and buys those screws with the motors' own (4 M3x6 and 4 M3x12 from their mounts): 30.3 g of fixings. The whole machine weighs about 1.3 kg before the wires and the wall.
+- `cad list` prints the same 444.2 g printed as `check`'s mass table, with the gripper's 37 g in it, and buys those screws with the motors' own (4 M3x6 and 4 M3x12 from their mounts): 30.3 g of fixings. To buy: the 6800, the two switches, the screws and the wire; in hand: the two 17HS4401s, the drivers, the shield, the bench supply and the one SG90. The whole machine weighs about 1.05 kg before the wires and the wall (the supply, the drivers and the shield have no mass in their sets).
 
 `npx cad check arm/arm-upright --sweep` swings each joint of the arm through its range and finds nothing colliding, with the finger-flat contact allowed by its `fits` entry. It earned its keep: with chapter 12's limit of 160° of fold, the sweep found the gripper's servo hitting the shoulder housing and the output ring, because the gripper is 32 mm longer than the pen holder and its servo stands up from the print. The elbow is limited to 140° here, which clears with room to spare and costs nothing, since the box needs at most about 113°. Like chapter 12's sweep it is slow, half an hour on a busy laptop, so the replay leaves it out.
 
 ### What a person would change
 
-Read the check's output and the table at the top together, and three things stand out: the current (0.8 A against the shaft, and PETG or steel in the spindle if the arm will ever stall); the upper arm's in-plane stiffness (the 1.8 mm figure, which a person would refine by measuring, and fix by moving the elbow motor back along the arm or thickening the link across its 22 mm); the gripper's friction and grip, which rate the arm for 50 g reliably and 100 g with a pad on the jaws; and the elbow's home switch, which sits at 160° of fold, past the new 140° limit. As drawn, this arm can't home its elbow on that switch with the gripper on: a person would move the switch post and the forearm's flag to about 130°, or home the elbow against the opposite end of its travel. It's left unchanged here so that the arm's parts stay chapter 12's, and it's the one thing that stops this arm being built as it stands.
+Read the check's output and the table at the top together, and three things stand out: the current (0.8 A against the shaft, and PETG or steel in the spindle if the arm will ever stall); the upper arm's in-plane stiffness (the 2.1 mm figure, which a person would refine by measuring, and fix by moving the elbow motor back along the arm or thickening the link across its 22 mm); the gripper's friction and grip, which rate the arm for 50 g reliably and 100 g with a pad on the jaws; and the elbow's home switch, which sits at 160° of fold, past the new 140° limit. As drawn, this arm can't home its elbow on that switch with the gripper on: a person would move the switch post and the forearm's flag to about 130°, or home the elbow against the opposite end of its travel. It's left unchanged here so that the arm's parts stay chapter 12's, and it's the one thing that stops this arm being built as it stands.
 
 ### What waits on the bench
 

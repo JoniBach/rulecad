@@ -234,6 +234,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // placed by at and rotate, or by the joint whose child it is.
   const placed = []; // [it, copy], each a motion item, in order
   for (const [it, copies] of placing) {
+    if (it.have != null && !it.bought && !it.motor) throw new Error(`item ${it.id}: "have" marks a bought part or a motor as in hand, and ${it.id} is ${it.object ? `printed (object ${it.object})` : it.beam ? 'a beam, cut from the bar on the cut list' : 'neither'}`);
     if (it.place === false) { // built only for its values ("place": false): a board a print plate's case is sized from
       for (const c of copies) if (!c.src.sub) objects.push({ id: c.id, objName: c.src.objName, version: c.src.version, built: c.src.b, role: c.src.role, unplaced: true });
       continue;
@@ -252,7 +253,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}), ...(it.have === true ? { have: true } : {}) }); // ("have" on the object: a repeat's copies and a component's parts keep it)
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role, ...(src.beam ? { beam: src.beam } : {}) });
     }
   }
@@ -338,6 +339,10 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
+  // A stepper's torque at speed follows its driver's supply: the bought supply's volts, where the assembly has one
+  // (power.mjs holds the same supply against the draw); with none, @rulecad/motors' default
+  const psu = objects.find((o) => o.bought?.part === 'supply' && !o.unplaced)?.built.values.output_voltage;
+  if (psu > 0) for (const d of motion?.drives ?? []) if (d.model?.type === 'stepper') d.supply = psu;
   const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, generated, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;

@@ -275,6 +275,10 @@ EXAMPLES chapter 12 builds one from start to finish.
   State why the current is what it is: the torque it needs, the driver's rating without a heat sink, the motor's heat.
 - **Everything bought is an item.** Motors, drivers, bearings, switches, the supply: `bought` items and `wires` make the
   shopping list (`cad list`), the wiring sheet (`cad wires`) and the firmware's settings (`cad machine`) from one assembly.
+  Ask the person what they already have, and mark those items `"have": true`: `cad list` and the kit then list them as
+  in hand, apart from what is to buy. Design for the parts they have before asking them to buy others.
+- **The supply sets the speed.** A stepper's torque at speed is worked out at the volts of the assembly's bought supply
+  (24 V where it has none): give the supply they will really use, and report `motor.torque` at that voltage.
 - Before moving anything: `cad plot` the drawing and watch the preview. It refuses a stroke that leaves the sheet.
 - **A gait is the same idea for a body.** Give an assembly a `gait` (`legs`, `pattern`, `stride`, `lift`, `period`, `height`, `mass`): the body at the world origin, the hips at z = 0, the feet as anchors. One leg on a stand is a gait of one leg (`"pattern": { "duty": 0.6, "phase": [0] }`). Anchor a round foot at its centre, so the contact rolls with the shin and the height stays true. Report a gait's numbers as they are: quasi-static, the torque from the weight alone, no dynamics.
 - **Say what the machine weighs.** A robot built from these parts is heavier than the first sizing said it was: list `cad list`'s grams and set the gait's `mass` to that, and report the torque margin at the real mass.

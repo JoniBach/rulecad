@@ -30,7 +30,7 @@ export function motorBuilt(spec, num, id) {
   const anchors = Object.fromEntries(Object.entries(model.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis }]));
   const values = Object.fromEntries(Object.entries(model.figures).filter(([, f]) => typeof f.value === 'number').map(([k, f]) => [k, f.value]));
   const entries = Object.entries(model.figures).map(([k, f]) => ({ name: `${model.name}.${k}`, value: f.value, unit: f.unit, rule: f.rule, kind: f.kind, source: f.source, checked: f.checked, set: model.name }));
-  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: null, part: 'motor', mass: model.mass ?? null } } });
+  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: String(spec.model).toLowerCase() === model.name.toLowerCase() ? null : String(spec.model), part: 'motor', mass: model.mass ?? null } } });
 }
 
 // Which joint each motor drives, checked by name; a servo's range and a stepper's step go on the joint. The shaft
@@ -154,12 +154,13 @@ export const atCurrent = (m, spec, torque) => (m.type === 'stepper' && spec.curr
  * assembly's, else workingSpeed), at the current it's set to. motor.torque, motor.mount and fasten.load all read this one.
  * @param {{ model: object, spec: object }} d a drive (an assembly's motor item) @returns {number} N m
  */
-export const mountTorque = (d) => atCurrent(d.model, d.spec, performance(d.model, { speed: workingSpeed(d.model, d.spec) }).motor.torque);
+export const mountTorque = (d) => atCurrent(d.model, d.spec, performance(d.model, { speed: workingSpeed(d.model, d.spec, d.supply), supply: d.supply }).motor.torque);
 
-// A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed
-export function workingSpeed(model, spec) {
+// A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed (a stepper's
+// at its driver's supply, volts: the assembly's, else the package's default)
+export function workingSpeed(model, spec, supply) {
   if (spec.speed != null) return spec.speed;
-  const p = performance(model, {});
+  const p = performance(model, { supply });
   return model.type === 'dc' ? p.limit / 2 : model.figures.pull_in_torque ? p.limit : model.type === 'servo' ? p.limit : model.type === 'brushless' ? p.limit / 4 : p.limit / 5;
 }
 
@@ -184,9 +185,9 @@ export function motorChecks(s, f, helpers, materialName) {
     else f('pass', `${d.id}'s shaft is on ${d.joint}'s axis`, null, { code: 'motor.axis', at: S });
     // Everything it drives that carries a load
     const driven = motion.joints.filter((x) => trainFrom(motion, x.id).root === d.joint).map((x) => ({ j: x, t: trainFrom(motion, x.id), load: worstLoad(motion, loads, x, d, helpers) })).filter((x) => x.load.torque > 0);
-    const motorSpeed = workingSpeed(m, d.spec), loaded = driven.length ? driven : [];
+    const motorSpeed = workingSpeed(m, d.spec, d.supply), loaded = driven.length ? driven : [];
     if (!loaded.length) {
-      const here = performance(m, { speed: motorSpeed });
+      const here = performance(m, { speed: motorSpeed, supply: d.supply });
       f('info', `${d.id} gives ${n3(here.motor.torque)} N m at ${n3(motorSpeed, 1)} rpm; no loads on what it drives, so nothing to check that against (add "loads")`, null, { code: 'motor.torque' });
       continue;
     }
@@ -207,12 +208,12 @@ export function motorChecks(s, f, helpers, materialName) {
       back += (still / reduction) * ηback; backOn += still / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
-    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = mountTorque(d), margin = need ? avail / need : Infinity;
+    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed, supply: d.supply }), avail = mountTorque(d), margin = need ? avail / need : Infinity;
     const main = lines[0], what = main.unit === 'N m' ? `${n3(main.load.torque)} N m` : `${n3(main.load.torque, 2)} N`, gives = main.unit === 'N m' ? `${n3(avail * main.reduction * main.η)} N m` : `${n3((avail * main.reduction * main.η * Math.PI * 1000) / (main.t.slide * 180), 1)} N`;
     const trust = rated.rests.filter((k) => k !== 'spec' && k !== 'measured'), caveat = trust.length ? ` (rests on ${trust.join(' and ')} figures: measure it)` : '';
     const level = margin < 1 ? 'fail' : margin < K ? 'warn' : 'pass', fix = margin < 1 && main.t.slide == null ? ` A ratio of ${n3((main.reduction * K) / margin, 1)}:1 would give it ${K} times` : '';
-    f(level, `${d.id} into ${main.x.id}${lines.length > 1 ? ` and ${lines.length - 1} more` : ''}: ${gives} there against ${what} needed${main.load.where ? ` (worst: ${main.load.where})` : ''}, ${n3(margin, 2)} times over${caveat}.${fix}`, level === 'pass' ? null : `${d.id}: ${n3(margin, 2)}× torque`, { code: 'motor.torque', at: at(main.x), refs: { item: d.id, joint: main.x.id }, values: { available: avail * main.reduction * main.η, needed: main.load.torque, margin } });
-    if (d.spec.speed != null && performance(m, { speed: motorSpeed }).findings.some((x) => x.code === 'motor.speed')) f('fail', `${d.id} is asked for ${motorSpeed} rpm, past what a ${m.name} does`, `${d.id}: too fast`, { code: 'motor.speed', refs: { item: d.id } });
+    f(level, `${d.id} into ${main.x.id}${lines.length > 1 ? ` and ${lines.length - 1} more` : ''}: ${gives} there against ${what} needed${main.load.where ? ` (worst: ${main.load.where})` : ''}, ${n3(margin, 2)} times over${d.supply ? `, at ${n3(motorSpeed, 1)} rpm on its supply's ${n3(d.supply, 1)} V` : ''}${caveat}.${fix}`, level === 'pass' ? null : `${d.id}: ${n3(margin, 2)}× torque`, { code: 'motor.torque', at: at(main.x), refs: { item: d.id, joint: main.x.id }, values: { available: avail * main.reduction * main.η, needed: main.load.torque, margin, ...(d.supply ? { supply: d.supply, rpm: motorSpeed } : {}) } });
+    if (d.spec.speed != null && performance(m, { speed: motorSpeed, supply: d.supply }).findings.some((x) => x.code === 'motor.speed')) f('fail', `${d.id} is asked for ${motorSpeed} rpm, past what a ${m.name} does`, `${d.id}: too fast`, { code: 'motor.speed', refs: { item: d.id } });
     else {
       const slideRate = main.x.type === 'prismatic' ? (speedOut * 360 * main.t.slide) / 60 : null, span = slideRate ? main.x.dofs[0][1] - main.x.dofs[0][0] : 0, time = slideRate ? span / slideRate : 60 / speedOut; // along a slide's travel, or a turn
       f('info', `${main.x.id} moves at ${slideRate ? `${n3(slideRate, 2)} mm/s` : `${n3(speedOut, 2)} rpm`} with ${d.id} at ${n3(motorSpeed, 1)} rpm: ${slideRate ? 'its whole range' : 'a turn'} in ${n3(time, 1)} s`, null, { code: 'motor.speed', at: at(main.x), values: { rpm: speedOut, time } });

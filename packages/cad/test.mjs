@@ -4050,7 +4050,9 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
     const power = arm.wires.find((w) => w.id === 'power');
     const write = (items, wires = [{ ...power, via: [{ along: 'rail.front', from: 300, to: 60 }] }]) => fs.writeFileSync(at('assemblies/rack.json'), JSON.stringify({ title: 'rack', kind: 'fit',
       items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [400, 0, 0] }, ...items], wires }));
-    write([{ ...mine('shield'), mount: { on: 'rail.top@100' } }, { ...mine('psu'), mount: { on: 'rail.top@-90' } }]);
+    // (the arm now runs on a 12 V bench supply, which stands on the bench and has no mounting holes: the Mean Well it
+    // was drawn with before, an LRS-50-24, is the supply that mounts here)
+    write([{ ...mine('shield'), mount: { on: 'rail.top@100' } }, { id: 'psu', bought: 'supply-24v', variant: 'LRS-50-24', mount: { on: 'rail.top@-90' } }]);
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('rack/rack'), f = checkAssembly(s);
@@ -5966,5 +5968,100 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
     write('M5 hex printed', 1);
     const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint'], { cwd: ws, encoding: 'utf8' });
     assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /fasten 1: M5 has a 0\.8 mm pitch, finer than x1c prints.*The smallest metric thread that would print is M6/s);
+  } finally { done(); }
+});
+
+test('a stepper on a supply: its torque at speed follows the supply\'s volts, not the 24 V default, and the working speed with it', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  const torque = (a) => { const r = JSON.parse(cad('check', `home/${a}`, '--json')); assert.ok(r.findings, JSON.stringify(r)); return r.findings.find((x) => x.code === 'motor.torque' && x.values); };
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['arm'] });
+    write('projects/home/objects/arm.json', { name: 'arm', version: '0.1.0', anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: [100, 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 110, unit: 'mm', rule: 'The arm' } } });
+    write('projects/home/objects/arm.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, 6, 4], center: [v.long / 2 + 12, 0, 40] }) }\n");
+    const arm = (motor, more = []) => ({ title: 'Arm', kind: 'fit', items: [{ id: 'm', motor: { model: '17HS4401', drives: 'j', current: 0.5, ...motor }, at: [0, 0, 0], rotate: [-90, 0, 0] }, { id: 'arm', object: 'arm' }, ...more],
+      joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'arm.axis' }], loads: [{ joint: 'j', torque: 0.02 }] });
+    const psu = { id: 'psu', bought: 'supply-12v', set: { output_current: 1.5 }, at: [400, 400, 0] };
+    // The 17HS4401 (nema17's variant): 0.4 N m holding, 4.2 mH, 1.5 A, 200 full steps a turn. Moving, 0.4 / √2 = 0.2828 N m,
+    // flat to the corner speed 60 V / (2 L I 200): at 24 V 60 × 24 / (2 × 0.0042 × 1.5 × 200) = 571.4 rpm, at 12 V 285.7 rpm.
+    // At 300 rpm on 24 V it is still flat: 0.2828 × 0.5 / 1.5 = 0.0943 N m at 0.5 A. On 12 V it is past the corner:
+    // 0.2828 × 285.7 / 300 = 0.2694 N m, × 0.5 / 1.5 = 0.0898 N m
+    write('projects/home/assemblies/no-supply.json', arm({ speed: 300 }));
+    write('projects/home/assemblies/on-12v.json', arm({ speed: 300 }, [psu]));
+    const at24 = torque('no-supply'), at12 = torque('on-12v');
+    assert.ok(Math.abs(at24.values.available - 0.4 / Math.SQRT2 / 3) < 1e-6, `${at24.values.available}: the default 24 V, flat at 300 rpm`);
+    assert.equal(at24.values.supply, undefined); assert.doesNotMatch(at24.text, /supply's/);
+    assert.ok(Math.abs(at12.values.available - (0.4 / Math.SQRT2) * (285.714 / 300) / 3) < 1e-5, `${at12.values.available}: past the 12 V corner`);
+    assert.equal(at12.values.supply, 12); assert.match(at12.text, /at 300 rpm on its supply's 12 V/);
+    // with no speed given, a stepper works at its corner speed, which is the supply's: 285.7 rpm on 12 V, not 571.4
+    write('projects/home/assemblies/corner.json', arm({}, [psu]));
+    const corner = torque('corner');
+    assert.ok(Math.abs(corner.values.rpm - 60 * 12 / (2 * 0.0042 * 1.5 * 200)) < 0.01, String(corner.values.rpm));
+    assert.ok(Math.abs(corner.values.available - 0.4 / Math.SQRT2 / 3) < 1e-6, 'flat to the corner, so the whole running torque there');
+  } finally { done(); }
+});
+
+test('"have": a bought part or motor in hand is listed apart from what is to buy, on cad list, its JSON and the kit\'s buy.csv; a printed item cannot be had', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['block'] });
+    write('projects/home/objects/block.json', { name: 'block', version: '0.1.0', variables: { long: { value: 30, unit: 'mm', rule: 'The block' } } });
+    write('projects/home/objects/block.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, 20, 10], center: [0, 0, 5] }) }\n");
+    const items = (have) => [{ id: 'block', object: 'block' }, { id: 'm', motor: { model: '17HS4401' }, at: [200, 0, 0], ...(have ? { have: true } : {}) },
+      { id: 'b1', bought: 'bearing-608', at: [0, 100, 0], ...(have ? { have: true } : {}) }, { id: 'b2', bought: 'bearing-608', at: [0, 150, 0] }];
+    write('projects/home/assemblies/none.json', { title: 'None in hand', kind: 'fit', items: items(false) });
+    write('projects/home/assemblies/some.json', { title: 'Some in hand', kind: 'fit', items: items(true) });
+    // nothing in hand: the list as it always was, one Bought heading, the two bearings on one line
+    const none = cad('list', 'home/none');
+    assert.match(none, /\nBought\n/); assert.doesNotMatch(none, /in hand/); assert.match(none, /2 ×\s+bearing-608/);
+    assert.match(none, /1 ×\s+nema17 \(17HS4401\)\s+a motor/, 'the motor by its variant');
+    // in hand: what is to buy first, then what is in hand, the bearing had and the one to buy on lines of their own
+    const some = cad('list', 'home/some'), toBuy = some.indexOf('Bought, to buy'), had = some.indexOf('Bought, in hand');
+    assert.ok(toBuy > 0 && had > toBuy, some);
+    assert.match(some.slice(toBuy, had), /1 ×\s+bearing-608\s+a bearing.*b2/); assert.doesNotMatch(some.slice(toBuy, had), /nema17|b1/);
+    assert.match(some.slice(had), /1 ×\s+bearing-608\s+a bearing.*b1/); assert.match(some.slice(had), /1 ×\s+nema17 \(17HS4401\)/);
+    const l = JSON.parse(cad('list', 'home/some', '--json'));
+    assert.deepEqual(l.bought.map((b) => [b.set, b.variant ?? null, b.qty, b.have ?? false, b.items]).sort(), [['bearing-608', null, 1, false, ['b2']], ['bearing-608', null, 1, true, ['b1']], ['nema17', '17HS4401', 1, true, ['m']]].sort());
+    // the kit's buy.csv says which rows are in hand, and its build page puts them under their own heading
+    const k = JSON.parse(cad('kit', 'home/some', '--json')), dir = path.join(ws, k.dir);
+    const csv = fs.readFileSync(path.join(dir, 'buy.csv'), 'utf8').replace(/\r\n/g, '\n');
+    assert.match(csv, /\nin hand,1,bearing-608,none: in hand,b1\n/); assert.match(csv, /\nbought,1,bearing-608,,b2\n/); assert.match(csv, /\nin hand,1,nema17 \(17HS4401\),none: in hand,m\n/);
+    const page = fs.readFileSync(path.join(dir, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+    assert.ok(page.indexOf('### Bought parts') < page.indexOf('### In hand'), 'to buy, then in hand');
+    // a printed part is never in hand: refused by name, with what can be
+    write('projects/home/assemblies/bad.json', { title: 'Bad', kind: 'fit', items: [{ id: 'block', object: 'block', have: true }] });
+    assert.match(cad('check', 'home/bad'), /item block: "have" marks a bought part or a motor as in hand, and block is printed \(object block\)/);
+    // "have" holds on a repeat's copies (r-0, r-1) and on a component's parts (k.s): all three bearings in hand, none to buy
+    write('projects/home/assemblies/sub.json', { title: 'Sub', kind: 'fit', items: [{ id: 's', bought: 'bearing-608', have: true }] });
+    write('projects/home/assemblies/top.json', { title: 'Top', kind: 'fit', items: [{ id: 'k', assembly: 'sub', at: [0, 200, 0] },
+      { id: 'r', bought: 'bearing-608', have: true, at: [0, 0, 0], repeat: { x: { count: 2, step: 40 } } }, { id: 'b', bought: 'bearing-608', at: [0, 100, 0] }] });
+    const top = JSON.parse(cad('list', 'home/top', '--json'));
+    assert.deepEqual(top.bought.map((b) => [b.set, b.qty, b.have ?? false, [...b.items].sort()]).sort(), [['bearing-608', 1, false, ['b']], ['bearing-608', 3, true, ['k.s', 'r-0', 'r-1']]].sort());
+    const topText = cad('list', 'home/top');
+    assert.match(topText.slice(topText.indexOf('Bought, in hand')), /3 ×\s+bearing-608/, topText);
+  } finally { done(); }
+});
+
+test('the bench arm on the parts its builder has: a 17HS4401 at each joint on 12 V, DRV8825s at 1/8 step, and a buy list that names nothing in hand', () => {
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/arm']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    const asm = (name) => JSON.parse(fs.readFileSync(path.join(ws, `projects/arm/assemblies/${name}.json`), 'utf8'));
+    // what is on the bench (2026-11-20): 17HS4401 steppers, DRV8825s on a CNC Shield V3 with M0 and M1 jumpered (1/8),
+    // a 12 V bench supply, one SG90
+    for (const [name, currents] of [['arm', [0.5, 0.5]], ['arm-upright', [0.8, 0.5]]]) {
+      const a = asm(name), item = (id) => a.items.find((x) => x.id === id);
+      assert.deepEqual(['m1', 'm2'].map((id) => [item(id).motor.model, item(id).motor.current, item(id).motor.microsteps, item(id).have]), [['17HS4401', currents[0], 8, true], ['17HS4401', currents[1], 8, true]], name);
+      assert.equal(item('psu').bought, 'supply-12v'); assert.ok(item('psu').set.output_current < 2, 'the bench supply\'s limit, under 2 A');
+      assert.ok(!a.items.some((x) => x.motor?.model === 'nema14' || x.bought === 'supply-24v'), `${name}: no part the builder lacks`);
+      assert.equal(a.items.filter((x) => x.motor?.model === 'sg90').length, 1, `${name}: the one SG90 (the upright arm's gripper takes the pen lift's)`);
+    }
+    // the buy list: the switches and the bearing to buy, everything on the bench in hand
+    const l = JSON.parse(cad('list', 'arm/arm', '--json')), line = (b) => `${b.set}${b.variant ? ` (${b.variant})` : ''} x${b.qty}`;
+    assert.deepEqual(l.bought.filter((b) => !b.have).map(line).sort(), ['bearing-6800 x1', 'endstop-10t85 x2']);
+    assert.deepEqual(l.bought.filter((b) => b.have).map(line).sort(), ['cnc-shield-v3 x1', 'drv8825 x2', 'nema17 (17HS4401) x2', 'sg90 x1', 'supply-12v x1']);
+    assert.ok(l.fasteners.length && l.wires.length, 'screws and wire, which are to buy');
   } finally { done(); }
 });
