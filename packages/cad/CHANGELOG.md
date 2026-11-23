@@ -19,7 +19,12 @@ and head, the parts it passes through and the part it ends in.
   check looks inside one part at a time, so it never saw two parts printed in place side by side).
 - `"printInPlace": [items]` on an assembly: the items printed together as one object printed in place. The assembly
   order never takes them apart from each other (before, a planet enclosed by the rings it was printed inside was
-  `assembly.order`'s "can't be reached in any order"). A name that isn't an item is refused by name.
+  `assembly.order`'s "can't be reached in any order"). A name that isn't an item is refused by name. `cad order`
+  gives them as one step ("printed together in place (one print)") and `cad list` as one printed row, their grams and
+  print minutes added, where each was a step and a print of its own.
+- A motor item's `"screw"` may name a whole screw, thread, length and head (`"M3x8 hex"`): `cad list` buys that screw
+  and `cad order` names the tool its head takes (a 5.5 mm socket or spanner on an M3 hexagon head, ISO 4017), where
+  every motor's screws were cap screws turned with a hex key.
 - A `"shaft": "slide"` fit holds the bore to a slide fit as printed (`shaft.slide`): the drawn gap less half the
   printer's `hole_comp` must clear the shaft. A slide fit is never pressed on, so it has no hoop check. The shaft fits
   now read `hole_comp` from the assembly's printer rules (0.1 mm on the X1C, as before).
