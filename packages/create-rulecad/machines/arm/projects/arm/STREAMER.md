@@ -21,7 +21,7 @@ hardware is your test: the arm's measured milestone.
 
 1. Flash the sketch: `arduino-cli compile --fqbn arduino:avr:uno firmware/arm` then `arduino-cli upload -p <port> --fqbn arduino:avr:uno firmware/arm`, or open `firmware/arm/arm.ino` in the Arduino IDE and upload it.
 2. Write the machine description and a step file: `npx cad machine arm/arm` writes `exports/arm/arm.machine.json`, and `npx cad plot arm/arm projects/arm/drawings/test.svg` writes `exports/arm/arm-test.steps.json`. `npx cad plot arm/arm --calibrate` writes the calibration drawing (a 100 mm square and a circle at three places on the sheet).
-3. Dry run, with no board: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --dry-run`. It prints each line it would send with the answer the streamer would give, then a summary. `--quiet` prints the summary only.
+3. Dry run, with no board: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --dry-run`. It prints each line it would send with the answer the streamer would give, then a summary. `--quiet` prints the summary only. A dry run has no clock, so it takes each block as finished before the next line: its answer to `?` is the positions summed from the blocks so far, with 0 blocks queued.
 4. Draw: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --port <port>`. It turns the drivers on, homes each axis, sends the file, reports every hundredth line, and turns the drivers off. `--no-home` skips homing.
 
 ## The line protocol

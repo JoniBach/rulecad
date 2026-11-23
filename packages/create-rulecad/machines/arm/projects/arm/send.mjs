@@ -36,10 +36,12 @@ export function homeLines(machine) {
 
 /** What the streamer would answer to each line, so the protocol can be tested with no board. Throws at the first line it
  * would refuse, naming it. With a machine (cad machine's description), each axis's share of a block's rate is held to that
- * axis's maxRate too. @param {string[]} lines @param {{ machine?: object }} [o]
- * @returns {{ lines: number, m: number, p: number, w: number, h: number, e: number, d: number, peakRate: number, axisPeaks: number[], said: string[] }} */
+ * axis's maxRate too. A dry run has no clock, so it takes each block as finished before the next line: `?` answers the
+ * positions summed from the blocks so far (a home sets its axis to 0) with 0 blocks queued, and `!` answers `ok`.
+ * @param {string[]} lines @param {{ machine?: object }} [o]
+ * @returns {{ lines: number, m: number, p: number, w: number, h: number, e: number, d: number, '?': number, '!': number, peakRate: number, axisPeaks: number[], position: number[], said: string[] }} */
 export function dryRun(lines, { machine } = {}) {
-  const seen = { m: 0, p: 0, w: 0, h: 0, e: 0, d: 0 }, axisPeaks = [0, 0, 0], said = [];
+  const seen = { m: 0, p: 0, w: 0, h: 0, e: 0, d: 0, '?': 0, '!': 0 }, axisPeaks = [0, 0, 0], position = [0, 0, 0], said = [];
   let peak = 0;
   for (const [i, l] of lines.entries()) {
     const [c, ...args] = l.split(' '), n = args.map(Number), at = `line ${i + 1} ("${l}")`;
@@ -60,11 +62,13 @@ export function dryRun(lines, { machine } = {}) {
         if (axis?.maxRate && r > axis.maxRate * (1 + 1e-6) + 0.5) throw new Error(`${at}: axis ${axis.name ?? k} at ${Math.round(r)} steps/s, past the machine's ${axis.maxRate} for it`);
       }
       peak = Math.max(peak, fastest);
+      for (const k of [0, 1, 2]) position[k] += n[k];
     }
+    if (c === 'h') position[n[0]] = 0;
     seen[c]++;
-    said.push(`${l}  ok`);
+    said.push(`${l}  ${c === '?' ? `q ${position.join(' ')} 0` : 'ok'}`);
   }
-  return { lines: lines.length, ...seen, peakRate: peak, axisPeaks, said };
+  return { lines: lines.length, ...seen, peakRate: peak, axisPeaks, position, said };
 }
 
 async function send(port, lines, say) {

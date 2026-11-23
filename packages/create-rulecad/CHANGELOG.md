@@ -14,7 +14,8 @@ screw by thread and head, the parts it passes through and the part it ends in.
   instead of twice. On a simulated Uno its loop now keeps up with 21505 steps/s on three axes at once, up from 9417.
   Its STEP pulse is 3.06 µs high (it was 6.3 µs), over the DRV8825's 1.9 µs minimum.
 - `projects/arm/send.mjs --dry-run` prints each line it would send with the answer the streamer would give (`--quiet`
-  for the summary only), and with `--machine` holds each axis's share of a block's rate to that axis's `maxRate`.
+  for the summary only), and with `--machine` holds each axis's share of a block's rate to that axis's `maxRate`. It
+  takes the protocol's `?` and `!` lines too: `?` answers `q` with the positions summed from the blocks before it.
 - `projects/arm/STREAMER.md` writes up the serial protocol, the timing and how the sketch is checked. No printed size
   moved.
 

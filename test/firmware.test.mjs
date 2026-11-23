@@ -68,6 +68,18 @@ test('firmware: the sender holds a block to the streamer\'s MAX_RATE and to each
   assert.throws(() => send.dryRun(['x']), /no such command \(the streamer takes e, d, h, p, w, m, \? and !\)/);
 });
 
+test('firmware: the dry run takes the protocol\'s own ? and ! lines, and answers ? as the streamer would', async () => {
+  const send = await import(pathToFileURL(`${ROOT}${ARM}/send.mjs`).href);
+  // Positions as of the last step, every block taken as finished: 1000 + 200 = 1200 on axis 0, 500 - 100 = 400 on
+  // axis 1; then a home of axis 1 calls it 0. Queued blocks: 0, so the answer is "q 1200 400 0 0", then "q 1200 0 0 0".
+  const r = send.dryRun(['e', 'm 1000 500 0 0 6000 6000 60000 300 0', 'm 200 -100 0 0 2000 0 60000 20 20', '?', '!', 'h 1 -1 1000 50', '?', 'd']);
+  assert.deepEqual([r['?'], r['!'], r.h, r.position], [2, 1, 1, [1200, 0, 0]]);
+  assert.deepEqual(r.said.filter((s) => /^[?!]/.test(s)), ['?  q 1200 400 0 0', '!  ok', '?  q 1200 0 0 0']);
+  // the streamer's own answer to ?, from arm.ino, is "q " then three positions each followed by a space, then the count
+  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '\?'\) \{ Serial\.print\(F\("q "\)\); for \(uint8_t i = 0; i < 3; i\+\+\) \{ Serial\.print\(position\[i\]\); Serial\.print\(' '\); \} Serial\.println\(count\(\)\)/);
+  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '!'\) \{ head = tail = 0; running = false; waiting = false; Serial\.println\(F\("ok"\)\)/);
+});
+
 test('firmware: the streamer refuses a block past MAX_RATE by name, and steps its axes on port D', () => {
   const ino = read(`${ARM}/firmware/arm/arm.ino`);
   assert.match(ino, /if \(b\.peak > MAX_RATE \|\| b\.entry > MAX_RATE \|\| b\.exit_ > MAX_RATE\) \{ Serial\.println\(F\("error: rate"\)\)/);
