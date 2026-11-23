@@ -12,7 +12,9 @@ why. Releases before this file was started are described in their pull requests 
   servo's double horn turning between their bars. The springs grip, so the gripper holds with the power off; each
   guide stops both ways on a tongue in a slot in its fork. The model gives the horn's stroke and push, the servo's
   margin against the springs, the grip on an object by its width and what that holds, the stops against the leaves'
-  strain limit (with the servo stalled on a stop at its full torque, not the share counted on to open), the leaves' print findings and the grams, as findings in the kit's one shape, with `at` for building a
+  strain limit (the servo driven on past open at its full stall torque, turning the horn until the stops hold it or
+  through to its toggle at 90°, each bar bending between its tip and its fork; it warns when the stops hold with less
+  than the margin asked and the toggle's travel is past 0.8), the leaves' print findings and the grams, as findings in the kit's one shape, with `at` for building a
   palm round it. Bad input is refused by name before any sums. The README compares it with the arm's hand-built
   gripper, and the workspace example has both (`arm/gripper`, `arm/jaws`).
 
