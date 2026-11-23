@@ -16,3 +16,4 @@ export { beamSystem, equilibrium, energyOf, shapeOf, fixedLoads } from './beams.
 export { place, combine } from './modules.mjs';
 export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';
 export { shapeCurve, meander } from './synth.mjs';
+export { gripperJaws, gripperJawsModel } from './gripper.mjs';

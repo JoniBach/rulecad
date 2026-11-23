@@ -24,6 +24,7 @@
     "curves.mjs",
     "outofplane.mjs",
     "synth.mjs",
+    "gripper.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -40,6 +41,7 @@
     "curves.d.mts",
     "outofplane.d.mts",
     "synth.d.mts",
+    "gripper.d.mts",
     "README.md",
     "LICENSE"
   ],
