@@ -1065,8 +1065,9 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   near(v.xs, v.block_x - m.at.back, 0.01, 'xs'); near(measureBoundingBox(gripperJaws(p, { part: 'ground' }))[0][0] + v.xs, v.block_x, 0.01, 'the drawn back');
   // the rest angle the anchors use is the model's: asin((14 - 2.25) / 18) = 40.75°
   near(v.rest_a, m.rest, 0.01, 'rest_a');
-  // 100 g at 300 mm/s²: 0.1 × (9.80665 + 0.3) = 1.0107 N, twice over by friction 0.4 on two jaws needs 1.2633 N a jaw;
-  // at k 0.682 N/mm that is (w - 2) / 2 × 0.682 >= 1.2633, w >= 5.70 for 50 g, and twice that push, w >= 9.41 for 100 g
+  // 100 g at 300 mm/s²: 0.1 × (9.80665 + 0.3) = 1.0107 N; twice over by friction 0.4 on two jaws needs
+  // 2 × 1.0107 / (2 × 0.4) = 2.5267 N a jaw; at k 0.6824 N/mm that is (w - 2) / 2 × 0.6824 >= 2.5267, w >= 9.405.
+  // The widest that goes in: 2 + 2 × 4.5635 - 2 × 0.3 = 10.527
   near(m.rated, 9.41, 0.01, '100 g held twice over from 9.41 mm'); near(m.widest, 10.53, 0.01, 'up to 10.53 mm');
   // the posts between the forks: they close to 7.58 - 0.85 = 6.73 at their stops, the posts are 5.9 each side
   assert.ok(m.at.guide - (p.leaf.apart / 2 + p.leaf.thickness / 2 + p.leaf.fillet + 0.5) - v.stop_close - v.post_y >= 0.3, 'the posts clear the closed forks by a print gap');
