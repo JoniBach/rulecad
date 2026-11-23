@@ -13,14 +13,21 @@
 //                          a block: signed steps per axis, then the major axis's step rate at entry, peak and exit
 //                          (steps/s), its acceleration (steps/s²), and the major steps spent speeding up and slowing down.
 //                          "error: rate" if its peak is past MAX_RATE, "error: block" if it moves nothing
+//                          (a block must last as long as its line and answer take to cross the serial line: send.mjs
+//                          refuses a shorter one, and cad plot plans none shorter than the task's blockTime)
 //   ?                      prints "q <pos0> <pos1> <pos2> <blocks queued>" (positions in steps, as of the last block finished)
 //   !                      stop at once, empty the queue, drivers stay on: answers "ok"
 //
+// "error: line" if a line is over 95 characters or a number in it is not a whole number.
+//
 // Timing: steps are timed in the main loop from micros(), with serial read between them, so the servo library keeps its
-// timer. The step and direction pins are all on the Uno's port D (D2 to D7), so the axes due on a tick are stepped in one
-// write, and a step that changes speed costs one division (a step at the cruise none). MAX_RATE is the fastest block it
-// takes: on a simulated 16 MHz Uno (scripts/firmware.mjs --simulate, in CI) the loop keeps up with more than that with
-// all three axes stepping at once, speeding up and slowing down as well as at the cruise.
+// timer. A line is parsed a character at a time as it arrives, so no step waits for a whole line to be read, and a block
+// that follows another keeps its time: its first step is one gap after the last block's last. The step and direction
+// pins are all on the Uno's port D (D2 to D7), so the axes due on a tick are stepped in one write. A step that changes
+// speed costs a division; past 5000 steps/s that is done every other step, over both steps' time. MAX_RATE is the
+// fastest block it takes: on a simulated 16 MHz Uno (scripts/firmware.mjs --simulate, in CI) the loop keeps up with more
+// than that with all three axes stepping at once, speeding up and slowing down as well as at the cruise, and with the
+// shortest blocks the sender passes streaming in.
 // Compiled for the Uno and run on the simulated one in CI; moving hardware is a bench test (the machine's measured milestone).
 #include <Servo.h>
 
