@@ -1,0 +1,8 @@
+{
+  "name": "enclosures",
+  "description": "Boxes and lids that close without a screw: a round pot whose lid clicks on with an annular snap, sized by @rulecad/fixings from the pull it must stay on against.",
+  "material": "PLA",
+  "objects": [
+    "snap-pot"
+  ]
+}

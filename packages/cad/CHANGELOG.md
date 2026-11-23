@@ -23,6 +23,14 @@ and head, the parts it passes through and the part it ends in.
 - The thigh (`leg/thigh`): the knee motor's four M3 holes move from the NEMA 14's 26 mm square to the 17HS4401's
   31 mm square, so the 17HS4401 bolts on. Reprint a thigh printed for a NEMA 14.
 
+## 0.7.66: the Uno streamer keeps time (#181)
+
+### Added
+
+- An assembly's `task` takes `blockTime`, seconds: `cad plot` plans no move shorter (robots' `minBlockTime`), for a
+  streamer that takes one line a block over serial. `cad machine` writes it into the machine's `task`. No printed size
+  moved.
+
 ## 0.7.65: the arm on the parts its builder has
 
 ### Changed
