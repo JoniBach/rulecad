@@ -106,6 +106,8 @@ export function assemblyOrder(s) {
   if (!all.length) return { steps: [], stuck: null };
   const by = new Map(all.map((g) => [g.id, g])), ids = all.map((g) => g.id), joints = s.motion.joints, items = s.motion.items.map((x) => x[0]);
   const bearing = (id) => by.get(id)?.bought?.part === 'bearing';
+  // Items printed together in place (the assembly's printInPlace) come off the bed as one: one step, never taken apart
+  const printSet = new Set(Array.isArray(s.a?.printInPlace) ? s.a.printInPlace.filter((id) => by.has(id)) : []);
   // How far each part is from the base along joints and fastenings: nearer goes first
   const links = new Map(ids.map((id) => [id, new Set()])), tie = (a, b) => { if (links.has(a) && links.has(b) && a !== b) { links.get(a).add(b); links.get(b).add(a); } };
   const fastening = s.fits.filter((x) => x.fastens || x.seat != null || x.shaft != null || x.engage != null);
@@ -178,6 +180,14 @@ export function assemblyOrder(s) {
     while (rest.length) {
       let pick = null;
       for (const p of rest) {
+        if (printSet.has(p.id) && printSet.size > 1) { // (the whole print, or nothing of it)
+          const group = [...printSet].map((id) => rest.find((q) => q.id === id)).filter(Boolean), others = rest.filter((q) => !printSet.has(q.id));
+          if (group.some((q) => waits(q, others))) continue;
+          if (!others.length) { pick = { group, d: [0, 0, 1], sub: { off: [] }, print: true }; break; }
+          const d = dirsFor(p).find((x) => group.every((q) => others.every((o) => allowedPair(s, q, o) || !blockers(q, o, x, h, rasterOf))));
+          if (d) { pick = { group, d, sub: { off: [] }, print: true }; break; }
+          continue;
+        }
         if (waits(p, rest)) continue;
         if (rest.length === 1) { pick = { p, d: [0, 0, 1] }; break; }
         const d = dirsFor(p).find((x) => free(p, rest, x));
@@ -205,14 +215,14 @@ export function assemblyOrder(s) {
   const apart = takeApart(all);
   if (apart.stuck) return { steps: [], stuck: apart.stuck };
   // Put together: last off is first on, a set built up on its own and then fitted as one
-  const seq = [], lay = (off) => { for (const x of [...off].reverse()) { if (x.group) { lay(x.sub.off); seq.push({ group: x.group, d: x.d }); } else seq.push(x); } };
+  const seq = [], lay = (off) => { for (const x of [...off].reverse()) { if (x.group) { lay(x.sub.off); seq.push({ group: x.group, d: x.d, ...(x.print ? { print: true } : {}) }); } else seq.push(x); } };
   lay(apart.off);
   const at = new Map(), steps = [];
-  // a motor's mounting screws, on the fit that fastens it (motorScrews): counted, with the key that turns them
-  const motorFits = new Map(motorScrews(s, { placeItems, jointValues }).map((m) => [m.fit, { fastener: m.name, count: m.count, ...(m.key != null ? { key: `${+m.key.toFixed(3)} mm hex key` } : {}) }]));
+  // a motor's mounting screws, on the fit that fastens it (motorScrews): counted, with the tool that turns them
+  const motorFits = new Map(motorScrews(s, { placeItems, jointValues }).map((m) => [m.fit, { fastener: m.name, count: m.count, ...(m.tool ? { key: m.tool } : {}) }]));
   seq.forEach((x, i) => { for (const g of x.group ?? [x.p]) at.set(g.id, i); });
   for (const [i, x] of seq.entries()) {
-    if (x.group) { steps.push({ items: x.group.map((g) => g.id), object: null, dir: round(x.d), fasteners: [], together: true }); continue; }
+    if (x.group) { steps.push({ items: x.group.map((g) => g.id), object: null, dir: round(x.d), fasteners: [], together: true, ...(x.print ? { printed: true } : {}) }); continue; }
     const { p, d } = x, list = [...new Set(s.fits.filter((f) => [...names(f.a), ...names(f.b)].includes(p.id) && (f.fastens || f.seat != null || f.fastener) && [...names(f.a), ...names(f.b)].every((n) => (at.get(n) ?? 0) <= i)))];
     steps.push({ items: [p.id], object: p.object, dir: round(d), fasteners: list.map((f) => ({ fit: f.note || f.label || `${f.a} to ${f.b}`, ...(f.fastener ? { fastener: f.fastener } : {}), ...(f.count != null ? { count: f.num(f.count) } : {}), ...(f.key ? { key: f.key } : {}), ...(f.tighten ? { tighten: f.tighten } : {}), ...(!f.fastener ? motorFits.get(f) : {}) })) });
   }
@@ -221,9 +231,9 @@ export function assemblyOrder(s) {
   for (const st of steps) {
     const last = merged.at(-1);
     if (last && st.object && !st.together && last.object === st.object && last.dir.join() === st.dir.join() && JSON.stringify(last.fasteners.map((f) => f.fit)) === JSON.stringify(st.fasteners.map((f) => f.fit))) last.items.push(...st.items);
-    else merged.push({ items: [...st.items], object: st.object, dir: st.dir, fasteners: st.fasteners, ...(st.together ? { together: true } : {}) });
+    else merged.push({ items: [...st.items], object: st.object, dir: st.dir, fasteners: st.fasteners, ...(st.together ? { together: true } : {}), ...(st.printed ? { printed: true } : {}) });
   }
-  merged.forEach((st, i) => { st.n = i + 1; st.text = `${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}${st.together ? ' go on as one' : i ? ` goes on${st.items.length > 1 ? ', one by one' : ''}` : ' first'}${st.fasteners.length ? `: ${st.fasteners.map(fastenerText).join('; ')}` : ''}`; });
+  merged.forEach((st, i) => { st.n = i + 1; st.text = `${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}${st.printed ? `, printed together in place (one print)${i ? ', go on as one' : ', first'}` : st.together ? ' go on as one' : i ? ` goes on${st.items.length > 1 ? ', one by one' : ''}` : ' first'}${st.fasteners.length ? `: ${st.fasteners.map(fastenerText).join('; ')}` : ''}`; });
   return { steps: merged, stuck: null, covers };
 }
 
@@ -232,7 +242,7 @@ export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null 
 
 // Cached by what the parts are and where they are, with everything else that changes the answer
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([8, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([9, s.a?.printInPlace ?? null, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {

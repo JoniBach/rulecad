@@ -2016,6 +2016,25 @@ test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflec
     const bad = engaged('short'); assert.equal(bad.length, 1); assert.equal(bad[0].level, 'fail');
     assert.match(bad[0].text, /^m on plate: 4 M3x6 cap screws through 6 mm of plate do not reach the motor's thread: M3x6 cap ends at its face\. An M3x10 cap would engage 4 mm/);
     assert.match(cad('list', 'home/short'), /4 ×\s+M3x6 cap/, 'the screw the item names is the one listed');
+    // "screw": "M3x10 hex": hexagon heads, bought and fitted as named, turned with a spanner on their 5.5 mm flats (ISO 4017's M3), not a hex key
+    const hex = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/assemblies/thick.json'), 'utf8'));
+    hex.items.find((x) => x.id === 'm').motor.screw = 'M3x10 hex'; write('projects/home/assemblies/hexhead.json', hex);
+    assert.match(cad('list', 'home/hexhead'), /4 ×\s+M3x10 hex\s/);
+    const hexOrder = cad('order', 'home/hexhead');
+    assert.match(hexOrder, /m to plate \(4 × M3x10 hex\) with a 5\.5 mm socket or spanner/, hexOrder); assert.doesNotMatch(hexOrder, /hex key/);
+    // printInPlace: the wall and the arm come off the bed as one print, so the order fits them as one step, first, and
+    // the list gives them one row, their grams and minutes added (each part's own, summed: one print's)
+    const alone = JSON.parse(cad('list', 'home/thick', '--json')).printed;
+    write('projects/home/assemblies/pip.json', { ...hex, printInPlace: ['wall', 'arm'] });
+    const steps = JSON.parse(cad('order', 'home/pip', '--json')).steps;
+    assert.deepEqual(steps[0].items, ['wall', 'arm'], JSON.stringify(steps.map((x) => x.items)));
+    assert.equal(steps.filter((x) => x.items.includes('wall') || x.items.includes('arm')).length, 1, 'one step for the one print');
+    assert.match(cad('order', 'home/pip'), /1\. wall, arm, printed together in place \(one print\), first/);
+    const rows = JSON.parse(cad('list', 'home/pip', '--json')).printed, row = rows.find((x) => x.inPlace);
+    assert.deepEqual(row.inPlace, ['wall', 'arm']); assert.equal(rows.length, alone.length - 1, 'two rows become one');
+    const sum = (k) => alone.filter((x) => x.id === 'wall' || x.id === 'arm').reduce((t, x) => t + x[k], 0);
+    assert.ok(Math.abs(row.grams - sum('grams')) < 0.1, `${row.grams} g against ${sum('grams')}`); assert.ok(Math.abs(row.minutes - sum('minutes')) <= 1);
+    assert.match(cad('list', 'home/pip'), /about \d+ min\s+wall, arm \(printed together in place: one print\)/);
   } finally { done(); }
 });
 

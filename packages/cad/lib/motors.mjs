@@ -276,7 +276,8 @@ function screwsFor(d, plate, t = plate) {
  * at the length mountModel works out for the plate as drawn taken to a length sold (the longest that does not pass it
  * into the motor's own thread; through plain holes, the shortest that reaches), or the length the motor item names.
  * @param {object} s a built assembly @param {{ placeItems: Function, jointValues: Function }} helpers
- * @returns {{ item: string, other: string, fit: object, thread: string, head: string, name: string, key: number | null, length: number, wanted: number, count: number }[]}
+ * @returns {{ item: string, other: string, fit: object, thread: string, head: string, name: string, key: number | null, tool: string | null, length: number, wanted: number, count: number }[]}
+ *   tool: what turns them, as the order says it: a hex key in a socket head, a socket or spanner on a hexagon head
  */
 export function motorScrews(s, { placeItems, jointValues }) {
   const drives = s.motion?.drives || [], top = (n) => String(n).split(/[.@]/)[0];
@@ -288,7 +289,8 @@ export function motorScrews(s, { placeItems, jointValues }) {
     const p = mountPlate(s, d, worlds[d.item]); if (!p || p.t === Infinity) continue;
     const { fx, length, wanted, name } = screwsFor(d, +p.plate.toFixed(2), +p.t.toFixed(2));
     if (!(wanted > 0)) continue;
-    out.push({ item: d.id, other: p.other, fit: p.fit, thread: fx.thread, head: fx.head.form, name, key: fx.head.key ?? null, length, wanted, count: d.model.mount.holes.length });
+    const tool = fx.head.form === 'hex' && fx.head.flats ? `${+fx.head.flats.toFixed(3)} mm socket or spanner` : fx.head.key != null ? `${+fx.head.key.toFixed(3)} mm hex key` : null;
+    out.push({ item: d.id, other: p.other, fit: p.fit, thread: fx.thread, head: fx.head.form, name, key: fx.head.key ?? null, tool, length, wanted, count: d.model.mount.holes.length });
   }
   return out;
 }

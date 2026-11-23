@@ -16,6 +16,7 @@
       "id": "motor",
       "motor": {
         "model": "17HS4401",
+        "screw": "M3x8 hex",
         "drives": "drive",
         "speed": 300,
         "duty": 0.3
