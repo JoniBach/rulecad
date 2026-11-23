@@ -1102,5 +1102,6 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   assert.ok(m.at.guide - (p.leaf.apart / 2 + p.leaf.thickness / 2 + p.leaf.fillet + 0.5) - v.stop_close - v.post_y >= 0.3, 'the posts clear the closed forks by a print gap');
   // the README's example is these jaws: its figures are the code's
   const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(readme.includes(`bends the leaves to ${Math.round((st.values.most / m.limit) * 100)}% of their strain limit`), 'the README\'s stop is the model\'s');
   for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
