@@ -1388,7 +1388,44 @@ test('annular snap fixes after check 1: a lid\'s closed top near the groove stif
   const bent = annularSnapModel({ diameter: 60, wall: 4, skirt: 0.84, bead: 0.4, lidEnd: 1.5, lidTop: 1.5 });
   assert.deepEqual(bent.findings.filter((f) => f.level === 'fail').map((f) => f.code), ['snap.root']); near(bent.lid.root, 0.0194, 0.00005, 'the root');
   assert.match(bent.findings.find((f) => f.code === 'snap.root').text, /the lid's skirt bends where it meets its top: 1\.94% strain at the root where pla may see 0\.61%\. Move the joint further from the top \(the wall bends over about 1\/β, 3\.99 mm\), or a smaller bead: the most undercut the strain allows is 0\.063 mm/);
-  assert.throws(() => annularSnapModel({ ...p, lidTop: -1 }), /lidTop is how far the joint is from the lid's top, its closed end, 0 mm or more/);
+  assert.throws(() => annularSnapModel({ ...p, lidTop: -1 }), /lidTop is how far the joint is from the lid's top, its closed end, at least the 1\.26 mm skirt \(got -1\)/);
+});
+
+test('annular snap fixes after check 2: a bead held to the strain passes its own check whatever the limit rounds to', () => {
+  // The strains are shown to 4 places but judged unrounded. PLA snapped once may see 0.7 × 39 / 2680 = 0.0101866.
+  //   The checker's case, d 20.19, wall 1.72, skirt 1.11: the strain caps the bead at 0.148 mm of undercut, P 327.8 N,
+  //   and the skirt (1565.1 N per mm, 20.59 mm) takes 327.8 / 1565.1 / 20.59 = 0.010172, under 0.0101866. Shown, it is
+  //   0.0102, and compared rounded it failed the bead the model had just sized
+  const pla = annularSnapModel({ diameter: 20.19, wall: 1.72, skirt: 1.11, boxEnd: 4.61, lidEnd: 4.54 }, { uses: 'once' });
+  assert.equal(pla.undercut, 0.148); assert.equal(pla.most.undercut, 0.148); assert.equal(pla.lid.strain, 0.0102);
+  near(327.8 / 1565.1 / 20.59, 0.010172, 0.000001, 'the hand figure'); near(pla.permissible, 0.0102, 0.00005);
+  assert.deepEqual(pla.findings.filter((f) => f.code === 'snap.strain').map((f) => f.level), ['pass', 'pass']);
+  // PETG opened often may see 0.7 × 0.6 of its yield strain, 0.0078895. d 84.02, wall 1.15, skirt 2.76, the floor
+  //   20.54 mm off: the bead is capped at 0.425 mm, P 260.3 N, and the wall (393.5 N per mm, 84.02 mm) takes
+  //   260.3 / 393.5 / 84.02 = 0.0078731, under 0.0078895 but shown 0.0079
+  const petg = annularSnapModel({ diameter: 84.02, wall: 1.15, skirt: 2.76, boxEnd: 2.31, lidEnd: 4.49, boxFloor: 20.54 }, { material: 'petg', pull: 184.2, friction: 0.12 });
+  assert.equal(petg.undercut, 0.425); assert.equal(petg.most.undercut, 0.425); assert.equal(petg.box.strain, 0.0079);
+  near(260.3 / 393.5 / 84.02, 0.0078731, 0.000001, 'the hand figure');
+  assert.deepEqual(petg.findings.filter((f) => f.code === 'snap.strain').map((f) => f.level), ['pass', 'pass']);
+  // and a bead over the limit still fails: 0.2 mm of undercut in the PLA case
+  assert.equal(annularSnapModel({ diameter: 20.19, wall: 1.72, skirt: 1.11, boxEnd: 4.61, lidEnd: 4.54, bead: 0.4 }, { uses: 'once' }).findings.filter((f) => f.code === 'snap.strain' && f.level === 'fail').length, 1);
+});
+
+test('annular snap fixes after check 2: a closed end nearer the joint than its part\'s wall is refused by name', () => {
+  // At 0 mm the wall cannot give (the lid's factor came out null, P Infinity, strains NaN); under the wall's own
+  //   thickness it is a solid corner, which the thin-shell beam does not model (at 0.000001 mm P came out negative)
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4 };
+  for (const [what, q, re] of [
+    ['the lid\'s top at the groove', { lidTop: 0 }, /lidTop is how far the joint is from the lid's top, its closed end, at least the 1\.26 mm skirt \(got 0\): a joint nearer its closed end than that is a solid corner that cannot give/],
+    ['the box\'s floor at the bead', { boxFloor: 0 }, /boxFloor is how far the joint is from the box's floor, its closed end, at least the 1\.68 mm wall \(got 0\)/],
+    ['both at 0', { lidTop: 0, boxFloor: 0 }, /boxFloor is how far/],
+    ['a hair off', { lidTop: 0.000001 }, /lidTop is how far.*at least the 1\.26 mm skirt/],
+    ['just under the skirt', { lidTop: 1.25 }, /at least the 1\.26 mm skirt \(got 1\.25\)/],
+    ['just under the wall', { boxFloor: 1.6 }, /at least the 1\.68 mm wall \(got 1\.6\)/]]) assert.throws(() => annularSnapModel({ ...p, ...q }), re, what);
+  // One wall off is the nearest allowed, and every figure it gives is finite
+  const at = annularSnapModel({ ...p, lidTop: 1.26, boxFloor: 1.68 });
+  for (const q of [at.box, at.lid]) for (const k of ['factor', 'stiffer', 'strain', 'root']) assert.ok(Number.isFinite(q[k]), `${k} ${q[k]}`);
+  assert.ok(Number.isFinite(at.force) && at.force > 0); assert.doesNotMatch(JSON.stringify(at.findings), /NaN|Infinity/);
 });
 
 test('annular snap fixes after check 1: a friction-locked lead, a groove through the skirt, a sized bead within its own strain, and the push', () => {

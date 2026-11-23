@@ -715,7 +715,9 @@ the skirt is spread by. `lead` is the angle of the face the lid pushes over, fro
 return face's (default 45°, the steepest the printer's `overhang` allows: it is the underside of the bead as the box
 stands, and the face over the groove as the lid lies on its top). `land` is the bead's flat top (two layers), and
 `boxEnd` and `lidEnd` how far the joint is from each part's free end (the rim, the skirt's mouth). `boxFloor` and
-`lidTop` are how far it is from each part's closed end: the box's floor, and the underside of the lid's top.
+`lidTop` are how far it is from each part's closed end: the box's floor, and the underside of the lid's top. Each is
+at least its part's own wall (the box's wall, the skirt): nearer than that the corner is solid and cannot give, so
+it is refused.
 
 **The sums.** Both parts are tubes. The Bayer snap-fit guide gives each one's transverse force for a spread y on the
 diameter as P = y d Es X, with a geometric factor X from its proportions (X_N for the skirt spread over a rigid

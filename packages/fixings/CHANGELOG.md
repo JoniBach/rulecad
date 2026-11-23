@@ -23,8 +23,11 @@ why.
 - Refused by name: a lead that friction locks (μ tan α of 1 or more), and a bead as deep as the skirt, whose groove
   would cut through it. `snap.skirt` fails where the groove leaves less than one of the printer's `line` behind it.
   Given `push`, `snap.push` warns where pushing the lid on square takes more.
-- A sized bead is rounded up to what its pull needs and down to what its strain allows, so it always passes its own
-  strain check (rounded to the nearest, a bead capped by the strain could fail it by a rounding).
+- A sized bead is rounded up to what its pull needs and down to what its strain allows, and the strains are judged
+  unrounded (they are shown to 4 places), so a bead held to the strain passes its own strain check whatever the
+  limit rounds to.
+- Refused by name: a closed end (`boxFloor`, `lidTop`) nearer the joint than its part's wall, 0 mm included, where
+  the wall cannot give and the sums came out as NaN and Infinity.
 - `DEFAULTS` gains `snap_brief` (70% of the yield strain) and `snap_often` (60% of that) and `snap_remote` (3), from
   the guide, and `snap_friction` (0.5) and `snap_least` (0.2 mm), estimates.
 

@@ -125,7 +125,7 @@ const closedEnd = (free, shut, Rm, t, d, E, nu) => {
  *   as it is the underside of the bead); land: the bead's flat top, along the axis (default two layers); boxEnd: from the
  *   bead to the box's rim, its free end; lidEnd: from the groove to the skirt's mouth (each default 0, at the end);
  *   boxFloor: from the bead to the box's floor, its closed end; lidTop: from the groove to the underside of the lid's
- *   top (each default none: far enough off not to count)
+ *   top (each default none: far enough off not to count; each at least its part's wall, the box's wall or the skirt)
  * @param {{ material?: string | object, lidMaterial?: string | object, printer?: object, sets?: object, uses?: 'often' | 'once', friction?: number, pull?: number, push?: number }} [o]
  *   material: the box's plastic (default PLA); lidMaterial: the lid's (default the box's); printer: the printer's rule
  *   set or values (default the X1C: its fit is the clearance, its overhang the steepest return face); uses: often (the
@@ -146,8 +146,11 @@ export function annularSnapModel(p, o = {}) {
   if (lead >= 90) throw new Error(`${what}: a lead of 90° is a square face the lid cannot be pushed over: give a lead under 90°, 30° to 45° is usual`);
   const land = p.land != null ? positive(what, 'land', p.land) : r3(2 * layer);
   const end = (k) => { const v = p[k] ?? 0; if (!(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is how far the joint is from that part's free end, 0 mm or more (got ${shown(p[k])})`); return v; };
-  const shut = (k, what2) => { if (p[k] == null) return null; const v = p[k]; if (!(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is how far the joint is from ${what2}, its closed end, 0 mm or more (got ${shown(v)})`); return v; };
-  const boxFloor = shut('boxFloor', 'the box\'s floor'), lidTop = shut('lidTop', 'the lid\'s top');
+  // A closed end at the joint itself (0 mm) holds the wall rigid there, so it cannot give at all; one nearer than the
+  // wall is thick is a solid corner, not a tube's wall that bends, which the beam on an elastic foundation (a thin-shell
+  // theory) does not model, and its sums lose their sign to rounding as the distance goes to 0. Both refused
+  const shut = (k, what2, wall, wallName) => { if (p[k] == null) return null; const v = p[k]; if (!(isNum(v) && v >= wall - 1e-9)) throw new Error(`${what}: ${k} is how far the joint is from ${what2}, its closed end, at least the ${mm(wall)} mm ${wallName} (got ${shown(v)}): a joint nearer its closed end than that is a solid corner that cannot give, so move it further off`); return v; };
+  const boxFloor = shut('boxFloor', 'the box\'s floor', t, 'wall'), lidTop = shut('lidTop', 'the lid\'s top', s, 'skirt');
   const boxEnd = end('boxEnd'), lidEnd = end('lidEnd'), uses = oneOf(what, 'uses', o.uses ?? 'often', SNAP_USES);
   const mu = o.friction ?? DEFAULTS.snap_friction.value;
   if (!(isNum(mu) && mu >= 0 && mu < 1)) throw new Error(`${what}: friction is μ between the parts, 0 or more and under 1 (got ${shown(o.friction)})`);
@@ -193,7 +196,10 @@ export function annularSnapModel(p, o = {}) {
     undercut = r3(undercut);
   }
   const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = r3(bead / tan(back) + land + bead / tan(lead));
-  for (const q of [B, L]) { q.deflection = r3(P / q.stiffness); q.strain = n4(P / q.stiffness / q.diameter); if (q.rootPerP) { q.root = n4(P * q.rootPerP); delete q.rootPerP; } q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
+  // The strains are judged unrounded (exact, below), and shown to 4 places: a bead held to the strain's limit could round over it
+  const exact = new Map();
+  for (const q of [B, L]) { const e = { strain: P / q.stiffness / q.diameter, root: q.rootPerP ? P * q.rootPerP : null }; exact.set(q, e);
+    q.deflection = r3(P / q.stiffness); q.strain = n4(e.strain); if (q.rootPerP) { q.root = n4(e.root); delete q.rootPerP; } q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
   const insertion = along(P, lead, mu), removal = along(P, back, mu), holds = !Number.isFinite(removal), most = { undercut: down(mostUndercut), removal: Number.isFinite(back1) ? n1(back1 * Pmost) : Infinity };
 
   const out = [], rests = [], cited = (m) => `${m.strength.name} ${mm(m.strength.value)} MPa over ${m.modulus.name} ${mm(m.modulus.value)} MPa`;
@@ -206,7 +212,7 @@ export function annularSnapModel(p, o = {}) {
   out.push(finding('info', `a ${mm(bead)} mm bead round the ${mm(d)} mm box, in a skirt ${mm(c)} mm clear of the wall (${pr.cite('fit')}): ${mm(undercut)} mm of undercut, ${mm(r3(Y))} mm on the diameter, shared by the box's wall (${mm(B.deflection)} mm) and the lid's skirt (${mm(L.deflection)} mm)${sized ? `, ${sizeSays}` : ''}`,
     'snap.undercut', { values: { bead, undercut, interference: r3(Y), box: B.deflection, lid: L.deflection } }));
   for (const [q, name, m] of [[B, 'the box\'s wall', box], [L, 'the lid\'s skirt', lidMat]]) {
-    const ok = q.strain <= permissible + 1e-9;
+    const ok = exact.get(q).strain <= permissible * (1 + 1e-9);
     out.push(finding(ok ? 'pass' : 'fail', `${name} is ${ok ? '' : 'over its limit: '}${pc(q.strain)} hoop strain (${mm(q.deflection)} mm over ${mm(q.diameter)} mm) where ${m.name} may see ${pc(permissible)}: ${mm(DEFAULTS.snap_brief.value)} of its yield strain, ${cited(m)}${uses === 'often' ? `, and ${mm(DEFAULTS.snap_often.value)} of that since it is opened often` : ''}${ok ? '' : `. The most undercut the strain allows is ${mm(most.undercut)} mm: a smaller bead, a thinner ${q === B ? 'wall' : 'skirt'}, or a bigger box`}`,
       'snap.strain', { values: { strain: q.strain, permissible: n4(permissible), deflection: q.deflection, diameter: q.diameter }, refs: { part: q === B ? 'box' : 'lid', material: m.name } }));
   }
@@ -214,7 +220,7 @@ export function annularSnapModel(p, o = {}) {
     if (q.closed == null) continue;
     out.push(finding('info', `${name} meets its ${endName} ${mm(n2(q.closed))} mm from the joint, where a tube's wall bends over about 1/β = ${mm(q.decay)} mm: ${q.stiffer >= 1.01 ? `held round there, it is ${mm(q.stiffer)} times as stiff as the same tube open` : 'far enough off to make no difference to its stiffness'} (Hetényi's beam on an elastic foundation, the ${endName} taken as fully closed, the stiffest it can be)`,
       'snap.closed', { values: { closed: q.closed, decay: q.decay, stiffer: q.stiffer }, refs: { part: q === B ? 'box' : 'lid' } }));
-    const ok = q.root <= permissible + 1e-9;
+    const ok = exact.get(q).root <= permissible * (1 + 1e-9);
     out.push(finding(ok ? 'pass' : 'fail', `${name} bends where it meets its ${endName}: ${pc(q.root)} strain at the root where ${m.name} may see ${pc(permissible)}${ok ? '' : `. Move the joint further from the ${endName} (the wall bends over about 1/β, ${mm(q.decay)} mm), or a smaller bead: the most undercut the strain allows is ${mm(most.undercut)} mm`}`,
       'snap.root', { values: { strain: q.root, permissible: n4(permissible), closed: q.closed }, refs: { part: q === B ? 'box' : 'lid', material: m.name } }));
   }
