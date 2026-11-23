@@ -26,6 +26,7 @@ const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [
 // A round for an inside corner at (x, y): the r × r square in the empty quarter (sx, sy) less a circle, as one outline.
 // (Added to the parts, not grown and shrunk: JSCAD's 2D offsets leave outlines its booleans then lose)
 function fillet(x, y, sx, sy, r) {
+  if (!(r > 0)) return null;
   const pts = [[x, y], [x + sx * r, y]], cx = x + sx * r, cy = y + sy * r;
   for (let i = 1; i < 16; i++) { const a = (Math.PI / 2) * (i / 16); pts.push([cx - sx * r * Math.sin(a), cy - sy * r * Math.cos(a)]); }
   pts.push([x, y + sy * r]);
@@ -60,6 +61,7 @@ function layout(p, what) {
   const fillet = p.leaf.fillet ?? 1, taper = p.leaf.taper ?? 0;
   if (!(fillet >= 0) || !(taper >= 0 && taper <= 1)) throw new Error(`${what}: leaf.fillet is 0 or more and leaf.taper 0 to 1 (got ${fillet}, ${taper})`);
   const inner = pos(p.bar, 'inner', 'bar.inner'), bw = pos(p.bar, 'width', 'bar.width'), r = pos(p.horn, 'reach', 'horn.reach'), rt = pos(p.horn, 'tip', 'horn.tip', 2.25), gap = pos(p, 'gap', 'gap', 0.3), round = p.round ?? 1.5, base = pos(p, 'base', 'base', 6);
+  if (!(typeof round === 'number' && round >= 0)) throw new Error(`${what}: round is the inside corners' radius, 0 or more (got ${JSON.stringify(p.round)})`);
   const aOpen = p.horn.open;
   if (inner - rt <= 0) throw new Error(`${what}: bar.inner ${inner} is inside the horn's tip (${rt}): the tip must reach out to the bar`);
   if (inner - rt >= r) throw new Error(`${what}: the horn's reach ${r} doesn't get its tip to the bar at ${inner}: a reach over ${n2(inner - rt)} mm, or the bars nearer`);
@@ -107,14 +109,14 @@ function halves(k) {
   const across = k.apart / 2 + k.t / 2 + k.fillet + 0.5; // the blocks reach past the leaves' rounds
   const root = rect(k.xr - k.base, k.xr, k.yg - across, k.yg + across);
   const rs = Math.min(k.round, 0.8 * Math.min(k.so, k.sc), k.fx + 0.5); // the shoulder's rounds stay in the slot's mouth and clear of the fork
-  const ground = union(root, tongue, fillet(k.xr + shoulder, k.yt - k.rp, 1, -1, rs), fillet(k.xr + shoulder, k.yt + k.rp, 1, 1, rs));
+  const ground = union(root, tongue, ...[fillet(k.xr + shoulder, k.yt - k.rp, 1, -1, rs), fillet(k.xr + shoulder, k.yt + k.rp, 1, 1, rs)].filter(Boolean));
   // the jaw: fork, bar forward to the jaws, and the jaw reaching in to the gap
   const fork = rect(k.xb, k.xf, k.yg - across, k.yg + across), bar = rect(k.xf - k.round, k.jt, k.inner, k.inner + k.bw), jaw = rect(k.jf, k.jt, k.g0 / 2, k.inner + k.bw / 2);
   // the slot, open at the fork's back face, its front corners rounded: the pin's gap to its lower wall is the opening
   // stop (the jaw opens toward +y, so the fork's lower wall comes to the pin), to its upper wall the closing stop
   const sx0 = k.xb - 2 - k.rc, slot = roundedRectangle({ size: [k.xs - sx0, k.sc + k.so + 2 * k.rp], center: [(k.xs + sx0) / 2, k.yt + (k.sc - k.so) / 2], roundRadius: k.rc, segments: 16 });
   const rounds = [fillet(k.xf, k.inner, 1, -1, k.round), fillet(k.jf, k.inner, -1, -1, k.round), ...(k.inner + k.bw < k.yg + across - k.round ? [fillet(k.xf, k.inner + k.bw, 1, 1, k.round)] : [])];
-  const moving = subtract(union(fork, bar, jaw, ...rounds), slot);
+  const moving = subtract(union(fork, bar, jaw, ...rounds.filter(Boolean)), slot);
   return { ground, moving };
 }
 
@@ -150,11 +152,16 @@ export function gripperJaws(p, { part = 'all' } = {}) {
  *   the part of it counted on (default 0.6, as the kit's grip check); payload: the object's mass (kg, default 0);
  *   accel: the arm's (mm/s², default 0); friction: jaw on object (default 0.4, an estimate); margin: asked of the
  *   servo against the springs and of the grip against the load (default 2); printer: for the leaves' lines and layers
- * @returns {{ stroke: number, rest: number, push: (angle: number) => number, stiffness: number, bar: number,
+ * @returns {{ at: { back: number, root: number, fork: number[], pin: number[], guide: number, jaw: number[], bar: number[] },
+ *   stroke: number, rest: number, open: number, stop: { open: number, close: number }, drop: number,
+ *   push: (angle: number) => number, stiffness: number, bar: number,
  *   spring: number, stiffest: number, grip: (width: number) => number, widest: number, rated: number | null,
  *   need: number, limit: number, tongue: number, grams: number | null, findings: { level: string, text: string,
  *   code: string, values?: object }[], rests: string[] }}
- *   stroke: each jaw's opening (mm); rest: the horn's angle at rest (°); push(angle): the push on each bar (N);
+ *   at: where things are on the upper side, for a design to place by (the lower is its mirror): the root blocks' back
+ *   face and front (x), the fork's back and front (x), the stop pin's middle, the guide's middle (y), the jaw's middle
+ *   and face, the bar's inner and outer faces (y); stop: each jaw's travel to its stops; drop: how far the fork comes
+ *   back toward the roots at the opening stop (3 d² / 5L); stroke: each jaw's opening (mm); rest: the horn's angle at rest (°); push(angle): the push on each bar (N);
  *   stiffness: a jaw's spring at its face (N/mm, the guide and the bar in series); spring: the guide's force at full
  *   open; stiffest: the most the guide could be for the servo to open it at the margin; grip(width): each jaw's
  *   force on an object that wide; widest: the widest object that goes in; rated: the narrowest held at the margin
@@ -218,5 +225,6 @@ export function gripperJawsModel(p, m, o) {
 
   let grams = null;
   if (m.density > 0) { grams = (measureVolume(gripperJaws(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, one piece`, 'gripper.mass', { grams }); }
-  return { stroke: k.stroke, rest: k.aRest, push, stiffness, bar: kb, spring, stiffest, grip, widest, rated: needN > 0 && rated <= widest ? rated : needN > 0 ? null : k.g0, need: needN, limit, tongue, grams, findings: out, rests };
+  const at = { back: k.xr - k.base, root: k.xr, fork: [k.xb, k.xf], pin: [k.xp, k.yt], guide: k.yg, jaw: [(k.jf + k.jt) / 2, k.g0 / 2], bar: [k.inner, k.inner + k.bw] };
+  return { at, stroke: k.stroke, rest: k.aRest, open: k.aOpen, stop: { open: k.so, close: k.sc }, drop: k.drop, push, stiffness, bar: kb, spring, stiffest, grip, widest, rated: needN > 0 && rated <= widest ? rated : needN > 0 ? null : k.g0, need: needN, limit, tongue, grams, findings: out, rests };
 }
