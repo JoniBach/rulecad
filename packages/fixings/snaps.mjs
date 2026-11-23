@@ -37,7 +37,7 @@ const along = (P, deg, mu) => (deg >= 90 || mu * tan(deg) >= 1 ? Infinity : (P *
 const per = (deg, mu) => along(1, deg, mu);
 // How much stiffer a joint is for lying away from its tube's free end: 1 at the end, the guide's 3 once it is at least
 // 1.8 √(d t) in, and straight between (the guide gives only the ends; the line between is an estimate)
-const remote = (end, d, t) => { const far = 1.8 * Math.sqrt(d * t), k = DEFAULTS.snap_remote.value; return { far: n2(far), factor: n2(1 + (k - 1) * Math.min(1, end / far)) }; };
+const remote = (end, d, t) => { const far = 1.8 * Math.sqrt(d * t), k = DEFAULTS.snap_remote.value; return { far: n2(far), factor: 1 + (k - 1) * Math.min(1, end / far) }; };
 
 /**
  * @typedef {{ diameter: number, inside: number, outside: number, wall: number, end: number, far: number, factor: number,
@@ -110,7 +110,7 @@ export function annularSnapModel(p, o = {}) {
 
   // Each part as a spring on the diameter: P = y d Es X, stiffened where the joint lies away from its free end
   const di = d - 2 * t, dh = d + 2 * c, d0 = dh + 2 * s;
-  const part = (diameter, inside, outside, wall, endAt, X, E) => { const r = remote(endAt, diameter, wall); return { diameter: r3(diameter), inside: r3(inside), outside: r3(outside), wall, end: endAt, far: r.far, factor: r.factor, X, stiffness: r.factor * diameter * E * X }; };
+  const part = (diameter, inside, outside, wall, endAt, X, E) => { const r = remote(endAt, diameter, wall); return { diameter: r3(diameter), inside: r3(inside), outside: r3(outside), wall, end: endAt, far: r.far, factor: n2(r.factor), X, stiffness: r.factor * diameter * E * X }; };
   const B = part(d, di, d, t, boxEnd, shaftFactor(d / di, box.poisson.value), box.modulus.value), L = part(dh, dh, d0, s, lidEnd, hubFactor(d0 / dh, lidMat.poisson.value), lidMat.modulus.value);
   const k = 1 / (1 / B.stiffness + 1 / L.stiffness);
   // The most force (and so interference) the strain allows: P = ε k_i d_i in each part

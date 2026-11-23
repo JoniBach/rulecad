@@ -4,6 +4,22 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## Unreleased
+
+### Added
+
+- **Annular snaps** (`snaps.mjs`, issue 76): a lid that clicks on to a round box. `annularSnapModel` gives the bead,
+  the undercut, the share of it the box's wall and the lid's skirt each take as two springs in series, the hoop strain
+  in each against the plastic's limit, and the forces to push the lid on and pull it off, from the Bayer snap-fit
+  guide's annular joint (P = y d Es X, its geometric factors `hubFactor` and `shaftFactor`); without a bead height it
+  is sized from `pull` with twice the margin. `annularBead` and `annularGroove` draw the bead and the groove (with a
+  lead-in at the skirt's mouth). Findings: `snap.undercut`, `snap.strain`, `snap.least`, `snap.forces`, `snap.remote`,
+  `snap.hold`, `snap.printable`. `SNAP_USES`. Bound in `fixingsFor`.
+- `DEFAULTS` gains `snap_brief` (70% of the yield strain) and `snap_often` (60% of that) and `snap_remote` (3), from
+  the guide, and `snap_friction` (0.5) and `snap_least` (0.2 mm), estimates.
+
+No printed size moved: nothing drawn before reads these.
+
 ## 0.1.5: pins, magnet seats and printed bolts (Fixings 4)
 
 ### Added

@@ -20,7 +20,7 @@ import { engagement, stripping, preload, torqueFor, seating, lengthFor, screwGro
 import { pinModel, pinHole, pin, snapPin, snapSocket, snapPinModel, parsePin, isPinName } from './pins.mjs';
 import { printedBoltModel, printedBolt } from './bolts.mjs';
 import { magnetModel, magnetSeatModel, magnetSeat, magnet, parseMagnet, isMagnetName, fieldShare } from './magnets.mjs';
-import { annularSnapModel, annularBead, annularGroove } from './snaps.mjs';
+import { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor } from './snaps.mjs';
 
 export { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS } from './model.mjs';
 export { holeModel, hole, HOLE_KINDS } from './holes.mjs';
@@ -62,7 +62,7 @@ export function fixingsFor({ sets, printer, ops, display } = {}) {
   out.lengthFor = (stack, m, o = {}) => lengthFor(stack, m, with_(o));
   out.screwGroup = screwGroup;
   // (a snap pin from plain figures, as @rulecad/flexures draws it, built with the design's booleans)
-  Object.assign(out, { snapPin: (p, o) => snapPin(p, o ?? ops ?? undefined), snapSocket, snapPinModel, parsePin, isPinName, parseMagnet, isMagnetName, fieldShare });
+  Object.assign(out, { snapPin: (p, o) => snapPin(p, o ?? ops ?? undefined), snapSocket, snapPinModel, parsePin, isPinName, parseMagnet, isMagnetName, fieldShare, hubFactor, shaftFactor });
   for (const [k, f] of Object.entries(JOINED)) out[k] = (m, o = {}) => (ops ? f(m, with_(o), ops) : f(m, with_(o)));
   return out;
 }

@@ -13,7 +13,7 @@ const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeMod
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 // Pins name no thread: their own refusals are held in the pins tests
-const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare']; // (pins and magnets name no thread)
+const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare', 'annularSnapModel', 'annularBead', 'annularGroove', 'hubFactor', 'shaftFactor']; // (pins, magnets and annular snaps name no thread)
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -1212,4 +1212,132 @@ test('the working figures no coupon measures say so: snap_play, pin_least and ma
     assert.doesNotMatch(f.source, /to be measured on the fixings coupon/i, k);
     assert.match(f.source, /No coupon row measures it.*so it stays an estimate: .+ would measure it/, k);
   }
+});
+
+// ---------- annular snaps ----------
+const { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor, SNAP_USES } = fixings;
+// The lamp housing of the Bayer guide's worked example: Makrolon PC, E 2200 MPa (its secant modulus at 0.5%), ν 0.35.
+// Its strength is set for the test only, so the strain limit does not get in the way
+const makrolon = { name: 'makrolon', rules: { modulus: { value: 2200, unit: 'MPa' }, strength: { value: 65, unit: 'MPa' }, poisson: { value: 0.35 } } };
+
+test('annular snap: the Bayer guide\'s lamp cover, worked by hand, from its geometric factor to its mating force', () => {
+  // Bayer, Snap-Fit Joints for Plastics, the annular snap example (pages 22 and 23): d = 200 mm, t = 2.5 mm for both,
+  // undercut 1 mm a side, lead 30° (a 45° face, rounded), μ = 0.6 (PC on PC, 0.5 × 1.2).
+  // The hub's (the cover's) factor: k = d0 / d = 205 / 200 = 1.025;
+  //   √((k − 1)/(k + 1)) = √(0.025 / 2.025) = 0.111111; (k² + 1)/(k² − 1) = 2.050625 / 0.050625 = 40.50617, + ν = 40.85617;
+  //   X_N = 0.62 × 0.111111 / 40.85617 = 0.0016861. The guide reads 1.7 × 10⁻³ off its Fig. 27.
+  near(hubFactor(1.025, 0.35), 0.0016861, 1e-7, 'X_N for the cover');
+  // The housing's, a hollow shaft: k = d / di = 200 / 195 = 1.025641; √(0.025641 / 2.025641) = 0.112509;
+  //   (k² + 1)/(k² − 1) = 2.051940 / 0.051940 = 39.50597, − ν = 39.15597; X_W = 0.62 × 0.112509 / 39.15597 = 0.0017815
+  near(shaftFactor(200 / 195, 0.35), 0.0017815, 1e-7, 'X_W for the housing');
+  // The guide takes the two as equal and gives each half the 2 mm of interference: P = y d Es X = 1 × 200 × 2200 ×
+  //   0.0016861 = 741.9 N (748 N with X rounded to 1.7e-3), W = P (μ + tan α)/(1 − μ tan α) = 741.9 × 1.17735 / 0.65359
+  //   = 741.9 × 1.80136 = 1336.4 N (the guide: 748 × 1.8 = 1346 N)
+  near(1 * 200 * 2200 * hubFactor(1.025, 0.35) * (0.6 + Math.tan(Math.PI / 6)) / (1 - 0.6 * Math.tan(Math.PI / 6)), 1336.4, 0.5, 'the guide\'s mating force, by its own sum');
+  // The model takes them as springs in series instead: k_N = 200 × 2200 × 0.0016861 = 741.88 N/mm, k_W = 200 × 2200 ×
+  //   0.0017815 = 783.86 N/mm; k = 1 / (1/741.88 + 1/783.86) = 381.15 N/mm; P = 2 mm × 381.15 = 762.3 N, 2% over the
+  //   guide's equal split: the cover takes 762.3 / 741.88 = 1.0275 mm (0.51% hoop strain, the guide's 0.5%) and the
+  //   housing 0.9725 mm; W = 762.3 × 1.80136 = 1373.2 N
+  const m = annularSnapModel({ diameter: 200, wall: 2.5, skirt: 2.5, bead: 1, lead: 30, back: 30 }, { material: makrolon, printer: { fit: 0, layer: 0.2, overhang: 45 }, friction: 0.6, uses: 'once' });
+  assert.equal(m.interference, 2); assert.equal(m.lid.diameter, 200); assert.equal(m.lid.outside, 205); assert.equal(m.box.inside, 195);
+  near(m.force, 762.3, 0.2, 'P'); near(m.lid.deflection, 1.0275, 0.001, 'the cover\'s share'); near(m.box.deflection, 0.9725, 0.001, 'the housing\'s');
+  near(m.lid.strain, 0.0051, 0.0001, 'the cover\'s hoop strain, the guide\'s 0.5%'); near(m.insertion, 1373.2, 0.5, 'W');
+  near(m.force / 748, 1.02, 0.01, 'within 2% of the guide\'s P'); near(m.insertion / 1346, 1.02, 0.01, 'and of its W');
+  assert.equal(m.removal, m.insertion, 'a 30° return face lets go at the same force');
+});
+
+test('annular snap: the 60 mm pot\'s lid, worked by hand: shares, hoop strains against PLA\'s limit, forces, and the joint near its ends', () => {
+  // d = 60, wall 1.68, skirt 1.26, clearance x1c.fit 0.2 (so the skirt's inside is 60.4, its outside 62.92), bead 0.4,
+  // 1.5 mm in from each free end; PLA E 2680 MPa, ν 0.36, strength 39 MPa; μ 0.5; lead 30°, back 45°.
+  // The wall: k = 60 / 56.64 = 1.059322; √(0.059322 / 2.059322) = 0.169726; (k² + 1)/(k² − 1) = 2.122163 / 0.122163 =
+  //   17.37158, − 0.36 = 17.01158; X_W = 0.62 × 0.169726 / 17.01158 = 0.0061858. Remote at 1.8 √(60 × 1.68) = 18.072 mm,
+  //   so 1.5 mm in is 1 + 2 × 1.5 / 18.072 = 1.1660 times stiffer: k_box = 1.1660 × 60 × 2680 × 0.0061858 = 1159.8 N/mm.
+  // The skirt: k = 62.92 / 60.4 = 1.041722; √(0.041722 / 2.041722) = 0.142950; (k² + 1)/(k² − 1) = 2.085185 / 0.085185
+  //   = 24.4783, + 0.36 = 24.8383; X_N = 0.62 × 0.142950 / 24.8383 = 0.0035682; remote at 1.8 √(60.4 × 1.26) = 15.703,
+  //   so 1 + 3 / 15.703 = 1.19105; k_lid = 1.19105 × 60.4 × 2680 × 0.0035682 = 687.9 N/mm.
+  // In series k = 1 / (1/1159.8 + 1/687.9) = 431.8 N/mm; the undercut 0.4 − 0.2 = 0.2 mm is 0.4 on the diameter, so
+  //   P = 172.7 N; the wall takes 172.7 / 1159.8 = 0.1489 mm (0.248%), the skirt 0.2511 mm (0.416%).
+  // PLA may see 0.7 × 0.6 × 39 / 2680 = 0.611% (a brief snap, opened often). Push on: 172.7 × (0.5 + tan 30°)/(1 − 0.5 tan 30°)
+  //   = 172.7 × 1.51457 = 261.6 N; pull off: 172.7 × (0.5 + 1)/(1 − 0.5) = 518.2 N
+  const m = annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4, boxEnd: 1.5, lidEnd: 1.5 }, { pull: 10 });
+  assert.deepEqual([m.clearance, m.undercut, m.interference, m.lid.diameter, m.lid.outside, m.box.inside], [0.2, 0.2, 0.4, 60.4, 62.92, 56.64]);
+  near(m.box.X, 0.00619, 1e-5, 'X_W'); near(m.lid.X, 0.00357, 1e-5, 'X_N'); assert.equal(m.box.far, 18.07); assert.equal(m.box.factor, 1.17); assert.equal(m.lid.factor, 1.19);
+  near(m.box.stiffness, 1159.8, 0.5, 'k_box'); near(m.lid.stiffness, 687.9, 0.5, 'k_lid'); near(m.force, 172.7, 0.2, 'P');
+  near(m.box.deflection, 0.1489, 0.001, 'the wall\'s share'); near(m.lid.deflection, 0.2511, 0.001, 'the skirt\'s'); near(m.box.strain, 0.00248, 0.00005, 'the wall\'s strain, to four places'); near(m.lid.strain, 0.00416, 0.00005, 'the skirt\'s');
+  near(m.permissible, 0.0061, 0.00005, 'PLA\'s limit, opened often'); near(m.insertion, 261.6, 0.5, 'push on'); near(m.removal, 518.2, 0.5, 'pull off'); assert.equal(m.margin, 51.82, "518.2 / 10");
+  const byCode = (c) => m.findings.filter((f) => f.code === c);
+  assert.deepEqual(byCode('snap.strain').map((f) => [f.level, f.refs.part]), [['pass', 'box'], ['pass', 'lid']]);
+  assert.equal(byCode('snap.hold')[0].level, 'pass'); assert.equal(byCode('snap.printable')[0].level, 'pass'); assert.equal(byCode('snap.remote').length, 1);
+  for (const f of m.findings) { assert.ok(['pass', 'info', 'warn', 'fail'].includes(f.level) && f.text && f.code, 'the kit\'s one shape'); assert.ok(!/[—–]/.test(f.text)); }
+  for (const k of ['x1c.fit', 'x1c.overhang', 'pla.modulus', 'pla.strength', 'pla.poisson', 'fixings.snap_brief', 'fixings.snap_often', 'fixings.snap_remote', 'fixings.snap_friction', 'fixings.load_margin']) assert.ok(m.rests.some((r) => r.name === k), `rests on ${k}`);
+  // at the ends, as the guide's simple form has it, no remote finding and the plain stiffness: 60 × 2680 × 0.0061858 = 994.7
+  const end = annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4 });
+  near(end.box.stiffness, 994.7, 0.2, 'at the end'); assert.equal(end.findings.filter((f) => f.code === 'snap.remote').length, 0);
+  // snapped once, the limit is the brief one: 0.7 × 39 / 2680 = 1.019%
+  near(annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4 }, { uses: 'once' }).permissible, 0.0102, 0.00005, 'snapped once');
+  // PETG, a plastic with its own figures: 0.7 × 0.6 × 34 / 1810 = 0.789%
+  near(annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4 }, { material: 'petg' }).permissible, 0.0079, 0.00005, 'PETG');
+});
+
+test('annular snap: sized from the pull with twice the margin, the least the print holds, and capped by the strain', () => {
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 1.5, lidEnd: 1.5 };
+  // No pull: the least the print holds, fixings.snap_least 0.2 mm of undercut, so a bead of 0.4 mm
+  const least = annularSnapModel(p);
+  assert.deepEqual([least.sized, least.undercut, least.bead], [true, 0.2, 0.4]); assert.match(least.findings.find((f) => f.code === 'snap.hold').text, /give pull/);
+  // 300 N: 2 × 300 / 3 (the 45° face at μ 0.5) = 200 N of P, over k 431.8 N/mm is 0.4632 mm on the diameter, 0.2316 a side
+  const big = annularSnapModel(p, { pull: 300 });
+  near(big.undercut, 0.2316, 0.001, 'the undercut for 300 N'); near(big.removal / 300, 2, 0.01, 'held twice over'); assert.equal(big.findings.find((f) => f.code === 'snap.hold').level, 'pass');
+  // 1000 N asks more than the strain allows: the skirt limits P to 0.0061119 × 687.9 × 60.4 = 253.9 N, 0.588 mm on the
+  // diameter, so the undercut is held to 0.294 mm, the strain passes and the hold fails, naming what the most would hold
+  const over = annularSnapModel(p, { pull: 1000 });
+  near(over.undercut, 0.294, 0.002, 'capped'); assert.deepEqual(over.findings.filter((f) => f.code === 'snap.strain').map((f) => f.level), ['pass', 'pass']);
+  const hold = over.findings.find((f) => f.code === 'snap.hold'); assert.equal(hold.level, 'fail'); assert.match(hold.text, /comes off\. The strain allows up to 0\.294 mm of undercut, which would hold 76\d\.\d N/);
+  // a bead given too tall fails both parts by name, with the most undercut the strain allows
+  const tall = annularSnapModel({ ...p, bead: 0.9 });
+  assert.deepEqual(tall.findings.filter((f) => f.code === 'snap.strain').map((f) => f.level), ['fail', 'fail']); assert.match(tall.findings.find((f) => f.code === 'snap.strain').text, /over its limit.*The most undercut the strain allows is 0\.294 mm/);
+  // a bead given under the least the print holds warns
+  assert.equal(annularSnapModel({ ...p, bead: 0.3 }).findings.find((f) => f.code === 'snap.least').level, 'warn');
+  // through fixingsFor, the workspace's printer is read: its fit is the clearance
+  assert.equal(fixingsFor({ printer: { fit: 0.3, layer: 0.2, overhang: 45 } }).annularSnapModel(p).clearance, 0.3);
+});
+
+test('annular snap: refused by name before any sum, and a return face past the printer\'s overhang fails', () => {
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26 };
+  for (const [what, f, re] of [
+    ['no figures', () => annularSnapModel('60'), /annularSnapModel: give the joint's figures/],
+    ['no diameter', () => annularSnapModel({ wall: 1, skirt: 1 }), /diameter is a number above 0/],
+    ['a wall that fills it', () => annularSnapModel({ ...p, wall: 30 }), /a wall of 30 mm fills a 60 mm box/],
+    ['a bead under the clearance', () => annularSnapModel({ ...p, bead: 0.2 }), /a bead of 0\.2 mm is no taller than the x1c\.fit clearance of 0\.2 mm round the skirt, so it never catches/],
+    ['a square lead', () => annularSnapModel({ ...p, lead: 90 }), /a lead of 90° is a square face the lid cannot be pushed over/],
+    ['a back past square', () => annularSnapModel({ ...p, back: 120 }), /back is an angle from the axis above 0° and at most 90°/],
+    ['no back', () => annularSnapModel({ ...p, back: 0 }), /back is an angle/],
+    ['a far end below 0', () => annularSnapModel({ ...p, boxEnd: -1 }), /boxEnd is how far the joint is from that part's free end/],
+    ['a use it has no limit for', () => annularSnapModel(p, { uses: 'daily' }), /uses is often or once/],
+    ['friction that locks', () => annularSnapModel(p, { friction: 1 }), /friction is μ between the parts, 0 or more and under 1/],
+    ['a pull of nothing', () => annularSnapModel(p, { pull: 0 }), /pull \(along the axis, in N\) is a number above 0/],
+    ['a metal', () => annularSnapModel(p, { material: 'al6061' }), /an annular snap is two printed plastic parts; al6061 is a aluminium|al6061 is an? aluminium/],
+    ['a plastic with no poisson', () => annularSnapModel(p, { material: { name: 'mystery', rules: { modulus: { value: 2000 }, strength: { value: 40 } } } }), /mystery has no poisson in its rule set/],
+    ['options that are no options', () => annularSnapModel(p, 'pla'), /the second argument is its options/]]) assert.throws(f, re, what);
+  assert.deepEqual(SNAP_USES, ['often', 'once']);
+  const steep = annularSnapModel({ ...p, back: 60 }), f = steep.findings.find((x) => x.code === 'snap.printable');
+  assert.equal(f.level, 'fail'); assert.match(f.text, /the 60° return face is past x1c\.overhang 45°: under the box's bead and over the lid's groove it needs support/);
+  assert.equal(annularSnapModel({ ...p, back: 90 }).holds, true, 'a square return face holds for good');
+});
+
+test('annular snap: the bead and the groove print without support on a pot and a lid, and the seated bead touches nothing', () => {
+  const m = annularSnapModel({ diameter: 30, wall: 1.68, skirt: 1.26, bead: 0.5 }), R = 15, H = 12, seg = 48, foot = 9, c = m.clearance;
+  const ring = (r0, r1, z0, z1) => subtract(cylinder({ radius: r1, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: seg }), cylinder({ radius: r0, height: z1 - z0 + 2, center: [0, 0, (z0 + z1) / 2], segments: seg }));
+  const bead = annularBead(m, { at: foot, segments: seg });
+  assert.equal(bead.model, m); near(bb(bead)[1][0], R + m.bead, 0.01, 'the bead stands its height off the wall'); near(bb(bead)[1][2] - bb(bead)[0][2], m.length, 0.01, 'and is its length along it');
+  near(m.length, 0.5 / 1 + 0.4 + 0.5 / Math.tan(Math.PI / 6), 0.001, 'return face 0.5 at 45°, land 0.4, lead face 0.5 / tan 30°');
+  const pot = union(cylinder({ radius: R, height: 1.2, center: [0, 0, 0.6], segments: seg }), ring(R - 1.68, R, 1.2 - 0.01, H), bead);
+  prints(pot, 'the pot with its bead, standing on its floor'); closed(pot, 'one closed solid');
+  // The lid in place: its top on the rim, its skirt down to 5 mm, the groove cut with a lead-in at the mouth
+  const groove = annularGroove(m, { at: foot, mouth: 5, segments: seg }), lidR = R + c + 1.26;
+  const lid = subtract(union(cylinder({ radius: lidR, height: 1.6, center: [0, 0, H + 0.8], segments: seg }), ring(R + c, lidR, 5, H + 0.01)), groove);
+  near(vol(intersect(lid, bead)), 0, 1e-6, 'seated, the bead sits in its groove clear of the skirt');
+  assert.ok(vol(intersect(union(cylinder({ radius: lidR, height: 1.6, center: [0, 0, H + 0.8], segments: seg }), ring(R + c, lidR, 5, H + 0.01)), bead)) > 1, 'without the groove the bead would stand in the skirt');
+  near(bb(groove)[0][2], 5 - 0.1, 1e-6, 'the lead-in opens out of the mouth');
+  prints(translate([0, 0, H + 1.6], rotateX(Math.PI, lid)), 'the lid on its top, its groove and lead-in included'); closed(lid, 'one closed solid');
+  assert.throws(() => annularGroove(m, { at: foot, mouth: 9 }), /mouth is the z of the skirt's open end, below the groove's foot/);
 });
