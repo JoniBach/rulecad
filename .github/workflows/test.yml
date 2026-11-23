@@ -35,6 +35,45 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: node --test test/fixings-inventory.test.mjs test/dimension-diff.test.mjs
+  firmware:
+    # The Arduino sketches (every folder with a .ino of its own name) compiled for an Uno: a compile error fails the run.
+    # Then the arm's streamer runs on a simulated Uno (avr8js, installed for this job only), homed and fed the worked arm's
+    # step file through send.mjs's own lines: every line answered "ok", every step counted against the file, a block past
+    # MAX_RATE refused, and the loop's fastest rate above what the machine description asks. A toolchain download that
+    # still fails after three tries is a warning and skips the rest: the compile is what this job is for, not the download.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: cli
+        continue-on-error: true
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: 1.5.1
+      - id: toolchain
+        if: steps.cli.outcome == 'success'
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            arduino-cli core update-index && arduino-cli core install arduino:avr@1.8.8 && arduino-cli lib install Servo@1.3.0 \
+              && npm install --prefix .cache/avr8js --no-audit --no-fund avr8js@0.21.1 && exit 0
+            sleep 30
+          done
+          exit 1
+      - if: steps.cli.outcome != 'success' || steps.toolchain.outcome != 'success'
+        run: echo "::warning::the Arduino toolchain did not download, so the sketches were not compiled"
+      - if: steps.toolchain.outcome == 'success'
+        run: npm ci
+      - if: steps.toolchain.outcome == 'success'
+        working-directory: examples/bench
+        run: node ../../packages/cad/bin/cad.mjs machine arm/arm && node ../../packages/cad/bin/cad.mjs plot arm/arm projects/arm/drawings/test.svg
+      - if: steps.toolchain.outcome == 'success'
+        run: node scripts/firmware.mjs --simulate examples/bench/exports/arm/arm-test.steps.json --machine examples/bench/exports/arm/arm.machine.json
+        env:
+          AVR8JS: .cache/avr8js/node_modules/avr8js
   dimensions:
     # Every example object's drawn sizes compared with the commit this one follows (a pull request: its base), the table
     # in the run's summary. Measures are kept between runs by what each object is built from, so only what a change
