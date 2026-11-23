@@ -18,6 +18,7 @@
     "orientation": { "type": "string", "description": "How it sits on the bed, and anything the printer or the person assembling it should know" },
     "role": { "enum": ["part", "reference", "board"], "description": "reference: drawn faint and never printed (a switch, a tablet); board: a circuit board" },
     "engine": { "enum": ["jscad", "manifold", "pcb"], "description": "manifold: v.ops booleans by Manifold (npm install manifold-3d); pcb: a circuit board" },
+    "printInPlace": { "type": "boolean", "description": "The parts print together, in the pose they are drawn in, and move apart once freed (a gearbox printed whole). cad check holds each part to a face of its own on the bed, every two parts to the printer's print_gap apart (measured by Manifold), and nothing to a support, since none can come out from between them" },
     "variables": { "type": "object", "additionalProperties": { "$ref": "#/$defs/variable" } },
     "display": { "type": "object", "description": "Settings the mirror and model page use instead (lighter meshes, no legends)" },
     "mirror": { "type": "object", "description": "The older name for display" },

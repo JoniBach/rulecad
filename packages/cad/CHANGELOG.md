@@ -22,6 +22,45 @@ and head, the parts it passes through and the part it ends in.
   as `object.exists` and a bad name as `edit.name`. A project made for a new object is made as `cad new <project>`
   makes one, with its `$schema`. A program can call it as `newObject(ref, { dryRun })` from `lib/edit.mjs`.
 
+## 0.7.68: the actuator printed in place (#162)
+
+### Added
+
+- `"printInPlace": true` on an object (#162): its parts print together in the pose they are drawn in and move apart
+  once freed. `cad check` (and the check before `cad release`) adds `inplace.bed` (each part has a face of its own on
+  the bed), `inplace.gap` (every two parts stand the printer's `print_gap` apart, measured by Manifold through
+  @rulecad/shapes' new `ops.gap`) and `inplace.support` (a bridge wider than the printer's `bridge`, an underside in
+  mid-air or printed onto another part, a ledge or an island fails, since no support can come out from between the
+  parts). This is the bridge-span finding #133 asked for. `inplace.first-layer` holds every two parts on the bed
+  to `print_gap` and twice the printer's `foot` half a layer up, where the first layer spreads (printcheck's first-layer
+  check looks inside one part at a time, so it never saw two parts printed in place side by side).
+- `"printInPlace": [items]` on an assembly: the items printed together as one object printed in place. The assembly
+  order never takes them apart from each other (before, a planet enclosed by the rings it was printed inside was
+  `assembly.order`'s "can't be reached in any order"). A name that isn't an item is refused by name. `cad order`
+  gives them as one step ("printed together in place (one print)") and `cad list` as one printed row, their grams and
+  print minutes added, where each was a step and a print of its own.
+- A motor item's `"screw"` may name a whole screw, thread, length and head (`"M3x8 hex"`): `cad list` buys that screw
+  and `cad order` names the tool its head takes (a 5.5 mm socket or spanner on an M3 hexagon head, ISO 4017), where
+  every motor's screws were cap screws turned with a hex key.
+- A `"shaft": "slide"` fit holds the bore to a slide fit as printed (`shaft.slide`): the drawn gap less half the
+  printer's `hole_comp` must clear the shaft. A slide fit is never pressed on, so it has no hoop check. The shaft fits
+  now read `hole_comp` from the assembly's printer rules (0.1 mm on the X1C, as before).
+
+### Fixed
+
+- A compound planetary whose planets mesh the output ring only a tooth of their first step on (sun 18, planets 21/18,
+  rings 60 and 57) failed `planetary.phase` for every planet but the first, and drew them into the output ring. Each
+  planet now takes the first tooth of its first step that meshes the output ring as well as the sun and the held ring.
+  Chapter 11's planets take the tooth they always did.
+- The assembly order ran out of stack on a part of a few hundred thousand faces (the middle of its box was found by
+  spreading every corner into `Math.min`).
+
+### The print-in-place actuator (examples/bench/projects/benchmarks)
+
+- `shoulder-pip`, the bench shoulder printed in one piece on a 17HS4401 (44.3:1), its parts drawn by
+  `shoulder-pip-parts.js` from the numbers in `pip`, and `shoulder-pip-drive`, the assembly that turns it, beside
+  `shoulder-test`, the assembled 38:1. New objects only: no printed size of an existing part moved.
+
 ## 0.7.67: the leg on the parts its builder has
 
 ### Changed

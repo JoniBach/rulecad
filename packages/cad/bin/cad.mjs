@@ -556,7 +556,7 @@ async function main() {
         : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
-        : check(b.triangles, printer(b, d), { parts: b.parts })),
+        : await printChecks(b, d)),
       ...(b.mechanism?.findings || []), // a lamina mechanism's own: it prints free, stops, holds, clears in every state
       ...(b.fixings || []), // what v.fixings drew: each hole and seat, what it was drawn to and the rule it rests on
       ...(await analyses(b, d, tag)),
@@ -963,12 +963,18 @@ function changelog(dir, heading, message, reasons) {
   return path.relative(WS, f).split(path.sep).join('/'); // (git's terms: forward slashes)
 }
 
+// An object's print checks: printcheck's, and for parts printed in place, theirs (lib/inplace.mjs)
+async function printChecks(b, d) {
+  const pr = printer(b, d), printed = check(b.triangles, pr, { parts: b.parts });
+  return b.object.printInPlace ? [...printed, ...(await (await import('../lib/inplace.mjs')).inPlaceChecks(b, pr, printed))] : printed;
+}
+
 async function releaseObject(d, { batch = false } = {}) {
   const message = opt('m');
   if (!message || message === true) throw new Error('say what changed: -m "Wider slot for a looser fit"');
   const object = readObject(d), b = await build(d);
   const raw = lint(fs.readFileSync(d.js, 'utf8')), fails = (b.circuit ? await (await pcbEngine()).checks(b.circuit, b.values, b.matrix, b.source) // boards: the board's checks
-    : b.object.role === 'reference' ? [] : [...check(b.triangles, printer(b, d), { parts: b.parts }), ...(b.mechanism?.findings || [])]).filter((r) => r.level === 'fail'); // references aren't printed; a mechanism's own checks count
+    : b.object.role === 'reference' ? [] : [...(await printChecks(b, d)), ...(b.mechanism?.findings || [])]).filter((r) => r.level === 'fail'); // references aren't printed; a mechanism's own checks count
   if (raw.length || fails.length) throw new Error(`fix the check first: ${[...raw.map((r) => `raw number ${r.text} on line ${r.line}`), ...fails.map((f) => f.text)].join('; ')}`);
   let { last, kind, reasons } = await since(d);
   if (!kind) throw new Error(`nothing has changed since ${last.version}`);

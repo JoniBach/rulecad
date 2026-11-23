@@ -1,0 +1,157 @@
+{
+  "title": "Robot shoulder printed in place",
+  "kind": "fit",
+  "description": "The print-in-place shoulder (shoulder-pip, one print) as it moves: a 17HS4401 face down on the housing's posts driving the sun, three stepped planets with no carrier, the output ring turning 1/44.3 of the motor's turn, 500 g at 150 mm on it. Set beside shoulder-test, the assembled 38:1 on the same motor.",
+  "gravity": [
+    0,
+    -1,
+    0
+  ],
+  "items": [
+    {
+      "id": "housing",
+      "object": "shoulder-pip-housing"
+    },
+    {
+      "id": "motor",
+      "motor": {
+        "model": "17HS4401",
+        "screw": "M3x8 hex",
+        "drives": "drive",
+        "speed": 300,
+        "duty": 0.3
+      },
+      "have": true
+    },
+    {
+      "id": "sun",
+      "object": "shoulder-pip-sun"
+    },
+    {
+      "id": "carrier",
+      "object": "pip"
+    },
+    {
+      "id": "p1",
+      "object": "shoulder-pip-planet"
+    },
+    {
+      "id": "p2",
+      "object": "shoulder-pip-planet"
+    },
+    {
+      "id": "p3",
+      "object": "shoulder-pip-planet"
+    },
+    {
+      "id": "output",
+      "object": "shoulder-pip-output"
+    }
+  ],
+  "joints": [
+    {
+      "id": "m",
+      "type": "fixed",
+      "parent": "housing.motor",
+      "child": "motor.face"
+    },
+    {
+      "id": "drive",
+      "type": "revolute",
+      "parent": "housing.axis",
+      "child": "sun.axis",
+      "label": "Motor"
+    },
+    {
+      "id": "turn",
+      "type": "revolute",
+      "parent": "housing.axis",
+      "child": "carrier.axis"
+    },
+    {
+      "id": "s1",
+      "type": "revolute",
+      "parent": "carrier.a",
+      "child": "p1.axis"
+    },
+    {
+      "id": "s2",
+      "type": "revolute",
+      "parent": "carrier.b",
+      "child": "p2.axis"
+    },
+    {
+      "id": "s3",
+      "type": "revolute",
+      "parent": "carrier.c",
+      "child": "p3.axis"
+    },
+    {
+      "id": "out",
+      "type": "revolute",
+      "parent": "housing.axis",
+      "child": "output.axis"
+    }
+  ],
+  "planetary": [
+    {
+      "sun": "sun",
+      "carrier": "carrier",
+      "ring": "housing",
+      "planets": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "drive": "sun",
+      "module": 1,
+      "teeth": [
+        18,
+        21,
+        60
+      ],
+      "output": {
+        "ring": "output",
+        "planet": 18,
+        "teeth": 57
+      },
+      "backlash": 0.799,
+      "note": "Printed in place: the backlash compoundPlanetary draws for a 0.33 mm gap (the print gap and 0.03 mm for the facets) normal to every flank, 2 × 0.33 / (cos 20° cos 28.48°)"
+    }
+  ],
+  "fits": [
+    {
+      "a": "motor",
+      "b": "housing",
+      "fastens": true,
+      "min": 0,
+      "note": "The motor on its four posts: an M3x8 hex-head screw up through each, turned by a spanner in the post's window"
+    },
+    {
+      "a": "motor",
+      "b": "sun",
+      "shaft": "slide",
+      "note": "The motor's shaft slid into the sun, which can't be pressed on: it is held only by its teeth"
+    }
+  ],
+  "loads": [
+    {
+      "mass": 0.5,
+      "at": "output.tip",
+      "note": "500 g at 150 mm: a forearm"
+    }
+  ],
+  "printInPlace": [
+    "housing",
+    "sun",
+    "p1",
+    "p2",
+    "p3",
+    "output"
+  ],
+  "poses": {
+    "home": {
+      "drive": 0
+    }
+  }
+}

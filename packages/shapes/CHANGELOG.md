@@ -4,6 +4,16 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## 0.4.6: print-in-place clearances (#162)
+
+### Added
+
+- `ops('manifold').gap(a, b, within)`: the least distance between two solids' surfaces, by Manifold's `minGap`, up to
+  `within` mm (#162). cad uses it to check that parts printed in place stand the print gap apart. On the JSCAD engine
+  `gap` refuses by name.
+
+No printed size moved.
+
 ## 0.4.5: shapes holds no screw size (Fixings 3)
 
 ### What reads fixings now

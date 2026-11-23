@@ -1,0 +1,49 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-pip-housing",
+  "title": "Print-in-place shoulder: housing and held ring",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "benchmarks/pip"
+  ],
+  "engine": "manifold",
+  "description": "The housing alone, at the origin, as shoulder-pip prints it: the held ring on its skirt, the roof the motor sits on face down.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        "cosd(pip.ring_turn)",
+        "0 - sind(pip.ring_turn)",
+        0
+      ]
+    },
+    "motor": {
+      "at": [
+        0,
+        0,
+        "pip.face"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {}
+}
