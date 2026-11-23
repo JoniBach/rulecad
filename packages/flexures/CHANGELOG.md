@@ -4,6 +4,13 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## 0.5.5: the annular snap in fixings, named in the README (#76)
+
+### Docs
+
+- The README says where the annular snap of issue 76 lives: in `@rulecad/fixings` (`annularSnapModel`,
+  `annularBead`, `annularGroove`), since its job is to hold a lid on its box. No code changed here.
+
 ## 0.5.4: no import loops (#278)
 
 ### Fixed

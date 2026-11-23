@@ -90,10 +90,12 @@ in place, and flash the streamer before connecting the motors.
 
 ```sh
 # flash projects/arm/firmware/arm/arm.ino to the Uno, with the Arduino IDE or arduino-cli, then:
-node projects/arm/send.mjs exports/arm/arm-test.steps.json --dry-run
+node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --dry-run
 ```
 
-The dry run checks the step file against the streamer's protocol and says what it would send, without a port.
+The dry run prints each line it would send with the answer the streamer would give, without a port, and refuses a block
+faster than the streamer takes (8000 steps/s) or than the machine description gives an axis. `projects/arm/STREAMER.md`
+writes up the protocol and the streamer's timing.
 
 ## 5. Plan the drawing, then watch it first
 
