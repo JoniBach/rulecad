@@ -1,0 +1,262 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-pip",
+  "title": "Shoulder printed in place",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "printInPlace": true,
+  "description": "The bench shoulder's compound planetary printed as one piece on a 17HS4401: housing and held ring, sun, three stepped planets and the output ring, every gap the printer's print gap, herringbone teeth so nothing walks off, no carrier. Free it with a turn by hand, then fit the motor on the roof with four M3 flat-head screws from below, between the planets. 44.3:1 where the assembled shoulder is 38:1.",
+  "orientation": "As drawn: the output ring, the planets' lower steps, the sun's hub and the housing's skirt on the bed, the motor's face up. Everything above another part rises at 45°: no supports.",
+  "parts": {
+    "housing": {
+      "label": "Housing and held ring"
+    },
+    "sun": {
+      "label": "Sun"
+    },
+    "planet_a": {
+      "label": "Planet"
+    },
+    "planet_b": {
+      "label": "Planet"
+    },
+    "planet_c": {
+      "label": "Planet"
+    },
+    "output": {
+      "label": "Output ring"
+    }
+  },
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "motor": {
+      "at": [
+        0,
+        0,
+        "face"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "tip": {
+      "at": [
+        150,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The gears': the assembled shoulder's"
+    },
+    "ratio": {
+      "value": 44.33,
+      "rule": "Turns of the sun for one of the output: the nearest compoundPlanetary finds with the bigger planet step on the sun and the held ring, so the planets and the sun print on what is below them"
+    },
+    "planets": {
+      "value": 3,
+      "rule": "Three, as the assembled shoulder"
+    },
+    "step": {
+      "value": -1,
+      "rule": "The output ring's teeth fewer than the held ring's, by the planets: the planets' lower step smaller, on the output ring"
+    },
+    "sun": {
+      "value": 18,
+      "rule": "Teeth on the sun, as compoundPlanetary finds them"
+    },
+    "planet": {
+      "value": 21,
+      "rule": "Teeth on the planets' upper step, on the sun and the held ring"
+    },
+    "planet2": {
+      "value": 18,
+      "rule": "Teeth on the planets' lower step, on the output ring"
+    },
+    "ring": {
+      "value": 60,
+      "rule": "Teeth on the held ring, in the housing"
+    },
+    "ring2": {
+      "value": 57,
+      "rule": "Teeth on the output ring"
+    },
+    "helix": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "The herringbones' angle: @rulecad/gears' DEFAULTS.helix"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "Between every two parts, each side: what prints apart"
+    },
+    "chamfer": {
+      "value": "x1c.chamfer",
+      "unit": "mm",
+      "rule": "Off the bed edges that face another part, against the first layer's spread"
+    },
+    "comp": {
+      "value": "x1c.hole_comp",
+      "unit": "mm",
+      "rule": "How much a printed hole shrinks, for the sun's bore"
+    },
+    "low": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The output stage's face: the assembled shoulder's"
+    },
+    "high": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The held stage's face, as the assembled shoulder's"
+    },
+    "rim2": {
+      "value": 69,
+      "unit": "mm",
+      "rule": "Round the output ring: its 59.8 mm root, the arm's pilots and two lines of wall each side of them"
+    },
+    "bolt": {
+      "value": 32.2,
+      "unit": "mm",
+      "rule": "Radius of the arm's pilots, between the output ring's root and its rim"
+    },
+    "bolts": {
+      "value": 4,
+      "rule": "The arm's screws"
+    },
+    "pilot_depth": {
+      "value": 3.6,
+      "unit": "mm",
+      "rule": "The arm's pilots, as deep as the output ring's cut-back top leaves"
+    },
+    "wall": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The housing's skirt round the output ring: six lines"
+    },
+    "opening": {
+      "value": 34,
+      "unit": "mm",
+      "rule": "The roof's hole, round the motor's 22 mm boss: as wide as the screws' countersinks leave, so the roof's cone is short"
+    },
+    "lip": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The roof's inner edge above its cone: five layers"
+    },
+    "plate": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Roof under each motor screw, from the countersink's face to the motor: an M3x10 flat head then has 4 mm in the motor's 4.5 mm thread"
+    },
+    "hub": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The sun's hub up to the motor, round the 5 mm shaft"
+    },
+    "centre": {
+      "value": "module * (sun + planet) / 2",
+      "unit": "mm",
+      "rule": "Sun to planet"
+    },
+    "face": {
+      "value": "low + gap + high + gap + centre + module * (planet + 2) / 2 + gap - opening / 2 + lip",
+      "unit": "mm",
+      "rule": "The motor's face, on the roof: the roof's cone rising at 45° from a gap over the planets' upper step"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "deg",
+      "rule": "Degrees to radians"
+    },
+    "segments": {
+      "value": 96,
+      "rule": "Facets round the solids"
+    },
+    "alone": {
+      "value": 0,
+      "rule": "1: one part alone, unrotated at the origin, for the assembly",
+      "choice": [
+        0,
+        1
+      ]
+    },
+    "housing": {
+      "value": 0,
+      "rule": "With alone: the housing",
+      "choice": [
+        0,
+        1
+      ]
+    },
+    "sun_part": {
+      "value": 0,
+      "rule": "With alone: the sun",
+      "choice": [
+        0,
+        1
+      ]
+    },
+    "planets_part": {
+      "value": 0,
+      "rule": "With alone: a planet",
+      "choice": [
+        0,
+        1
+      ]
+    }
+  },
+  "variants": {
+    "housing": {
+      "alone": 1,
+      "housing": 1
+    },
+    "sun": {
+      "alone": 1,
+      "sun_part": 1
+    },
+    "planet": {
+      "alone": 1,
+      "planets_part": 1
+    },
+    "output": {
+      "alone": 1
+    }
+  }
+}
