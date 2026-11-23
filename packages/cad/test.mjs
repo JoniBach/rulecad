@@ -203,6 +203,39 @@ test('cad new <project>/<object> answers as the other edits: --dry-run writes no
   } finally { done(); }
 });
 
+test('--dry-run writes nothing in every command that takes it, and any other command refuses it by name', () => {
+  const { ws, cad, done } = workspace();
+  const file = path.join(ws, 'projects/shed/objects/hinge.json'), read = () => fs.readFileSync(file, 'utf8');
+  try {
+    cad('new', 'shed/hinge');
+    const before = read();
+    // cad set on an object's variables: every check run, nothing written (the template's width is 40, its range 10 to 200)
+    assert.match(cad('set', 'shed/hinge', 'width=45', '--dry-run'), /^dry run, nothing written: would set width in projects\/shed\/objects\/hinge\.json/);
+    assert.equal(read(), before, 'an object set dry run leaves the file as it was');
+    const j = JSON.parse(cad('set', 'shed/hinge', 'width=45', '--dry-run', '--json'));
+    assert.deepEqual([j.changed, j.written, j.dryRun], [['width'], false, true]);
+    assert.equal(read(), before);
+    // a dry run is refused as the edit would be, out of range or unknown, with nothing written
+    assert.match(cad('set', 'shed/hinge', 'width=500', '--dry-run'), /not changed: width = 500 is outside its range, 10 to 200/);
+    assert.match(cad('set', 'shed/hinge', 'nothing=1', '--dry-run'), /has no variable "nothing"/);
+    assert.equal(read(), before);
+    // a refused edit never touched the file: the checks run before the one write
+    assert.match(cad('set', 'shed/hinge', 'width=500'), /outside its range/);
+    assert.equal(read(), before, 'a refused set leaves the file byte for byte');
+    // made for real, the same edit writes
+    assert.deepEqual(JSON.parse(cad('set', 'shed/hinge', 'width=45', '--json')).written, true);
+    assert.equal(JSON.parse(read()).variables.width.value, 45);
+    // a command that would pass the flag over is refused before it runs, naming the ones that take it
+    const after = read();
+    for (const a of [['measured', 'shed/box', 'x1c.press=0.08'], ['check', 'shed/hinge'], ['export', 'shed/hinge'], ['frame', 'shed/box'], ['frame', 'shed/box', '--size']]) {
+      const out = cad(...a, '--dry-run');
+      assert.match(out, new RegExp(`cad ${a[0]}${a[2] === '--size' ? ' --size' : ''} takes no --dry-run, so nothing is run: the commands that take one are cad new, set, add, remove, move, release, frame --expand and frame --size --write`), a.join(' '));
+    }
+    assert.equal(read(), after);
+    assert.ok(!fs.existsSync(path.join(ws, 'exports')), 'the refused export wrote nothing');
+  } finally { done(); }
+});
+
 test('a raw number in a design fails the check', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -951,6 +984,11 @@ export function main (v) {
     write([{ a: 'pcb.board', b: 'blk.body', fastens: true }]); assert.ok(!check().some((x) => x.code === 'fasten.suggest'), 'a fit that fastens alone');
     // --from-fits: the holes fit goes, the fit that fastens keeps its gap range only, and the fasten is added; the check then follows the screws
     write([holes, { a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, fastens: true, fastener: 'M2 screws', count: 2, label: 'Board on block' }]);
+    // a dry run says what it would add and writes nothing
+    const unchanged = fs.readFileSync(file, 'utf8');
+    assert.match(cad('add', 'fasten', 'demo/stack', '--from-fits', '--dry-run'), /^dry run, nothing written:\nwould add a fasten to projects\/demo\/assemblies\/stack\.json in place of its holes fit/);
+    assert.deepEqual(JSON.parse(cad('add', 'fasten', 'demo/stack', '--from-fits', '--dry-run', '--json')).written, false);
+    assert.equal(fs.readFileSync(file, 'utf8'), unchanged, 'a dry run leaves the assembly as it was');
     assert.match(cad('add', 'fasten', 'demo/stack', '--from-fits'), /added a fasten to .*stack\.json in place of its holes fit and its fit that fastens/);
     const a = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.deepEqual(a.fits, [{ a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, label: 'Board on block' }]);
@@ -5232,6 +5270,10 @@ test('generated frames: a box asked for by its inside size expands into beams on
     // 3. cad frame says what it expands into; --expand writes it into the assembly, which builds the same frame by hand
     write('box', { frame: { ...ask, limit: 2 } });
     assert.match(cad('frame', 'frame/box'), /frame\/box: a box of 2020-misumi-hfs5 \(20 mm\), joined blind[^]*inside 300 x 300 x 350 mm, outside 340 x 340 x 408\.5 mm; the bottom ring stands 18\.5 mm up the uprights[^\n]*\n  4 x 408\.5 mm: z1, z2, z3, z4\n  8 x 300 mm: x1, x2, y1, y2, x3, x4, y3, y4\n16 joins \(blind\); 8 end fittings \(levelling-foot, end-cap\)/);
+    const unexpanded = fs.readFileSync(file('box'), 'utf8');
+    assert.match(cad('frame', 'frame/box', '--expand', '--dry-run'), /^dry run, nothing written: would write projects\/frame\/assemblies\/box\.json: the box as 12 beams, 16 joins and 8 fittings/);
+    assert.deepEqual(JSON.parse(cad('frame', 'frame/box', '--expand', '--dry-run', '--json')).expanded.joins.length, 16);
+    assert.equal(fs.readFileSync(file('box'), 'utf8'), unexpanded, 'a dry run leaves the assembly as it was');
     assert.match(cad('frame', 'frame/box', '--expand'), /wrote projects[\\/]frame[\\/]assemblies[\\/]box\.json: the box as 12 beams, 16 joins and 8 fittings, to edit by hand \(its "frame" keeps only how it is solved\)/);
     const written = JSON.parse(fs.readFileSync(file('box'), 'utf8'));
     assert.deepEqual([written.frame, written.items.length, written.joins.length, written.items[4], written.joins[0]], [{ limit: 2 }, 20, 16, { id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [20, 10, 28.5], to: [320, 10, 28.5] }, { kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }]);
@@ -5395,6 +5437,9 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     // stand 2040 on edge, their tops kept level with the legs' (the ring's centre line drops from 710 to 700 mm), and
     // each blind join at a rail's end becomes one join a bore, at 690 and 710 mm up the leg (the bores 20 mm apart)
     write('hfs5', { frame: { ...table, size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'] } }, loads });
+    const unsized = fs.readFileSync(file('hfs5'), 'utf8');
+    assert.match(cad('frame', 'frame/hfs5', '--size', '--write', '--dry-run'), /dry run, nothing written: would write projects\/frame\/assemblies\/hfs5\.json$/m);
+    assert.equal(fs.readFileSync(file('hfs5'), 'utf8'), unsized, 'a dry run leaves the assembly as it was');
     assert.match(cad('frame', 'frame/hfs5', '--size', '--write'), /wrote projects[\\/]frame[\\/]assemblies[\\/]hfs5\.json: 8 beams given their profiles \(the generated frame written out expanded/);
     const w = JSON.parse(fs.readFileSync(file('hfs5'), 'utf8'));
     assert.deepEqual([w.frame, w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1')], [{ size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'] } },
