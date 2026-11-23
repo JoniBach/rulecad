@@ -1279,6 +1279,21 @@ test('annular snap: the 60 mm pot\'s lid, worked by hand: shares, hoop strains a
   near(annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.4 }, { material: 'petg' }).permissible, 0.0079, 0.00005, 'PETG');
 });
 
+test('annular snap: a closed end any distance off gives finite figures, and one far beyond the wall\'s bending counts as open', () => {
+  // The wall bends over about 1/β; tubeRing's growing waves e^u overflow a double past about 709/β, which a closed
+  // end 3.5 m from a 60 mm pot's joint used to reach (NaN strains, an infinite force). Past 2 × 12/β an end is long:
+  // e^-24 of the load reaches it, so the joint is as if it were open and the strain at its root is 0.
+  const far = (o) => annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, ...o }), open = far({});
+  for (const o of [{ lidTop: 1e6 }, { boxFloor: 1e6 }, { lidTop: 4000, boxFloor: 4000 }]) {
+    const m = far(o);
+    assert.doesNotMatch(JSON.stringify(m), /NaN|Infinity/, JSON.stringify(o));
+    assert.equal(m.findings.filter((f) => f.level === 'fail').length, 0, JSON.stringify(o));
+    assert.deepEqual([m.undercut, m.insertion, m.removal], [open.undercut, open.insertion, open.removal]);
+    for (const q of [m.box, m.lid]) if (q.closed != null) { assert.equal(q.root, 0); assert.equal(q.stiffer, 1); }
+  }
+  assert.deepEqual(tubeRing(3, 1e5, { A: 'free', B: 'closed' }).bendB, 0);
+});
+
 test('annular snap: sized from the pull with twice the margin, the least the print holds, and capped by the strain', () => {
   const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 1.5, lidEnd: 1.5 };
   // No pull: the least the print holds, fixings.snap_least 0.2 mm of undercut, so a bead of 0.4 mm

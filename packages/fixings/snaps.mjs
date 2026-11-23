@@ -58,7 +58,10 @@ export function tubeRing(a, b, ends = {}) {
   const what = 'tubeRing', kinds = ['free', 'closed', 'long'];
   for (const [k, v] of [['a', a], ['b', b]]) if (!(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is the load's distance from an end, in 1/β, 0 or more (got ${shown(v)})`);
   if (ends == null || typeof ends !== 'object' || Array.isArray(ends)) throw new Error(`${what}: ends is { A, B }, each free, closed or long (got ${shown(ends)})`);
-  const A = oneOf(what, 'ends.A', ends.A ?? 'long', kinds), B = oneOf(what, 'ends.B', ends.B ?? 'long', kinds), la = A === 'long' ? LONG : a, lb = B === 'long' ? LONG : b;
+  // An end more than twice LONG away is long whatever it is: e^-24 of the load reaches it, and its e^u waves would
+  // overflow a double past about 709/β (its curvature there is then 0 to that precision)
+  const A0 = oneOf(what, 'ends.A', ends.A ?? 'long', kinds), B0 = oneOf(what, 'ends.B', ends.B ?? 'long', kinds);
+  const A = a > 2 * LONG ? 'long' : A0, B = b > 2 * LONG ? 'long' : B0, la = A === 'long' ? LONG : a, lb = B === 'long' ? LONG : b;
   // Each side of the load has its own four waves, from its start: e^-u cos u, e^-u sin u, e^u cos u, e^u sin u
   const row = (side, u, n, sign = 1) => { const r = Array(8).fill(0); [[-1, 1, 0], [-1, 0, 1], [1, 1, 0], [1, 0, 1]].forEach(([s, c, si], i) => { r[side * 4 + i] = sign * wave(s, c, si, u, n); }); return r; };
   const end = (side, u, kind) => (kind === 'closed' ? [0, 1] : [2, 3]).map((n) => [row(side, u, n), 0]);
@@ -72,7 +75,7 @@ export function tubeRing(a, b, ends = {}) {
     for (let r = 0; r < 8; r++) if (r !== c) { const k = M[r][c] / M[c][c]; for (let j = c; j < 9; j++) M[r][j] -= k * M[c][j]; }
   }
   const x = M.map((r, i) => r[8] / r[i]), at = (side, u, n) => row(side, u, n).reduce((t, v, i) => t + v * x[i], 0);
-  return { w: at(1, 0, 0), bendA: at(0, 0, 2), bendB: at(1, lb, 2) };
+  return { w: at(1, 0, 0), bendA: A === A0 ? at(0, 0, 2) : 0, bendB: B === B0 ? at(1, lb, 2) : 0 };
 }
 // A closed end near the joint: how much stiffer it makes the part (the beam's deflection with the end open over that
 // with it closed, the rest of the tube as it is) and the bending strain at the closed end's root per N of P
@@ -198,8 +201,8 @@ export function annularSnapModel(p, o = {}) {
   const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = r3(bead / tan(back) + land + bead / tan(lead));
   // The strains are judged unrounded (exact, below), and shown to 4 places: a bead held to the strain's limit could round over it
   const exact = new Map();
-  for (const q of [B, L]) { const e = { strain: P / q.stiffness / q.diameter, root: q.rootPerP ? P * q.rootPerP : null }; exact.set(q, e);
-    q.deflection = r3(P / q.stiffness); q.strain = n4(e.strain); if (q.rootPerP) { q.root = n4(e.root); delete q.rootPerP; } q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
+  for (const q of [B, L]) { const e = { strain: P / q.stiffness / q.diameter, root: q.rootPerP != null ? P * q.rootPerP : null }; exact.set(q, e);
+    q.deflection = r3(P / q.stiffness); q.strain = n4(e.strain); if (q.rootPerP != null) { q.root = n4(e.root); delete q.rootPerP; } q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
   const insertion = along(P, lead, mu), removal = along(P, back, mu), holds = !Number.isFinite(removal), most = { undercut: down(mostUndercut), removal: Number.isFinite(back1) ? n1(back1 * Pmost) : Infinity };
 
   const out = [], rests = [], cited = (m) => `${m.strength.name} ${mm(m.strength.value)} MPa over ${m.modulus.name} ${mm(m.modulus.value)} MPa`;
