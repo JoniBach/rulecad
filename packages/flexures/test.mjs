@@ -955,9 +955,9 @@ test('snap pins live in @rulecad/fixings: flexures re-exports the very functions
 });
 
 // ---------- gripper jaws (#77) ----------
-// The bench gripper's numbers (examples/bench arm/gripper-jaws): an SG90's double horn (18 mm to the middle of a tip of
-// 2.25), the bars' inner faces 14 mm out, the horn opening to 65°, PETG, leaves 39 x 0.84 x 16 (square-ended here, so
-// the guide is the textbook one), 14 apart.
+// A gripper like the arm's (examples/bench arm/jaws, whose leaves are 37 mm with rounds): an SG90's double horn (18 mm
+// to the middle of a tip of 2.25), the bars' inner faces 14 mm out, the horn opening to 65°, PETG, leaves 39 x 0.84 x
+// 16 (square-ended here, so the guide is the textbook one), 14 apart.
 const jawsP = { width: 16, leaf: { length: 39, thickness: 0.84, apart: 14, fillet: 0 }, bar: { inner: 14, width: 5 }, horn: { reach: 18, open: 65 }, jaws: { from: 20, to: 30, gap: 1 } };
 const petgJ = { E: 1810, strainLimit: 34 / 1810 / 1.5, density: 1.27, name: 'PETG' };
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (within ${tol})`);
@@ -1049,4 +1049,25 @@ test('gripper jaws: drawn flat at rest, the stops stop where the model says, the
   assert.ok(area(away(intersect(ground, bent(m.at.guide - 7, m.stop.open + 1)))) > 0, 'a millimetre further, it would touch: the tongue is as wide as it may be');
   // three inside corners on a jaw (fork to bar, both sides, and jaw to bar), each r² (1 - π/4) filled, 16 mm tall
   near(measureVolume(gripperJaws({ ...p, round: 1.5 }, { part: 'upper' })) - measureVolume(gripperJaws({ ...p, round: 0 }, { part: 'upper' })), 3 * 2.25 * (1 - Math.PI / 4) * 16, 0.3, 'the rounds');
+});
+
+test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke block where the design says, and hold the upright arm\'s 100 g twice over', async () => {
+  const { gripperJaws, gripperJawsModel, flexureMaterial } = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const read = (rel) => JSON.parse(fs.readFileSync(new URL(`../../examples/bench/${rel}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  const v = Object.fromEntries(Object.entries(read('projects/arm/objects/jaws.json').variables).map(([k, x]) => [k, x.value]));
+  const lift = read('rules/lift.json').rules;
+  const p = { width: v.width, leaf: { length: v.leaf_l, thickness: v.leaf_t, apart: v.apart, fillet: v.fillet }, bar: { inner: v.bar_in, width: v.bar_w }, horn: { reach: v.reach, tip: v.tip, open: v.open_a }, jaws: { from: v.jaw_from, to: v.jaw_to, gap: v.jaw_gap }, stop: { close: v.stop_close }, base: v.base };
+  // PETG as the bench has it: E 1810 MPa, 34 MPa, a strain limit of 34 / 1810 / 1.5; the SG90's stall torque 0.1765 N m
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  const m = gripperJawsModel(p, petg, { torque: 0.1765, payload: lift.payload.value, accel: 300, printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } });
+  assert.deepEqual(m.findings.filter((f) => f.level !== 'pass').map((f) => f.code), [], 'every finding passes');
+  // the root blocks start at the yoke block's front: xs = block_x - back (8 + 71.97)
+  near(v.xs, v.block_x - m.at.back, 0.01, 'xs'); near(measureBoundingBox(gripperJaws(p, { part: 'ground' }))[0][0] + v.xs, v.block_x, 0.01, 'the drawn back');
+  // the rest angle the anchors use is the model's: asin((14 - 2.25) / 18) = 40.75°
+  near(v.rest_a, m.rest, 0.01, 'rest_a');
+  // 100 g at 300 mm/s²: 0.1 × (9.80665 + 0.3) = 1.0107 N, twice over by friction 0.4 on two jaws needs 1.2633 N a jaw;
+  // at k 0.682 N/mm that is (w - 2) / 2 × 0.682 >= 1.2633, w >= 5.70 for 50 g, and twice that push, w >= 9.41 for 100 g
+  near(m.rated, 9.41, 0.01, '100 g held twice over from 9.41 mm'); near(m.widest, 10.53, 0.01, 'up to 10.53 mm');
+  // the posts between the forks: they close to 7.58 - 0.85 = 6.73 at their stops, the posts are 5.9 each side
+  assert.ok(m.at.guide - (p.leaf.apart / 2 + p.leaf.thickness / 2 + p.leaf.fillet + 0.5) - v.stop_close - v.post_y >= 0.3, 'the posts clear the closed forks by a print gap');
 });
