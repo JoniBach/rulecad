@@ -5,6 +5,14 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.66: the Uno streamer keeps time (#181)
+
+### Added
+
+- An assembly's `task` takes `blockTime`, seconds: `cad plot` plans no move shorter (robots' `minBlockTime`), for a
+  streamer that takes one line a block over serial. `cad machine` writes it into the machine's `task`. No printed size
+  moved.
+
 ## 0.7.65: the arm on the parts its builder has
 
 ### Changed

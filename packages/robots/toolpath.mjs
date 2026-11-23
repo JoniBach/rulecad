@@ -217,22 +217,22 @@ function resolveAxes(c, axes) {
  * Synchronised step blocks for a plan: integer steps per axis (run with Bresenham), a trapezoidal speed profile whose
  * acceleration is limited at the tool, and pen commands with their dwell. Plain JSON: see the README for the format.
  * @param {object} plan a plan from planToolpath, ok: true
- * @param {{ axes: { name: string, stepsPerUnit?: number, stepAngle?: number, microsteps?: number, ratio?: number, lead?: number, maxRate?: number }[], speed: number, accel: number, travelSpeed?: number, penUp?: number, penDown?: number, corner?: number }} opts speed mm/s, accel mm/s², penUp and penDown seconds, corner the junction deviation in mm
+ * @param {{ axes: { name: string, stepsPerUnit?: number, stepAngle?: number, microsteps?: number, ratio?: number, lead?: number, maxRate?: number }[], speed: number, accel: number, travelSpeed?: number, penUp?: number, penDown?: number, corner?: number, minBlockTime?: number }} opts speed mm/s, accel mm/s², penUp and penDown seconds, corner the junction deviation in mm, minBlockTime the least seconds a block lasts (a streamer that takes one line a block falls behind on shorter ones): a shorter move is slowed until it lasts that long
  * @returns {{ format: string, axes: object[], start: number[], speed: number, accel: number, blocks: object[], findings: object[], time: number }}
  */
 export function stepBlocks(plan, opts) {
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !plan.chain) throw refuse('steps.plan', 'stepBlocks: give a plan from planToolpath');
   if (!plan.ok) throw refuse('steps.plan', `stepBlocks: the plan was refused: ${plan.findings.find((f) => f.level === 'fail')?.text ?? 'see its findings'}`);
   if (!opts || typeof opts !== 'object') throw refuse('steps.input', 'stepBlocks: give { axes, speed, accel }');
-  const c = chain(plan.chain), { speed, accel, penUp = 0.15, penDown = 0.15, corner = 0.05 } = opts, travelSpeed = opts.travelSpeed ?? speed;
+  const c = chain(plan.chain), { speed, accel, penUp = 0.15, penDown = 0.15, corner = 0.05, minBlockTime = 0 } = opts, travelSpeed = opts.travelSpeed ?? speed;
   for (const [n, v] of [['speed', speed], ['accel', accel], ['travelSpeed', travelSpeed]]) if (!num(v) || !(v > 0)) throw refuse(`steps.${n}`, `stepBlocks: ${n} is above 0 (got ${JSON.stringify(v)})`);
-  for (const [n, v] of [['penUp', penUp], ['penDown', penDown], ['corner', corner]]) if (!num(v) || v < 0) throw refuse(`steps.${n}`, `stepBlocks: ${n} is 0 or more (got ${JSON.stringify(v)})`);
+  for (const [n, v] of [['penUp', penUp], ['penDown', penDown], ['corner', corner], ['minBlockTime', minBlockTime]]) if (!num(v) || v < 0) throw refuse(`steps.${n}`, `stepBlocks: ${n} is 0 or more (got ${JSON.stringify(v)})`);
   const axes = resolveAxes(c, opts.axes), N = axes.length;
   if (!plan.moves.length) throw refuse('steps.plan', 'stepBlocks: the plan has no moves');
   const toSteps = (q) => q.map((v, k) => Math.round(v * axes[k].stepsPerUnit));
   const out = [], findings = [];
   const start = toSteps(plan.moves[0].q[0]);
-  let pos = [...start], pen = null, clipped = 0;
+  let pos = [...start], pen = null, clipped = 0, fed = 0;
   const addPen = (state) => { out.push({ type: 'pen', state, dwell: state === 'down' ? penDown : penUp }); pen = state; };
   // A run of lines between pen commands starts and stops at rest
   let run = [];
@@ -279,12 +279,15 @@ export function stepBlocks(plan, opts) {
         const v = (axes[k].maxRate * len) / Math.abs(steps[k]);
         if (v < vLimit) { vLimit = v; clipped++; }
       }
+      // at or under len / minBlockTime the move lasts at least minBlockTime: its peak, and so its entry and exit, is at most that
+      if (minBlockTime > 0 && len / minBlockTime < vLimit) { vLimit = len / minBlockTime; fed++; }
       run.push({ kind: m.kind, stroke: m.stroke, steps, major, length: len, dir, vLimit });
       pos = target; i0 = i;
     }
   }
   flush();
   if (pen !== 'up') addPen('up');
+  if (fed) findings.push({ level: 'info', text: `${fed} short move${fed === 1 ? '' : 's'} slowed to last at least ${minBlockTime * 1000} ms each, so the streamer keeps up`, code: 'steps.blockTime', values: { slowed: fed, minBlockTime } });
   if (clipped) findings.push({ level: 'info', text: `${clipped} move${clipped === 1 ? '' : 's'} slowed by an axis step-rate limit`, code: 'steps.rate', values: { clipped } });
   const header = { format: 'rulecad.steps/1', axes: axes.map(({ k, ...a }) => a), start, speed, accel, travelSpeed, penUp, penDown, blocks: out, findings };
   return { ...header, time: estimate(header).time };

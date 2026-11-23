@@ -487,7 +487,9 @@ the launcher and the joints sampler draw exactly what they drew before. Use fixi
 pin is also named (`snap pin 4x6`), its socket takes its clearance from the printer's `snap_clearance`, its mass and
 its push-in and pull-out forces are reported, an assembly's fit can name it, and the holds coupon
 (`examples/bench/projects/benchmarks/objects/holds-coupon`) measures its socket and barb. Everything whose bending is
-its job stays here: `snapHook`, the ratchets, `pinJoint` printed in place, and the travel and angle stops.
+its job stays here: `snapHook`, the ratchets, `pinJoint` printed in place, and the travel and angle stops. The annular
+snap, a lid that clicks on to a round box (issue 76), holds two parts together too, so it was built in fixings
+(`annularSnapModel`, `annularBead`, `annularGroove`) and is not passed on here.
 
 In a lamina, a curve joint given a `pin` turns on a pin printed in place instead of bending about its own middle:
 `{ kind: 'curve', params, from: 'slide', to: 'pawl', pin: { d: 3, at: [x, y], under } }`. The post stands on the

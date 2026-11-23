@@ -23,7 +23,7 @@ export function taskOf(a, motion, num) {
   const [id, name] = String(t.tool).split('.'), mark = motion.marks.find((m) => m.id === id && m.name === name);
   if (!mark) throw new Error(`${what}: no anchor "${t.tool}" (anchors: ${motion.marks.filter((m) => m.id === id).map((m) => m.name).join(', ') || `no item ${id}`})`);
   const vec = (v) => v.map(num), value = (k) => { if (t[k] == null) return null; const x = num(t[k]); if (!(x > 0)) throw new Error(`${what}: ${k} is above 0 (got ${x})`); return x; };
-  const out = { tool: t.tool, item: id, point: [mark.frame[3], mark.frame[7], mark.frame[11]], speed: value('speed'), accuracy: value('accuracy'), elbow: t.elbow ?? null, deflection: t.deflection != null ? num(t.deflection) : 0, payload: t.payload != null ? num(t.payload) : null, accel: t.accel != null ? num(t.accel) : null };
+  const out = { tool: t.tool, item: id, point: [mark.frame[3], mark.frame[7], mark.frame[11]], speed: value('speed'), accuracy: value('accuracy'), elbow: t.elbow ?? null, deflection: t.deflection != null ? num(t.deflection) : 0, payload: t.payload != null ? num(t.payload) : null, accel: t.accel != null ? num(t.accel) : null, blockTime: value('blockTime') };
   if (t.elbow != null && !['left', 'right'].includes(t.elbow)) throw new Error(`${what}: elbow is left or right (got ${JSON.stringify(t.elbow)})`);
   if (t.sheet) out.sheet = { ...t.sheet, at: vec(t.sheet.at), ...(t.sheet.normal ? { normal: vec(t.sheet.normal) } : {}), ...(t.sheet.u ? { u: vec(t.sheet.u) } : {}) };
   const ranges = (o) => Object.fromEntries(Object.entries(o).map(([k, x]) => [k, Array.isArray(x) ? x.map(num) : typeof x === 'object' ? x : num(x)]));
