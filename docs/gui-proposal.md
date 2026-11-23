@@ -25,6 +25,7 @@ file a command that makes it and checks it. These are the front end's verbs:
 | Command | What it changes |
 |---|---|
 | `cad new <project>` | `project.json`: title, description, material, printer |
+| `cad new <project>/<object>` | An object's `.js` and `.json` from the kit's template, listed in its project (the project made where there is none) |
 | `cad new <project>/<assembly> --assembly [--frame …]` | An empty assembly, or a generated frame, expanded and checked before it is written |
 | `cad set <project>/<assembly> <address>=<value> …` | Any field of an entry, by its id (`x1.at`) or its place (`joins.3.kind`), or a top-level field (`frame.inside`) |
 | `cad add fit\|joint\|item\|beam\|loop\|pose\|fasten\|join\|guide\|load\|wire` | An entry, with every name it gives checked against the assembly's items |
@@ -126,7 +127,7 @@ beyond the two pages cited, they were not checked against its help, which did no
 | FeatureScript | A design's `main(v)` in JSCAD, run in a sandbox | The same idea: shapes from code |
 
 So the front end is less a modeller than an **assembler and checker**: it places, joins, fastens, moves, sizes and
-checks, and it changes variables. Drawing new shapes is the open question in section 7.
+checks, and it changes variables. Drawing new shapes is an open question: section 9, question 2.
 
 ## 3. The screen
 
@@ -215,8 +216,9 @@ Each tool is one command. A tool's picks fill its arguments; its options pane fi
    and the journal gets the command line.
 5. **Check.** The server rebuilds and checks. Findings with `at`, `box` or `between` are drawn on the model; one with
    `refs` selects those entries when clicked. Today the rebuild of the box frame takes about 11 s, so until that is
-   faster (phase 4), the page shows the edit at once on the parts it already has (a moved item moved, a new beam drawn
-   as a plain bar of its profile's size) and marks the view "building" until the real parts arrive.
+   faster (phase 5, "Fast rebuilds"), the page shows the edit at once on the parts it already has (a moved item
+   moved, a new beam drawn as a plain bar of its profile's size) and marks the view "building" until the real parts
+   arrive.
 6. **Undo.** Each journal entry holds the edit's `changes` (`before` and `after` at each path). Undo is the inverse
    edit through the same commands (`set` back to `before`, `remove` what was added, `add` back what was removed), so
    it is checked like any other. It is refused if the file has changed under it since.
@@ -233,9 +235,9 @@ the assembly and says what changed. An agent could also send a dry run for the u
 | The 3D view, picking, parts panel, motion, slicing, STL and 3MF downloads | Browser (the model page) | Browser, reused |
 | Beams, carriers, slot nuts, holes, flexures, kinematics, the beam solver | Browser and Node (the docs site runs them) | Browser, for instant previews of a new beam or a join's parts |
 | Link data in and out | Browser and Node | The format the server sends built models in |
-| Edits (`lib/edit.mjs`, `lib/jsonedit.mjs`) | Node: `edit.mjs` writes with `fs` directly, and `schema.mjs` reads the schemas from disk | Node in phases 1 to 6; the browser in phase 7, once both go through `host` |
-| Building an object or an assembly | Node: designs run in a sandbox, a separate Node process under Node's permission model | Node. In a browser a design would run in a web worker with its network taken away (phase 7) |
-| Checks (`checkAssembly`) | Node (reads rule sets through `host`, other parts with `fs`) | Node; browser in phase 7 |
+| Edits (`lib/edit.mjs`, `lib/jsonedit.mjs`) | Node: `edit.mjs` writes with `fs` directly, and `schema.mjs` reads the schemas from disk | Node in phases 1 to 7; the browser in phase 8, "In the browser alone", once both go through `host` |
+| Building an object or an assembly | Node: designs run in a sandbox, a separate Node process under Node's permission model | Node. In a browser a design would run in a web worker with its network taken away (phase 8, "In the browser alone") |
+| Checks (`checkAssembly`) | Node (reads rule sets through `host`, other parts with `fs`) | Node; browser in phase 8, "In the browser alone" |
 | Pictures (`cad preview`) | Node, driving headless Chrome | Node; the page can take its own picture of its view |
 | Short links (Gists), board fab files (KiCad), releases (git) | Node, with programs installed | Node |
 
@@ -250,7 +252,9 @@ with nothing installed, is the last phase, not the first.
    as data and returns the `--json` answer, shared by the command line and the server, is the first piece of work.
 2. **Object edits answer in another shape.** `cad set <project>/<object>` returns `{ file, changed }`, with no
    `--dry-run` and no `changes` or `findings`. It needs the assembly edits' shape so the Object workspace can preview
-   and undo.
+   and undo. `cad new <project>/<object>` (the New object tool) had the same gap until cad's Unreleased changes: it
+   wrote the object's files on a dry run and answered `--json` with a line of words. It now answers in the edits' shape
+   and writes nothing on a dry run, so the runner of phase 1, "One runner", can call it as it calls the others.
 3. **No command yet** for an object's parts and anchors, rule sets, problems or variants (listed as follow-ups in
    [#291](https://github.com/JoniBach/rulecad/pull/291)). A tool for each needs its command first, so the terminal
    and the page stay equal.
@@ -280,7 +284,7 @@ four days, **L** a week or more. Each phase is useful on its own, and each is a 
 
 | Phase | What it gives | Size (estimate) |
 |---|---|---|
-| 1. One runner | Every edit command callable as data, `{ command, ref, args, dryRun }` in, the `--json` answer out, used by `bin/cad.mjs` itself; object variable edits in the same shape with `--dry-run` (gaps 1 and 2) | M |
+| 1. One runner | Every edit command callable as data, `{ command, ref, args, dryRun }` in, the `--json` answer out, used by `bin/cad.mjs` itself; object variable edits in the same shape with `--dry-run`, `cad new <project>/<object>` among the commands it runs (gaps 1 and 2) | M |
 | 2. Studio, read only | `cad studio`: the server (127.0.0.1, a token), the page with tabs, tree, the model page's view and findings drawn on the model; rebuilds when files change (gaps 8, 9, 10) | M |
 | 3. Studio, editing | The palette for the Assembly and Frame workspaces as in section 4, dry runs while choosing, apply, the journal with undo and copy as command | L |
 | 4. Picks and handles | Picks as addresses, beams drawn by two clicks, items dragged along slots with snapping, handles to turn (gaps 4 and 6) | L |
@@ -290,7 +294,7 @@ four days, **L** a week or more. Each phase is useful on its own, and each is a 
 | 8. In the browser alone | `edit.mjs`, `schema.mjs` and the checks through `host`; a workspace from a folder the browser is given or kept in the browser; designs built in a worker; a "try it" on the docs site | L, at least |
 
 Phases 1 and 2 could be done in about a week and would already let the user watch an agent's edits land on a model
-with its findings; phase 3 is when the user can build a frame without typing.
+with its findings; phase 3, "Studio, editing", is when the user can build a frame without typing.
 
 ## 9. Questions for the user
 
