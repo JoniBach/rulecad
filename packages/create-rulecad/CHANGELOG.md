@@ -5,6 +5,19 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.23: the leg on a 17HS4401 knee and 12 V
+
+### Changed
+
+- `--machine leg` makes the stand on a 17HS4401 at hip and knee, the 12 V bench supply limited to 1.5 A and
+  `"have": true` on the motors, drivers, shield and supply, as the worked leg in @rulecad/cad's EXAMPLES chapter 14.
+  Its stand steps under `leg.stand_load`, the larger of the robot's share and what rides the rods (`leg.riding`,
+  1.01 kg), and the message says which: a 2 kg robot's 1 kg share is under it, a 3 kg robot's 1.5 kg is over.
+
+### Printed sizes
+
+- The thigh: the knee motor's four M3 holes on a 31 mm square (the 17HS4401's), was 26 mm (the NEMA 14's).
+
 ## 0.3.22: the arm streams in time (#181)
 
 ### Changed

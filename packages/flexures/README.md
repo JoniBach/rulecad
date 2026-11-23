@@ -45,6 +45,7 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `contactLeaf` | A leaf with a stop bar beside it: free until the beam touches, stiffer after; two rates in one spring | `first` the leaf's, `second` a cantilever propped at the stop (12EI / b²(3a + 4b), b past the stop), meeting at `contact` | 3tδ / 2L² before contact, then the larger of the root's and the stop's moments |
 | `parallelogram` | A four-bar with a notch hinge at each corner: the coupler moves sideways and stays parallel, rising a little | 4K / L² at the coupler | the hinges' at θ = asin(δ / L) |
 | `tweezers` | Two arms on a fixed-guided spring: squeeze to close the jaws; the simplest compliant gripper | E w t³ / L³ at the fingers | 3tδ / L² at a squeeze δ |
+| `gripperJaws` | Two jaws, each on a parallel guide with a stop both ways, resting closed and opened by a servo's double horn: the springs grip, so it holds with the power off | `gripperJawsModel`: the guide's 2 E w t³ / L³ in series with the bar's 3 E I / l³, the grip k (w - g) / 2 on an object w across | the guide's 3tδ / L² at the horn's stroke |
 | `curvedLeaf` | A leaf drawn as an arc, so its rest is the middle of its working range: a spring that works from a loaded rest | E w t³ / 4L³ | 3tδ / 2L² from the curved rest, either way; `preset` t / 2ρ already in the curve |
 | `angleStop` | Posts at a pivot's arm end where its strain limit says the turn must end, less a margin | — | `angle`: factor × angle(strainLimit) |
 
@@ -96,6 +97,89 @@ flexure, so it is pinned: `constantForce` draws the coupler (a slider block, the
 `constantForceCrank` the crank with a boss at each end, for pins of filament. `constantForceModel` gives
 `force(stroke)`, the `flat` stretch, the leaf's `strain(stroke)` and the stroke a strain allows. The force scales
 with the leaf's thickness cubed: 1.7 N at three lines (1.26 mm) on a 40 mm leaf 8 mm wide in PLA, 13 N at six.
+
+## Gripper jaws: a servo opens, springs grip
+
+`gripperJaws` draws a two-jaw gripper for a hobby servo, printed flat in one piece. Each jaw sits on a parallel guide
+(two leaves, so it slides without turning) and rests closed, its face half the gap `jaws.gap` from the middle. The
+servo's double horn turns between the jaws' bars and pushes them apart to open. Let go, the guides spring back and
+grip whatever is between the jaws. The servo only opens, so the gripper holds with the power off and the servo never
+stalls on a load. Each guide has a contact stop both ways: a tongue from the root block between its leaves, its round
+end in a slot in the moving fork, stopping the jaw `stop.open` out and `stop.close` in.
+
+Why the horn opens and the springs close: a horn's arm pushes only with the round of its tip, and only in directions
+within 90° of where the arm points. Turning between two bars it points outward at both, so its tip's top meets each
+bar's flat inner face cleanly, with the lever r cos a. Pushing the jaws closed from between them would need the side
+of the arm on a corner.
+
+```js
+import { gripperJaws, gripperJawsModel, flexureMaterial } from '@rulecad/flexures';
+const p = { width: 16, leaf: { length: 37, thickness: 0.84, apart: 14, fillet: 1 }, bar: { inner: 14, width: 5 },
+  horn: { reach: 18, open: 65 }, jaws: { from: 20, to: 30, gap: 2 }, stop: { open: 4.8, close: 0.85, tongue: 10 } };   // mm and degrees
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+const m = gripperJawsModel(p, petg, { torque: 0.1765, payload: 0.1, accel: 300 });           // an SG90, 100 g
+m.stroke;     // 4.56 mm each jaw opens
+m.grip(10);   // 2.73 N a jaw on an object 10 mm across
+m.rated;      // 9.41: the narrowest object held twice over
+m.at;         // where the root blocks, forks, stops and bars are, to build a palm round it
+gripperJaws(p);                  // the shape, at rest; { part: 'ground' | 'upper' | 'lower' } for one piece of it
+```
+
+The model's findings, in the kit's one shape (`level`, `text`, `code`, `values`): `gripper.drive` (the stroke and
+the push), `gripper.servo` (the servo against the springs, at full open where its lever is shortest and the springs
+pull hardest), `gripper.bar` (a warning when the bar bends more than a tenth as much as the guide), `gripper.grip`
+(what the grip holds, and on which sizes), `gripper.holds`, `gripper.stop` (each stop, and how far a jaw goes when
+the servo drives the horn on past open at its full stall torque, as a stalled servo pushes, against `travelStop`'s 0.8 of
+the strain limit: the horn turns until the stops hold it, or through to 90°, its toggle; held with less than the
+margin asked while the toggle's travel is past 0.8, it warns), the leaves' print findings
+(`flexure.lines`, `flexure.stop`, `flexure.strain`) and `gripper.mass`. `rests` names each default it leaned on.
+Bad input is refused by name before any sums, with what would be accepted.
+
+| Quantity | Formula | Source |
+|---|---|---|
+| Horn at rest | r sin a + tip = bar's inner face, so a = asin((inner - tip) / r) | geometry |
+| Stroke | r sin(a_open) - (inner - tip) | geometry |
+| Push on each bar | T / (2 r cos a), T the servo's stall torque times `share` (0.6) to open; driven past open, the whole stall torque | statics; the share is an estimate, as the kit's grip check's |
+| Guide | 2 E w t³ / L³; its drop 3δ² / 5L | Howell 2001 |
+| Bar | 3 E I / l³, I = w b³ / 12, from the fork to the jaws' middle | Young and Budynas 2002 |
+| Jaw | 1 / (1 / guide + 1 / bar) | springs in series |
+| Grip on an object w across | k (w - gap) / 2 a jaw, up to the widest that goes in, gap + 2 stroke - 2 print gaps | Hooke's law |
+| Held | 2 μ grip against m (g + a), at the margin asked | Coulomb friction; μ 0.4 is an estimate |
+| Tongue | 1 / ∫ (ℓ - s)² / E I(s) ds at its pin | unit-load method, Young and Budynas 2002 |
+| Driven past open | each tip d = r sin a - (inner - tip) out; its jaw x from x + F(x) / k_bar = d, F(x) = k_guide x + k_tongue (x - stop) past the stop, the bar 3 E I / l³ from the fork's front to the tip (r cos a in front of the axis for the upper arm, behind it for the lower) | springs in series and in parallel |
+| Held by the stops | (F upper + F lower) r cos a = the stall torque, the first angle it reaches it; if it never does, the horn turns to 90° and d = r - (inner - tip) | statics |
+
+The grip rises with the object's width, so the gap at rest picks the sizes a gripper is for. The arm's jaws
+(below) rest 2 mm apart: 50 g held twice over from 5.7 mm across, 100 g from 9.4 mm, up to 10.5 mm.
+
+### Against the arm's hand-built gripper
+
+The workspace example `examples/bench` has both on the arm: `arm/gripper`, drawn by hand (each finger on one long
+leaf, the horn closing them), and `arm/jaws`, this generator with a palm round it (the same yoke block and screws,
+the same SG90 and horn, the servo on two posts above the print). `arm/jaws-check` sweeps the horn from rest to open:
+nothing collides, and the horn clears the front post by 0.5 mm at rest.
+
+| | Hand-built `arm/gripper` | `arm/jaws` |
+|---|---|---|
+| Printed | 37.1 g in one print (3 pieces in its check) | 53.5 g in one print: 39.3 g of jaws and stops, 14.2 g of yoke block, spine and posts |
+| Grip | 1.46 N a finger, on anything up to 8 mm | 0.68 N/mm a jaw past the 2 mm gap: 2.05 N at 8 mm, 2.91 N at 10.5 mm |
+| 50 g at 300 mm/s² | 2.3 times over | 2 times over from 5.7 mm across |
+| 100 g (the upright arm's payload) | 1.2 times: warns | 2 times over from 9.4 to 10.5 mm across |
+| Rests on | the lever 0.38 (an estimate) and μ 0.4 | μ 0.4 and the servo's share 0.6 (estimates); no lever |
+| Contact | the horn's arm passes through the finger's flat (25 mm³ overlap allowed in its check) | the horn's tip on the bar's flat face |
+| Servo | holds the grip, stalled, while it carries | opens, then lets go; 2.1 times the springs at full open |
+| Stops | none | both ways on each jaw; the servo driven on at its full torque stalls at 69° with a jaw at 4.98 mm, which bends the leaves to 75% of their strain limit; the stops resist 2.16 times its stall torque |
+| Tool point | 85 mm from the yoke's screws | 105 mm |
+
+Swapped into the upright arm (`arm/arm-upright`, the jaws on the forearm's yoke in the gripper's place), with the
+arm's tool mass (`lift.tool_mass`, 0.148 kg with the hand-built gripper) raised by the jaws' extra 16.4 g to 0.164 kg,
+the arm still checks clean: nothing collides through its poses, the shoulder's motor has 2.13 times the torque it
+needs (1.204 N m against 2.563; 2.22 times with the hand-built), the elbow's 5.57 times (6.88), the tool still reaches
+its whole box with 66 mm to spare, and the accuracy budget moves from 2.361 to 2.376 mm against 2.5.
+
+So it can replace it: it holds the upright arm's 100 g where the hand-built one warns, with no estimated lever and no
+stalled servo, at 16.4 g more and 20 mm more reach. What it gives up is range: twice over at 100 g only on objects
+9.4 to 10.5 mm across. A different object size wants a different gap at rest.
 
 ## Composing mechanisms
 

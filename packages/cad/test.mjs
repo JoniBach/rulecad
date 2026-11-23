@@ -2174,6 +2174,19 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.equal(of('overlap')[0].level, 'pass', of('overlap')[0].text);
     assert.equal(of('gait.clearance')[0].level, 'pass'); assert.equal(of('gait.sweep')[0].level, 'pass');
     assert.ok(stand.some((x) => x.code === 'motor.torque' && /gait: knee needs/.test(x.text) && x.level === 'pass'), JSON.stringify(of('motor.torque')));
+    // On the builder's parts, a 17HS4401 at each joint at 0.5 A on 12 V, by hand: 0.4 N m holding, moving 0.4 / √2 =
+    // 0.2828 N m, flat to the 12 V corner 60 × 12 / (2 × 0.0042 H × 1.5 A × 200) = 285.7 rpm, so at 200 rpm the whole of
+    // it; at 0.5 of 1.5 A, 0.0943 N m; through the compound planetary's 38:1 (4 × 57 / (63 / 57 × 57 − 57) = 4 × 57 / 6)
+    // at its efficiency 0.95 / (1 + 0.0975 × ρ / (ρ − 1)), ρ = 54 × 21 / (18 × 57) = 1.1053, so 0.4694: 0.0943 × 38 ×
+    // 0.4694 = 1.682 N m at the hip and at the knee alike. The load is what rides the rods, leg.riding 1.01 kg, over the
+    // robot's 0.75 kg share; the statics are linear in it, so the knee's 0.451 N m at 0.75 kg (before, on a NEMA 14)
+    // becomes 0.451 × 1.01 / 0.75 = 0.607 N m: 1.682 / 0.607 = 2.8 times. The hip's 0.147 becomes 0.198, 8.5 times
+    const legTorque = (j) => of('motor.torque').find((x) => x.refs?.joint === j).values;
+    assert.ok(Math.abs(legTorque('knee').available - (0.4 / Math.SQRT2) * (0.5 / 1.5) * 38 * 0.95 / (1 + 0.0975 * (1134 / 1026) / (1134 / 1026 - 1))) < 1e-3, JSON.stringify(legTorque('knee')));
+    assert.ok(Math.abs(legTorque('knee').available - legTorque('hip').available) < 1e-9, 'the same motor at the same current at each joint');
+    assert.ok(Math.abs(legTorque('knee').needed - 0.451 * 1.01 / 0.75) < 0.002, String(legTorque('knee').needed));
+    assert.ok(Math.abs(legTorque('knee').margin - 2.77) < 0.02 && Math.abs(legTorque('hip').margin - 8.5) < 0.05, `${legTorque('knee').margin}, ${legTorque('hip').margin}`);
+    assert.equal(of('power.supply')[0].level, 'pass'); assert.match(of('power.supply')[0].text, /psu \(supply-12v\): the machine draws [\d.]+ A at 12 V .* the supply gives 1\.5 A/);
     assert.match(of('gait.stable')[0].text, /one leg, on a stand/);
     assert.ok(fs.existsSync(path.join(ws, '.preview/leg/stand-gait.svg')), 'its step animated');
     // The bracket screwed on (chapter 15): each end found where v.fixings drew it, the lengths chosen, the shelf's load carried; a short screw and one the wall hides each fail by name
@@ -6134,5 +6147,47 @@ test('the bench arm on the parts its builder has: a 17HS4401 at each joint on 12
     assert.deepEqual(l.bought.filter((b) => !b.have).map(line).sort(), ['bearing-6800 x1', 'endstop-10t85 x2']);
     assert.deepEqual(l.bought.filter((b) => b.have).map(line).sort(), ['cnc-shield-v3 x1', 'drv8825 x2', 'nema17 (17HS4401) x2', 'sg90 x1', 'supply-12v x1']);
     assert.ok(l.fasteners.length && l.wires.length, 'screws and wire, which are to buy');
+  } finally { done(); }
+});
+
+test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 12 V, parts in hand marked, and the stand loaded with what rides its rods', () => {
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url)), template = fileURLToPath(new URL('../create-rulecad/machines/leg/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/leg']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'));
+    // the stand, here and in the template, on what is on the bench (2026-11-20): 17HS4401s at 0.5 A on DRV8825s at 1/8, a
+    // CNC Shield V3, the 12 V bench supply with its current limit at 1.5 A
+    for (const file of [path.join(ws, 'projects/leg/assemblies/stand.json'), path.join(template, 'projects/leg/assemblies/stand.json')]) {
+      const a = read(file), item = (id) => a.items.find((x) => x.id === id);
+      assert.deepEqual(['m1', 'm2'].map((id) => [item(id).motor.model, item(id).motor.current, item(id).motor.microsteps, item(id).have]), [['17HS4401', 0.5, 8, true], ['17HS4401', 0.5, 8, true]], file);
+      assert.equal(item('psu').bought, 'supply-12v'); assert.equal(item('psu').set.output_current, 1.5); assert.equal(item('psu').have, true);
+      assert.ok(['d1', 'd2', 'shield'].every((id) => item(id).have), 'the drivers and the shield in hand');
+      assert.equal(a.gait.mass, 'leg.stand_load');
+    }
+    // no part the builder lacks in any of the leg's assemblies, the quadruped's and the crawl's knees at 1 A as their hips
+    for (const name of ['stand', 'quadruped', 'crawl']) {
+      const a = read(path.join(ws, `projects/leg/assemblies/${name}.json`));
+      assert.ok(!a.items.some((x) => x.motor?.model === 'nema14' || x.bought === 'supply-24v'), `${name}: no NEMA 14, no 24 V supply`);
+      if (name !== 'stand') assert.deepEqual([...new Set(a.items.filter((x) => x.motor).map((x) => `${x.motor.model} ${x.motor.current}`))], ['17HS4401 1'], name);
+    }
+    for (const f of ['projects/leg/objects/thigh.js', 'rules/leg.json']) assert.equal(fs.readFileSync(path.join(template, f), 'utf8').replace(/\r\n/g, '\n'), fs.readFileSync(path.join(ws, f), 'utf8').replace(/\r\n/g, '\n'), `the template's ${f} is the bench's`);
+    assert.doesNotMatch(fs.readFileSync(path.join(ws, 'projects/leg/objects/thigh.js'), 'utf8'), /nema14/);
+    // the buy list: the bearings and rods to buy, the motors, drivers, shield and supply in hand
+    const l = JSON.parse(cad('list', 'leg/stand', '--json')), line = (b) => `${b.set}${b.variant ? ` (${b.variant})` : ''} x${b.qty}`;
+    assert.deepEqual(l.bought.filter((b) => !b.have).map(line).sort(), ['bearing-6800 x1', 'lm8uu x2', 'rod-8 x2']);
+    assert.deepEqual(l.bought.filter((b) => b.have).map(line).sort(), ['cnc-shield-v3 x1', 'drv8825 x2', 'nema17 (17HS4401) x2', 'supply-12v x1']);
+    // leg.riding is what rides the rods, from this list, by hand: the two 17HS4401s 2 × 280 = 560 g; the leg's prints
+    // (housing 31.4, sun 3.2, planets 3 × 5.9, output 28.8, spindle 7.7, bridge 13.1, thigh 97.5, the knee's sun 3.2,
+    // planets 17.7, output 28.8, clips 0.9, shin 42.9, pad 2.3) 295.2 g; the 6800 5 g; the carriage 91.6 g; two LM8UU
+    // 32 g; the screws 24 g: 1007.8 g, 1.01 kg. Left out: the feet, tie and collars, which stand on the bench
+    const fixed = new Set(['foot1', 'foot2', 'tie', 'collar1', 'collar2']), bought = (set) => l.bought.filter((b) => b.set === set).reduce((t, b) => t + b.qty * b.grams, 0);
+    const riding = l.printed.filter((p) => !fixed.has(p.id)).reduce((t, p) => t + p.grams, 0) + bought('nema17') + bought('bearing-6800') + bought('lm8uu') + l.totals.fixingsGrams;
+    const rules = read(path.join(ws, 'rules/leg.json')).rules;
+    assert.ok(Math.abs(riding / 1000 - rules.riding.value) < 0.01, `${riding} g rides the rods; leg.riding is ${rules.riding.value} kg`);
+    assert.equal(rules.stand_load.value, 'max(share, riding)');
+    // the quadruped's mass: its cad list (eight 17HS4401s) and about 0.4 kg of electronics, an estimate
+    const q = JSON.parse(cad('list', 'leg/quadruped', '--json'));
+    assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });

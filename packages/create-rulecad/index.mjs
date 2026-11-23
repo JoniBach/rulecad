@@ -105,7 +105,9 @@ async function sized() {
     const file = path.join(dir, 'rules/leg.json'), rules = JSON.parse(fs.readFileSync(file, 'utf8'));
     rules.rules.robot = { ...rules.rules.robot, value: robot };
     fs.writeFileSync(file, `${JSON.stringify(rules, null, 2)}\n`);
-    return console.log(`  a leg on its stand, for a ${robot} kg robot; its share of the weight is ${robot / 2} kg: rules/leg.json`);
+    // The stand steps under the robot's share, or under what rides its rods (the leg and its carriage) if that is more
+    const riding = rules.rules.riding.value, load = Math.max(robot / 2, riding);
+    return console.log(`  a leg on its stand, for a ${robot} kg robot; its share of the weight is ${robot / 2} kg, and the stand steps under ${load} kg${load > robot / 2 ? ', what the leg and its carriage weigh' : ''}: rules/leg.json`);
   }
   if (!SHEETS[sheet]) { console.error(`--sheet is ${Object.keys(SHEETS).join(', ')} (got "${o.sheet}"; a larger sheet's links wouldn't fit a 256 mm bed)`); process.exit(1); }
   if (!(accuracy > 0)) { console.error(`--accuracy is above 0 mm (got "${o.accuracy}")`); process.exit(1); }

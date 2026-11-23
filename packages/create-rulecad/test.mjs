@@ -131,7 +131,10 @@ test('--machine arm sizes itself, refuses what it cannot make, and asks no one w
     assert.match(asm, /"size": "a4"/); assert.match(asm, /"accuracy": 0\.5/);
     assert.match(fs.readFileSync(path.join(root, 'a4/projects/arm/drawings/test.svg'), 'utf8'), /width="297mm"/);
     assert.match(make('by-default', '--machine', 'arm'), /A5 sheet at 0\.3 mm/, 'no flags and no terminal: the defaults');
-    assert.match(make('a-leg', '--machine', 'leg', '--robot', '2'), /2 kg robot/);
+    // The stand steps under the robot's share or what rides its rods, the more: a 2 kg robot's 1 kg share is under the
+    // 1.01 kg of leg and carriage (leg.riding), a 3 kg robot's 1.5 kg is over it
+    assert.match(make('a-leg', '--machine', 'leg', '--robot', '2'), /2 kg robot; its share of the weight is 1 kg, and the stand steps under 1\.01 kg, what the leg and its carriage weigh/);
+    assert.match(make('big-leg', '--machine', 'leg', '--robot', '3'), /share of the weight is 1\.5 kg, and the stand steps under 1\.5 kg: rules/);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'a-leg/rules/leg.json'), 'utf8')).rules.robot.value, 2);
     assert.throws(() => make('x', '--machine', 'hexapod'), /--machine is arm, leg or frame/);
     assert.throws(() => make('y', '--machine', 'arm', '--sheet', 'a3'), /--sheet is a6, a5, a4/);

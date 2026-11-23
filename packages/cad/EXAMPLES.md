@@ -4349,14 +4349,17 @@ a bench says otherwise.
 | | The arm (chapter 12) | The leg |
 |---|---|---|
 | Joint axis | Vertical: gravity never loads a motor | Horizontal: gravity is the load |
-| Task | A pen's drag on paper, 0.3 N | A robot's weight on the foot, 7.4 N |
-| Worst torque | 0.2 N m at the shoulder | 0.451 N m at the knee, 0.147 N m at the hip |
-| Margin at the motor | 8 times (shoulder, at 0.5 A) | 3.1 times at the knee, 11.4 times at the hip, at the same 0.5 A |
+| Task | A pen's drag on paper, 0.3 N | The weight on the foot, 9.9 N on the stand |
+| Worst torque | 0.22 N m at the shoulder | 0.608 N m at the knee, 0.198 N m at the hip |
+| Margin at the motor | 8 times (shoulder, at 0.5 A) | 2.8 times at the knee, 8.5 times at the hip, at the same 0.5 A |
 | What decides the link length | Reach across a sheet, and how far the elbow's error swings | The lever on the foot: the shorter, the less torque |
 
-The same gearbox on a NEMA 17 at the hip and a NEMA 14 at the knee. A 1.5 kg robot trotting puts its weight on two feet at a time, so
-each leg carries up to 0.75 kg: that is the stand's load, and it is what this leg weighs by itself, near enough: 765 g of motors, gears and
-prints. So the carriage's own weight stands in for the robot's body, with nothing added.
+The same gearbox with a 17HS4401 at the hip and another at the knee: the motor the arm uses at both its joints, and the one on the
+bench (chapter 12). A NEMA 14 at the knee would be 90 g lighter, but it is a part to buy, and the 17HS4401 is in hand. A 1.5 kg robot
+trotting puts its weight on two feet at a time, so each leg carries up to 0.75 kg (`leg.share`). On the stand, the foot carries
+whatever rides the rods: the leg itself (855 g of motors, gears and prints, and its bearing), the carriage and its two bushings, and the
+screws, 1.01 kg in all (`leg.riding`, summed from `cad list`). That is more than the share, so the stand's load, `leg.stand_load`, is
+the larger of the two: the carriage's own weight stands in for the robot's body, and is a little more than it.
 
 The thigh is 100 mm, the shortest that keeps the knee's 43 mm gearbox radius clear of the hip's (43 + 43 and a little to swing past), and
 the shin 100 mm to match. At 170 mm of standing height the foot is under the hip with the knee bent 32° each way, and the
@@ -4395,6 +4398,8 @@ The stack of the same gearbox with the motor's face as zero, what the leg stands
     "lift": {"value": 15, "unit": "mm", "rule": "The foot's lift in swing", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "robot": {"value": 1.5, "unit": "kg", "rule": "The small robot the leg is sized for first; the quadruped built from these parts weighs more, and the chapter says how much", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "share": {"value": "robot / 2", "unit": "kg", "rule": "Each leg's share in a trot, the most: two feet down at once", "kind": "default", "source": "Statics: the weight split over the two feet in stance", "checked": "2026-11-09"},
+    "riding": {"value": 1.01, "unit": "kg", "rule": "What rides the stand's rods, and so stands on the foot: the leg (its two 17HS4401s 560 g, its prints 295 g, the 6800 5 g), the carriage 92 g, its two LM8UU 32 g and the screws 24 g", "kind": "derived", "source": "cad list leg/stand, summed by hand", "checked": "2026-11-23"},
+    "stand_load": {"value": "max(share, riding)", "unit": "kg", "rule": "The stand's load in its gait: the robot's share, or what rides the rods if that is more, since the foot carries all of it", "kind": "derived", "source": "Statics: the carriage, lifted off its stops, stands on the foot", "checked": "2026-11-23"},
     "scale_h": {"value": 25, "unit": "mm", "rule": "A kitchen scale's height: the foot's ground is its top. Yours differs", "kind": "estimate", "source": "A guess at a common 5 kg scale: measure yours", "checked": "2026-11-09"},
     "stop_drop": {"value": 3, "unit": "mm", "rule": "How far the carriage drops onto its stops when the foot lifts: the foot pushes it up this much standing, so the scale carries the leg", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "rod_x": {"value": 90, "unit": "mm", "rule": "Each rod's distance from the middle: a 130 mm scale fits between the feet", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
@@ -4405,7 +4410,7 @@ The stack of the same gearbox with the motor's face as zero, what the leg stands
     "body_half": {"value": 75, "unit": "mm", "rule": "Hip to hip along the body, halved: the side plate, 242 mm long, fits on a 256 mm bed, and the knees point outward so they stay apart", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "body_w": {"value": 50, "unit": "mm", "rule": "The body's half-width, to the hips' plates: two hip motors back to back fit inside", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "side_t": {"value": 6, "unit": "mm", "rule": "The side plate's thickness", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
-    "robot_mass": {"value": 3.8, "unit": "kg", "rule": "The quadruped as drawn: 3.37 kg of prints, motors and bearings from cad list, and about 0.4 kg for its drivers, an Uno and shield, a battery and the wires, an estimate until built", "kind": "estimate", "source": "cad list leg/quadruped and a guess at the electronics", "checked": "2026-11-09"},
+    "robot_mass": {"value": 4.2, "unit": "kg", "rule": "The quadruped as drawn: 3.83 kg of prints, eight 17HS4401s, bearings and screws from cad list, and about 0.4 kg for its drivers, an Uno and shield, a battery and the wires, an estimate until built", "kind": "estimate", "source": "cad list leg/quadruped (3834 g, the knees 17HS4401s at 280 g each) and a guess at the electronics", "checked": "2026-11-23"},
     "foot_socket": {"value": 12, "unit": "mm", "rule": "How far each rod goes into a foot block", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"}
   }
 }
@@ -4872,7 +4877,7 @@ The thigh is the arm's upper arm, 100 mm long, without its home switch or bands.
 
 ```js projects/leg/objects/thigh.js
 // The thigh, drawn as it prints: its outer face on the bed, the knee's ring standing on it, the hub's socket opening
-// upward. The knee's NEMA 14 bolts on the bed side, its shaft up through the plate, as the arm's elbow does.
+// upward. The knee's 17HS4401, the hip's motor, bolts on the bed side, its shaft up through the plate, as the arm's elbow does.
 // The screws' holes are v.fixings': an M3 clearance hole through the socket's floor for the screw into the spindle,
 // and an M3 pilot in each post for its clip.
 import jscad from '@jscad/modeling'
@@ -4883,7 +4888,7 @@ const { hull } = jscad.hulls
 
 export function main (v) {
   const screw = v.fixings.holeModel('M3').diameter, pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
-  const motor = v.motors.motorModel('nema14')
+  const motor = v.motors.motorModel('17HS4401')
   const at = (r, a) => [v.long + r * Math.cos(a), r * Math.sin(a)]
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad)
   const round = (r, c) => translate([c, 0], circle({ radius: r, segments: v.segments }))
@@ -5214,7 +5219,7 @@ export function main (v) { return cuboid({ size: [v.side, v.side, v.high], cente
 
 ### The stand assembly
 
-Standing, the foot is under the hip with the knee behind it. The gait is a single leg's: `"pattern": { "duty": 0.6, "phase": [0] }` says stance for 60% of the cycle, swing for the rest. The mass is the robot's share, 0.75 kg.
+Standing, the foot is under the hip with the knee behind it. The gait is a single leg's: `"pattern": { "duty": 0.6, "phase": [0] }` says stance for 60% of the cycle, swing for the rest. The mass is `leg.stand_load`, 1.01 kg: what rides the rods, more than the robot's 0.75 kg share. The motors, the drivers, the shield and the supply are marked `"have": true`, the parts on the builder's bench, so `cad list` puts them under "in hand" and the buy list is the bearings, the rods, the screws and the wire. The supply is the 12 V bench supply with its current limit set at 1.5 A: each motor's torque at speed is worked out at its 12 V.
 
 ```json projects/leg/assemblies/stand.json
 {
@@ -5228,7 +5233,7 @@ Standing, the foot is under the hip with the knee behind it. The gait is a singl
     { "id": "carriage", "object": "carriage", "rotate": [90, 0, 0] },
     { "id": "lm1", "bought": "lm8uu", "at": ["0 - leg.rod_x", "0 - leg.rod_y", "0 - carriage.boss_long / 2"] },
     { "id": "lm2", "bought": "lm8uu", "at": ["leg.rod_x", "0 - leg.rod_y", "0 - carriage.boss_long / 2"] },
-    { "id": "m1", "motor": { "model": "17HS4401", "drives": "hd", "speed": 200, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 } },
+    { "id": "m1", "motor": { "model": "17HS4401", "drives": "hd", "speed": 200, "duty": 0.3, "driver": "d1", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "housing", "object": "housing", "rotate": [-90, 0, 0] },
     { "id": "sun", "object": "sun" },
     { "id": "carrier", "object": "speck" },
@@ -5238,7 +5243,7 @@ Standing, the foot is under the hip with the knee behind it. The gait is a singl
     { "id": "bridge", "object": "bridge", "at": [0, "leg.bridge_low", 0], "rotate": [-90, 0, 0] },
     { "id": "b1", "bought": "bearing-6800", "at": [0, "leg.bridge_low + leg.bridge - leg.bearing_width", 0], "rotate": [-90, 0, 0] },
     { "id": "thigh", "object": "thigh" },
-    { "id": "m2", "motor": { "model": "nema14", "drives": "kd", "speed": 200, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 } },
+    { "id": "m2", "motor": { "model": "17HS4401", "drives": "kd", "speed": 200, "duty": 0.3, "driver": "d2", "current": 0.5, "microsteps": 8 }, "have": true },
     { "id": "esun", "object": "sun", "set": { "tip": 11.7 } },
     { "id": "ecarrier", "object": "speck" }, { "id": "ering", "object": "speck" },
     { "id": "ep1", "object": "planet" }, { "id": "ep2", "object": "planet" }, { "id": "ep3", "object": "planet" },
@@ -5253,10 +5258,10 @@ Standing, the foot is under the hip with the knee behind it. The gait is a singl
     { "id": "collar1", "object": "collar", "rotate": [0, 0, 180], "at": ["0 - leg.rod_x", "0 - leg.rod_y", "0 - carriage.boss_long / 2 - leg.stop_drop - collar1.high"] },
     { "id": "collar2", "object": "collar", "at": ["leg.rod_x", "0 - leg.rod_y", "0 - carriage.boss_long / 2 - leg.stop_drop - collar2.high"] },
     { "id": "scale", "object": "scale", "at": [0, 5, "0 - leg.stance - leg.foot_r - leg.scale_h"] },
-    { "id": "d1", "bought": "drv8825", "at": [240, -30, -180] },
-    { "id": "d2", "bought": "drv8825", "at": [240, 0, -180] },
-    { "id": "shield", "bought": "cnc-shield-v3", "at": [240, 0, -190] },
-    { "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "at": [300, 150, -190] }
+    { "id": "d1", "bought": "drv8825", "at": [240, -30, -180], "have": true },
+    { "id": "d2", "bought": "drv8825", "at": [240, 0, -180], "have": true },
+    { "id": "shield", "bought": "cnc-shield-v3", "at": [240, 0, -190], "have": true },
+    { "id": "psu", "bought": "supply-12v", "set": { "output_current": 1.5 }, "at": [300, 150, -190], "have": true }
   ],
   "joints": [
     { "id": "m1_on", "type": "fixed", "parent": "housing.motor", "child": "m1.face" },
@@ -5323,9 +5328,9 @@ Standing, the foot is under the hip with the knee behind it. The gait is a singl
   "wires": [
     { "id": "hip_wire", "from": "m1.connector", "to": "shield.X", "via": ["carriage.cable"], "gauge": "awg24", "colour": "black, red, green, blue", "connectors": ["JST-XH 4 pin", "screw terminal"] },
     { "id": "knee_wire", "from": "m2.connector", "to": "shield.Y", "via": ["thigh.cable", "carriage.cable"], "gauge": "awg24", "colour": "black, red, green, blue", "connectors": ["JST-XH 4 pin", "screw terminal"] },
-    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "24 V into the shield's motor terminals" }
+    { "id": "power", "from": "psu.terminals", "to": "shield.top", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V from the bench supply, its current limit at 1.5 A, into the shield's motor terminals" }
   ],
-  "gait": { "legs": ["shin.tip"], "pattern": { "duty": 0.6, "phase": [0] }, "stride": "leg.stride", "lift": "leg.lift", "period": 2, "height": "leg.stance", "mass": "leg.share", "clearance": 12 },
+  "gait": { "legs": ["shin.tip"], "pattern": { "duty": 0.6, "phase": [0] }, "stride": "leg.stride", "lift": "leg.lift", "period": 2, "height": "leg.stance", "mass": "leg.stand_load", "clearance": 12 },
   "poses": { "standing": { "hd": -5587.7, "kd": -2236 } }
 }
 ```
@@ -5339,12 +5344,13 @@ npx cad animate leg/stand
 The check runs with `--json` here because the stand's warnings, that its figures rest on estimates and that two of the shin's screws want a ball-end key, would otherwise stop the test: run it plain to read it. What it says:
 
 - `gait.clearance` passes: the swing foot lifts 15 mm clear of the scale (asked 12).
-- `motor.torque` through the gait: the hip needs 0.147 N m at the worst of the cycle against 1.682 N m the 17HS4401 gives at 0.5 A through 38:1 at 47%, 11.4 times; the knee 0.451 N m against 1.419 N m, 3.1 times. Those figures are the foot's load only, not the leg's own weight in the swing, and the gearbox efficiency is an estimate.
+- `motor.torque` through the gait: the hip needs 0.198 N m at the worst of the cycle against 1.682 N m the 17HS4401 gives at 0.5 A through 38:1 at 47%, 8.5 times; the knee 0.608 N m against the same 1.682 N m, 2.8 times. By hand: the 17HS4401 holds 0.4 N m, and moving, 0.4 / √2 = 0.283 N m, flat up to its 12 V corner of 60 × 12 / (2 × 4.2 mH × 1.5 A × 200 steps) = 286 rpm, so all of it at 200 rpm; at 0.5 of its 1.5 A, 0.094 N m; through 38:1 at 47%, 1.682 N m. The supply's 12 V costs nothing here, since 200 rpm is under its corner: only the mass moves the margins. With the NEMA 14 the knee had 1.419 N m for 0.451 N m at 0.75 kg, 3.1 times, and the hip 11.4 times; the 17HS4401 gives the knee more torque, and the 90 g it adds, with the load now counted as what rides the rods, brings both margins down to these. Those figures are the foot's load only, not the leg's own weight in the swing, and the gearbox efficiency is an estimate.
+- The drivers and the supply: each DRV8825's trimmer at 0.25 V for 0.5 A a coil (on 0.1 ohm sense resistors: read yours first), and the machine draws 0.22 A at 12 V (2.6 W) from the bench supply's 1.5 A limit, 6.9 times over.
 - `gait.sweep` passes: the leg, moved through the cycle pose by pose, hits nothing, with every planet and the sun turning as they should (the gait moves the motor's shaft that leads each output, and the rest follows).
 - The gears' overlap is zero: the second ring is put in phase at the joint's own zero, wherever its range starts. (A range that left out zero once put the ring 30° out, and every planet into its teeth.)
 - `fasten` chooses every screw and passes each: the housing's three M3x8 caps into the carriage, the bridge's three M3x10, the spindle's four M3x8 countersunk, the thigh's M3x16 into the hexagon, the clips' three M3x8 and the shin's four M3x12. It warns that the shin's first and third screws are reached only by a ball-end key tilted up to 25°: in the standing pose rod1, and for one of them collar1, stands over the straight line. That is true on the bench, so the shin goes on the knee before the leg goes on the stand. The collar's clamp screw is not a `fasten` yet: its head and nut would sit on the collar's round outside, and the collar needs flats for them first.
 - `cad list` gives 471 g of printing and about 8.6 hours, and buys those screws with the motors' own (4 M3x6 and 4 M3x12 from their mounts): 24 g of fixings. Per part, printed and bought, the leg (without the stand) is the sum above; the heaviest prints are the thigh (98 g), the carriage (92 g), the tie (43 g) and the shin (43 g).
-- Margin per part, by hand (`estimate`, PLA at 39 MPa, bending at the worst stance load): the thigh 80 times, the shin 45 times, the carriage's arms 130 times. The motors' margins above are the small ones.
+- Margin per part, by hand (`estimate`, PLA at 39 MPa, bending at the worst stance load): the thigh 59 times, the shin 33 times, the carriage's arms 97 times. These were 80, 45 and 130 times at the robot's 0.75 kg share; the stance load is now the 1.01 kg that rides the rods, and bending stress follows the load, so each is 0.75 / 1.01 of what it was. The motors' margins above are the small ones.
 - `cad animate leg/stand` writes `.preview/leg/stand-gait.svg`: the leg's sticks in side view, the foot's stance in blue and swing in orange. The model page plays the same cycle in the Motion panel of a link: `cad link leg/stand` carries it.
 
 To run the leg on the bench: tare the scale with the carriage resting on its stops and the foot just off it, command the stance, and read the scale, which reads the foot's push. A known mass hung on the carriage is the test of whether the leg holds and what the torque margin really is.
@@ -5471,7 +5477,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "fl_bridge", "object": "bridge"},
     {"id": "fl_b1", "bought": "bearing-6800"},
     {"id": "fl_thigh", "object": "thigh"},
-    {"id": "fl_m2", "motor": {"model": "nema14", "drives": "fl_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "fl_m2", "motor": {"model": "17HS4401", "drives": "fl_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "fl_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "fl_ecarrier", "object": "speck"},
     {"id": "fl_ering", "object": "speck"},
@@ -5496,7 +5502,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "fr_bridge", "object": "bridge"},
     {"id": "fr_b1", "bought": "bearing-6800"},
     {"id": "fr_thigh", "object": "thigh"},
-    {"id": "fr_m2", "motor": {"model": "nema14", "drives": "fr_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "fr_m2", "motor": {"model": "17HS4401", "drives": "fr_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "fr_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "fr_ecarrier", "object": "speck"},
     {"id": "fr_ering", "object": "speck"},
@@ -5521,7 +5527,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "bl_bridge", "object": "bridge"},
     {"id": "bl_b1", "bought": "bearing-6800"},
     {"id": "bl_thigh", "object": "thigh"},
-    {"id": "bl_m2", "motor": {"model": "nema14", "drives": "bl_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "bl_m2", "motor": {"model": "17HS4401", "drives": "bl_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "bl_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "bl_ecarrier", "object": "speck"},
     {"id": "bl_ering", "object": "speck"},
@@ -5546,7 +5552,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "br_bridge", "object": "bridge"},
     {"id": "br_b1", "bought": "bearing-6800"},
     {"id": "br_thigh", "object": "thigh"},
-    {"id": "br_m2", "motor": {"model": "nema14", "drives": "br_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "br_m2", "motor": {"model": "17HS4401", "drives": "br_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "br_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "br_ecarrier", "object": "speck"},
     {"id": "br_ering", "object": "speck"},
@@ -5777,7 +5783,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "fl_bridge", "object": "bridge"},
     {"id": "fl_b1", "bought": "bearing-6800"},
     {"id": "fl_thigh", "object": "thigh"},
-    {"id": "fl_m2", "motor": {"model": "nema14", "drives": "fl_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "fl_m2", "motor": {"model": "17HS4401", "drives": "fl_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "fl_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "fl_ecarrier", "object": "speck"},
     {"id": "fl_ering", "object": "speck"},
@@ -5802,7 +5808,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "fr_bridge", "object": "bridge"},
     {"id": "fr_b1", "bought": "bearing-6800"},
     {"id": "fr_thigh", "object": "thigh"},
-    {"id": "fr_m2", "motor": {"model": "nema14", "drives": "fr_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "fr_m2", "motor": {"model": "17HS4401", "drives": "fr_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "fr_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "fr_ecarrier", "object": "speck"},
     {"id": "fr_ering", "object": "speck"},
@@ -5827,7 +5833,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "bl_bridge", "object": "bridge"},
     {"id": "bl_b1", "bought": "bearing-6800"},
     {"id": "bl_thigh", "object": "thigh"},
-    {"id": "bl_m2", "motor": {"model": "nema14", "drives": "bl_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "bl_m2", "motor": {"model": "17HS4401", "drives": "bl_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "bl_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "bl_ecarrier", "object": "speck"},
     {"id": "bl_ering", "object": "speck"},
@@ -5852,7 +5858,7 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"id": "br_bridge", "object": "bridge"},
     {"id": "br_b1", "bought": "bearing-6800"},
     {"id": "br_thigh", "object": "thigh"},
-    {"id": "br_m2", "motor": {"model": "nema14", "drives": "br_kd", "speed": 200, "duty": 0.3, "current": 0.8, "microsteps": 8}},
+    {"id": "br_m2", "motor": {"model": "17HS4401", "drives": "br_kd", "speed": 200, "duty": 0.3, "current": 1, "microsteps": 8}},
     {"id": "br_esun", "object": "sun", "set": {"tip": 11.7}},
     {"id": "br_ecarrier", "object": "speck"},
     {"id": "br_ering", "object": "speck"},
@@ -6064,17 +6070,17 @@ npx cad list leg/quadruped
 npx cad plates leg/quadruped
 ```
 
-The weight first, plainly: the shopping list says 1470 g of printing, 1900 g of bought parts and 105 g of screws, 3474 g as a machine, before electronics. The 1.5 kg robot the leg was sized for does not exist: eight motors weigh 1880 g alone. So the robot is 3.8 kg (`leg.robot_mass`, with its electronics an `estimate` of about 0.4 kg, and the screws within that guess), and every number below is at that mass.
+The weight first, plainly: the shopping list says 1470 g of printing, 2260 g of bought parts and 105 g of screws, 3834 g as a machine, before electronics. The 1.5 kg robot the leg was sized for does not exist: eight 17HS4401s weigh 2240 g alone, 360 g more than with NEMA 14 knees. So the robot is 4.2 kg (`leg.robot_mass`, with its electronics an `estimate` of about 0.4 kg), and every number below is at that mass. The knees run at 1 A, as the hips do: a DRV8825 gives that without a heat sink, and the 17HS4401 is rated 1.5 A.
 
 The screws are the stand's four times over, each chosen by `fasten`, with each hip's housing on its side plate (three M3x8) and the beams held by two M3x12 at each end: 24 M3x8 cap, 16 M3x8 countersunk, 12 M3x10, 40 M3x12 with the knee motors' own and 4 M3x16, and the hip motors' 16 M3x6.
 
 Trot and crawl are run through their checks by `cad check leg/quadruped --json` and `cad check leg/crawl --json`: they take several minutes each, so the replay here leaves them out; run them yourself. What they said when this chapter was written (quasi-static, a design, nothing built):
 
-- **Trot.** Two feet down at a time: `gait.stable` reports it is quasi-static, resting on two feet, so its balance depends on moving: this is a slow walk, not a run. The worst joint is 1.33 N m at the knee, 1.7 times over at the 0.8 A set on the knee's NEMA 14. `gait.sweep` found nothing colliding through the cycle.
-- **Crawl.** One foot up at a time: statically stable, the least margin 4.3 mm of balance to spare, with the worst joint 1.17 N m. Slower, and safer: a crawl is what a quadruped with no balance control can do.
+- **Trot.** Two feet down at a time: `gait.stable` reports it is quasi-static, resting on two feet, so its balance depends on moving: this is a slow walk, not a run. The worst joint is 1.465 N m at a back knee, against 3.364 N m from its 17HS4401 at 1 A through 38:1 at 47%, 2.3 times over; the worst hip 0.477 N m, 7 times. (With NEMA 14 knees at 0.8 A and 3.8 kg it was 1.325 N m against 2.27 N m, 1.7 times, and the check warned.) The 17HS4401 is 42.3 mm square and 40 mm long, against the NEMA 14's 35 mm and 34 mm; the trot's poses at its start, a quarter, a half and three quarters of its cycle were swept with the larger knee motors, and nothing collided.
+- **Crawl.** One foot up at a time: statically stable, the least margin 4.3 mm of balance to spare, with the worst joint 1.288 N m at a knee, 2.6 times over (1.165 N m and 1.9 times before). Slower, and safer: a crawl is what a quadruped with no balance control can do.
 - `cad plates` lays the quadruped's prints on beds, and `cad list` lists it all, ready to buy. That part of the design was done from the assembly, unchanged.
 
-The honest reading: at 3.8 kg the knees have 1.7 times the torque a trot asks of them, and the check warns, because anything under two is thin on a printed gearbox whose efficiency is a guess. That is the number to fix before printing this as a robot: a lighter body, a shorter leg, or a NEMA 17 at the knee and a recount.
+The honest reading: with a 17HS4401 at each knee at 1 A, the knees have 2.3 times the torque a trot asks of them at 4.2 kg, where NEMA 14s at 0.8 A had 1.7 times at 3.8 kg and the check warned. The bigger motor more than pays for its 90 g. Two times is still thin on a printed gearbox whose efficiency is a guess, and the 0.4 kg of electronics is an estimate: weigh the robot as built, set `leg.robot_mass` to that, and check again before printing it as a robot.
 
 ### What a walking robot needs that this does not do
 
