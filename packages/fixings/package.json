@@ -22,6 +22,7 @@
     "pins.mjs",
     "magnets.mjs",
     "bolts.mjs",
+    "snaps.mjs",
     "fixings.d.mts",
     "model.d.mts",
     "holes.d.mts",
@@ -33,6 +34,7 @@
     "pins.d.mts",
     "magnets.d.mts",
     "bolts.d.mts",
+    "snaps.d.mts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
