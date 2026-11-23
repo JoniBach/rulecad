@@ -11,16 +11,24 @@
 //   w <ms>                 wait
 //   m <a> <b> <c> <entry> <peak> <exit> <accel> <up> <down>
 //                          a block: signed steps per axis, then the major axis's step rate at entry, peak and exit
-//                          (steps/s), its acceleration (steps/s²), and the major steps spent speeding up and slowing down
+//                          (steps/s), its acceleration (steps/s²), and the major steps spent speeding up and slowing down.
+//                          "error: rate" if its peak is past MAX_RATE, "error: block" if it moves nothing
 //   ?                      prints "q <pos0> <pos1> <pos2> <blocks queued>" (positions in steps, as of the last block finished)
 //   !                      stop at once, empty the queue, drivers stay on: answers "ok"
 //
 // Timing: steps are timed in the main loop from micros(), with serial read between them, so the servo library keeps its
-// timer. Rates of up to about 8000 steps/s on the major axis are within reach of a 16 MHz Uno. Compiled for the Uno and
-// exercised with send.mjs --dry-run here; moving hardware is a bench test (the machine's measured milestone).
+// timer. The step and direction pins are all on the Uno's port D (D2 to D7), so the axes due on a tick are stepped in one
+// write, and each step costs one division. MAX_RATE is the fastest block it takes: on a simulated 16 MHz Uno
+// (scripts/firmware.mjs --simulate, in CI) the loop keeps up with more than that with all three axes stepping at once.
+// Compiled for the Uno and run on the simulated one in CI; moving hardware is a bench test (the machine's measured milestone).
 #include <Servo.h>
 
+#ifndef RATE_LIMIT
+#define RATE_LIMIT 8000
+#endif
+const long MAX_RATE = RATE_LIMIT; // steps/s on a block's major axis; the simulation builds with -DRATE_LIMIT raised to find the loop's own limit
 const uint8_t STEP[3] = { 2, 3, 4 }, DIR[3] = { 5, 6, 7 }, LIMIT[3] = { 9, 10, 12 }, ENABLE_PIN = 8, PEN_PIN = 11;
+const uint8_t STEP_MASK[3] = { _BV(PD2), _BV(PD3), _BV(PD4) }; // the STEP pins' bits in PORTD
 const uint8_t QUEUE = 12;
 const long MIN_RATE = 80; // steps/s: slower than this a block would take seconds to start
 
@@ -42,7 +50,7 @@ Block cur;
 long done = 0, acc[3];
 unsigned long nextAt = 0, waitUntil = 0;
 bool waiting = false;
-float rate = 0;
+float rate = 0, gap = 0; // steps/s, and the µs from this step to the next
 
 void setup() {
   Serial.begin(115200);
@@ -53,17 +61,19 @@ void setup() {
   Serial.println(F("arm ready"));
 }
 
-void pulse(uint8_t axis) { digitalWrite(STEP[axis], HIGH); delayMicroseconds(3); digitalWrite(STEP[axis], LOW); }
+// A STEP pulse on the axes in mask, 3 µs high (delayMicroseconds(3) gave 2.06 µs on the simulated Uno, too near the
+// DRV8825's 1.9 µs minimum; the A4988's is 1 µs)
+void pulse(uint8_t mask) { PORTD |= mask; delayMicroseconds(4); PORTD &= ~mask; }
 
 bool home(uint8_t axis, int dir, long hz, long back) {
   digitalWrite(DIR[axis], dir > 0 ? HIGH : LOW);
   unsigned long gap = 1000000UL / hz, start = millis();
   while (digitalRead(LIMIT[axis]) == HIGH) {
     if (millis() - start > 60000UL) return false;
-    pulse(axis); delayMicroseconds(gap);
+    pulse(STEP_MASK[axis]); delayMicroseconds(gap);
   }
   digitalWrite(DIR[axis], dir > 0 ? LOW : HIGH);
-  for (long i = 0; i < back; i++) { pulse(axis); delayMicroseconds(gap); }
+  for (long i = 0; i < back; i++) { pulse(STEP_MASK[axis]); delayMicroseconds(gap); }
   position[axis] = 0;
   return true;
 }
@@ -96,6 +106,7 @@ bool obey() {
     b.entry = nextLong(); b.peak = nextLong(); b.exit_ = nextLong(); b.accel = nextLong(); b.up = nextLong(); b.down = nextLong();
     b.major = max(max(labs(b.steps[0]), labs(b.steps[1])), labs(b.steps[2]));
     if (b.major == 0 || b.peak <= 0 || b.accel <= 0) { Serial.println(F("error: block")); return true; }
+    if (b.peak > MAX_RATE || b.entry > MAX_RATE || b.exit_ > MAX_RATE) { Serial.println(F("error: rate")); return true; }
   } else if (c == 'p') { b.kind = PEN; b.major = nextLong(); b.up = nextLong(); }
   else { b.kind = WAIT; b.up = nextLong(); }
   head = (head + 1) % QUEUE;
@@ -123,22 +134,27 @@ void start() {
   if (cur.kind == PEN) { pen.write(cur.major); waitUntil = millis() + cur.up; waiting = true; return; }
   if (cur.kind == WAIT) { waitUntil = millis() + cur.up; waiting = true; return; }
   for (uint8_t i = 0; i < 3; i++) { digitalWrite(DIR[i], cur.steps[i] < 0 ? LOW : HIGH); acc[i] = cur.major / 2; }
-  rate = max(cur.entry, MIN_RATE);
+  rate = max(cur.entry, MIN_RATE); gap = 1000000.0 / rate;
   done = 0; running = true; nextAt = micros();
 }
 
 void tick() {
   if ((long)(micros() - nextAt) < 0) return;
+  uint8_t mask = 0;
   for (uint8_t i = 0; i < 3; i++) {
     acc[i] += labs(cur.steps[i]);
-    if (acc[i] >= cur.major) { acc[i] -= cur.major; pulse(i); position[i] += cur.steps[i] < 0 ? -1 : 1; }
+    if (acc[i] >= cur.major) { acc[i] -= cur.major; mask |= STEP_MASK[i]; position[i] += cur.steps[i] < 0 ? -1 : 1; }
   }
+  pulse(mask);
   done++;
   if (done >= cur.major) { running = false; return; }
-  // Constant acceleration: dv = a dt, dt = 1 / v
-  if (done < cur.up) { rate += (float)cur.accel / rate; if (rate > cur.peak) rate = cur.peak; }
-  else if (done >= cur.major - cur.down) { rate -= (float)cur.accel / rate; float floor_ = max(cur.exit_, MIN_RATE); if (rate < floor_) rate = floor_; }
-  nextAt += (unsigned long)(1000000.0 / rate);
+  // Constant acceleration: dv = a dt, and dt is this step's gap, 1 / v
+  bool changed = true;
+  if (done < cur.up) { rate += cur.accel * gap * 1e-6f; if (rate > cur.peak) rate = cur.peak; }
+  else if (done >= cur.major - cur.down) { rate -= cur.accel * gap * 1e-6f; float floor_ = max(cur.exit_, MIN_RATE); if (rate < floor_) rate = floor_; }
+  else changed = false;
+  if (changed) gap = 1000000.0 / rate;
+  nextAt += (unsigned long)gap;
 }
 
 void loop() {
