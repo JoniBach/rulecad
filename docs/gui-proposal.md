@@ -102,8 +102,8 @@ Mac on 2026-11-23:
 | `buildAssembly` in one process, three runs | 12.4 s, then 10.9 s and 11.0 s | 40 parts; the build, not the check, is the slow part |
 | `checkAssembly` on a built assembly | 443 ms, then 312 ms and 270 ms | Fast once built |
 
-The scripts are in the proposal's scratch folder (`time-edit.mjs`, `time-check.mjs`); they import the library and
-time it, nothing more.
+The in-process figures come from a short script that imports `lib/edit.mjs` and `lib/assembly.mjs` and times each
+call with `performance.now()`; the others are the commands run as they are, timed by the shell.
 
 ## 2. Onshape's ideas, in rulecad's terms
 
@@ -111,7 +111,8 @@ Onshape describes its assemblies as built from "high-level kinematic relationshi
 connectors, and its advice is to "design parts where they will live" ([Onshape Assemblies](https://www.onshape.com/en/features/assemblies),
 read 2026-11-23). It runs in a web browser, with phone apps, and its features can be written in a language of their
 own, FeatureScript ([Onshape on Wikipedia](https://en.wikipedia.org/wiki/Onshape), read 2026-11-23). Most of its
-ideas have a counterpart in rulecad already:
+ideas have a counterpart in rulecad already. The left column uses Onshape's names as its interface shows them;
+beyond the two pages cited, they were not checked against its help, which did not load as text:
 
 | Onshape | rulecad | Where it differs |
 |---|---|---|
