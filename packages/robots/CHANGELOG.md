@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
+## 0.1.3: blocks no shorter than their line takes (#181)
 
 ### Added
 
