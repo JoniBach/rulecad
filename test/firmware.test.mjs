@@ -77,7 +77,7 @@ test('firmware: the dry run takes the protocol\'s own ? and ! lines, and answers
   assert.deepEqual(r.said.filter((s) => /^[?!]/.test(s)), ['?  q 1200 400 0 0', '!  ok', '?  q 1200 0 0 0']);
   // the streamer's own answer to ?, from arm.ino, is "q " then three positions each followed by a space, then the count
   assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '\?'\) \{ Serial\.print\(F\("q "\)\); for \(uint8_t i = 0; i < 3; i\+\+\) \{ Serial\.print\(position\[i\]\); Serial\.print\(' '\); \} Serial\.println\(count\(\)\)/);
-  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '!'\) \{ head = tail = 0; running = false; waiting = false; Serial\.println\(F\("ok"\)\)/);
+  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '!'\) \{ head = tail = 0; running = false; waiting = false; chained = false; Serial\.println\(F\("ok"\)\)/);
 });
 
 test('firmware: the streamer refuses a block past MAX_RATE by name, and steps its axes on port D', () => {

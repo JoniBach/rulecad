@@ -30,6 +30,7 @@
 const long MAX_RATE = RATE_LIMIT; // steps/s on a block's major axis; the simulation builds with -DRATE_LIMIT raised to find the loop's own limit
 const uint8_t STEP[3] = { 2, 3, 4 }, DIR[3] = { 5, 6, 7 }, LIMIT[3] = { 9, 10, 12 }, ENABLE_PIN = 8, PEN_PIN = 11;
 const uint8_t STEP_MASK[3] = { _BV(PD2), _BV(PD3), _BV(PD4) }; // the STEP pins' bits in PORTD
+const uint8_t DIR_MASK[3] = { _BV(PD5), _BV(PD6), _BV(PD7) };  // the DIR pins' bits in PORTD
 const uint8_t QUEUE = 12;
 const long MIN_RATE = 80; // steps/s: slower than this a block would take seconds to start
 
@@ -41,8 +42,13 @@ inline uint8_t count() { return head >= tail ? head - tail : head + QUEUE - tail
 
 Servo pen;
 long position[3] = { 0, 0, 0 };
-char line[96];
-uint8_t len = 0;
+// The line being read, taken a character at a time as it arrives, between steps: its command letter, then up to ARGS
+// whole numbers, each built up digit by digit. Parsing a whole line at its end (strtol) held the steps up 520 to 600 µs.
+const uint8_t ARGS = 9, LINE_MAX = 95;
+char cmd = 0;
+long arg[ARGS];
+uint8_t len = 0, nargs = 0;
+bool inNumber = false, negative = false, bad = false;
 bool pending = false; // a whole line is waiting for room in the queue
 
 // The block being run
@@ -51,6 +57,7 @@ Block cur;
 long done = 0, acc[3];
 unsigned long nextAt = 0, waitUntil = 0;
 bool waiting = false;
+bool chained = false; // the last block ended on a step with the next due one gap after it: the next block keeps that time
 float rate = 0, gap = 0; // steps/s, and the µs from this step to the next
 
 void setup() {
@@ -79,21 +86,33 @@ bool home(uint8_t axis, int dir, long hz, long back) {
   return true;
 }
 
-// Reads longs from a line, space separated
-const char *cursor;
-long nextLong() { char *end; long v = strtol(cursor, &end, 10); cursor = end; return v; }
+// One character of a line: the first is the command, then numbers separated by spaces, a minus sign before a negative one
+void endNumber() { if (inNumber) { if (negative) arg[nargs] = -arg[nargs]; nargs++; inNumber = false; } }
+void take(char c) {
+  if (!len++) { cmd = c; nargs = 0; inNumber = false; bad = false; return; }
+  if (len > LINE_MAX) { bad = true; return; }
+  if (c == ' ') { endNumber(); return; }
+  if (!inNumber) {
+    if (nargs >= ARGS) { bad = true; return; }
+    inNumber = true; negative = c == '-'; arg[nargs] = 0;
+    if (negative) return;
+  }
+  if (c < '0' || c > '9') { bad = true; return; }
+  arg[nargs] = arg[nargs] * 10 + (c - '0');
+}
+long a(uint8_t i) { return i < nargs ? arg[i] : 0; } // a number missing from the end of a line is 0
 
 // True if the line was dealt with; false if it has to wait for room in the queue
 bool obey() {
-  char c = line[0];
-  cursor = line + 1;
+  char c = cmd;
+  if (bad) { Serial.println(F("error: line")); return true; }
   if (c == 'e') { digitalWrite(ENABLE_PIN, LOW); Serial.println(F("ok")); return true; }
   if (c == 'd') { digitalWrite(ENABLE_PIN, HIGH); Serial.println(F("ok")); return true; }
-  if (c == '!') { head = tail = 0; running = false; waiting = false; Serial.println(F("ok")); return true; }
+  if (c == '!') { head = tail = 0; running = false; waiting = false; chained = false; Serial.println(F("ok")); return true; }
   if (c == '?') { Serial.print(F("q ")); for (uint8_t i = 0; i < 3; i++) { Serial.print(position[i]); Serial.print(' '); } Serial.println(count()); return true; }
   if (c == 'h') {
     if (running || count()) return false; // home only when everything before it is finished
-    long axis = nextLong(), dir = nextLong(), hz = nextLong(), back = nextLong();
+    long axis = a(0), dir = a(1), hz = a(2), back = a(3);
     if (axis < 0 || axis > 2 || hz <= 0) { Serial.println(F("error: home")); return true; }
     Serial.println(home(axis, dir, hz, back) ? F("ok") : F("error: endstop"));
     return true;
@@ -103,14 +122,14 @@ bool obey() {
   Block &b = queue[head];
   if (c == 'm') {
     b.kind = MOVE;
-    for (uint8_t i = 0; i < 3; i++) b.steps[i] = nextLong();
-    b.entry = nextLong(); b.peak = nextLong(); b.exit_ = nextLong(); b.accel = nextLong(); b.up = nextLong(); b.down = nextLong();
+    for (uint8_t i = 0; i < 3; i++) b.steps[i] = a(i);
+    b.entry = a(3); b.peak = a(4); b.exit_ = a(5); b.accel = a(6); b.up = a(7); b.down = a(8);
     b.major = max(max(labs(b.steps[0]), labs(b.steps[1])), labs(b.steps[2]));
     if (b.major == 0 || b.peak <= 0 || b.accel <= 0) { Serial.println(F("error: block")); return true; }
     if (b.peak > MAX_RATE || b.entry > MAX_RATE || b.exit_ > MAX_RATE) { Serial.println(F("error: rate")); return true; }
-  } else if (c == 'p') { b.kind = PEN; b.major = nextLong(); b.up = nextLong(); }
-  else { b.kind = WAIT; b.up = nextLong(); }
-  head = (head + 1) % QUEUE;
+  } else if (c == 'p') { b.kind = PEN; b.major = a(0); b.up = a(1); }
+  else { b.kind = WAIT; b.up = a(0); }
+  if (++head == QUEUE) head = 0;
   Serial.println(F("ok"));
   return true;
 }
@@ -121,22 +140,29 @@ void readSerial() {
     char c = Serial.read();
     if (c == '\n' || c == '\r') {
       if (!len) continue;
-      line[len] = 0; len = 0;
+      endNumber(); len = 0;
       if (!obey()) pending = true;
       return;
     }
-    if (len < sizeof(line) - 1) line[len++] = c;
+    take(c);
   }
 }
 
 void start() {
   cur = queue[tail];
-  tail = (tail + 1) % QUEUE;
+  if (++tail == QUEUE) tail = 0;
+  if (cur.kind != MOVE) chained = false;
   if (cur.kind == PEN) { pen.write(cur.major); waitUntil = millis() + cur.up; waiting = true; return; }
   if (cur.kind == WAIT) { waitUntil = millis() + cur.up; waiting = true; return; }
-  for (uint8_t i = 0; i < 3; i++) { digitalWrite(DIR[i], cur.steps[i] < 0 ? LOW : HIGH); acc[i] = cur.major / 2; }
+  // the direction pins in one write, and each axis's Bresenham count from half the block (a shift: a long division here
+  // cost about 600 cycles an axis between one block's last step and the next block's first)
+  uint8_t dirs = 0;
+  for (uint8_t i = 0; i < 3; i++) { if (cur.steps[i] >= 0) dirs |= DIR_MASK[i]; acc[i] = cur.major >> 1; }
+  PORTD = (PORTD & ~(DIR_MASK[0] | DIR_MASK[1] | DIR_MASK[2])) | dirs;
   rate = max(cur.entry, MIN_RATE); gap = 1000000.0 / rate;
-  done = 0; running = true; nextAt = micros();
+  done = 0; running = true;
+  if (!chained) nextAt = micros(); // from rest, its first step now; following a block, one gap after that block's last
+  chained = false;
 }
 
 void tick() {
@@ -148,7 +174,7 @@ void tick() {
   }
   pulse(mask);
   done++;
-  if (done >= cur.major) { running = false; return; }
+  if (done >= cur.major) { running = false; nextAt += (unsigned long)gap; chained = true; return; }
   // Constant acceleration: dv = a dt, and dt is this step's gap, 1 / v
   bool changed = true;
   if (done < cur.up) { rate += cur.accel * gap * 1e-6f; if (rate > cur.peak) rate = cur.peak; }
@@ -162,5 +188,5 @@ void loop() {
   readSerial();
   if (waiting) { if ((long)(millis() - waitUntil) >= 0) waiting = false; return; }
   if (running) { tick(); return; }
-  if (count()) start();
+  if (count()) start(); else chained = false; // the queue ran dry: the motors stopped, and the next block starts from rest
 }
