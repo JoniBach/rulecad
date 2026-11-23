@@ -167,14 +167,14 @@
       "rule": "The root blocks behind the guides, along the arm, and the plate joining them"
     },
     "xs": {
-      "value": 81.94,
+      "value": 79.97,
       "unit": "mm",
       "rule": "From the bolts to the horn's axis: the root blocks start at the yoke block's front (the design refuses another value and says which)"
     },
     "leaf_l": {
-      "value": 39,
+      "value": 37,
       "unit": "mm",
-      "rule": "A guide's leaves: long enough that the servo opens them at about twice the margin (the flexures model's gripper.servo)"
+      "rule": "A guide's leaves: as short (so as stiff, so as strong a grip) as lets the servo open them 2.1 times over (the flexures model's gripper.servo), and the stop stay within 0.8 of the leaves' strain limit"
     },
     "leaf_t": {
       "value": 0.84,
@@ -232,9 +232,14 @@
       "rule": "The jaws end, from the axis"
     },
     "jaw_gap": {
-      "value": 1,
+      "value": 2,
       "unit": "mm",
-      "rule": "The gap between the jaws at rest: the narrowest thing they hold"
+      "rule": "The gap between the jaws at rest: each jaw grips with its guide's spring times how far the object holds it open, so this sets the sizes held. 2 mm: 50 g twice over from 5.7 mm across, 100 g from 9.4 mm, up to 10.5 mm"
+    },
+    "stop_close": {
+      "value": 0.85,
+      "unit": "mm",
+      "rule": "How far a jaw may be pushed closed before its stop: short of the jaws meeting (1 mm each), and leaving room for the posts between the forks"
     },
     "jaw_at": {
       "value": "xs + (jaw_from + jaw_to) / 2",
@@ -244,7 +249,7 @@
     "post_y": {
       "value": 5.9,
       "unit": "mm",
-      "rule": "Half a post across, under the servo's tabs (12.2 wide): the rear post stands between the forks, which close to 6.28 at their stops (7.58 less 1.3), so 0.38 clear, over a print gap"
+      "rule": "Half a post across, under the servo's tabs (12.2 wide): the rear post stands between the forks, which close to 6.73 at their stops (7.58 less 0.85), so 0.83 clear, over a print gap"
     },
     "spine_w": {
       "value": 3,
