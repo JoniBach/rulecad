@@ -1,5 +1,5 @@
 // The thigh, drawn as it prints: its outer face on the bed, the knee's ring standing on it, the hub's socket opening
-// upward. The knee's NEMA 14 bolts on the bed side, its shaft up through the plate, as the arm's elbow does.
+// upward. The knee's 17HS4401, the hip's motor, bolts on the bed side, its shaft up through the plate, as the arm's elbow does.
 // The screws' holes are v.fixings': an M3 clearance hole through the socket's floor for the screw into the spindle,
 // and an M3 pilot in each post for its clip.
 import jscad from '@jscad/modeling'
@@ -10,7 +10,7 @@ const { hull } = jscad.hulls
 
 export function main (v) {
   const screw = v.fixings.holeModel('M3').diameter, pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
-  const motor = v.motors.motorModel('nema14')
+  const motor = v.motors.motorModel('17HS4401')
   const at = (r, a) => [v.long + r * Math.cos(a), r * Math.sin(a)]
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad)
   const round = (r, c) => translate([c, 0], circle({ radius: r, segments: v.segments }))
