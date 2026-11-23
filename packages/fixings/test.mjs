@@ -13,7 +13,7 @@ const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeMod
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 // Pins name no thread: their own refusals are held in the pins tests
-const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare', 'annularSnapModel', 'annularBead', 'annularGroove', 'hubFactor', 'shaftFactor']; // (pins, magnets and annular snaps name no thread)
+const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare', 'annularSnapModel', 'annularBead', 'annularGroove', 'hubFactor', 'shaftFactor', 'tubeRing']; // (pins, magnets and annular snaps name no thread)
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -1215,7 +1215,7 @@ test('the working figures no coupon measures say so: snap_play, pin_least and ma
 });
 
 // ---------- annular snaps ----------
-const { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor, SNAP_USES } = fixings;
+const { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor, tubeRing, SNAP_USES } = fixings;
 // The lamp housing of the Bayer guide's worked example: Makrolon PC, E 2200 MPa (its secant modulus at 0.5%), ν 0.35.
 // Its strength is set for the test only, so the strain limit does not get in the way
 const makrolon = { name: 'makrolon', rules: { modulus: { value: 2200, unit: 'MPa' }, strength: { value: 65, unit: 'MPa' }, poisson: { value: 0.35 } } };

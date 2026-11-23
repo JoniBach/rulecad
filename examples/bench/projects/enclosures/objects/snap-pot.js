@@ -14,7 +14,11 @@ const { translate, rotateX } = jscad.transforms
 
 export function main (v) {
   const R = v.diameter / 2, seg = v.segments, ch = v.x1c.chamfer
-  const snap = v.fixings.annularSnapModel({ diameter: v.diameter, wall: v.wall, skirt: v.skirt, boxEnd: v.below_rim, lidEnd: v.below_bead }, { pull: v.pull })
+  // The joint's ends: the pot's rim (free) and floor (closed), the skirt's mouth (free) and the lid's top (closed), whose
+  // underside sits on the rim, so the groove's top is below_rim less the fit under it. The bead's length comes first
+  const joint = { diameter: v.diameter, wall: v.wall, skirt: v.skirt, boxEnd: v.below_rim, lidEnd: v.below_bead, lidTop: v.below_rim - v.x1c.fit }
+  const length = v.fixings.annularSnapModel(joint, { pull: v.pull }).length
+  const snap = v.fixings.annularSnapModel({ ...joint, boxFloor: v.height - v.below_rim - length - v.floor }, { pull: v.pull })
   // the bead's foot, its length (return face, land and lead face) under its top
   const foot = v.height - v.below_rim - snap.length, c = snap.clearance, mouth = foot - c - v.below_bead
   // A quarter round from (x0, y0) to (x1, y1) about (cx, cy): the points of an inside corner's fillet

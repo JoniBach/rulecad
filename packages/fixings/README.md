@@ -69,7 +69,7 @@ and stresses in MPa.
 | [Pins](#pins) | `pinModel`, `pinHole`, `pin`, `snapPin`, `snapSocket`, `snapPinModel`, `parsePin`, `isPinName` |
 | [Printed bolts](#printed-bolts) | `printedBoltModel`, `printedBolt` |
 | [Magnets](#magnets) | `magnetModel`, `magnetSeatModel`, `magnetSeat`, `magnet`, `parseMagnet`, `isMagnetName`, `fieldShare` |
-| [Annular snaps](#annular-snaps) | `annularSnapModel`, `annularBead`, `annularGroove`, `hubFactor`, `shaftFactor` |
+| [Annular snaps](#annular-snaps) | `annularSnapModel`, `annularBead`, `annularGroove`, `hubFactor`, `shaftFactor`, `tubeRing` |
 | [Measuring the printer's fits](#measuring-the-printers-fits) | the fixings coupon and the holds coupon |
 | [Refusals and printability](#refusals-and-printability) | `printable` |
 
@@ -714,7 +714,8 @@ thickness. `bead` is how far the bead stands off the wall; less the clearance (t
 the skirt is spread by. `lead` is the angle of the face the lid pushes over, from the axis (default 30°), `back` the
 return face's (default 45°, the steepest the printer's `overhang` allows: it is the underside of the bead as the box
 stands, and the face over the groove as the lid lies on its top). `land` is the bead's flat top (two layers), and
-`boxEnd` and `lidEnd` how far the joint is from each part's free end (the rim, the skirt's mouth).
+`boxEnd` and `lidEnd` how far the joint is from each part's free end (the rim, the skirt's mouth). `boxFloor` and
+`lidTop` are how far it is from each part's closed end: the box's floor, and the underside of the lid's top.
 
 **The sums.** Both parts are tubes. The Bayer snap-fit guide gives each one's transverse force for a spread y on the
 diameter as P = y d Es X, with a geometric factor X from its proportions (X_N for the skirt spread over a rigid
@@ -726,37 +727,70 @@ once). The yield strain is taken as strength over modulus, below the real one. A
 free end is about three times as stiff; nearer, the kit takes a straight line from 1 to 3. The forces along the push
 are the guide's W = P (μ + tan α) / (1 - μ tan α), over the lead face going on and the return face coming off.
 
+**A closed end near the joint.** The guide's tubes are open. A lid's skirt hangs from its top, and the top holds the
+skirt round where they meet: a tube's wall bends over a length of about 1/β, with β⁴ = 3 (1 - ν²) / (R² t²), so a
+groove within a few times 1/β of the top sits in a skirt far stiffer than a free tube, and the box's wall takes most
+of the interference. `tubeRing` works this out as Hetényi's beam on an elastic foundation (the theory the guide's own
+annular joint rests on): a ring load on the tube's wall, each end free, closed or long. The part's stiffness is
+multiplied by the beam's deflection with that end open over the deflection with it closed, and the bending strain at
+the closed end's root, 6 M (1 - ν²) / (E t²), is held to the same limit as the hoop strain (`snap.root`). The end is
+taken as fully closed, the stiffest it can be, so the forces and the mate's strain err high. For the 60 mm pot's lid,
+1/β is 4.9 mm: a groove 1.3 mm under the top makes the skirt 46 times as stiff, and 5.8 mm under it 1.3 times.
+
+**Refused and failed.** A lead that friction locks (μ tan α of 1 or more) is refused: no push slides the skirt over
+it. So is a bead as deep as the skirt, whose groove would cut right through it. The groove must leave at least one of
+the printer's `line` behind it (`snap.skirt`). Given `push`, the force the lid is pushed on with, a square push over
+it warns (`snap.push`).
+
 **Sizing.** Given no bead, it is sized: the least the print holds (`fixings.snap_least`, 0.2 mm of undercut), or
 more where `pull` asks for it, so the lid stays on against twice the pull (`load_margin`), up to the most the strain
-allows. A bead given too tall fails by name (`snap.strain`), with the most undercut that would do.
+allows, rounded up to what the pull needs and down to what the strain allows. A bead given too tall fails by name
+(`snap.strain`), with the most undercut that would do.
 
 ```js
-import { annularSnapModel, annularBead, annularGroove } from '@rulecad/fixings';
+import { annularSnapModel, annularBead, annularGroove, tubeRing } from '@rulecad/fixings';
 
-const lid = annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 1.5, lidEnd: 1.5 }, { pull: 10 });
-console.log(lid.bead, lid.undercut, lid.box.strain, lid.lid.strain, lid.permissible);
-console.log(lid.force, lid.insertion, lid.removal, lid.margin);
+const joint = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 6, lidEnd: 1.5, lidTop: 5.8, boxFloor: 30.3 };
+const lid = annularSnapModel(joint, { pull: 10 });
+console.log(lid.bead, lid.undercut, lid.box.strain, lid.lid.strain, lid.lid.root, lid.permissible);
+console.log(lid.force, lid.insertion, lid.removal, lid.margin, lid.lid.stiffer, lid.lid.decay);
 const bead = annularBead(lid, { at: 30 }), groove = annularGroove(lid, { at: 30, mouth: 28 });
 console.log(bead.model.length, groove.model.groove);
-const tight = annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.9 });
-console.log(tight.findings.filter((f) => f.level === 'fail').map((f) => f.refs.part), tight.most.undercut);
-try { annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, bead: 0.2 }); } catch (e) { console.log(e.message.slice(0, 93)); }
+const near = annularSnapModel({ ...joint, boxEnd: 1.5, lidTop: 1.3 }, { pull: 10 });
+console.log(near.lid.stiffer, near.box.strain, near.undercut, near.findings.filter((f) => f.level === 'warn').map((f) => f.code));
+const tight = annularSnapModel({ ...joint, bead: 0.9 });
+console.log(tight.findings.filter((f) => f.level === 'fail').map((f) => `${f.code} ${f.refs?.part ?? ''}`), tight.most.undercut);
+console.log(+tubeRing(6, 6).w.toFixed(4), +tubeRing(0, 6, { A: 'free' }).w.toFixed(4));
+try { annularSnapModel({ ...joint, bead: 0.2 }); } catch (e) { console.log(e.message.slice(0, 93)); }
+try { annularSnapModel({ ...joint, lead: 60 }, { friction: 0.6 }); } catch (e) { console.log(e.message.slice(0, 93)); }
 ```
 
 ```text
-0.4 0.2 0.0025 0.0042 0.0061
-172.7 261.6 518.2 51.82
+0.4 0.2 0.0023 0.0043 0.0032 0.0061
+231.8 351.1 695.4 69.54 1.3 4.9
 1.493 { inner: 30.2, outer: 30.6, depth: 0.4 }
-[ 'box', 'lid' ] 0.292
+45.93 0.0061 0.19 [ 'snap.least' ]
+[
+  'snap.strain box',
+  'snap.strain lid',
+  'snap.root lid',
+  'snap.skirt '
+] 0.284
+0.125 0.5
 annularSnapModel: a bead of 0.2 mm is no taller than the x1c.fit clearance of 0.2 mm round th
+annularSnapModel: a 60° lead at friction 0.6 locks: μ tan α is 1.04, 1 or more, so no push sl
 ```
 
 The first line reads: a pot 60 mm across with a wall of four lines and a skirt of three, its lid to stay on against
-10 N. That needs far less than the least the print holds, so the bead is 0.4 mm: 0.2 mm of undercut past the 0.2 mm
-fit. The wall takes 0.25% hoop strain and the skirt 0.42%, under PLA's 0.61% (0.7 × 0.6 × 39 / 2680). Pushed on square
-it takes 261.6 N and pulled off square 518.2 N, 51.82 times the pull. Those are the guide's forces for the whole bead
+10 N, the bead 6 mm under the rim and so the groove 5.8 mm under the lid's top. That needs far less than the least the
+print holds, so the bead is 0.4 mm: 0.2 mm of undercut past the 0.2 mm fit. The wall takes 0.23% hoop strain, the
+skirt 0.43% and the skirt's root 0.32%, under PLA's 0.61% (0.7 × 0.6 × 39 / 2680). Pushed on square it takes 351.1 N
+and pulled off square 695.4 N, 69.54 times the pull. The top makes the skirt 1.3 times as stiff. Those are the guide's forces for the whole bead
 at once: a lid put on by hand goes on at a tilt, a part of the bead at a time, and takes much less, which is why it
-has a tab to lift it by. A 0.9 mm bead strains both parts past the limit; 0.292 mm of undercut is the most. The
+has a tab to lift it by. With the groove 1.3 mm under the top instead, the skirt is 46 times as stiff, the wall takes
+almost all of the snap, and the strain holds the undercut to 0.19 mm, under the least the print holds. A 0.9 mm bead
+strains both parts past the limit and leaves the skirt thinner than a line behind its groove; 0.284 mm of undercut is
+the most. The beam's own checks: a long tube deflects 1/8 under a ring load, and 1/2 with the load at a free end. The
 example project `enclosures` in the repository's bench draws this pot and lid (`snap-pot`) and puts the lid on
 (`snap-pot-closed`).
 
@@ -855,7 +889,7 @@ hole: depth is a number above 0, in mm (got -2)
   snap pin's shaft may have; a magnet's pull at a grade other than its seller's and across a gap, the grip of a press
   or of crush ribs on a magnet, the three layers under a magnet's pocket, and every strength of a printed bolt; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
   an annular snap's friction (`snap_friction`, 0.5) and least undercut (`snap_least`), its stiffness between a free end
-  and a remote joint, and its plastic's yield strain (strength over modulus) and modulus in place of the guide's secant modulus;
+  and a remote joint, a closed end taken as fully closed, the skirt's full thickness at its groove, and its plastic's yield strain (strength over modulus) and modulus in place of the guide's secant modulus;
   a material's shear strength (its tensile strength over √3) and what it bears under a head (its strength); the nut
   factor K (0.2); the diameter of thread asked in an insert; the millimetre kept at a screw's tip; and every mass.
   A mass comes from the part's outline, with no socket and no knurls, and an insert's alloy is assumed.
@@ -915,7 +949,9 @@ with its `rule`, `kind` and `source`.
 | An annular snap's geometric factor | X_N = 0.62 √((k - 1)/(k + 1)) / ((k² + 1)/(k² - 1) + ν), k = d0 / d, for the skirt; X_W the same with - ν and k = d / di, for the wall | Bayer, Snap-Fit Joints for Plastics, the annular snap joint (pages 21 and 22) |
 | Its transverse force | P = y d Es X for each part alone, y on the diameter; the two in series, k = 1 / (1/k_box + 1/k_lid) with k = factor × d E X; factor 1 at a free end, 3 from 1.8 √(d t) in, a straight line between | The same guide (pages 21 and 22, and page 24 for two flexible parts); Es taken as the modulus, and the line an estimate |
 | Its hoop strain | ε = (P / k_part) / d_part, held to 0.7 × strength / modulus, × 0.6 for a joint opened often | The same guide (page 11, and the note to Table 2 on page 12); yield strain as strength over modulus, an estimate on the safe side |
-| Its forces along the push | W = P (μ + tan α) / (1 - μ tan α), α the lead going on and the return face coming off | The same guide (page 14) |
+| Its forces along the push | W = P (μ + tan α) / (1 - μ tan α), α the lead going on and the return face coming off; refused where μ tan α ≥ 1 on the lead | The same guide (page 14) |
+| A closed end near the joint | w'''' + 4 w = 0 in ξ = βx, β⁴ = 3 (1 - ν²) / (R² t²); a ring load q steps w''' by q / (D β³), D = E t³ / 12 (1 - ν²); a free end has w'' = w''' = 0, a closed one w = w' = 0; the part is stiffer by w(open) / w(closed) | Hetényi, Beams on Elastic Foundation (1946): a long tube gives w = Pβ / 2k, a free end 2Pβ / k; the end taken as fully closed, an estimate on the stiff side |
+| The bending at a closed end | M = w''(ξ) q / β, q = P / (π d); ε = 6 M (1 - ν²) / (E t²) | Plate bending, with the same beam |
 
 VDI 2230 and Machinery's Handbook are named because the plan asked for them. Neither was read at first hand for
 this package: the handbook's thread shear area and stress area are applied as the pages above give them, and VDI
@@ -965,6 +1001,7 @@ Each figure's own source is in its rule (`m.figures.<name>.source`, and `DEFAULT
 - [Von Mises yield criterion](https://en.wikipedia.org/wiki/Von_Mises_yield_criterion), Wikipedia: shear yield from tensile yield.
 - [How do you calculate the magnetic flux density?](https://www.supermagnete.de/eng/faq/How-do-you-calculate-the-magnetic-flux-density), supermagnete: the field on a disc's and a block's axis; [Physical magnet data](https://www.supermagnete.de/eng/physical-magnet-data), supermagnete: each grade's remanence; and [Force between magnets](https://en.wikipedia.org/wiki/Force_between_magnets), Wikipedia: the force on an iron face, F = B² A / 2μ0. Read on 2026-11-21; each magnet's pull is its seller's page, named in its rule.
 - [Snap-Fit Joints for Plastics: A Design Guide](https://fab.cba.mit.edu/classes/S62.12/people/vernelle.noel/Plastic_Snap_fit_design.pdf), Bayer MaterialScience: the annular snap joint (its geometric factors, deflection and mating forces and worked lamp cover), the permissible strain for a snap and the friction table. Read on 2026-11-23.
+- M. Hetényi, Beams on Elastic Foundation, University of Michigan Press, 1946: a thin tube's wall under a ring load as a beam on an elastic foundation, with its long-tube and free-end deflections (Pβ / 2k and 2Pβ / k), which `tubeRing` reproduces in its tests. Not read at first hand for this package: the equation and the two results are the textbook ones, and the kit checks its solution against them and against a short cantilever's P L³ / 3 D.
 
 The rest were read on 2026-11-15. The plan for this package is [issue 212](https://github.com/JoniBach/rulecad/issues/212),
 and its specification is `docs/fixings-and-frames.md` in the repository. In `@rulecad/cad` the package is to become

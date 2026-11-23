@@ -18,7 +18,7 @@
     "lid": { "value": "x1c.layer * 8", "unit": "mm", "rule": "The lid's top: eight layers, so it stays flat as the skirt spreads" },
     "fillet": { "value": 1, "unit": "mm", "rule": "Each inside corner's round: the pot's floor into its wall and the lid's top into its skirt" },
     "rim": { "value": 1.2, "unit": "mm", "rule": "The pot's rim chamfered outside, more than the lid's inside round, so the two clear as the lid seats" },
-    "below_rim": { "value": 1.5, "unit": "mm", "rule": "The bead's top under the rim: just past the rim's chamfer, so the bead is near the wall's free end" },
+    "below_rim": { "value": 6, "unit": "mm", "rule": "The bead's top under the rim, and so the groove's under the lid's top: the top holds the skirt round within about 5 mm of it (1/β), so nearer, the skirt is too stiff to give and the pot's wall takes the snap; 6 mm keeps every strain under 0.45%, against PLA's 0.61%" },
     "below_bead": { "value": 1.5, "unit": "mm", "rule": "The skirt past the groove to its mouth: room for the lead-in, and near the skirt's free end" },
     "pull": { "value": 10, "unit": "N", "rule": "The pull the lid stays on against: a pot of 300 g of screws lifted by its lid is 3 N, and a jerk three times that, an estimate. The bead is sized to hold twice this" },
     "tab": { "value": 4, "unit": "mm", "rule": "The tab to lift the lid by: half its width and how far it stands out" },
