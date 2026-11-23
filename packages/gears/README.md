@@ -114,6 +114,29 @@ needs a shift near two modules at the sizes that print, far past what a tooth ta
 `compoundEfficiency`, an estimate: the rings pass power relative to the carrier many times the output's, so a high ratio is
 well under 50%, and can't be driven backwards.
 
+`best.play` is how far the output ring turns with the sun and the held ring still, the three meshes' backlash taken
+up all one way (`compoundPlay`): with planets of pitch radii r1 on the sun and the held ring and r2 on the output
+ring, and no carrier, the output ring travels j_sun |1 − r2/r1| / 2 + j_ring (1 + r2/r1) / 2 + j_ring2 at its pitch
+circle. Chapter 11's 38:1 at the 0.15 mm backlash: 0.325 mm, 0.65°. That is play only: the teeth bending under a load
+add to it.
+
+### Printed in place
+
+`compoundPlanetary({ module, ratio, planets, printInPlace: true, gap, helix })` draws the gearbox to come off the bed
+in one piece, nothing to put together but the motor:
+
+- **Every gap is the print gap** (`gap`, mm each side; default `DEFAULTS.printGap`, 0.3 mm, the X1C's `print_gap`, an
+  estimate). The backlash is the one that leaves that gap normal to every flank, 2 gap / (cos α cos β_b), β_b being
+  the base helix angle (0.726 mm at 0.3 mm, 20° and 30°); the dedendum leaves it under every tip (1.3 modules at
+  module 1, where ISO 53's 1.25 leaves 0.25 mm). A backlash given as well is refused: it comes from the gap.
+- **Herringbone teeth** (`helix`, default 30°): the sun of one hand, the planets and rings of the other, so the rings
+  can't walk off the planets along the axis.
+- **No carrier**: the two rings hold the planets.
+
+The play grows with it: 18/21 planets on rings of 60 and 57 at 44:1 turn 1.45 mm (2.92°) at the output, about four
+and a half times chapter 11's. The gaps between the printed parts, and whether each stands on the bed, are checked in
+cad, on the object drawn with them (`"printInPlace": true`).
+
 ## Worms and bevel gears
 
 A **worm** is a screw whose thread, cut along its axis, is the basic rack's tooth: `worm({ module, starts, diameter,
@@ -223,6 +246,8 @@ a point.
 | Ring and pinion | at least 10 teeth apart (12 to be safe) at 20° | KHK, internal gears |
 | Planetary ratio | (ω_s − ω_c) / (ω_r − ω_c) = −R / S; ring held, sun in: 1 + R / S | Willis; Dudley (1984), ch. 3 |
 | Planetary assembly | R = S + 2P; (S + R) / n whole; 2a sin(π / n) > d_a,planet | KHK, planetary gears |
+| Compound play at the output | j_s \|1 − r2/r1\| / 2 + j_r1 (1 + r2/r1) / 2 + j_r2, over the output ring's pitch radius | The three contacts' slips along their pitch circles, planets free of a carrier (this package) |
+| Backlash for a gap normal to the flanks | j_t = 2 g / (cos α_t cos β_b), tan β_b = tan β cos α_t | ISO/TR 10064-2:1996 (j_bn = j_wt cos α_wt cos β_b) |
 | Tooth bending (Lewis) | σ = K_v F_t / (b m Y); helical: m cos β, z / cos³β teeth | Budynas and Nisbett, Shigley's Mechanical Engineering Design, 10th ed., §14-1 and Table 14-2 |
 | Velocity factor (Barth, cut profile) | K_v = (3.05 + V) / 3.05, V in m/s | Shigley, eq. 14-4b |
 | Tooth by finite elements | plane stress, 32 cells a module, load F_t / cos α along the line of action at the tip | `@rulecad/fea`; AGMA 908-B89 for the geometry factor it is compared with |

@@ -10,7 +10,7 @@
 // The package's main module: it only gathers the others. The code shared by all of them is in core.mjs.
 export * from './core.mjs';
 // Planetary gearboxes, plain and compound
-export { planetary, planetaryRatio, compoundPlanetary, compoundRatio, compoundEfficiency } from './planetary.mjs';
+export { planetary, planetaryRatio, compoundPlanetary, compoundRatio, compoundEfficiency, compoundPlay } from './planetary.mjs';
 // The mesh measured from the drawn teeth: backlash, transmission error, interference
 export { contact } from './contact.mjs';
 // A tooth's root stress by finite elements
