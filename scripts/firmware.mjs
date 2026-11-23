@@ -17,8 +17,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const FQBN = 'arduino:avr:uno';
 /** The Uno's clock, Hz: its 16 MHz crystal (Arduino Uno Rev3 datasheet, "Clock Speed 16 MHz"). */
 export const CLOCK = 16e6;
-/** The shortest STEP pulse the drivers on the arm take, µs: the DRV8825's tWH(STEP), 1.9 µs (TI DRV8825 datasheet,
- * Timing Requirements); the A4988 asks for 1 µs (Allegro A4988 datasheet, Minimum STEP pulse width). */
+/** The shortest STEP pulse the drivers on the arm take, µs: "With the DRV8825, the high and low STEP pulses must each be at
+ * least 1.9 us; they can be as short as 1 us when using the A4988" (Pololu's DRV8825 carrier page, pololu.com/product/2133,
+ * read 2026-11-23; TI's datasheet SLVSA73F section 7.6 is its source). */
 export const STEP_HIGH_US = 1.9;
 // The CNC Shield V3's pins on the Uno, as arm.ino has them: step X, Y, Z on D2, D3, D4 (port D bits 2 to 4), direction on D5,
 // D6, D7 (bits 5 to 7), the X, Y, Z limit switches on D9, D10, D12 (port B bits 1, 2, 4).
