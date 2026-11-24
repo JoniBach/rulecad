@@ -13,7 +13,7 @@ const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeMod
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 // Pins name no thread: their own refusals are held in the pins tests
-const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare', 'annularSnapModel', 'annularBead', 'annularGroove', 'hubFactor', 'shaftFactor', 'tubeRing']; // (pins, magnets and annular snaps name no thread)
+const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName', 'magnetModel', 'magnetSeatModel', 'magnetSeat', 'magnet', 'parseMagnet', 'isMagnetName', 'fieldShare', 'annularSnapModel', 'annularBead', 'annularGroove', 'hubFactor', 'shaftFactor', 'tubeRing', 'skirtFinger', 'snapSlots']; // (pins, magnets and annular snaps name no thread)
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -1466,4 +1466,145 @@ test('annular snap fixes after check 1: a friction-locked lead, a groove through
   assert.equal(annularSnapModel(lid, { push: 300 }).findings.find((f) => f.code === 'snap.push').level, 'pass');
   assert.match(annularSnapModel(lid, { push: 100 }).findings.find((f) => f.code === 'snap.push').text, /pushed with 100 N, the lid goes on only at a tilt: square it takes 261\.6 N/);
   assert.throws(() => annularSnapModel(lid, { push: 0 }), /push \(along the axis, in N\) is a number above 0/);
+});
+
+test('annular snap, a slotted skirt (#309): the 60 mm pot\'s lid in 16 fingers, worked by hand, pushes on with about a tenth of the force', () => {
+  const { skirtFinger, snapSlots } = fixings;
+  // The slotted pot (examples/bench enclosures/snap-pot:slotted): bead 14 mm under the rim, groove 13.8 mm under the
+  //   lid's top, 16 fingers by 1 mm slots (fixings.snap_slot), each 11.8 mm from its root to the groove's top edge.
+  // One finger, a ring's sector: ri = 30 + 0.2 = 30.2, ro = 30.2 + 1.26 = 31.46, rm = 30.83
+  //   φ = π/16 − 1/(2 × 30.83) = 0.196350 − 0.016218 = 0.180132 rad (20.64° whole), arc 2 φ rm = 11.107 mm
+  //   A = φ (ro² − ri²) = 0.180132 × 77.7924 = 13.9947 mm², A x̄ = 2 (ro³ − ri³) sin φ / 3 = 429.187, x̄ = 30.6678
+  //   ∫x² dA = (ro⁴ − ri⁴)(φ + sin φ cos φ) / 4 = 13164.372, I = 13164.372 − 13.9947 × 30.6678² = 2.1412 mm⁴
+  //   (the flat 11.107 × 1.26³ / 12 is 1.852: the curve stiffens it by about a sixth)
+  //   c = max(ro − x̄ = 0.7922, x̄ − ri cos φ = 0.9564) = 0.9564
+  //   k = 3 E I / L³ = 3 × 2680 × 2.1412 / 11.8³ = 10.478 N/mm at 11.8 mm (the bare beam, below)
+  const f = skirtFinger({ count: 16, width: 1, reach: 11.8, inside: 30.2, outside: 31.46 }, 2680);
+  near(f.angle, 20.64, 0.01, 'angle'); near(f.width, 11.107, 0.001, 'arc'); near(f.inertia, 2.1412, 0.0001, 'I'); near(f.fibre, 0.9564, 0.0001, 'c'); near(f.stiffness, 10.478, 0.001, 'k');
+  // Narrow and thin, the sector is the rectangle: 200 fingers of a 1 mm ring 100 mm in, I → w t³ / 12
+  const thin = skirtFinger({ count: 200, width: 0.1, reach: 10, inside: 100, outside: 101 }, 1000), w = (2 * Math.PI * 100.5) / 200 - 0.1;
+  near(thin.inertia, w / 12, 1e-4, 'the rectangle\'s I'); near(thin.stiffness, (1000 * w) / (4 * 1000), 1e-4, 'E w t³ / 4 L³'); near(thin.strainPerY, (3 * 0.5) / 100, 3e-4, '3 (t/2) / L², c 0.5085: the finger\'s inner corners lie 0.0085 mm further in for its curve');
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 13.8 };
+  const m = annularSnapModel({ ...p, slots: { count: 16, reach: 11.8 } }, { pull: 10 });
+  // The bead is the least the print holds, 0.2 mm undercut, 0.4 mm tall, 0.4/tan 45° + 0.4 (land, two layers) + 0.4/tan 30° = 1.493 mm
+  //   long. It bears on each finger at the groove's bottom edge, the groove's height below its top: the arm is
+  //   11.8 + 1.493 + 2 × 0.2 = 13.693 mm, so k = 3 × 2680 × 2.1412 / 13.693³ = 17215.3 / 2567.41 = 6.705 N/mm, and the
+  //   lid is 16 × 6.705 / 2 = 53.64 N per mm of diameter.
+  // The wall stays the guide's tube: 2535.8 N/mm (remote 1 + 2 × 14/18.07 = 2.55 times). In series with the fingers'
+  //   53.64, k = 1 / (1/2535.8 + 1/53.64) = 52.53 N/mm, so P = 52.53 × 0.4 = 21.01 N. Each finger is pushed out
+  //   21.01 / 53.64 / 2 = 0.1959 mm, so its root strains 3 × 0.9564 × 0.1959 / 13.693² = 0.30%, under PLA's 0.61%
+  //   when opened often (49% of it).
+  //   On square: 21.01 × (0.5 + tan 30°) / (1 − 0.5 tan 30°) = 21.01 × 1.5146 = 31.8 N; off at 45°: × 3 = 63.0 N, 6.3 times the 10 N pull
+  assert.equal(m.bead, 0.4); assert.equal(m.slots.arm, 13.693); near(m.box.stiffness, 2535.8, 0.1, 'wall'); near(m.lid.stiffness, 53.6, 0.1, 'fingers');
+  near(m.force, 21.0, 0.05, 'P'); near(m.lid.strain, 0.003, 0.00005, 'root strain'); near(m.insertion, 31.8, 0.05, 'push on'); near(m.removal, 63.0, 0.05, 'pull off'); near(m.margin, 6.3, 0.01, 'margin');
+  // The same bead in a whole skirt there: 217.7 N of P, 10.4 times the fingers', and 329.7 N to push on square
+  const whole = annularSnapModel(p, { pull: 10 });
+  assert.equal(whole.bead, 0.4); near(whole.force, 217.7, 0.05, 'whole skirt'); near(m.slots.whole, whole.force, 0.05, 'the model says what the whole skirt would take');
+  const fingers = m.findings.find((x) => x.code === 'snap.fingers');
+  assert.match(fingers.text, /slotted into 16 fingers by 1 mm slots \(fixings\.snap_slot\), each 11\.11 mm wide and 11\.8 mm from the slots' closed end to the groove, and borne on by the bead at the groove's bottom edge, 13\.693 mm from it: 6\.7 N per mm pushed out there.*A whole skirt would take 217\.7 N of transverse force for this bead, the fingers 21 N, 10\.4 times less/);
+  const strain = m.findings.filter((x) => x.code === 'snap.strain');
+  assert.deepEqual(strain.map((x) => x.level), ['pass', 'pass']); assert.match(strain[1].text, /the lid's fingers are 0\.3% bending strain at their root \(each pushed out 0\.196 mm at 13\.693 mm from it, where the bead bears\)/);
+  assert.ok(!m.findings.some((x) => x.code === 'snap.closed' && x.refs?.part === 'lid'), 'the top holds no finger round: each is clamped at its root already');
+  assert.ok(m.rests.some((r) => r.name === 'fixings.snap_slot'));
+  // Short fingers strain more than a whole skirt: reaching 5.8 mm (borne on at 7.411 mm), 8 fingers cap the sized bead under the least the print holds
+  const short = annularSnapModel({ diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 6, lidEnd: 1.5, lidTop: 5.8, slots: { count: 8, reach: 5.8 } }, { pull: 10 });
+  assert.equal(short.undercut, 0.097); assert.equal(short.slots.arm, 7.411); assert.equal(short.findings.find((x) => x.code === 'snap.least').level, 'warn');
+  assert.ok(short.findings.filter((x) => x.code === 'snap.strain').every((x) => x.level === 'pass'), 'held within its own strain');
+  // A given bead too big for short fingers fails their strain, naming longer fingers
+  const over = annularSnapModel({ ...p, bead: 0.6, slots: { count: 6, reach: 5 } }).findings.filter((x) => x.code === 'snap.strain')[1];
+  assert.equal(over.level, 'fail'); assert.match(over.text, /longer fingers/);
+  // Refused by name
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 2, reach: 10 } }), /slots\.count is how many fingers the skirt is slotted into, a whole number, 3 or more \(got 2\)/);
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 16, reach: 10, width: 0.2 } }), /slots\.width is the slots' width, at least the x1c\.print_gap 0\.3 mm that prints apart \(got 0\.2\)/);
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 16, reach: 2 } }), /slots\.reach of 2 mm is under twice the 1\.26 mm skirt, too short to bend as a finger: give 2\.52 mm or more/);
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 16, reach: 14 } }), /slots\.reach of 14 mm runs past the lid's top, 13\.8 mm from the groove \(lidTop\)/);
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 100, reach: 10 } }), /100 fingers with 1 mm slots leave each 0\.937 mm wide, under the 1\.26 mm skirt: give fewer, at most 85/);
+  assert.throws(() => annularSnapModel({ ...p, slots: { count: 16, reach: 10, depth: 3 } }), /slots has no depth: it takes count, reach and width/);
+  assert.throws(() => annularSnapModel({ ...p, slots: 16 }), /slots is \{ count, reach, width \}/);
+  // The slots as cut: 16 round-ended slots through the skirt from below the mouth up to 11.8 mm over the groove's top
+  const foot = 20, mouth = foot - 0.2 - 1.5, cut = snapSlots(m, { at: foot, mouth }), box = bb(cut);
+  near(box[1][2], foot + m.length + 0.2 + 11.8, 1e-6, 'the slots\' closed end'); near(box[0][2], mouth - 0.1, 1e-6, 'open past the mouth');
+  near(Math.hypot(box[1][0], box[1][1]) / Math.SQRT2, 30.2 + 1.26 + 0.1, 0.01, 'through the skirt');
+  // 16 slots of 1 mm by 1.46 mm through (the 1.26 mm skirt and 0.1 mm past each face), each (z span − 0.5) long with a half disc of 0.5 mm on top
+  const span = foot + m.length + 0.2 + 11.8 - (mouth - 0.1);
+  near(vol(cut), 16 * 1.46 * (1 * (span - 0.5) + (Math.PI * 0.25) / 2), 0.1, 'volume (the round end drawn in 24 faces)');
+  // The lid on its top with its slots cut prints with no support and stays one closed solid
+  const lidR = 31.46, seg = 96, top = foot + 15, lid0 = union(cylinder({ radius: lidR, height: 1.6, center: [0, 0, top + 0.8], segments: seg }),
+    subtract(cylinder({ radius: lidR, height: top - mouth, center: [0, 0, (top + mouth) / 2], segments: seg }), cylinder({ radius: 30.2, height: top - mouth + 2, center: [0, 0, (top + mouth) / 2], segments: seg })));
+  const lid = subtract(lid0, annularGroove(m, { at: foot, mouth, segments: seg }), cut);
+  prints(translate([0, 0, top + 1.6 - mouth], rotateX(Math.PI, translate([0, 0, -mouth], lid))), 'the slotted lid on its top'); closed(lid, 'one closed solid');
+  assert.throws(() => snapSlots(whole, { mouth }), /snapSlots: give an annular snap's model with slots/);
+  assert.throws(() => snapSlots(m, { at: foot, mouth: 40 }), /mouth is the z of the skirt's open end, below the slots' closed end/);
+});
+
+test('annular snap, a slotted skirt: the bead bears on each finger at the groove\'s bottom edge, so a pull is held at that arm, not the slots\' reach', () => {
+  const { snapSlots } = fixings;
+  // The slotted pot's lid pulled with 40 N. Its slots end 11.8 mm over the groove's top edge, but the bead never pushes
+  //   there: going on, the lip below the groove rides over the bead's crest; coming off, the groove's lower face rides up
+  //   the return face. Either way a finger is pushed out the whole undercut at the groove's bottom edge, the groove's
+  //   height (the bead's 1.493 mm length and 0.2 mm clearance at each end) further from the root: 11.8 + 1.493 + 0.4 = 13.693 mm.
+  //   At 13.693 mm, k = 3 × 2680 × 2.1412 / 13.693³ = 6.705 N/mm, 16 fingers 53.64 N per mm of diameter, in series with
+  //   the wall's 2535.8: 52.53 N/mm. A 0.4 mm bead (0.2 mm undercut): P = 52.53 × 0.4 = 21.01 N, off at 45° and μ 0.5,
+  //   × (0.5 + 1) / (1 − 0.5) = 3: 63.0 N, 1.58 times the 40 N pull, under the 2 times fixings.load_margin, so a warning.
+  //   Taken at 11.8 mm, the fingers were 83.82 N per mm and the pull-off 97.4 N, 2.43 times: a pass it had not earned.
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 13.8 }, slots = { count: 16, reach: 11.8 };
+  const given = annularSnapModel({ ...p, bead: 0.4, slots }, { pull: 40 });
+  assert.equal(given.slots.arm, 13.693); near(given.removal, 63.0, 0.05, 'pull-off at the arm'); assert.equal(given.margin, 1.58);
+  assert.equal(given.findings.find((x) => x.code === 'snap.hold').level, 'warn');
+  // Sized for that pull, the bead grows, and with it the groove and the arm, until the bead holds the pull at its own arm:
+  //   a 0.464 mm bead is 0.464 + 0.4 + 0.464/tan 30° = 1.668 mm long, so the arm is 11.8 + 1.668 + 0.4 = 13.868 mm, and
+  //   the pull-off 80.2 N, 2.0 times the 40 N
+  const sized = annularSnapModel({ ...p, slots }, { pull: 40 });
+  assert.equal(sized.bead, 0.464); assert.equal(sized.length, 1.668); assert.equal(sized.slots.arm, 13.868); near(sized.removal, 80.2, 0.05, 'pull-off');
+  assert.ok(sized.margin >= 2, `holds the pull twice over at its own arm (${sized.margin})`); assert.equal(sized.findings.find((x) => x.code === 'snap.hold').level, 'pass');
+  // The arm is the drawn one: from the slots' closed end, as snapSlots cuts it, down to the groove's bottom edge, at - clearance
+  const foot = 20, top = bb(snapSlots(sized, { at: foot, mouth: foot - 0.2 - 1.5 }))[1][2];
+  near(top - (foot - sized.clearance), sized.slots.arm, 1e-6, 'from the slots\' closed end to the groove\'s bottom edge');
+  // A whole skirt has no arm: its figures are the guide's tube as before
+  assert.equal(annularSnapModel(p, { pull: 40 }).slots, undefined);
+});
+
+test('annular snap, a slotted skirt: the most undercut a failing bead names is worked at its own arm, so a bead that size passes', () => {
+  // The pot's figures in 8 fingers reaching 4 mm, with a 0.9 mm bead: far too big, so the lid's strain fails and names the
+  //   most undercut the strain allows. Taken at the 0.9 mm bead's 7.259 mm arm that was 0.08 mm, but a 0.28 mm bead has a
+  //   shorter groove, so a 5.565 mm arm: stiffer fingers (k goes as 1 / L³) and more root strain per mm (3 c y / L²), 0.72%
+  //   against the 0.61% allowed, a fail of its own. Worked down to an undercut that passes at its own arm, it is 0.067 mm,
+  //   and a thousandth more fails: the most, rounded down, as the sized path finds it
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 16 }, slots = { count: 8, reach: 4 };
+  const lid = (m) => m.findings.find((x) => x.code === 'snap.strain' && x.refs?.part === 'lid').level;
+  const given = annularSnapModel({ ...p, bead: 0.9, slots }, { pull: 40 });
+  assert.equal(lid(given), 'fail'); assert.equal(given.most.undercut, 0.067);
+  assert.match(given.findings.find((x) => x.code === 'snap.strain' && x.refs?.part === 'lid').text, /most undercut the strain allows is 0\.067 mm/);
+  for (const reach of [3, 4, 6]) for (const count of [8, 16]) {
+    const big = annularSnapModel({ ...p, bead: 1.0, slots: { count, reach } }, { pull: 40 });
+    const at = (u) => annularSnapModel({ ...p, bead: +(u + big.clearance).toFixed(3), slots: { count, reach } }, { pull: 40 });
+    const most = at(big.most.undercut), over = at(big.most.undercut + 0.001);
+    assert.equal(lid(big), 'fail', `${count} fingers reaching ${reach} mm, the 1 mm bead`);
+    assert.equal(lid(most), 'pass', `${count} fingers reaching ${reach} mm, at the ${big.most.undercut} mm it names`);
+    assert.equal(lid(over), 'fail', `${count} fingers reaching ${reach} mm, a thousandth over`);
+    assert.ok(most.removal <= big.most.removal + 1e-9, `the pull-off it names holds at that bead (${most.removal} against ${big.most.removal})`);
+    // The sized bead, held to the strain, comes to the same most
+    assert.equal(annularSnapModel({ ...p, slots: { count, reach } }, { pull: 400 }).most.undercut, big.most.undercut);
+  }
+});
+
+test('annular snap, a slotted skirt: every given bead, passing or failing, names the same most undercut, and it holds what it says', () => {
+  // With few fingers the box's wall shares the stiffness, so the limit at a bead's own arm neither only falls nor only
+  //   rises with the bead: the most is searched over every thousandth. The 60 mm pot in 4 fingers reaching 4 mm passes
+  //   at 0.160 mm and fails at 0.161 (it named 0.152, 0.139 and 0.130 for beads of 0.5, 0.8 and 1.1 before); the 90 mm
+  //   joint in 4 fingers reaching 8 mm passes at 0.196 and not at 0.198, which a passing 0.35 mm bead named before
+  const strains = (m) => m.findings.filter((x) => /^snap\.(strain|root)$/.test(x.code)).every((x) => x.level === 'pass');
+  const pot = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 16 }, wide = { diameter: 90, wall: 2, skirt: 1.2, boxEnd: 20, lidEnd: 2 };
+  const cases = [[pot, 4, 4, 0.16], [wide, 4, 8, 0.196], [pot, 8, 4, 0.067], [pot, 16, 4, null], [wide, 16, 8, null]];
+  for (const [p, count, reach, want] of cases) {
+    const at = (u) => annularSnapModel({ ...p, bead: +(u + 0.2).toFixed(3), slots: { count, reach } }, { pull: 1500 });
+    const named = [0.35, 0.5, 0.8, 1.1].filter((b) => b < p.skirt).map((b) => at(b - 0.2).most);
+    const u = named[0].undercut, say = `${p.diameter} mm in ${count} fingers reaching ${reach} mm`;
+    for (const m of named) assert.deepEqual(m, named[0], `${say}: every bead names the same most`);
+    if (want != null) assert.equal(u, want, say);
+    const most = at(u);
+    assert.ok(strains(most), `${say}: the ${u} mm it names passes`);
+    assert.ok(!strains(at(u + 0.001)), `${say}: a thousandth more fails`);
+    assert.equal(most.removal, named[0].removal, `${say}: it holds the pull-off it names`);
+  }
 });

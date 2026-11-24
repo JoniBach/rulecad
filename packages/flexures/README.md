@@ -36,6 +36,12 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `constantForce` | A slider-crank with a leaf coupler (Howell): the slider's force stays within ±5% over about a quarter of the leaf's length | `force(stroke)`, `flat` {from, to, force} | 0.85 × 2.65 t Θ / 2l, the leaf's pseudo-rigid-body angle Θ |
 | `ellipticalHinge` | A notch hinge with half-ellipse notches, longer along the beam for less stress at an angle (Smith 2000) | ∫ dx / EI(x) along the notch, N·mm a radian; the circle within a few % of `notchHinge` | 1.2 × t K θ / 2 E I at the neck |
 | `cartwheel` | Two leaves crossing at a hub inside a rim, joined where they cross: a pivot that prints flat | 16 EI / s × (1 + 3 r / s + 3 r² / s²), N·mm a radian, spokes s from a hub r | 2tθ / s × (1 + 1.5 r / s) |
+| `filletHinge` | A flat neck l long between notches with rounded corners: bends along the whole flat, so it turns far further than a notch as deep (Lobontiu 2003) | ∫ dx / EI(x) along the notch, N·mm a radian; EI / l with small rounds, the circular notch with no flat | the moment kθ at the neck, times about 1.2 for the corners (an estimate) |
+| `hyperbolicHinge` | Notches whose neck thickens as a hyperbola: bends close to its middle, so it keeps its axis; stiffer and shorter in angle than an elliptical notch of the same size | ∫ dx / EI(x) along the notch | as `filletHinge` |
+| `spiralSpring` | A strip wound round a hub, its outer end in a boss, ends thickened to twice the strip: a torsion return that prints flat | about EI / L (Wahl 1963); worked out with the hub's centre held (Castigliano), within 1% of the beam solver | the moment along the strip times t / 2EI; tθ / 2L when the hub floats |
+| `pinnedLeaf` | A stiff link on two corner-filleted pivots: moves as a link on two pins, stiff along itself where a plain leaf buckles | the profile as a guided beam; near 2K / Lp² for pivots K = EI / l, Lp apart | the profile's, at the pivots' necks |
+| `xyStage` | Two parallel guides in series at right angles: a stage that moves along x and y | `xyStageModel`: 2 E w t³ / L³ each axis; 2 E w t / L along the leaves | a guide's 3tδ / L², the worse axis; each guide's drop 3δ² / 5L strays the other axis |
+| `splitTube` | A thin tube slotted along its length between closed collars, printed standing: a torsion pivot | G (2πr − s) t³ / 3L (Roark: an open section), about a hundredth of the closed tube's | √3 G t θ / L E (the shear as a tensile strain); warns that its twist shears the layers |
 | `snapHook` | A cantilever with a hook: pushed in it deflects and springs back behind the catch | the leaf's; `force` at the undercut, `insertion` and `removal` with friction μ (BASF, Bayer) | 3ty / 2L² at the undercut y |
 | `ratchetWheel`, `ratchetPawl` | Saw teeth on a pin and a leaf pawl: a one-way click | `ratchetModel`: the pawl's `lift` a tooth high and the `click` along the rim | the pawl's, at the tooth height |
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
@@ -351,7 +357,8 @@ The findings, each pass or fail with its code:
 | `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
 | `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go. A catch that bites presses into what it holds as it's moved: what it holds is cammed back out of it first |
 | `lamina.strain` | Each flexure's strain at the most it is moved, against the limit, by beam theory |
-| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
+| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields. A spiral spring's hub, or a body turning about its own middle, is not a push along a line: it says so (info), and its strain is the model's |
+| `lamina.coils` | A spiral spring's coils close up as it winds: a warning with their gap at rest, since the stop sweeps the bodies and not the coils. Stop it before they touch, and check a wide turn with the beam solver |
 | `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
 | `lamina.energy` | What each state stores, and the forces |
 | `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
@@ -491,6 +498,27 @@ push-push latch is built from a plunger module and a track module placed at the 
 - **`waveSpring`:** legs across joined by round U-bends, the thickness grading smoothly to the bends'. Squashed along
   its stack it stacks solid when its legs meet: its own stop, which the physics sees.
 
+### Springs that turn, and hinges that bend further
+
+- **The spiral, not the helix.** A helical torsion spring is the wrong answer on a filament printer: lying on its side
+  every coil needs support under it, and standing, its coils bend across the layers' bonds, where a print is weakest.
+  `spiralSpring` is the flat alternative: a strip wound round a hub, bending within its layers. With the hub on a shaft
+  (its centre held) the strip bends a little more on one side than the other; the model works that out (Castigliano
+  on the strip as drawn) and agrees with the beam solver within 1%. Its coils need a gap of at least the printer's at
+  rest (`gap`, measured on the outline, about pitch less 1.5 × thickness by the thickened ends). Each end is
+  thickened over a quarter turn, so it takes 1.25 turns or more: with fewer, the two thickened ends lie side by side; as it winds they crowd to one side, so check a wide turn with the solver. In
+  the beam solver, 3 turns of 0.84 mm at a 2.5 mm pitch closed their narrowest gap from 1.24 mm to 0.83 mm at 1.2 rad.
+- **Hinges by their notch.** The circular notch (`notchHinge`) bends at one thin point. The corner-filleted hinge
+  (`filletHinge`) bends along a flat, so with a 4 mm flat it turns four times as far at the same strain as a circular
+  notch as deep. The hyperbolic hinge (`hyperbolicHinge`) is the other end: stiff and precise. The elliptical hinge
+  sits between.
+- **A link on two pins, with no pins.** `pinnedLeaf` is a stiff link with a short flexural pivot at each end (Howell's
+  small-length flexural pivots), for a linkage's links: it carries load along itself, which a plain leaf would buckle
+  under.
+- **A twist about an axis.** `splitTube` twists about its axis about a hundred times more easily than the same tube
+  closed. It prints only standing, and then its twist shears the wall along the layers: test it, or allow it less
+  than the strain limit says. The LET joint is the flat alternative.
+
 ### Shaped by the solver: curves
 
 A `curve` flexure is a spline through a few points, its thickness easing from point to point. It has no straight runs
@@ -587,9 +615,10 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Paros, J. M., and Weisbord, L., "How to design flexure hinges", *Machine Design*, 1965: the notch hinge's stiffness.
 - Jacobsen, J. O., Chen, G., Howell, L. L., and Magleby, S. P., "Lamina Emergent Torsional (LET) joint", *Mechanism and Machine Theory* 44(11), 2009: the LET joint and its stiffness as torsion and bending segments in series and parallel.
 - Howell, L. L., Midha, A., and Murphy, M. D., "Dimensional synthesis of compliant constant-force slider mechanisms", *Machine Elements and Machine Dynamics*, ASME DE-71, 1994: the constant-force slider-crank.
-- Lobontiu, N., *Compliant Mechanisms: Design of Flexure Hinges*, CRC Press, 2003: elliptical and other notch profiles.
+- Lobontiu, N., *Compliant Mechanisms: Design of Flexure Hinges*, CRC Press, 2003: elliptical, corner-filleted and hyperbolic notch profiles.
 - BASF, *Snap-Fit Design Manual*, and Bayer MaterialScience, *Snap-Fit Joints for Plastics*: the cantilever hook's deflection, insertion and removal forces.
-- Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear.
+- Wahl, A. M., *Mechanical Springs*, 2nd ed., McGraw-Hill, 1963: flat spiral springs, the moment and stiffness EI / L with the outer end clamped.
+- Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear, and an open thin-walled section's (the split tube).
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.

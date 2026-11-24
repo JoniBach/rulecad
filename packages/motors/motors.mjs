@@ -17,6 +17,7 @@ import bldc2204 from '@rulecad/rules/bldc2204.json' with { type: 'json' };
 import x1c from '@rulecad/rules/x1c.json' with { type: 'json' };
 import engagementSet from '@rulecad/rules/engagement.json' with { type: 'json' };
 import { fixingModel, threads, holeModel, hole, counterboreModel, counterbore } from '@rulecad/fixings';
+import { shaftBore, SHAFT_FITS } from '@rulecad/shapes';
 
 export { driver, setting, powerBudget, DRIVER_EFFICIENCY } from './drivers.mjs';
 
@@ -37,8 +38,9 @@ for (const s of Object.values(CATALOGUE)) for (const v of Object.keys(s.variants
 export const DEFAULTS = {
   running: { value: Math.SQRT1_2, unit: '× holding torque', rule: 'A stepper moving, against holding torque: holding has both phases at full current, and a driver moving it keeps the vector the size of one phase, 1/√2 of that', kind: 'spec' },
   supply: { value: 24, unit: 'V', rule: 'The stepper driver\'s supply, if you don\'t say: above the motor\'s rated volts, as a chopper drive needs, and what a printer\'s board runs at', kind: 'default' },
-  fit: { value: 0.05, unit: 'mm', rule: 'Gap each side of a shaft in its bore, with the printed hole\'s shrinkage allowed for, so it slides on and no more: measured on the fit bar, a 5 mm D-shaft sliding in a bore drawn 5.2 mm', kind: 'measured' },
-  press: { value: -0.02, unit: 'mm', rule: 'Each side of a shaft in a press-fit bore as printed: a hair tight, 0.8% strain on a 5 mm shaft, well inside what PLA stretches to before it cracks. A D flat does the driving', kind: 'estimate' },
+  // a shaft's bore fits, from @rulecad/shapes, where every shaft bore in the kit reads them (the same objects)
+  fit: SHAFT_FITS.slide,
+  press: SHAFT_FITS.press,
   grip: { value: 1.5, unit: '× shaft diameter', rule: 'The shortest length of bore worth trusting to drive a gear', kind: 'community' }
 };
 const D = (k) => DEFAULTS[k].value;
@@ -305,14 +307,14 @@ export function boreModel(m, p) {
   if (m.type === 'servo' || m.type === 'brushless') throw new Error(`${what}: a ${m.type}'s output is ${m.type === 'servo' ? 'a spline finer than a printer draws: drive it through its horn' : 'its bell: bolt to that'}, not a bore`);
   const tip = p.tip ?? depth;
   if (!(isNum(tip) && tip > 0)) throw new Error(`${what}: tip is how far from the bore's mouth the shaft's tip sits, above 0 (got ${shown(p.tip)})`);
-  const pr = printerOf(p.printer), { shaft } = m, each = fit === 'slide' ? D('fit') : D('press'), diameter = shaft.diameter + 2 * each + pr.holeComp, flatFrom = Math.max(0, tip - shaft.flatLength), flat = Math.max(0, Math.min(depth, tip) - flatFrom);
+  const pr = printerOf(p.printer), { shaft } = m, b = shaftBore(shaft.diameter, { fit, across: shaft.across, printer: { hole_comp: pr.holeComp, fit: pr.fit }, what }), flatFrom = Math.max(0, tip - shaft.flatLength), flat = Math.max(0, Math.min(depth, tip) - flatFrom);
   const out = [], f = (level, text, code) => out.push({ level, text, code });
   if (depth > shaft.length) f('warn', `the bore is ${depth} mm deep and the shaft only ${shaft.length} mm long: the last ${+(depth - shaft.length).toFixed(2)} mm holds nothing`, 'bore.depth');
   const grip = Math.min(depth, shaft.length), want = shaft.flats ? Math.min(D('grip') * shaft.diameter, 0.8 * shaft.flatLength) : D('grip') * shaft.diameter;
   if (grip < want) f('warn', `only ${+grip.toFixed(2)} mm of the shaft is in the bore: ${r3(want)} mm or more, or the part rocks on it`, 'bore.grip');
   if (shaft.flats && flat < 0.5 * want) f('warn', `only ${+flat.toFixed(2)} mm of bore meets the flat: it's the flat that turns the part`, 'bore.flat');
   if (!shaft.flats) f('warn', 'this shaft has no flat: only friction or a grub screw turns the part', 'bore.flat');
-  return { depth, diameter: r3(diameter), across: r3(shaft.across + 2 * each + pr.holeComp), flats: shaft.flats, flatFrom, grip, fit, findings: out };
+  return { depth, diameter: r3(b.diameter), across: r3(b.across), flats: shaft.flats, flatFrom, grip, fit, findings: out };
 }
 
 /**

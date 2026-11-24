@@ -29,6 +29,31 @@ why. Releases before this file was started are described in their pull requests 
 
 - None: the new generators draw new parts only.
 
+## 0.5.7: simple flexures (#73, #74, #75)
+No printed size moves: every change is a new generator, and `beamModel` now shares its integration with the pinned
+leaf, with the same sums.
+
+### Added
+
+- `spiralSpring`, `spiralPath` and `spiralSpringModel` (#73): a flat spiral (clock) spring, a strip round a hub with
+  its outer end in a boss, the ends thickened to twice the strip so the joins' corners stay below the strip's strain.
+  The model works out the hub's centre held (Castigliano on the strip as drawn) or floating, and agrees with the beam
+  solver within 1%. The README says why a helical spring is the wrong answer on a filament printer.
+- `pinnedLeaf` and `pinnedLeafModel` (#73): a stiff link on two corner-filleted pivots, the pinned-pinned leaf.
+- `filletHinge`, `filletHingeModel`, `hyperbolicHinge` and `hyperbolicHingeModel` (#74): corner-filleted and
+  hyperbolic notch hinges, by integrating the neck's profile as the elliptical hinge does.
+- `splitTube` and `splitTubeModel` (#74): a slotted tube printed standing, a torsion pivot, with a warning that its
+  twist shears the layers.
+- `xyStage` and `xyStageModel` (#75): two parallel guides in series at right angles, each axis's stiffness, the
+  stiffness along the leaves and each axis's stray.
+- `ports` and `models` know the spiral spring, the pinned leaf and the two new hinges, so `report` and `lamina` take them.
+- A spiral spring takes 1.25 turns or more (with fewer, its thickened ends lie side by side and the coils overlap at
+  a pitch the 1.5 × thickness rule allows), and its model's `gap` is measured on the outline as drawn.
+- In a `lamina`, a spiral spring's hub turns in place: the finite-element peak says so (info) instead of failing on a
+  push with no direction, and a `lamina.coils` warning says the coils' closing as it winds is not checked.
+- Bad input refused by name: `along`, `across` and `slot` are now checked as sizes (an elliptical hinge or LET joint
+  given 0 there is refused instead of drawing nothing).
+
 ## 0.5.6: compliant gripper jaws (#77)
 
 ### Added
