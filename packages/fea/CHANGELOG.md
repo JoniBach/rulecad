@@ -18,7 +18,12 @@ What changed in each release, for someone upgrading a workspace.
 - `layoutFrame(result, { material })`: the layout as a frame of beams with its load cases, for `sizing` to pick each
   member from tubes that can be bought. `layoutJoints(result, { material })`: each joint as a problem file for the
   voxel optimiser, the members as stubs carrying their forces in each case (the layout's, or the sized frame's).
-- Refused by name (`fea.layout.input`, `node`, `support`, `load`, `strength`, `unstable`) before any maths.
+- Refused by name (`fea.layout.input`, `node`, `support`, `load`, `strength`) before any maths, and
+  `fea.layout.unstable` when the programme has no answer. A load may name its node by number, as nodes given as a list
+  are named by place.
+- The interior point method stops at a relative error of 1e-9 in equilibrium, the members' limits and the gap; where
+  rounding stalls it short of that (some problems in space with several cases), it keeps its best point and answers
+  if that point is within 1e-6, so a solvable problem is not refused as unstable.
 
 ## 0.2.11: frames held, sized and their modes said (Frames 3)
 

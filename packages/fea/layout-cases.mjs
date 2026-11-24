@@ -174,3 +174,28 @@ test('layout: handed on as a frame to solve, and as joints to optimise', () => {
   assert.deepEqual(layoutJoints(r, { material: 'pla', forces: { 'A-C': [800], 'B-C': [-800] } })[0].members.find((e) => e.id === 'B-C').forces, [-800]);
   assert.throws(() => layoutJoints(r, { material: 'pla', forces: { 'A-C': [1, 2] } }), (e) => e.code === 'fea.layout.input');
 });
+
+test('layout: a 3D problem in two cases that once stalled near its answer is solved, and agrees with HiGHS', () => {
+  // A 5 × 4 × 3 grid at a 30 mm pitch, each node moved off it in x and y by up to 8 mm; three pins along z at one
+  // corner and rollers in x up that side; two cases at two nodes; compression 1.366 times as strong as tension. The
+  // interior point method reached a gap of 1e-7 by its 20th step, then rounding in a nearly singular normal matrix
+  // held equilibrium at 2e-7 against a 1e-9 test and the answer drifted away: it was refused as unstable. The same
+  // linear programme in scipy's HiGHS (dual simplex) gives 527.66384 mm³.
+  const off = [6.4, 1.4, 2.5, 3.8, 6.7, 4.9, 6.7, 5.2, 5.2, 4.9, 2.8, 5.2, 1.4, 2, 5.4, 1.2, 5.9, 5.1, 6.3, 6.3, 1.8, 4.4, 2.5, 1.4, 6.8, 5.7, 7.3, 4, 5, 6.8, 7.5, 3.2, 0.9, 6.6, 5.4, 3.6, 2.5, 1.2, 6.6, 3, 7, 1.2, 4.6, 0.6, 1.7, 3.6, 6.2, 6.5, 4.1, 7.2, 5.5, 3, 5.9, 6.9, 7.3, 4.7, 7.1, 1, 0.6, 7.8, 5.7, 1.8, 7.7, 7, 7, 6.6, 1.1, 3.8, 5.3, 6.9, 2.7, 7.2, 4.3, 5.7, 4.1, 2.3, 5.2, 5.5, 3.6, 7.4, 4.1, 0.5, 3.8, 7.7, 2, 3.6, 0.6, 4.9, 7, 0.9, 0.3, 6.9, 0, 4.4, 4, 0.9, 4.6, 4.2, 1.7, 5.6, 5, 6.8, 1.2, 8, 5.7, 2, 4.3, 6, 6, 7.9, 6.8, 0.3, 4.9, 3.2, 3.7, 0.1, 7.1, 1.1, 3.3, 5.7];
+  const nodes = {};
+  for (let i = 0, n = 0; i < 5; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 3; k++, n++) nodes[`${i}_${j}_${k}`] = [30 * i + off[2 * n], 30 * j + off[2 * n + 1], 30 * k];
+  const r = layout({ nodes, supports: { '0_0_0': 'pinned', '0_0_1': 'pinned', '0_0_2': 'pinned', '0_1_0': { x: true }, '0_2_0': { x: true }, '0_3_0': { x: true } },
+    cases: [{ loads: [{ node: '4_0_0', force: [69.2, 78.9, -82.8] }] }, { loads: [{ node: '3_2_2', force: [-67.3, -14.2, -19.4] }] }], strength: { tension: 100, compression: 136.6 } }, { adding: false });
+  near(r.volume, 527.66384, 1e-6, 'volume against HiGHS');
+  assert.ok(r.strain <= 1 + 1e-5, `no candidate past its limit (${r.strain})`);
+});
+
+test('layout: a load may name its node by number, as nodes given as a list are named by place', () => {
+  // The two bars of the hand test with their nodes as a list: C is node 2. Named 2 or '2', the load is carried the
+  // same way, 8333.3 mm³ as worked by hand above; and with a second load at node 3, the number and the string agree.
+  const list = { nodes: [[0, 300], [0, -300], [400, 0]], supports: { 0: 'pinned', 1: 'pinned' }, strength: 100 };
+  near(layout({ ...list, loads: [{ node: 2, force: [0, -1000] }] }).volume, 8333.3333, 1e-7, 'a load at node 2, a number');
+  const four = { ...list, nodes: [...list.nodes, [400, 200]] };
+  near(layout({ ...four, loads: [{ node: 2, force: [0, -1000] }, { node: '3', force: [0, -1000] }] }).volume, layout({ ...four, loads: [{ node: '2', force: [0, -1000] }, { node: '3', force: [0, -1000] }] }).volume, 1e-9, 'a number and a string');
+  assert.throws(() => layout({ ...list, loads: [{ node: [2], force: [0, -1000] }] }), (e) => e.code === 'fea.layout.load');
+});

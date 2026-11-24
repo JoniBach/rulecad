@@ -128,7 +128,7 @@ export function groundStructure(nodes, o = {}) {
 // A is given by columns. Its rows are global (the equilibrium rows) or local: each local row belongs to a small block
 // (a member's rows, one a case), and each column touches at most one block. The normal matrix A D Aᵀ is then solved
 // by eliminating the blocks first: a dense Schur complement over the global rows, and small blocks.
-function interior({ cost, start, rows, vals, G, blockOf, blocks, b, tol = 1e-9, most = 120 }) {
+function interior({ cost, start, rows, vals, G, blockOf, blocks, b, tol = 1e-9, loose = 1e-6, most = 120 }) {
   const N = cost.length, R = b.length;
   // each block's global rows touched, and each column's block
   const colBlock = new Int32Array(N).fill(-1), touched = blocks.map(() => new Map());
@@ -183,14 +183,19 @@ function interior({ cost, start, rows, vals, G, blockOf, blocks, b, tol = 1e-9, 
   for (let j = 0; j < N; j++) { xz += x[j] * z[j]; sx += x[j]; sz += z[j]; }
   for (let j = 0; j < N; j++) { x[j] += (0.5 * xz) / sz + 1e-12; z[j] += (0.5 * xz) / sx + 1e-12; }
   const stepTo = (v, dv) => { let a = 1; for (let j = 0; j < N; j++) if (dv[j] < 0) a = Math.min(a, -v[j] / dv[j]); return a; };
+  let best = { x, y, z, value: NaN, iterations: 0, err: Infinity, at: 0 };
   for (let it = 0; it < most; it++) {
     const Axv = Ax(x), rp = Float64Array.from(b, (v, i) => v - Axv[i]), Aty = ATy(y), rd = Float64Array.from(cost, (v, j) => v - Aty[j] - z[j]);
     let gap = 0, cx = 0, by = 0;
     for (let j = 0; j < N; j++) { gap += x[j] * z[j]; cx += cost[j] * x[j]; }
     for (let i = 0; i < R; i++) by += b[i] * y[i];
     const mu = gap / N;
-    if (norm(rp) <= tol * (1 + nb) && norm(rd) <= tol * (1 + nc) && Math.abs(cx - by) <= tol * (1 + Math.abs(cx))) return { x, y, z, value: cx, iterations: it, ok: true };
+    // the worst of the three relative errors: equilibrium, the members' limits, and the gap between the two values
+    const err = Math.max(norm(rp) / (1 + nb), norm(rd) / (1 + nc), Math.abs(cx - by) / (1 + Math.abs(cx)));
+    if (err <= tol) return { x, y, z, value: cx, iterations: it, ok: true };
     if (!(cx < 1e14) || !Number.isFinite(mu)) break;
+    if (err < best.err) best = { x: x.slice(), y: y.slice(), z: z.slice(), value: cx, iterations: it, err, at: it };
+    else if (it - best.at > 15) break; // stalled: rounding in a nearly singular normal matrix stops further progress
     const D = Float64Array.from(x, (v, j) => v / z[j]), solve = factor(D);
     const direction = (rc) => {
       const t = new Float64Array(N);
@@ -210,7 +215,8 @@ function interior({ cost, start, rows, vals, G, blockOf, blocks, b, tol = 1e-9, 
     for (let j = 0; j < N; j++) { x[j] += sp * dx[j]; z[j] += sd * dz[j]; }
     for (let i = 0; i < R; i++) y[i] += sd * dy[i];
   }
-  return { x, y, z, value: NaN, iterations: most, ok: false };
+  // else the best point, if it met a looser test (a millionth): its value is good to about that share
+  return { x: best.x, y: best.y, z: best.z, value: best.value, iterations: best.iterations, ok: best.err <= loose };
 }
 // a small symmetric positive definite matrix's inverse (m × m, row by row)
 function invert(h, m) {
@@ -312,7 +318,7 @@ export function layout(problem, o = {}) {
   for (const c of cases) {
     if (!Array.isArray(c.loads) || !c.loads.length) refuse('load', `${c.label} has no loads: a list of { node, force }`);
     for (const l of c.loads) {
-      if (!l || !(l.node in nodes)) refuse('load', `a load in ${c.label} names node ${said(l?.node)}, which is not a node`, { node: l?.node });
+      if (!l || (typeof l.node !== 'string' && typeof l.node !== 'number') || !(String(l.node) in nodes)) refuse('load', `a load in ${c.label} names node ${said(l?.node)}, which is not a node`, { node: l?.node });
       if (!isPoint(l.force)) refuse('load', `the load at ${said(l.node)} in ${c.label} has force ${said(l.force)}: [x, y] or [x, y, z] in N`, { node: l.node });
     }
   }
@@ -331,7 +337,7 @@ export function layout(problem, o = {}) {
   for (let i = 0; i < dim * n; i++) if (!held[i]) row[i] = free++;
   const K = cases.length, forces = cases.map((c) => {
     const f = new Float64Array(free);
-    for (const l of c.loads) for (let d = 0; d < dim; d++) { const i = dim * index.get(l.node) + d; if (row[i] >= 0) f[row[i]] += l.force[d] ?? 0; }
+    for (const l of c.loads) for (let d = 0; d < dim; d++) { const i = dim * index.get(String(l.node)) + d; if (row[i] >= 0) f[row[i]] += l.force[d] ?? 0; }
     return f;
   });
   const F0 = Math.max(...forces.map((f) => Math.max(0, ...Array.from(f, Math.abs))));
@@ -380,7 +386,7 @@ export function layout(problem, o = {}) {
   const byNode = Array.from({ length: n }, () => []);
   cand.forEach((c, i) => { byNode[c.a].push(i); byNode[c.b].push(i); });
   for (const list of byNode) list.sort((p, q) => cand[p].length - cand[q].length);
-  const loaded = new Set(cases.flatMap((cs) => cs.loads.map((l) => index.get(l.node))));
+  const loaded = new Set(cases.flatMap((cs) => cs.loads.map((l) => index.get(String(l.node)))));
   let first = o.start ?? (plane ? 8 : 18), act, r, rounds = 0;
   const adding = o.adding !== false;
   for (;;) {
