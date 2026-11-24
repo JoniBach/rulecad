@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/fea",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "description": "How far a part bends under load: finite elements on a grid of squares (2D) or cubes (3D), with a multigrid solver, and frames of beams (static, buckling and modes), in plain JavaScript.",
   "type": "module",
   "exports": {
@@ -15,6 +15,10 @@
     "./frame": {
       "types": "./frame.d.mts",
       "default": "./frame.mjs"
+    },
+    "./layout": {
+      "types": "./layout.d.mts",
+      "default": "./layout.mjs"
     }
   },
   "files": [
@@ -26,6 +30,8 @@
     "threads.d.mts",
     "frame.mjs",
     "frame.d.mts",
+    "layout.mjs",
+    "layout.d.mts",
     "CHANGELOG.md"
   ],
   "license": "MIT",
@@ -38,7 +44,9 @@
     "frames",
     "beams",
     "buckling",
-    "modal-analysis"
+    "modal-analysis",
+    "layout-optimisation",
+    "ground-structure"
   ],
   "engines": {
     "node": ">=20"

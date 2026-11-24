@@ -909,7 +909,9 @@ railJigModel('2020-misumi-hfs5', { rail: 'rail-mgn12' }).grams                  
   travel is that share less the carriage's length with its seal lips (`carriage_length_max`). A rail too short for
   its carriages is refused by name.
 - **Fit.** `guideFit` says whether the rail bridges the slot's opening and sits within the face, whether a slot nut
-  is made for that slot in the rail's thread (the nut, or the threads there are), and whether its ends are on the beam
+  is made for that slot in the rail's thread (the nut, or the threads there are, and where a printed carrier holding
+  hex nuts of that thread fits the slot, `carrierModel` with its grams and hold: MISUMI sells no M2 nut for its 5
+  series, so an MGN7 on a 2020 is told this), and whether its ends are on the beam
   and clear of what crosses its face (`keep`, with `GUIDE_DEFAULTS.clear` between). Each is a `guide.fit` finding.
 - **Loads.** `carriageMargin` holds a carriage's loads to its ratings: the force across the rail over C0 and each
   moment over its own rating, summed. The sum's inverse is the margin: under 1 it fails, under 2 it warns. The force
