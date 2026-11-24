@@ -3,6 +3,15 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.23: ABS, ASA and PA-CF with ranges
+### Added
+
+- `abs`, `asa` and `pa_cf`: Polymaker PolyLite ABS (data sheet V5.6), Bambu Lab ASA (V2.0) and Bambu Lab PAHT-CF (V2.0,
+  dry and annealed), printed, for analysis: modulus and tensile strength along the layers and across them, density,
+  Poisson's ratio (an estimate: no maker publishes one) and, for ASA and PAHT-CF, the softening point.
+- A rule may give the range it is found in, `low` and `high` in its unit. The printed plastics carry their data
+  sheets' spread: `pla` and `petg` gain `low` and `high` on their moduli and strengths. No value changed.
+
 ## 0.3.22: how parts are made
 ### Added
 

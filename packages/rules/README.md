@@ -8,6 +8,11 @@ it comes from and when it was checked, so a design built on it can be traced and
          "source": "https://…", "checked": "2026-10-11" }
 ```
 
+A value that varies, as a printed plastic's does with the printer and the spool, may also give the range it is found in:
+`"low"` and `"high"`, in its unit, low at most the value and high at least it (`cad rules check` holds them to that). The
+printed plastics' ranges are their data sheets' spread either side. Expressions read the value (`pla.strength`); to design
+to the weak end, take `low` from the set.
+
 | Set | What | Values |
 |---|---|---|
 | `wire` | Hook-up wire by gauge: current density, service loop | 4 |
@@ -40,6 +45,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
 | `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them, and what a kilogram costs (its EU store's price with VAT) | 7, 8 |
+| `abs`, `asa`, `pa_cf` | Polymaker PolyLite ABS, Bambu Lab ASA and Bambu Lab PAHT-CF (carbon-filled nylon, dry and annealed), printed, for analysis: stiffness and strength along the layers and across them, each with the data sheet's range (`low`, `high`) | 6 or 7 each |
 | `bearing-608`, `bearing-625`, `bearing-6800`, `bearing-f623`, `bearing-51104` | Ball bearings from NTN's figures: 608, 625, 6800, the flanged F623 and the 51104 thrust bearing: bore, outer diameter, width, chamfer, ratings, radial play class | 9, 9, 9, 10, 10 |
 | `bearing-mr105` | MR105 miniature bearing, 5 x 10 mm (4 wide shielded, 3 open), distributor figures: community until measured | 8 |
 | `endstop-10t85` | The lever microswitch endstop marked 10T85: body, holes, force. Community until measured, and its lever travel is not published anywhere found | 12 |

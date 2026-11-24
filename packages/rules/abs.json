@@ -1,0 +1,12 @@
+{
+  "_doc": "Polymaker PolyLite ABS, printed, for analysis: stiffness and strength along the layers (x-y) and across them (z). Printed values vary with the printer, settings and spool: low and high are the data sheet's own spread either side; measure your own (the lever bench does) and record it as kind measured.",
+  "name": "abs",
+  "rules": {
+    "modulus": {"value": 2246.6, "low": 2188.4, "high": 2304.8, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), ± 58.2. Bambu Lab's ABS sheet (V2.0) gives 3800 ± 190 MPa by ISO 527 but 1880 MPa in bending, far from this and from its own bending figure, so it is not used", "kind": "spec", "source": "Polymaker PolyLite ABS technical data sheet V5.6, 2025-12-30 (ISO 527, GB/T 1040), https://polymaker.com/wp-content/uploads/lana-downloads/TDS_Polymaker_PolyLite-ABS_V5.6_2025-12-30_EN.pdf", "checked": "2026-11-24"},
+    "modulus_z": {"value": 2080.9, "low": 1988.2, "high": 2173.6, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 92.7", "kind": "spec", "source": "Polymaker PolyLite ABS technical data sheet V5.6 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength": {"value": 33.4, "unit": "MPa", "rule": "Tensile strength along the layers (x-y). The sheet's spread for it is a misprint (± 92.7, the line above's), so it carries no range", "kind": "spec", "source": "Polymaker PolyLite ABS technical data sheet V5.6 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength_z": {"value": 29.7, "low": 29.4, "high": 30.0, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 0.3", "kind": "spec", "source": "Polymaker PolyLite ABS technical data sheet V5.6 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "poisson": {"value": 0.35, "rule": "Poisson's ratio (Polymaker publish none): an estimate for a printed amorphous plastic, as the kit takes PLA's (0.36) and PETG's (0.38)", "kind": "estimate", "source": "An estimate of @rulecad/rules: no maker's data sheet gives one", "checked": "2026-11-24"},
+    "density": {"value": 1.04, "unit": "g/cm³", "rule": "Density of the filament at 23 °C", "kind": "spec", "source": "Polymaker PolyLite ABS technical data sheet V5.6 (ISO 1183, GB/T 1033)", "checked": "2026-11-24"}
+  }
+}

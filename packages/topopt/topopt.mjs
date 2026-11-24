@@ -39,7 +39,12 @@ export { jsBackend };
  * @property {{ E: number, nu: number }} material
  * @property {number} [thickness] mm, for a 2D problem
  * @property {number} cell the grid's cell size, mm
- * @property {number} volume the share of the space to fill, 0 to 1 (keep regions count towards it)
+ * @property {number} [volume] the share of the space to fill, 0 to 1 (keep regions count towards it)
+ * @property {number} [stress] a limit on von Mises stress, MPa. Without an output: the lightest layout that keeps every
+ *   cell under it, in place of volume. With an output: the mechanism is optimised as before (it fills its volume) and
+ *   then checked against it at its input force, with the force and the output's travel that take it to the limit
+ * @property {number} [strain] a strain limit in place of stress (0.02 is 2%): the stress limit is it times the material's
+ *   E. A printed plastic's strain at yield is about its strength over its modulus
  * @property {number} [filter] the filter radius in mm: about the thinnest member (default 1.5 cells)
  * @property {number} [penal] the penalty (default 3)
  * @property {boolean} [projection] sharpen with Heaviside projection (default true)
@@ -137,6 +142,12 @@ export function discretise(p) {
   };
   const axes = 'xyz'.slice(0, dim), fixed = new Uint8Array(g.dofs);
   for (const s of p.supports || []) for (const m of select(s, 'a support')) for (let a = 0; a < dim; a++) if ((s.fix || axes).includes(axes[a])) fixed[dim * m + a] = 1;
+  if (p.strain != null) {
+    if (p.stress != null) throw new Error('give a stress limit or a strain limit, not both (a strain limit is the stress limit over the material\'s modulus)');
+    if (!(p.strain > 0 && p.strain < 0.2)) throw new Error(`the strain limit is a share of the length, more than 0 and below 0.2: 2% is 0.02 (got ${p.strain})`);
+    if (!(p.material?.E > 0)) throw new Error('a strain limit needs the material\'s modulus, E in MPa');
+  }
+  const stress = p.stress ?? (p.strain != null ? p.strain * p.material.E : undefined);
   const names = [...new Set((p.loads || []).map((l) => l.case || 'load'))];
   if (!names.length) throw new Error('a problem needs at least one load');
   const loads = names.map((name) => {
@@ -168,8 +179,8 @@ export function discretise(p) {
     material: p.material, thickness: p.thickness, volume: p.volume,
     // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
     // still improving at 300: the bin's compliance fell 388 → 265 → 195 over steps 100, 200 and 300)
-    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : dim === 3 ? 500 : 300),
-    ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(p.stress ? { stress: p.stress } : {}),
+    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (stress && !p.output ? 1000 : dim === 3 ? 500 : 300),
+    ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(stress ? { stress, ...(p.strain != null ? { strain: p.strain } : {}) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
     regions: { keep, avoid },
   });
@@ -562,7 +573,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta, eta); dc[e] *= s; dv[e] = s; }
     if (print && keptCells.length) { const w = (SUPPORT * Math.max(compliance, 1e-12)) / keptCells.length; for (const e of keptCells) dc[e] = -w * slope(made[e], beta); }
     toDesign(dc); toDesign(dv);
-    const stress = Ss ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
+    const stress = Ss && (!spec.output || all) ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     // A mechanism: how far the output moves along its direction under the input (travel), and its gradient: with the
     // adjoint λ from K λ = L (the output's direction), d travel / dρ = −λₑᵀ (dkₑ/dρ) uₑ (Sigmund 1997)
     let mechanism = null;
@@ -799,7 +810,8 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const inSpace = passive.reduce((s, p) => s + (p !== -2 ? 1 : 0), 0), kept = passive.reduce((s, p) => s + (p === 1 ? 1 : 0), 0);
   const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0);
   // A stress limit asks for the lightest layout that keeps to it; a volume, for the stiffest that fills it
-  const lightest = spec.stress > 0, mechanism = !!spec.output;
+  // (a mechanism with a stress limit is checked against it once optimised, not optimised under it: see the README)
+  const mechanism = !!spec.output, lightest = spec.stress > 0 && !mechanism;
   if (lightest && spec.volume != null) throw new Error('give a volume (the stiffest layout that fills it) or a stress limit (the lightest that keeps to it), not both');
   if (!lightest && !(spec.volume > 0 && spec.volume <= 1)) throw new Error(`the volume is a share of the space, from 0 to 1 (got ${spec.volume})`);
   const target = lightest ? 0 : spec.volume * inSpace;
@@ -893,9 +905,18 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   // (the final physical call is after evaluate's, so unsupported comes from the evaluation of this design)
   return {
     density: phys, compliance: final.compliance, cases: final.cases, unsupported: final.unsupported,
-    ...(final.mechanism ? { mechanism: { travel: final.mechanism.travel, input: final.mechanism.input, advantage: final.mechanism.travel / (final.mechanism.input || 1) } } : {}), ...(final.stress ? { stress: { peak: final.stress.peak, limit: spec.stress } } : {}),
+    ...(final.mechanism ? { mechanism: { travel: final.mechanism.travel, input: final.mechanism.input, advantage: final.mechanism.travel / (final.mechanism.input || 1) } } : {}), ...(final.stress ? { stress: stressReport(spec, final) } : {}),
     volume: phys.reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0) / inSpace, steps: step, converged, history, seconds: (Date.now() - started) / 1000,
   };
+}
+
+// The peak stress against the limit. A mechanism's is at its input force, as made, so also the force that takes its
+// peak to the limit and how far its output travels then (the part is linear: both scale with the force)
+function stressReport(spec, final) {
+  const { peak } = final.stress, limit = spec.stress, strain = spec.strain != null ? { strain: peak / spec.material.E, strainLimit: spec.strain } : {};
+  if (!final.mechanism) return { peak, limit, ...strain };
+  const k = peak > 0 ? limit / peak : Infinity;
+  return { peak, limit, ...strain, force: spec.loads[0].size * k, travel: final.mechanism.travel * k };
 }
 
 /**
