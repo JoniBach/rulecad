@@ -6309,3 +6309,41 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('a problem milled, cast or printed in a powder bed: cad optimise says how it is made, counts undercuts, and refuses enclosed voids by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'made');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'made', objects: [] }));
+    // A 12 mm cube held at its foot and pushed sideways at its top, on 1.5 mm cells (8 × 8 × 8)
+    const base = { uses: ['mill-3axis'], material: 'al6061', cell: 1.5, volume: 0.5, filter: 2.25, steps: 12, space: { at: [0, 0, 6], size: [12, 12, 12] },
+      supports: [{ at: [0, 0, 0.75], size: [12, 12, 1.5] }], loads: [{ at: [0, 0, 11.25], size: [12, 12, 1.5], force: [100, 0, 0] }] };
+    const write = (name, p) => fs.writeFileSync(path.join(project, 'problems', `${name}.json`), JSON.stringify({ title: name, ...base, ...p }));
+    write('milled', { mill: '+z', symmetry: { mirror: 'y' } });
+    const milled = cad('optimise', 'made/milled');
+    assert.match(milled, /milled from \+z: no undercuts/);
+    assert.match(milled, /mirrored across y/);
+    // A pocket kept clear under a solid top: the tool can't reach it from above, and the count says so
+    write('pocket', { mill: '+z', keep: [{ at: [0, 0, 11.25], size: [12, 12, 1.5] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] });
+    const pocket = JSON.parse(cad('optimise', 'made/pocket', '--json'));
+    assert.deepEqual(pocket.process, { mill: '+z' });
+    assert.equal(pocket.undercuts, 8, 'the 3 mm pocket is 2 × 2 × 2 cells of 1.5 mm, all under the kept top');
+    // Two mould halves parted at the cube's middle, along z, and an extrusion along x
+    write('cast', { uses: ['mould-injection'], cast: { draw: 'z' }, extrude: 'x' });
+    const cast = cad('optimise', 'made/cast');
+    assert.match(cast, /cast in two halves drawn off along z from 6 mm: no undercuts/);
+    assert.match(cast, /one section along x/);
+    // A powder bed print with a hollow box kept: its 3 mm inside can't be emptied of powder
+    const hollow = { overhang: '+z', keep: [{ at: [0, 0, 6], size: [6, 6, 6] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] };
+    write('powder', { uses: ['dmls'], voids: 'refused', ...hollow });
+    const r = spawnSync(process.execPath, [BIN, 'optimise', 'made/powder'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\): powder or a core can't get out: open it to the outside with an avoid region \(an escape hole\), or allow voids/);
+    write('allowed', hollow);
+    assert.doesNotMatch(cad('optimise', 'made/allowed'), /enclosed void/);
+    // Two processes at once are refused before any maths
+    write('both', { overhang: '+z', mill: '+z' });
+    assert.match(cad('optimise', 'made/both'), /printed \(overhang\), milled \(mill\) or cast \(cast\), one of them: this problem gives overhang and mill/);
+  } finally { done(); }
+});

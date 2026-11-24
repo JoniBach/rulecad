@@ -155,6 +155,44 @@
       "type": "string",
       "description": "3D: printable this way up ('+z', '-y', …), or a variable holding it, or 'none': only material supported from below at 45° or less"
     },
+    "symmetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The same either side of the grid's middle planes, and each half or quarter turn about its middle. The grid is centred on the space and keep regions (in 3D, except along an overhang's build direction, which can't be mirrored across). Keep and avoid regions stay as given.",
+      "properties": {
+        "mirror": { "type": "string", "pattern": "^[xyz]{1,3}$", "description": "The axes mirrored across: 'x', 'xy', 'xyz' (2D: x and y)" },
+        "turns": { "enum": [2, 4], "description": "The same each half turn (2) or quarter turn (4) about the middle; a quarter turn needs the grid as wide both ways across its axis" },
+        "axis": { "enum": ["x", "y", "z"], "description": "3D: the axis turns are about (default z)" }
+      }
+    },
+    "extrude": {
+      "enum": ["x", "y", "z"],
+      "description": "One section all along this axis: a part cut from a bar, an extrusion or a plate of the profile"
+    },
+    "mill": {
+      "type": "string",
+      "pattern": "^[+-][xyz]$",
+      "description": "Milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is as solid as every cell between it and the tool. Not with overhang or cast. Rules: mill-3axis"
+    },
+    "cast": {
+      "description": "Cast or moulded: in a mould drawn off one way ('+z'), or in two halves drawn off both ways along an axis from a parting plane. No undercuts from the draw; draft is left to the drawing. Not with overhang or mill. Rules: mould-injection",
+      "oneOf": [
+        { "type": "string", "pattern": "^[+-][xyz]$" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["draw"],
+          "properties": {
+            "draw": { "enum": ["x", "y", "z"], "description": "The axis the halves are drawn off along" },
+            "parting": { "$ref": "#/$defs/expr", "description": "The parting plane, mm along draw (default the space's middle)" }
+          }
+        }
+      ]
+    },
+    "voids": {
+      "enum": ["allowed", "refused"],
+      "description": "Enclosed voids in the result: allowed (the default), or refused, for metal powder bed printing (powder left inside can't be got out) or a casting's trapped core: cad optimise then reports each as an error with its volume and where it is. Rules: dmls"
+    },
     "output": {
       "type": "object",
       "additionalProperties": false,
