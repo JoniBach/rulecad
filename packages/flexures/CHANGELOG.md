@@ -20,7 +20,10 @@ why. Releases before this file was started are described in their pull requests 
 - Bistables (issue #76): `tiltedBistable` (a shuttle on two tilted leaves, one piece) and `buckledSwitch` (a strip
   squeezed into its frame, two prints), with models whose force curves come from the beam solver: the push that
   switches it, the pull back, where it rests again, the strain on the way, and for the switch its rise, its load on the
-  frame and the frame's give. `snapCurve` reads such a curve for any beam system.
+  frame and the frame's give. `snapCurve` reads such a curve for any beam system, with other unknowns held where a
+  frame is supported. The tilted bistable's model puts its frame's bar in the solver (the frame sat on its blocks),
+  reports the same figures on a rigid frame beside them, and warns (`bistable.frame`) when the bar takes over half
+  of the pull back; its bar is 20 mm deep by default, because a 6 mm bar lets the roots spread and the part springs back.
 - `pivots.mjs`: the drawing, clearances and beam-solver set-up the linkages and amplifiers share.
 
 ### Printed sizes that moved

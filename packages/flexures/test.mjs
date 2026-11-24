@@ -1283,7 +1283,7 @@ test('the README\'s linkages, amplifiers and bistables are the code\'s figures',
   const b = f.bridgeAmplifierModel({ link: 20, angle: 10, width: 6, flex }, plaG, { input: 0.1 });
   has(`cot 10° = ${x2(b.ratio)}; over 0.1 mm the rigid links give ${x2(b.output(0.1) / 0.1)} and the drawn flexures ${x2(b.solved)}; the links lie flat at ${b.limit.toFixed(3)} mm of input | ${x1(b.grams)} |`);
   const t = f.tiltedBistableModel({ length: 30, angle: 8, thickness: 0.84, width: 6 }, plaG);
-  has(`rises ${x2(t.rise)} mm; ${x2(t.snap.force)} N switches it, ${x2(t.snap.push)} mm in; it rests again ${x2(t.second)} mm down, and ${x2(-t.back.force)} N brings it back; ${x2(t.strain * 100)}% on the way | ${x1(t.grams)} |`);
+  has(`rises ${x2(t.rise)} mm; ${x2(t.snap.force)} N switches it, ${x2(t.snap.push)} mm in; it rests again ${x2(t.second)} mm down, and ${x2(-t.back.force)} N brings it back (${x2(-t.rigid.back.force)} N on a rigid frame); ${x2(t.strain * 100)}% on the way | ${x1(t.grams)} |`);
   const s = f.buckledSwitchModel({ length: 50, thickness: 0.84, width: 6, squeeze: 0.4, base: 12 }, plaG);
   has(`the frame gives ${s.give.toFixed(3)} mm; the strip pushes its pockets with ${x1(s.load)} N and bows ${x2(s.rise)} mm; ${x2(s.snap.force)} N switches it either way; ${x2(s.strain * 100)}% | ${x1(s.grams)} (strip and frame) |`);
 });

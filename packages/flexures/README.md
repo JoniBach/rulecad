@@ -212,7 +212,7 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 |---|---|---|
 | `fourBar`, links 15, 40, 30 on 40 | each joint 159.9 N·mm a radian; swung ±9.0° (0.8 of the limit) the rocker turns 3.4° | 5.2 |
 | `bridgeAmplifier`, links 20 at 10° | cot 10° = 5.67; over 0.1 mm the rigid links give 5.93 and the drawn flexures 5.76; the links lie flat at 0.608 mm of input | 5.7 |
-| `tiltedBistable`, leaves 30 at 8° | rises 4.18 mm; 8.04 N switches it, 0.67 mm in; it rests again 6.14 mm down, and 1.82 N brings it back; 1.76% on the way | 5.4 |
+| `tiltedBistable`, leaves 30 at 8° | rises 4.18 mm; 7.39 N switches it, 1.00 mm in; it rests again 5.95 mm down, and 1.21 N brings it back (1.82 N on a rigid frame); 1.65% on the way | 13.7 |
 | `buckledSwitch`, strip 50 squeezed 0.4 | the frame gives 0.082 mm; the strip pushes its pockets with 15.8 N and bows 2.19 mm; 7.00 N switches it either way; 1.62% | 10.6 (strip and frame) |
 
 - **The slider-crank** pushes its slider with (T - dU/dθ) / |dx/dθ| for a torque T at the crank (virtual work). The
@@ -224,7 +224,13 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 - **The tilted-leaf bistable** prints stress-free, one piece. Pushed, its leaves squeeze and buckle. Past the line
   between their roots they push on, and it rests again short of twice its rise, because its leaves stay bent there.
   The model nudges each leaf a thousandth of its buckling load: a printed leaf has a bow to start from, where the
-  solver's perfectly straight one would not.
+  solver's perfectly straight one would not. The frame is in the solver too. The leaves push their roots outward a
+  few millimetres above the frame's bar, so the bar bends and the root blocks turn out, and the leaves are squeezed
+  less. A bar 6 mm deep gives about 96 N/mm at each root (a² l / EI, a the roots' height over the bar's middle line,
+  l the bar from the middle to a block), a fifth of a leaf's 450 N/mm along its length, and the part springs back.
+  So the bar is 20 mm deep by default, and the model takes the frame as sat on its two blocks, free to spread and
+  turn there: the `bistable.frame` finding gives the pull back against a rigid frame's and warns when the frame
+  takes over half of it. Screwed down flat, the frame gives less, and the part comes nearer the rigid figures.
 - **The buckled-beam switch** is two prints. The frame's pockets hold the strip's tabs `squeeze` nearer than they
   print, so fitted the strip is squeezed past buckling and bows. Its two states are mirrors, so it switches with the
   same push each way. A stem from its pad slides in a slot in the frame's top, which keeps the pad square, and a round
@@ -238,6 +244,7 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 | x = r cos θ + √(l² - (r sin θ - e)²); F = (T - dU/dθ) / \|dx/dθ\| | slider-crank | rigid kinematics; virtual work |
 | v = 2L (sin α - sin α'), cos α' = cos α + u / 2L; k = 2K / L² sin²α | bridge, rhombus | rigid kinematics; the joints' energy |
 | k = 2 (EA/L sin²α + 12EI/L³ cos²α) | tilted bistable at rest | two fixed-guided beams |
+| δ / H = a² l / EI | tilted bistable's frame: a root's move out for its thrust H | the bar a cantilever from its middle under the moment H a |
 | P = 4π²EI / L²; h = (2/π) √(L s - π²t²/3) | buckled switch | Euler, clamped ends; first buckled mode |
 
 Left for later: the Young bistable and tristable mechanisms, the tensural bistable, compliant gear teeth and clutches,

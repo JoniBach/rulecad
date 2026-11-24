@@ -131,7 +131,7 @@ export function tiltedBistable(p, { part = 'all' } = {}) {
 }
 
 /**
- * What a tilted-leaf bistable does, from the beam solver on its drawn leaves: the force curve as the shuttle is
+ * What a tilted-leaf bistable does, from the beam solver on its drawn leaves and frame: the force curve as the shuttle is
  * pushed through, the push that switches it, the pull it gives back past the middle, where it rests again (if it
  * does), the most strain on the way, its stiffness at rest, and how it prints.
  * @param {TiltedBistable} p
