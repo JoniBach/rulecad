@@ -1137,3 +1137,137 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   assert.ok(readme.includes(`stop: { open: ${v.stop_open}, close: ${v.stop_close}, tongue: ${v.stop_tongue} }`), 'the README\'s example has the arm\'s stops');
   for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
+
+// Linkages, amplifiers and bistables (#76, #77): each joint a short flexure, 6 mm long, 0.84 thick, 6 wide in PLA.
+// With no rounds its stiffness is EI / l = 2680 × 6 × 0.84³ / 12 / 6 = 132.371 N·mm a radian, and its strain t / 2l =
+// 0.07 a radian (Howell 2001, the small-length flexural pivot)
+const flex0 = { length: 6, thickness: 0.84, fillet: 0 }, plaG = { ...pla, density: 1.24 };
+
+test('a compliant four-bar: the parallelogram and the crank-rocker against their sums by hand, and the beam solver', async () => {
+  const { fourBar, fourBarModel } = await import('@rulecad/flexures');
+  // the parallelogram (crank = rocker 20, coupler = ground 30, crank upright): the coupler does not turn, so every
+  // joint turns as far as the crank, d; the flexures store 4 × K d² / 2, so the crank needs 4 K d: at 5°,
+  // 4 × 132.371 × 0.0872665 = 46.206 N·mm, and the rocker turns 5° too
+  const par = fourBarModel({ ground: 30, crank: 20, coupler: 30, rocker: 20, angle: 90, width: 6, flex: flex0 }, plaG);
+  assert.equal(par.kind, 'parallelogram');
+  near(par.K, 132.371, 1e-3, 'K'); near(par.torque(5), 46.206, 0.01, '4Kd'); near(par.rocker(5), 5, 1e-9, 'the rocker');
+  for (const v of Object.values(par.turns(5))) near(Math.abs(v), 5 * Math.PI / 180, 1e-9, 'each joint');
+  near(par.strain(5), 0.07 * 0.0872665, 1e-6, 't/2l a radian');
+  near(par.swing[1], (0.02 / 0.07) * 180 / Math.PI, 0.01, 'the swing at 2%: 0.02 / 0.07 rad = 16.37°');
+  // the crank-rocker: A at 0, D at 40, crank 15 at 60°, coupler 40, rocker 30. BD² = 15² + 40² - 2 × 15 × 40 × cos 60°
+  // = 1225, so BD = 35, and the transmission angle at rest is acos((40² + 30² - 35²) / (2 × 40 × 30)) = acos(0.53125)
+  // = 57.91°. Shortest + longest 15 + 40 <= 40 + 30, the crank the shortest: a crank-rocker (Grashof)
+  const cr = { ground: 40, crank: 15, coupler: 40, rocker: 30, angle: 60, width: 6, flex: { length: 6, thickness: 0.84 } };
+  const m = fourBarModel(cr, plaG, { printer: { line: 0.42, layer: 0.2, wall_min: 0.84 } });
+  assert.equal(m.kind, 'crank-rocker'); near(m.transmission(0), 57.91, 0.01, 'the transmission angle');
+  assert.deepEqual(m.findings.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'every finding passes');
+  for (const code of ['linkage.kind', 'linkage.transmission', 'flexure.strain', 'linkage.torque', 'linkage.clear', 'flexure.lines', 'linkage.mass']) assert.ok(m.findings.some((x) => x.code === code), code);
+  // the beam solver on the drawn flexures (rounds included) agrees with the pins and springs within 3% at ±10°
+  for (const deg of [-10, 10]) { const s = m.solve(deg); assert.ok(s.converged); near(s.torque / m.torque(deg), 1, 0.03, `torque at ${deg}°`); }
+  // drawn at rest, one piece, as heavy as the model says
+  const g = fourBar(cr);
+  assert.ok(onePiece(g)); near((measureVolume(g) / 1000) * 1.24, m.grams, 1e-9, 'grams');
+  assert.ok(m.clear.gap >= 0.3);
+});
+
+test('a compliant slider-crank: the slider\'s place and rate by hand, the push from virtual work, the guide in the sums', async () => {
+  const { sliderCrank, sliderCrankModel, parallelGuideModel } = await import('@rulecad/flexures');
+  const p = { crank: 15, coupler: 35, angle: 100, width: 6, flex: flex0, guide: { length: 25, thickness: 0.84 } };
+  const m = sliderCrankModel(p, plaG, { torque: 0.2 });
+  // x = r cos θ + √(l² - r² sin² θ): at 100°, -2.6047 + √(1225 - 218.21) = 29.1251; at 110°, -5.1303 + 32.0362 =
+  // 26.9059, so turning the crank 10° on slides it -2.2192 mm
+  near(m.slide(10), -2.2192, 1e-3, 'the slide at 10°');
+  // dx/dθ = -r sin θ - r² sin θ cos θ / √(l² - r² sin² θ) = -14.7721 + 38.4777 / 31.7299 = -13.5595 mm a radian;
+  // at rest the flexures ask nothing, so 0.2 N m pushes 200 / 13.5595 = 14.750 N
+  near(m.rate(0), -13.5595, 1e-3, 'the rate'); near(m.force(0, 0.2), 14.750, 0.01, 'the push at rest');
+  // turned on, the flexures and guide take their share: F = (T - torque) / |dx/dθ|
+  near(m.force(5, 0.2), (200 - m.torque(5)) / Math.abs(m.rate(5)), 1e-9, 'virtual work');
+  const g = parallelGuideModel({ length: 25, thickness: 0.84, width: 6, fillet: 1 }, plaG);
+  near(m.guide, g.stiffness, 1e-12, 'the guide');
+  // the guide's drop at the stroke's end: 3δ² / 5L
+  const end = Math.max(...m.stroke.map(Math.abs)); near(m.drop, (3 * end * end) / (5 * 25), 1e-12, 'the drop');
+  assert.deepEqual(m.findings.filter((x) => x.level !== 'pass').map((x) => x.code), []);
+  // too little torque to turn it against the flexures fails by name
+  assert.equal(sliderCrankModel(p, plaG, { torque: 0.01 }).findings.find((x) => x.code === 'linkage.force').level, 'fail');
+  const shape = sliderCrank(p); assert.ok(onePiece(shape)); near((measureVolume(shape) / 1000) * 1.24, m.grams, 1e-9, 'grams');
+});
+
+test('displacement amplifiers: the bridge, the rhombus and the lever, by hand and by the beam solver', async () => {
+  const { bridgeAmplifierModel, rhombusAmplifierModel, leverAmplifierModel, bridgeAmplifier, rhombusAmplifier, leverAmplifier } = await import('@rulecad/flexures');
+  // the bridge, links 20 at 10°: cot 10° = 5.6713 at the start; its input as stiff as 2K / (L² sin² α) = 2 × 132.371
+  // / (400 × 0.030154) = 21.949 N/mm
+  const b = bridgeAmplifierModel({ link: 20, angle: 10, width: 6, flex: flex0 }, plaG, { input: 0.05 });
+  near(b.ratio, 5.6713, 1e-4, 'cot α'); near(b.stiffness, 21.949, 1e-3, 'the input\'s stiffness');
+  // the rigid links' output over the stroke: v = 2L (sin α - sin α'), cos α' = cos α + u / 2L
+  const a1 = Math.acos(Math.cos(10 * Math.PI / 180) + 0.05 / 40); near(b.output(0.05), 40 * (Math.sin(10 * Math.PI / 180) - Math.sin(a1)), 1e-12, 'the output');
+  // the drawn flexures give less than the rigid links (they stretch and shear), but most of it; the solver's input is
+  // within 10% of the pins'
+  assert.ok(b.solved < b.output(0.05) / 0.05 && b.solved > 0.8 * b.ratio, `the bridge's ratio ${b.solved}`);
+  near(b.solvedStiffness / b.stiffness, 1, 0.1, 'the solver\'s input stiffness');
+  // the rhombus, steeper: its ratio near cot 30° = 1.7321
+  const r = rhombusAmplifierModel({ link: 25, angle: 30, width: 6, flex: flex0 }, plaG, { input: 0.2 });
+  near(r.ratio, 1.7321, 1e-4, 'cot 30°'); near(r.solved / (r.output(0.2) / 0.2), 1, 0.03, 'the rhombus\'s ratio');
+  // the lever, pushed 10 from its pivot, out to 50: 5 times; its input K / a² = 1.3237 N/mm
+  const l = leverAmplifierModel({ input: 10, output: 50, width: 6, flex: flex0 }, plaG, { input: 0.2 });
+  near(l.ratio, 5, 1e-12, 'b / a'); near(l.stiffness, 1.3237, 1e-4, 'K / a²'); near(l.solved / 5, 1, 0.05, 'the solver\'s lever');
+  for (const x of [b, r, l]) assert.deepEqual(x.findings.filter((f) => f.level !== 'pass').map((f) => f.code), []);
+  for (const g of [bridgeAmplifier({ link: 20, angle: 10, width: 6, flex: flex0 }), rhombusAmplifier({ link: 25, angle: 30, width: 6, flex: flex0 }), leverAmplifier({ input: 10, output: 50, width: 6, flex: flex0 })]) assert.ok(onePiece(g));
+  // pushed past flat (2L (1 - cos α) = 40 × 0.015192 = 0.6077 mm), the bridge toggles: a fail by name. The rhombus
+  // turns its flexures 0.02 / 0.07 = 0.2857 rad at the limit, before it lies flat: there the strain fails
+  const flat = bridgeAmplifierModel({ link: 20, angle: 10, width: 6, flex: flex0 }, plaG, { input: 2 }).findings.find((f) => f.code === 'bridge.flat');
+  assert.equal(flat.level, 'fail'); assert.match(flat.text, /past the 0\.608 mm that lays the links flat/);
+  const over = rhombusAmplifierModel({ link: 25, angle: 30, width: 6, flex: flex0 }, plaG, { input: 6 }).findings.find((f) => f.code === 'flexure.strain');
+  assert.equal(over.level, 'fail'); assert.match(over.text, /the input may go \d+\.\d+ mm/);
+});
+
+test('a tilted-leaf bistable: stiff as two fixed-guided leaves at rest, snapping over and staying, by the beam solver', async () => {
+  const { tiltedBistable, tiltedBistableModel } = await import('@rulecad/flexures');
+  // leaves 30 long at 8°, 0.84 × 6, no rounds: A 5.04, I 0.29635; EA/L sin²α = 450.24 × 0.019369 = 8.7207 and
+  // 12EI/L³ cos²α = 0.35298 × 0.98063 = 0.34614; two leaves: 2 × 9.0668 = 18.134 N/mm. The rise is 30 sin 8° = 4.1752
+  const p = { length: 30, angle: 8, thickness: 0.84, width: 6, fillet: 0 }, m = tiltedBistableModel(p, plaG, { steps: 40 });
+  near(m.stiffness, 18.134, 1e-3, 'by hand'); near(m.solvedStiffness / m.stiffness, 1, 0.01, 'the solver at rest'); near(m.rise, 4.1752, 1e-4, 'the rise');
+  // it snaps: the push peaks, falls through 0 where the leaves line up (the rise), pulls on, and rests again short of
+  // twice the rise (the leaves stay bent over there)
+  assert.ok(m.bistable && m.snap.force > 0 && m.back.force < 0);
+  near(m.middle, m.rise, 0.05, 'through 0 where the leaves line up');
+  assert.ok(m.second > 1.2 * m.rise && m.second < 2 * m.rise, `rests again at ${m.second}`);
+  assert.ok(m.strain < 0.02); assert.deepEqual(m.findings.filter((f) => f.level !== 'pass').map((f) => f.code), []);
+  // too steep to squeeze: refused by name; one piece as drawn
+  assert.throws(() => tiltedBistable({ ...p, angle: 40 }), /angle is the leaves' tilt/);
+  assert.ok(onePiece(tiltedBistable({ ...p, fillet: 1 })));
+});
+
+test('a buckled-beam switch: squeezed into its frame it bows as the buckled strip does, and switches the same either way', async () => {
+  const { buckledSwitch, buckledSwitchModel } = await import('@rulecad/flexures');
+  // a strip 50 long, 0.84 × 6, squeezed 0.4, a 1 mm pad and no rounds, so it is near the uniform strip: clamped, it
+  // buckles at 4π²EI / L² = 4π² × 2680 × 0.29635 / 49.6² = 12.745 N; its rise is (2/π) √(L s - π²t²/3) for the squeeze
+  // left once the frame has given (the model's formula), within 2%
+  const p = { length: 50, thickness: 0.84, width: 6, squeeze: 0.4, pad: 1, fillet: 0, base: 12 }, m = buckledSwitchModel(p, plaG, { steps: 40 });
+  near(m.euler, 12.745, 1e-3, 'Euler'); near(m.rise / m.formula, 1, 0.02, 'the rise'); near(m.load / m.euler, 1, 0.05, 'it pushes about its buckling load');
+  assert.ok(m.give > 0 && m.give < 0.25 * 0.4, `the frame gives ${m.give}`);
+  // its two states are mirrors: it rests again at twice the rise, and the push over equals the pull back within 5%
+  assert.ok(m.bistable); near(m.second / (2 * m.rise), 1, 0.01, 'the mirror'); near(-m.back.force / m.snap.force, 1, 0.05, 'the same either way');
+  assert.deepEqual(m.findings.filter((f) => f.level !== 'pass').map((f) => f.code), []);
+  // two prints, each one piece; the frame's pockets hold the tabs squeeze nearer than the strip's
+  const strip = buckledSwitch(p, { part: 'strip' }), frame = buckledSwitch(p, { part: 'frame' });
+  assert.ok(onePiece(strip) && onePiece(frame));
+  near(measureBoundingBox(strip)[1][0] - measureBoundingBox(strip)[0][0], 50 + 2 * 5, 1e-3, 'the strip and its tabs');
+  assert.throws(() => buckledSwitchModel({ ...p, squeeze: 6 }, plaG), /squeeze 6 is a tenth of the length or more/);
+  assert.throws(() => buckledSwitch({ ...p, tab: [5] }), /tab is \[along x, across y\]/);
+});
+
+test('linkages, amplifiers and bistables refuse what is not a size, by name, before any sums', async () => {
+  const f = await import('@rulecad/flexures');
+  const cr = { ground: 40, crank: 15, coupler: 40, rocker: 30, angle: 60, width: 6, flex: { length: 6, thickness: 0.84 } };
+  assert.throws(() => f.fourBar({ ...cr, coupler: 5 }), /don't close at a crank angle of 60°/);
+  assert.throws(() => f.fourBar({ ...cr, flex: { length: 6, thickness: 0.84, fillet: 3 } }), /flex\.fillet 3 leaves no flexure/);
+  assert.throws(() => f.fourBar({ ...cr, base: 9 }), /base 9 is wider than the knuckles/);
+  assert.throws(() => f.fourBar({ ...cr, width: 0 }), /width is a size above 0/);
+  assert.throws(() => f.fourBarModel(cr, { E: 2680 }), /needs a strainLimit/);
+  assert.throws(() => f.fourBarModel(cr, plaG, { travel: -1 }), /travel is the input's swing/);
+  assert.throws(() => f.sliderCrank({ crank: 15, coupler: 35, angle: 100, width: 6, flex: flex0 }), /guide is an object/);
+  assert.throws(() => f.bridgeAmplifier({ link: 20, angle: 95, width: 6, flex: flex0 }), /angle is the links' angle/);
+  assert.throws(() => f.rhombusAmplifier({ link: 25, angle: 30, width: 6, flex: flex0, span: 10 }), /takes no span or inner/);
+  assert.throws(() => f.leverAmplifier({ input: 10, output: 8, width: 6, flex: flex0 }), /output 8 is not past the input 10/);
+  assert.throws(() => f.tiltedBistableModel({ length: 30, angle: 8, thickness: 0.84, width: 6 }, plaG, { steps: 3 }), /steps is a whole number, 10 or more/);
+});

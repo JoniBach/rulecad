@@ -223,7 +223,7 @@ function geometry(k) {
   const top = room + k.wall, stemW = Math.max(3, k.ph / 2), knobR = k.knobR;
   const stem = roundedRectangle({ size: [stemW, top + k.knob - 0.0], center: [0, (top + k.knob) / 2], roundRadius: Math.min(1, stemW / 2 - 0.01), segments: 16 });
   const tabAt = (xa, xb) => roundedRectangle({ size: [xb - xa, tc], center: [(xa + xb) / 2, 0], roundRadius: 0.8, segments: 16 }); // round corners, seated in the pockets' rounds
-  const strip = union(tabAt(x0 - ta, x0 + 1), tabAt(x1 - 1, x1 + ta), roundedRectangle({ size: [k.pl, k.ph], center: [0, 0], roundRadius: Math.min(1, k.ph / 2 - 0.01), segments: 16 }), ...beams, stem, circle({ radius: knobR, center: [0, top + k.knob], segments: 32 }));
+  const strip = union(tabAt(x0 - ta, x0 + 1), tabAt(x1 - 1, x1 + ta), roundedRectangle({ size: [k.pl, k.ph], center: [0, 0], roundRadius: Math.min(1, k.pl / 2 - 0.01, k.ph / 2 - 0.01), segments: 16 }), ...beams, stem, circle({ radius: knobR, center: [0, top + k.knob], segments: 32 }));
   // the frame: a C open at the top, its pockets' far faces squeeze nearer than the tabs' (the tabs fitted, the strip
   // between them is length - squeeze); the window between the pockets lets the pad go its rise either way
   const f0 = x0 + k.sq / 2, f1 = x1 - k.sq / 2, outer = f1 + ta + k.wall, yb = -room - k.hb;
