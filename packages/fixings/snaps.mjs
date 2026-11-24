@@ -275,6 +275,16 @@ export function annularSnapModel(p, o = {}) {
     if (Math.max(least, up(need)) > lim.mostUndercut) sizeSays += `, more than the ${mm(r3(lim.mostUndercut))} mm the strain allows, so held to that`;
   }
   const { L, finger, arm } = sp, { k, Pmost, mostUndercut } = lim;
+  // The most undercut the strain allows, worked at its own arm: a smaller bead shortens the arm (stiffer fingers, more
+  // root strain per mm), so the limit at the given bead's arm would itself fail. Each pass takes the limit at the last
+  // one's arm; smaller beads only lower it, so the undercuts fall in thousandths to one that passes at its own arm
+  const mostAtOwnArm = () => {
+    let u = down(mostUndercut), l = lim;
+    if (slots && u < undercut) for (let i = 0; i < 100000; i++) { l = limits(springs(u).L); const next = Math.max(down(l.mostUndercut), 0); if (next >= u) break; u = next; }
+    return { undercut: u, removal: Number.isFinite(back1) ? n1(back1 * l.Pmost) : Infinity };
+  };
+  // (worked before the parts' figures are rounded for show below)
+  const mostOwn = mostAtOwnArm();
   const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = lengthOf(bead);
   // The strains are judged unrounded (exact, below), and shown to 4 places: a bead held to the strain's limit could round over it
   const exact = new Map();
@@ -282,7 +292,7 @@ export function annularSnapModel(p, o = {}) {
   const Pwhole = Y / (1 / B.stiffness + 1 / whole.stiffness);
   for (const q of [B, L]) { const e = { strain: P * q.perP, root: q.rootPerP != null ? P * q.rootPerP : null }; exact.set(q, e);
     q.deflection = r3(P / q.stiffness); q.strain = n4(e.strain); if (q.rootPerP != null) { q.root = n4(e.root); delete q.rootPerP; } delete q.perP; if (q.X != null) q.X = +q.X.toPrecision(3); q.stiffness = n1(q.stiffness); }
-  const insertion = along(P, lead, mu), removal = along(P, back, mu), holds = !Number.isFinite(removal), most = { undercut: down(mostUndercut), removal: Number.isFinite(back1) ? n1(back1 * Pmost) : Infinity };
+  const insertion = along(P, lead, mu), removal = along(P, back, mu), holds = !Number.isFinite(removal), most = mostOwn;
 
   const out = [], rests = [], cited = (m) => `${m.strength.name} ${mm(m.strength.value)} MPa over ${m.modulus.name} ${mm(m.modulus.value)} MPa`;
   rests.push(pr.rest('fit'), pr.rest('overhang'), rest(box.modulus.name, box.modulus), rest(box.strength.name, box.strength), rest(box.poisson.name, box.poisson),

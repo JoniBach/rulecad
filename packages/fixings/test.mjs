@@ -1563,3 +1563,27 @@ test('annular snap, a slotted skirt: the bead bears on each finger at the groove
   // A whole skirt has no arm: its figures are the guide's tube as before
   assert.equal(annularSnapModel(p, { pull: 40 }).slots, undefined);
 });
+
+test('annular snap, a slotted skirt: the most undercut a failing bead names is worked at its own arm, so a bead that size passes', () => {
+  // The pot's figures in 8 fingers reaching 4 mm, with a 0.9 mm bead: far too big, so the lid's strain fails and names the
+  //   most undercut the strain allows. Taken at the 0.9 mm bead's 7.259 mm arm that was 0.08 mm, but a 0.28 mm bead has a
+  //   shorter groove, so a 5.565 mm arm: stiffer fingers (k goes as 1 / L³) and more root strain per mm (3 c y / L²), 0.72%
+  //   against the 0.61% allowed, a fail of its own. Worked down to an undercut that passes at its own arm, it is 0.067 mm,
+  //   and a thousandth more fails: the most, rounded down, as the sized path finds it
+  const p = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 16 }, slots = { count: 8, reach: 4 };
+  const lid = (m) => m.findings.find((x) => x.code === 'snap.strain' && x.refs?.part === 'lid').level;
+  const given = annularSnapModel({ ...p, bead: 0.9, slots }, { pull: 40 });
+  assert.equal(lid(given), 'fail'); assert.equal(given.most.undercut, 0.067);
+  assert.match(given.findings.find((x) => x.code === 'snap.strain' && x.refs?.part === 'lid').text, /most undercut the strain allows is 0\.067 mm/);
+  for (const reach of [3, 4, 6]) for (const count of [8, 16]) {
+    const big = annularSnapModel({ ...p, bead: 1.0, slots: { count, reach } }, { pull: 40 });
+    const at = (u) => annularSnapModel({ ...p, bead: +(u + big.clearance).toFixed(3), slots: { count, reach } }, { pull: 40 });
+    const most = at(big.most.undercut), over = at(big.most.undercut + 0.001);
+    assert.equal(lid(big), 'fail', `${count} fingers reaching ${reach} mm, the 1 mm bead`);
+    assert.equal(lid(most), 'pass', `${count} fingers reaching ${reach} mm, at the ${big.most.undercut} mm it names`);
+    assert.equal(lid(over), 'fail', `${count} fingers reaching ${reach} mm, a thousandth over`);
+    assert.ok(most.removal <= big.most.removal + 1e-9, `the pull-off it names holds at that bead (${most.removal} against ${big.most.removal})`);
+    // The sized bead, held to the strain, comes to the same most
+    assert.equal(annularSnapModel({ ...p, slots: { count, reach } }, { pull: 400 }).most.undercut, big.most.undercut);
+  }
+});
