@@ -6443,3 +6443,37 @@ test('a solid result with fewer triangles: outline.reduce keeps the surface with
     assert.match(cad('optimise', 'post/bad'), /reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/);
   } finally { done(); }
 });
+
+test('a flat problem whose space is another design\'s part: its section halfway up, holes open, optimised and built', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'flat');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'flat', objects: ['blank', 'arm'] }));
+    // The blank: a 30 × 12 × 4 mm plate on the bed, a 4 mm hole through it 6 mm from its left end
+    fs.writeFileSync(path.join(project, 'objects', 'blank.json'), JSON.stringify({ name: 'blank', version: '0.1.0', variables: { l: { value: 30, unit: 'mm' }, w: { value: 12, unit: 'mm' }, t: { value: 4, unit: 'mm' }, hole: { value: 2, unit: 'mm' }, at: { value: 6, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'blank.js'), "import jscad from '@jscad/modeling'\nconst { cuboid, cylinder } = jscad.primitives\nexport function main (v) { return jscad.booleans.subtract(cuboid({ center: [v.l / 2, 0, v.t / 2], size: [v.l, v.w, v.t] }), cylinder({ center: [v.at, 0, v.t / 2], radius: v.hole, height: v.t * 2, segments: 32 })) }\n");
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify({ title: 'An arm cut from the blank', material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 30,
+      space: { part: 'blank.body' }, keep: [{ at: [27, 0], r: 2.5 }], supports: [{ at: [6, 0], r: 2.5 }], loads: [{ at: [27, 0], r: 1.5, force: [0, -10], case: 'down' }] }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.json'), JSON.stringify({ name: 'arm', version: '0.1.0', variables: { problem: { type: 'problem', value: 'arm' }, t: { value: 4, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    const spec = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const { discretise } = await import('@rulecad/topopt');
+      const r = await readProblem('flat', 'arm'), s = discretise(r.problem);
+      console.log(JSON.stringify({ dim: r.dim, at: r.problem.space[0].at, grid: s.grid, origin: s.origin, passive: Array.from(s.passive) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 30 × 12 grid of 1 mm cells over the plate, its middle the plate's (x and y only: it is flat; to a thousandth,
+    // as JSCAD's boolean snaps the corners by about 0.00001 mm)
+    const r3 = (a) => a.map((c) => Math.round(c * 1000) / 1000 + 0);
+    assert.deepEqual([spec.dim, r3(spec.at), spec.grid.nx, spec.grid.ny, r3(spec.origin)], [2, [15, 0], 30, 12, [0, -6]]);
+    // Outside the space: exactly the cells whose centres fall in the hole (a 32-sided 2 mm circle at x 6), and no others
+    const inHole = spec.passive.map((_, e) => { const x = (e % 30) + 0.5, y = Math.floor(e / 30) - 6 + 0.5; return Math.hypot(x - 6, y) < 2 * Math.cos(Math.PI / 32) ? 1 : 0; });
+    assert.ok(inHole.reduce((t, c) => t + c, 0) >= 12, 'a 2 mm hole covers a dozen 1 mm cells');
+    assert.deepEqual(spec.passive.map((p) => (p === -2 ? 1 : 0)), inHole);
+    // optimised and built: the part named as the space is the design's to cut, never drawn as a region
+    assert.match(cad('optimise', 'flat/arm'), /down: moves [\d.]+ mm along its load/);
+    assert.match(cad('check', 'flat/arm'), /arm/);
+    assert.doesNotMatch(cad('check', 'flat/arm'), /Error|error:/);
+  } finally { done(); }
+});

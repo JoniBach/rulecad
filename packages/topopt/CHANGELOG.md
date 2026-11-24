@@ -12,4 +12,5 @@ What changed in each release, for someone upgrading.
   them, and with `overhang` no collapse adds area past the printer's limit or leaves a new tip. Refused by name with a
   tolerance that is not a distance above 0. On the bracket bench's printable result, 0.1 mm took 75,592 triangles to
   21,124 with the volume within 0.01%.
+- A part's mesh can be a region of a flat (2D) problem: `{ triangles, flat: true }`, its section halfway up.
 - The docs site runs the MBB beam live in the browser, in a worker, with this package's own code.

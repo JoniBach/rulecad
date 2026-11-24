@@ -295,7 +295,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"
@@ -364,7 +364,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"
@@ -440,7 +440,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"

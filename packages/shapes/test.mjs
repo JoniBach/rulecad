@@ -227,3 +227,15 @@ test('shapes takes plain figures: it imports no @rulecad/fixings (fixings calls 
   const fixings = JSON.parse(fs.readFileSync(path.join(here, '../fixings/package.json'), 'utf8'));
   assert.ok('@rulecad/shapes' in fixings.dependencies, 'fixings depends on shapes');
 });
+
+test('an optimised outline leaves a design\'s part, kept or avoided, to the design: only the drawn regions are added and cut', async () => {
+  const { optimisedOutline, regionShape } = await import('@rulecad/shapes');
+  const square = [[[0, 0], [10, 0], [10, 10], [0, 10]]], hole = { at: [5, 5], r: 1 }, part = { part: 'blank.body', at: [5, 5], flat: true };
+  assert.equal(regionShape(part), null);
+  // 100 mm² less the hole, πr² = 3.14 mm² drawn on 48 sides (a little under: 48/2 · sin(2π/48) = 3.1326 mm², so 96.867
+  // mm² left; JSCAD's boolean snaps corners, which moves it by under 0.001 mm²)
+  const area = (g) => jscad.measurements.measureArea(g);
+  const plain = optimisedOutline({ outlines: square, regions: { keep: [], avoid: [hole] } }), withPart = optimisedOutline({ outlines: square, regions: { keep: [part], avoid: [hole, part] } });
+  assert.ok(Math.abs(area(plain) - (100 - 24 * Math.sin((2 * Math.PI) / 48))) < 1e-3, `${area(plain)}`);
+  assert.equal(area(withPart), area(plain));
+});

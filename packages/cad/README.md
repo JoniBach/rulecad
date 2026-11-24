@@ -1452,7 +1452,8 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 }
 ```
 
-- **The space** is where material may go (a circle `r`, a rectangle `size`, or a polygon `points`, in mm). **Keep**
+- **The space** is where material may go (a circle `r`, a rectangle `size`, a polygon `points`, in mm, or another
+  design's part, `{ "part": "blank.body" }`, taken as its section halfway up, holes open). **Keep**
   regions stay solid (bosses round bolts), **avoid** regions stay empty (the holes, clearances).
 - **Supports** hold the material within `r` of a point (a bolt's hole); **loads** push on it, in newtons, each in a load
   case. Cases are optimised together, each by its weight in `cases` (0: analysed, not optimised for).

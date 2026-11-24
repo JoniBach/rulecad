@@ -93,7 +93,8 @@ export async function readProblem(project, ref) {
     if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
       const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
       for (const t of triangles) for (const q of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], q[a]); hi[a] = Math.max(hi[a], q[a]); }
-      return { triangles, part: r.part, at: lo.map((x, a) => (x + hi[a]) / 2) };
+      const at = lo.map((x, a) => (x + hi[a]) / 2);
+      return flat ? { triangles, part: r.part, at: at.slice(0, 2), flat: true } : { triangles, part: r.part, at }; // flat: its section halfway up
     }
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
@@ -106,7 +107,7 @@ export async function readProblem(project, ref) {
   // The filter's radius is about the thinnest member: a cell and a half unless the problem gives one, and never under two
   // of the printer's lines, the thinnest wall it lays solid (so it only binds on cells under 0.56 mm on a 0.42 mm line)
   const printer = printerOf(project), line = printer ? resolve({ uses: [printer] }).values[printer]?.line : null, lines = typeof line === 'number' ? 2 * line : 0;
-  const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
+  const space = await regions(p.space), dim = flat ? 2 : space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
   const problem = {
     space, keep: await regions(p.keep), avoid: await regions(p.avoid),
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),

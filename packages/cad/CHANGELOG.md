@@ -21,6 +21,9 @@ and head, the parts it passes through and the part it ends in.
   recorded and kept by its densities' key, so a cached result still shows the run that made it; one made without
   recording (by a design's build) shows its end and each step's compliance, and says to run it with `--fresh`.
   `--watch` on the preview shows the run live, as on `cad optimise`.
+- A flat (2D) problem's regions can be another design's part (`{ "part": "blank.body" }`), as solid problems' could:
+  its section halfway up, holes open, so an arm is optimised within the blank it is cut from. A problem with a
+  `thickness` is flat whatever its regions are.
 - `cad why <project>/<object>.<problem variable>` says what the optimised result is made from: the problem file, its
   title and material, its rule sets and values, the parts and anchors of other designs it reads, where its filter
   came from, and the file its densities are kept in (made, or not yet).

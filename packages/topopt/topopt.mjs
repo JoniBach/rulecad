@@ -22,10 +22,10 @@ import { grid as makeGrid, cellStiffness, solve, positions, jsBackend, centreStr
 export { jsBackend };
 
 /**
- * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][] }} Region
+ * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][], flat?: boolean }} Region
  *   in mm: a circle (2D) or sphere (3D) at, r; a box at (its centre), size; a cylinder at (its centre), r, length,
  *   along axis (default z; teardrop '+z', '-y', …: a 45° point that way, across the axis, so it prints); a polygon (2D);
- *   or a closed triangle mesh (3D: a design's part)
+ *   or a closed triangle mesh (3D: a design's part; with flat, a region of a 2D problem: its section halfway up)
  */
 /** @typedef {Region & { fix?: string }} Support holds the nodes in the region (on material): fix the directions, 'xy' or 'xyz' (default all) */
 /** @typedef {Region & { force: number[], case?: string }} Load a force in N, shared by the nodes in the region */
@@ -751,7 +751,8 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
  * @returns {2 | 3}
  */
 export function dimension(r) {
-  if (r.triangles || r.length != null) return 3;
+  if (r.triangles) return r.flat ? 2 : 3;
+  if (r.length != null) return 3;
   if (r.points) return 2;
   return (r.size || r.at).length === 3 ? 3 : 2;
 }
@@ -769,7 +770,11 @@ const meshTests = new WeakMap();
 function insider(r) {
   if (r.triangles) {
     if (!meshTests.has(r.triangles)) meshTests.set(r.triangles, meshInside(r.triangles));
-    return meshTests.get(r.triangles);
+    const test = meshTests.get(r.triangles);
+    if (!r.flat) return test;
+    // flat: a part in a 2D problem is its section halfway up (a plate's outline, its holes open)
+    const b = bounds({ triangles: r.triangles }), mid = (b[2] + b[5]) / 2;
+    return ([x, y]) => test([x, y, mid]);
   }
   if (r.points) return (pt) => {
     let c = false; // even-odd ray crossing
@@ -837,7 +842,7 @@ export function bounds(r) {
   if (r.triangles) {
     const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (const t of r.triangles) for (const p of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], p[a]); hi[a] = Math.max(hi[a], p[a]); }
-    return [...lo, ...hi];
+    return r.flat ? [lo[0], lo[1], hi[0], hi[1]] : [...lo, ...hi];
   }
   if (r.points) { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
   const half = r.size ? r.size.map((s) => s / 2) : r.length != null ? [0, 1, 2].map((a) => (a === 'xyz'.indexOf(r.axis || 'z') ? r.length / 2 : r.r)) : new Array(dim).fill(r.r);
