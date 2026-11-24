@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
-
+## 0.3.6: material ranges
 ### Added
 
 - `checkRuleSet` holds a rule's range to its value: `low` at most it, `high` at least it, both numbers (`rules.range`).

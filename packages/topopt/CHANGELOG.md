@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading.
 
-## Unreleased
-
+## 0.3.2: stress-limited optimisation
 ### Added
 
 - `strain`: a strain limit in place of `stress` (0.02 is 2%), times the material's E. Both at once is refused.

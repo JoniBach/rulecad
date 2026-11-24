@@ -5,8 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Unreleased
-
+## 0.7.72: strength in optimisation
 ### Added
 
 - A problem takes `strain`, a strain limit (a share: `"pla.strength / pla.modulus / 2"`), in place of `stress`: the
