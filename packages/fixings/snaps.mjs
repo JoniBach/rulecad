@@ -100,7 +100,7 @@ const closedEnd = (free, shut, Rm, t, d, E, nu) => {
  * 3 y c / L², c the farthest fibre from that axis (the ends of the beam formulas for a cantilever with an end load:
  * deflection P L³ / 3 E I, root stress P L c / I). Thin and narrow, it is the rectangle's w t³ / 12, k = E w t³ / 4 L³.
  * @param {{ count: number, width: number, reach: number, inside: number, outside: number }} f the finger count, slot
- *   width, reach and the skirt's radii, mm
+ *   width, reach (from the root to where the finger is pushed, its arm L) and the skirt's radii, mm
  * @param {number} E the plastic's modulus, MPa
  * @returns {{ angle: number, width: number, area: number, inertia: number, fibre: number, stiffness: number, strainPerY: number }}
  *   angle: the finger's whole angle, degrees; width: its arc at the mean radius; inertia, mm⁴; fibre: c; stiffness: N per
@@ -174,9 +174,11 @@ const slotsOf = (what, v, s, lidTop, pr, d) => {
  *   boxFloor: from the bead to the box's floor, its closed end; lidTop: from the groove to the underside of the lid's
  *   top (each default none: far enough off not to count; each at least its part's wall, the box's wall or the skirt);
  *   slots: the skirt slotted into fingers, count of them (3 or more), each reach mm from the slots' closed end to the
- *   groove's top edge (where the bead pushes it, no further than lidTop), the slots width mm wide (default
- *   fixings.snap_slot, at least the printer's print_gap). Each finger is then a cantilever (skirtFinger) and the lid's top
- *   no longer holds the skirt round at the groove
+ *   groove's top edge (no further than lidTop), the slots width mm wide (default fixings.snap_slot, at least the
+ *   printer's print_gap). Each finger is then a cantilever (skirtFinger) and the lid's top no longer holds the skirt
+ *   round at the groove. The bead bears on each finger at the groove's bottom edge, both going on (the lip below the
+ *   groove rides over the bead's crest) and coming off (the groove's lower face rides up the return face), so the
+ *   finger's arm is reach + the bead's length + twice the clearance (slots.arm in the model)
  * @param {{ material?: string | object, lidMaterial?: string | object, printer?: object, sets?: object, uses?: 'often' | 'once', friction?: number, pull?: number, push?: number }} [o]
  *   material: the box's plastic (default PLA); lidMaterial: the lid's (default the box's); printer: the printer's rule
  *   set or values (default the X1C: its fit is the clearance, its overhang the steepest return face); uses: often (the
@@ -233,28 +235,47 @@ export function annularSnapModel(p, o = {}) {
   // The strain per N of P: a tube's hoop strain is its share over its diameter
   B.perP = 1 / (B.stiffness * B.diameter); whole.perP = 1 / (whole.stiffness * whole.diameter);
   // Slotted, the lid is its fingers side by side: P = n k y for a radial push y, so n k / 2 per mm of diameter, and each
-  // root strains 3 c y / L² (skirtFinger), the lid's top no longer holding the groove round
-  const finger = slots && skirtFinger({ ...slots, inside: dh / 2, outside: d0 / 2 }, lidMat.modulus.value);
-  const L = !slots ? whole : { diameter: r3(dh), inside: r3(dh), outside: r3(d0), wall: s, end: lidEnd, far: null, remote: 1, factor: 1, X: null, closed: null,
-    stiffness: (slots.count * finger.stiffness) / 2, perP: finger.strainPerY / (slots.count * finger.stiffness) };
-  const k = 1 / (1 / B.stiffness + 1 / L.stiffness);
-  // The most force (and so interference) the strain allows: P = ε k_i d_i in each part
+  // root strains 3 c y / L² (skirtFinger), the lid's top no longer holding the groove round. The bead bears on a finger
+  // at the groove's bottom edge, not at its top (reach's end): going on, the lip below the groove rides over the bead's
+  // crest, and is pushed out the whole undercut until the crest reaches that edge; coming off, the groove's lower face
+  // rides up the bead's return face, and is pushed out the whole undercut as that edge reaches the crest. So the arm is
+  // reach + the groove's height (the bead's length and the clearance at each end), and as that grows with the bead, the
+  // springs are worked for a given bead (a longer arm is softer: k goes as 1 / L³)
+  const lengthOf = (b) => r3(b / tan(back) + land + b / tan(lead)), armOf = (u) => slots.reach + lengthOf(r3(u + c)) + 2 * c;
+  const springs = (u) => {
+    if (!slots) return { L: whole, finger: null, arm: null };
+    const arm = armOf(u), finger = skirtFinger({ ...slots, reach: arm, inside: dh / 2, outside: d0 / 2 }, lidMat.modulus.value);
+    return { arm, finger, L: { diameter: r3(dh), inside: r3(dh), outside: r3(d0), wall: s, end: lidEnd, far: null, remote: 1, factor: 1, X: null, closed: null,
+      stiffness: (slots.count * finger.stiffness) / 2, perP: finger.strainPerY / (slots.count * finger.stiffness) } };
+  };
   // The most force (and so interference) the strain allows: P = ε k_i d_i in each part, and at a closed end's root P = ε / (strain per N)
-  const Pmost = Math.min(permissible / B.perP, permissible / L.perP, ...[B, L].filter((q) => q.rootPerP).map((q) => permissible / q.rootPerP)), mostUndercut = Pmost / k / 2;
+  const limits = (L) => { const k = 1 / (1 / B.stiffness + 1 / L.stiffness), Pmost = Math.min(permissible / B.perP, permissible / L.perP, ...[B, L].filter((q) => q.rootPerP).map((q) => permissible / q.rootPerP)); return { k, Pmost, mostUndercut: Pmost / k / 2 }; };
   // to the thousandth: the sized bead is rounded up to what the pull needs and down to what the strain allows
   const up = (x) => Math.ceil(x * 1000 - 1e-6) / 1000, down = (x) => Math.floor(x * 1000 + 1e-6) / 1000;
   const least = DEFAULTS.snap_least.value, back1 = per(back, mu), want = DEFAULTS.load_margin.value;
-  let undercut, sized = false, sizeSays = null;
-  if (p.bead != null) undercut = p.bead - c;
+  let undercut, sized = false, sizeSays = null, sp, lim;
+  if (p.bead != null) { undercut = p.bead - c; sp = springs(undercut); lim = limits(sp.L); }
   else {
     sized = true;
-    const need = pull != null && Number.isFinite(back1) ? (want * pull) / back1 / k / 2 : 0;
-    undercut = Math.max(least, up(need));
+    // Sized against the springs of the bead it sizes: each pass works the arm from the last bead, and a bigger bead
+    // only lengthens the arm (softer fingers, so a bigger bead again), so the beads rise to one that gives itself back
+    let need = 0;
+    undercut = least;
+    for (let i = 0; i < 50; i++) {
+      sp = springs(undercut); lim = limits(sp.L);
+      need = pull != null && Number.isFinite(back1) ? (want * pull) / back1 / lim.k / 2 : 0;
+      let next = Math.max(least, up(need));
+      if (next > lim.mostUndercut) next = Math.max(down(lim.mostUndercut), 0);
+      next = r3(next);
+      if (!slots || next === undercut) { undercut = next; break; }
+      undercut = next;
+    }
+    sp = springs(undercut); lim = limits(sp.L);
     sizeSays = need > least ? `sized from the ${mm(pull)} N pull: ${mm(want)} times it over the ${mm(back)}° return face` : `sized as the smallest the print holds, fixings.snap_least ${mm(least)} mm${pull != null ? `, which already holds the ${mm(pull)} N pull ${mm(want)} times over` : ''}`;
-    if (undercut > mostUndercut) { sizeSays += `, more than the ${mm(r3(mostUndercut))} mm the strain allows, so held to that`; undercut = Math.max(down(mostUndercut), 0); }
-    undercut = r3(undercut);
+    if (Math.max(least, up(need)) > lim.mostUndercut) sizeSays += `, more than the ${mm(r3(lim.mostUndercut))} mm the strain allows, so held to that`;
   }
-  const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = r3(bead / tan(back) + land + bead / tan(lead));
+  const { L, finger, arm } = sp, { k, Pmost, mostUndercut } = lim;
+  const bead = r3(undercut + c), Y = 2 * undercut, P = k * Y, length = lengthOf(bead);
   // The strains are judged unrounded (exact, below), and shown to 4 places: a bead held to the strain's limit could round over it
   const exact = new Map();
   // What a whole skirt would take for the same bead, to say what the slots save
@@ -275,7 +296,7 @@ export function annularSnapModel(p, o = {}) {
     'snap.undercut', { values: { bead, undercut, interference: r3(Y), box: B.deflection, lid: L.deflection } }));
   for (const [q, name, m] of [[B, 'the box\'s wall', box], [L, slots ? 'the lid\'s fingers' : 'the lid\'s skirt', lidMat]]) {
     const ok = exact.get(q).strain <= permissible * (1 + 1e-9), bent = q === L && slots;
-    out.push(finding(ok ? 'pass' : 'fail', `${name} ${bent ? 'are' : 'is'} ${ok ? '' : 'over its limit: '}${pc(q.strain)} ${bent ? `bending strain at their root (each pushed out ${mm(r3(q.deflection / 2))} mm at ${mm(slots.reach)} mm from it)` : `hoop strain (${mm(q.deflection)} mm over ${mm(q.diameter)} mm)`} where ${m.name} may see ${pc(permissible)}: ${mm(DEFAULTS.snap_brief.value)} of its yield strain, ${cited(m)}${uses === 'often' ? `, and ${mm(DEFAULTS.snap_often.value)} of that since it is opened often` : ''}${ok ? '' : `. The most undercut the strain allows is ${mm(most.undercut)} mm: a smaller bead, a thinner ${q === B ? 'wall' : 'skirt'}, ${bent ? 'longer fingers' : 'or a bigger box'}`}`,
+    out.push(finding(ok ? 'pass' : 'fail', `${name} ${bent ? 'are' : 'is'} ${ok ? '' : 'over its limit: '}${pc(q.strain)} ${bent ? `bending strain at their root (each pushed out ${mm(r3(q.deflection / 2))} mm at ${mm(r3(arm))} mm from it, where the bead bears)` : `hoop strain (${mm(q.deflection)} mm over ${mm(q.diameter)} mm)`} where ${m.name} may see ${pc(permissible)}: ${mm(DEFAULTS.snap_brief.value)} of its yield strain, ${cited(m)}${uses === 'often' ? `, and ${mm(DEFAULTS.snap_often.value)} of that since it is opened often` : ''}${ok ? '' : `. The most undercut the strain allows is ${mm(most.undercut)} mm: a smaller bead, a thinner ${q === B ? 'wall' : 'skirt'}, ${bent ? 'longer fingers' : 'or a bigger box'}`}`,
       'snap.strain', { values: { strain: q.strain, permissible: n4(permissible), deflection: q.deflection, diameter: q.diameter }, refs: { part: q === B ? 'box' : 'lid', material: m.name } }));
   }
   for (const [q, name, m, endName] of [[B, 'the box\'s wall', box, 'floor'], [L, 'the lid\'s skirt', lidMat, 'top']]) {
@@ -291,8 +312,8 @@ export function annularSnapModel(p, o = {}) {
   out.push(finding(thick ? 'pass' : 'fail', `the groove leaves ${mm(left)} mm of the ${mm(s)} mm skirt behind it${thick ? `, at least the ${pr.cite('line')} ${mm(line)} mm line` : `, under the ${pr.cite('line')} ${mm(line)} mm line, so it prints thin or not at all: a thicker skirt, or a smaller bead`}`,
     'snap.skirt', { values: { left, skirt: s, line } }));
   if (undercut < least - 1e-9) out.push(finding('warn', `an undercut of ${mm(undercut)} mm is under fixings.snap_least, ${mm(least)} mm: the print's own error is that size, so the lid may not catch, or catch only in places`, 'snap.least', { values: { undercut, least } }));
-  if (slots) out.push(finding('info', `the skirt is slotted into ${slots.count} fingers by ${mm(slots.width)} mm slots${slots.given ? '' : ' (fixings.snap_slot)'}, each ${mm(n2(finger.width))} mm wide and ${mm(slots.reach)} mm from the slots' closed end to the groove: ${mm(n1(finger.stiffness))} N per mm pushed out, a cantilever (3 E I / L³, I ${mm(n2(finger.inertia))} mm⁴). A whole skirt would take ${mm(n1(Pwhole))} N of transverse force for this bead, the fingers ${mm(n1(P))} N, ${mm(n1(Pwhole / P))} times less`,
-    'snap.fingers', { values: { count: slots.count, width: slots.width, reach: slots.reach, finger: n2(finger.width), stiffness: n1(finger.stiffness), force: n1(P), whole: n1(Pwhole), less: n2(Pwhole / P) } }));
+  if (slots) out.push(finding('info', `the skirt is slotted into ${slots.count} fingers by ${mm(slots.width)} mm slots${slots.given ? '' : ' (fixings.snap_slot)'}, each ${mm(n2(finger.width))} mm wide and ${mm(slots.reach)} mm from the slots' closed end to the groove, and borne on by the bead at the groove's bottom edge, ${mm(r3(arm))} mm from it: ${mm(n1(finger.stiffness))} N per mm pushed out there, a cantilever (3 E I / L³, I ${mm(n2(finger.inertia))} mm⁴). A whole skirt would take ${mm(n1(Pwhole))} N of transverse force for this bead, the fingers ${mm(n1(P))} N, ${mm(n1(Pwhole / P))} times less`,
+    'snap.fingers', { values: { count: slots.count, width: slots.width, reach: slots.reach, arm: r3(arm), finger: n2(finger.width), stiffness: n1(finger.stiffness), force: n1(P), whole: n1(Pwhole), less: n2(Pwhole / P) } }));
   out.push(finding('info', `${mm(n1(insertion))} N to push the lid on square and ${holds ? 'it holds for good (a square return face)' : `${mm(n1(removal))} N to pull it off square`}: a transverse force of ${mm(n1(P))} N (${slots ? `the wall as Bayer's annular snap joint, P = y d Es X with X ${mm(B.X)}, and the skirt as ${slots.count} cantilever fingers` : `P = y d Es X, Bayer's annular snap joint, X ${mm(B.X)} for the wall and ${mm(L.X)} for the skirt`}) through the ${mm(lead)}° lead and ${mm(back)}° return faces at μ ${mm(mu)}. Pressed on at a tilt, a part of the bead at a time, it takes much less, as the guide says of a lid put on by hand`,
     'snap.forces', { values: { force: n1(P), insertion: n1(insertion), removal: Number.isFinite(removal) ? n1(removal) : null, friction: mu } }));
   if (B.remote > 1 || L.remote > 1) out.push(finding('info', `the joint lies in from a free end (box ${mm(boxEnd)} mm of ${mm(B.far)}${slots ? '' : `, lid ${mm(lidEnd)} mm of ${mm(L.far)}`}, where 1.8 √(d t) counts as remote), so it is stiffer by ${slots ? `${mm(B.remote)} times (the fingers are cantilevers, which have no remote joint)` : `${mm(B.remote)} and ${mm(L.remote)} times`}: the guide gives 3 at a remote joint, and the line between is an estimate`, 'snap.remote', { values: { box: B.remote, lid: L.remote } }));
@@ -309,7 +330,7 @@ export function annularSnapModel(p, o = {}) {
     : `the ${mm(back)}° return face is past ${pr.cite('overhang')} ${mm(overhang)}°: under the box's bead and over the lid's groove it needs support. Give back ${mm(overhang)}° or less; a steeper face holds harder, so let the bead be taller instead`, 'snap.printable', { values: { back, overhang } }));
   const groove = { inner: r3(dh / 2), outer: r3(dh / 2 + bead), depth: bead };
   return { kind: 'annular snap', diameter: d, wall: t, skirt: s, clearance: c, bead, length, undercut, interference: r3(Y), lead, back, land, sized, uses, material: box.name, lidMaterial: lidMat.name, friction: mu,
-    permissible: n4(permissible), box: B, lid: L, ...(slots ? { slots: { count: slots.count, width: slots.width, reach: slots.reach, finger: { angle: n2(finger.angle), width: n2(finger.width), inertia: n4(finger.inertia), fibre: n4(finger.fibre), stiffness: n1(finger.stiffness) }, whole: n1(Pwhole) } } : {}), force: n1(P), insertion: Number.isFinite(insertion) ? n1(insertion) : Infinity, removal: Number.isFinite(removal) ? n1(removal) : Infinity, holds, pull, margin, most, groove, rests, findings: out };
+    permissible: n4(permissible), box: B, lid: L, ...(slots ? { slots: { count: slots.count, width: slots.width, reach: slots.reach, arm: r3(arm), finger: { angle: n2(finger.angle), width: n2(finger.width), inertia: n4(finger.inertia), fibre: n4(finger.fibre), stiffness: n1(finger.stiffness) }, whole: n1(Pwhole) } } : {}), force: n1(P), insertion: Number.isFinite(insertion) ? n1(insertion) : Infinity, removal: Number.isFinite(removal) ? n1(removal) : Infinity, holds, pull, margin, most, groove, rests, findings: out };
 }
 
 // The bead's outline in [radius, z] from its foot on the wall at z: up the return face, along the land, down the lead

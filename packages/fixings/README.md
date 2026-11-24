@@ -801,7 +801,7 @@ example project `enclosures` in the repository's bench draws this pot and lid (`
 A whole skirt on a stiff box takes a hard push: 351.1 N square for the pot above. Slots cut up from the skirt's mouth
 part it into fingers, and each finger bends as a cantilever, far more easily than a ring stretches, so the push falls
 several times over. Give `slots: { count, reach, width }`: `count` fingers (3 or more), `reach` from the slots' closed
-end to the groove's top edge (where the bead pushes each finger), and `width` the slots' (default `fixings.snap_slot`,
+end to the groove's top edge, and `width` the slots' (default `fixings.snap_slot`,
 1 mm, at least the printer's `print_gap`). `snapSlots(model, { at, mouth })` is the cutter: the slots through the
 skirt, in the same place as the bead and groove, each ending in a full round so the root that takes the bending has
 no square corner.
@@ -809,15 +809,19 @@ no square corner.
 **The sums.** `skirtFinger` gives one finger. Its section is a sector of the skirt's ring, its sides taken as radial,
 2φ round with φ = π / n - w / (2 rm). Its second moment about its own centroid, square to its line of symmetry, is
 ∫x² dA - A x̄², worked exactly for the sector, so a wide finger's curve counts: for the pot's 16 fingers it is 2.14 mm⁴,
-where a flat strip as wide is 1.85. Clamped at its root and pushed out y at `reach` L, a finger takes k y with
-k = 3 E I / L³, and its root strains 3 c y / L², c its farthest fibre from that axis: the beam formulas for a
+where a flat strip as wide is 1.85. The bead bears on a finger at the groove's bottom edge, the end nearest the mouth:
+going on, the lip below the groove rides over the bead's crest, and coming off, the groove's lower face rides up the
+bead's return face, each pushing the finger out the whole undercut as that edge passes the crest. So its arm L is
+`reach` plus the groove's height, the bead's length and the clearance at each end (`slots.arm` in the model; a bigger
+bead lengthens it, so a sized bead is worked at its own arm). Clamped at its root and pushed out y at L, a finger takes
+k y with k = 3 E I / L³, and its root strains 3 c y / L², c its farthest fibre from that axis: the beam formulas for a
 cantilever with an end load. The fingers side by side are n k / 2 per mm of diameter, in series with the box's wall as
 before, and their root strain is held to the same limit as a hoop strain. The lid's top no longer holds the groove
 round: each finger is clamped at its root already. The finding `snap.fingers` says what a whole skirt would take for
 the same bead.
 
 **Reach.** A short finger strains more than the ring it was cut from, so a slotted skirt wants a deeper lid: reaching
-5.8 mm, eight fingers on the pot above hold the bead to 0.087 mm of undercut, under the least the print holds. Refused
+5.8 mm (borne on at 7.411 mm), eight fingers on the pot above hold the bead to 0.097 mm of undercut, under the least the print holds. Refused
 by name: under 3 fingers, a slot narrower than `print_gap`, a reach under twice the skirt (too short to bend as a beam)
 or past the lid's top (`lidTop`), and fingers narrower than the skirt is thick.
 
@@ -836,13 +840,13 @@ try { annularSnapModel({ ...joint, slots: { count: 16, reach: 14 } }); } catch (
 ```
 
 ```text
-0.4 32.5 49.2 97.4 9.74 0.004 217.8
+0.4 21 31.8 63 6.3 0.003 217.8
 {
   angle: 20.64,
   width: 11.11,
   inertia: 2.1412,
   fibre: 0.9564,
-  stiffness: 10.5
+  stiffness: 6.7
 }
 10.48 2.061
 true
@@ -850,10 +854,12 @@ annularSnapModel: slots.reach of 14 mm runs past the lid's top, 13.8 mm from the
 ```
 
 The first line reads: the same pot with its bead 14 mm under the rim, the lid's skirt in 16 fingers by 1 mm slots,
-each 11.8 mm from its root to the groove. The bead is the least the print holds, 0.4 mm. Its transverse force is
-32.5 N, where a whole skirt there would take 217.8 N: it goes on square with 49.2 N and comes off with 97.4 N, 9.74
-times the 10 N pull. The fingers' roots strain 0.40%, under PLA's 0.61%. Each finger is 20.64° round, 11.11 mm wide at
-its middle, and takes 10.48 N per mm it is pushed out; each millimetre strains its root 2.061%. The bench's `snap-pot`
+each 11.8 mm from its root to the groove's top edge. The bead is the least the print holds, 0.4 mm, and bears on the
+fingers 13.693 mm from their root (11.8 mm, the bead's 1.493 mm length and 0.2 mm clearance at each end). Its
+transverse force is 21 N, where a whole skirt there would take 217.8 N: it goes on square with 31.8 N and comes off
+with 63 N, 6.3 times the 10 N pull. The fingers' roots strain 0.30%, under PLA's 0.61%. Each finger is 20.64° round,
+11.11 mm wide at its middle, and takes 6.7 N per mm it is pushed out where the bead bears. `skirtFinger` alone takes
+the arm it is given: at 11.8 mm it takes 10.48 N per mm, and each millimetre strains its root 2.061%. The bench's `snap-pot`
 has this lid as its `slotted` variant, and `snap-pot-slotted-closed` puts it on.
 
 ## Measuring the printer's fits

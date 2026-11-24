@@ -15,8 +15,10 @@ why.
   `snapSlots` cuts the slots, each ending in a full round. New rule `fixings.snap_slot` (1 mm, an estimate), and the
   printer's `print_gap` is borrowed from the X1C where a printer lacks it. Refused by name: under 3 fingers, a slot
   narrower than `print_gap`, a reach under twice the skirt or past the lid's top, fingers narrower than the skirt.
+  The bead bears on each finger at the groove's bottom edge, so the finger's arm is the reach plus the groove's
+  height (`slots.arm`), and a sized bead is worked at its own arm.
   For the 60 mm pot with its bead 14 mm under the rim, 16 fingers bring the push on from 329.9 N (a whole skirt
-  there) to 49.2 N. The bench's `snap-pot` gains a `slotted` variant and the assembly `snap-pot-slotted-closed`.
+  there) to 31.8 N. The bench's `snap-pot` gains a `slotted` variant and the assembly `snap-pot-slotted-closed`.
 
 ### Printed sizes
 
