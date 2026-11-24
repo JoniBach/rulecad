@@ -216,7 +216,14 @@ function cutOf(g, h, web) { // a JSCAD prism along the hinge's line
   const len = g.len + 2e-3, prism = translate([0, len / 2, 0], jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: len }, polygon({ points: sectionOf(g, h, web) }))));
   return translate([g.mid[0], g.mid[1], 0], rotateZ(ANGLE(g), prism));
 }
-const cutPoints = (g, h, web) => { const L = g.len / 2 + 1e-3; return [-L, L].flatMap((y) => sectionOf(g, h, web).map(([x, z]) => [g.mid[0] + g.nrm[0] * x + g.u[0] * y, g.mid[1] + g.nrm[1] * x + g.u[1] * y, z])); };
+// A section's corners along the hinge's line, in the sheet, for a hull: the section must be convex. A living hinge's
+// band with its web is not (it bends in where the web's top meets the sloped sides), so it is given as two convex
+// pieces, the web's box and the sloped band above it, each hulled on its own
+const cutPoints = (g, h, sec) => { const L = g.len / 2 + 1e-3; return [-L, L].flatMap((y) => sec.map(([x, z]) => [g.mid[0] + g.nrm[0] * x + g.u[0] * y, g.mid[1] + g.nrm[1] * x + g.u[1] * y, z])); };
+function convexCuts(g, h) {
+  const half = g.across / 2, t = g.living.thickness;
+  return [[[-half, -1], [half, -1], [half, t], [-half, t]], sectionOf(g, h, false)].map((sec) => cutPoints(g, h, sec));
+}
 // Each panel's footprint: its outline less its LET arrays' bands. Where two bands meet near a corner they can cut a
 // bit off a panel that no hinge holds: it would print loose, so it is left out (the largest piece is the panel), and
 // how much was left out is said
@@ -298,7 +305,7 @@ export async function foldCheck(S, m, { poses, clearance = 0.2, steps = 6 } = {}
     const slab = (pts) => keep(W.Manifold.extrude(keep(new W.CrossSection([orient(pts)], 'NonZero')), h));
     const flat = {};
     const feet = footprints(Lo, S);
-    for (const n of Lo.names) { let b = keep(W.Manifold.extrude(keep(new W.CrossSection(feet[n].loops, 'NonZero')), h)); for (const g of Lo.hinges.filter((x) => x.kind === 'living' && (x.from === n || x.to === n))) b = keep(b.subtract(keep(W.Manifold.hull(cutPoints(g, h, true))))); flat[n] = b; }
+    for (const n of Lo.names) { let b = keep(W.Manifold.extrude(keep(new W.CrossSection(feet[n].loops, 'NonZero')), h)); for (const g of Lo.hinges.filter((x) => x.kind === 'living' && (x.from === n || x.to === n))) for (const pts of convexCuts(g, h)) b = keep(b.subtract(keep(W.Manifold.hull(pts)))); flat[n] = b; }
     const landNames = [];
     for (const g of Lo.hinges) for (let k = 0; k < g.pins.length - 1; k++) { const nm = `${g.name}.land${k + 1}`; flat[nm] = slab(landOf(g, k)); landNames.push(nm); }
     const all = [...Lo.names, ...landNames];

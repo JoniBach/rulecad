@@ -1202,8 +1202,14 @@ test('a folding sheet: drawn flat in one piece and folded where its pins put it;
   const liv = { thickness: 1.6, panels: { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6) }, hinges: [{ name: 'fold', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 0.4 } }] };
   const lm = foldSheetModel(liv, petg).hinges.fold;
   near(lm.strain(1), 0.4 / 4, 1e-12, 'strain'); near(deg(lm.pinch), 180 - 2 * deg(Math.atan(1.4 / 2.2)), 1e-9, 'pinch'); near(deg(lm.pinch), 115.06, 0.01, 'pinch, by hand');
-  assert.ok((await foldCheck(liv, petg, { poses: { up: { fold: 113 } }, clearance: 0 })).ok, 'just short of the pinch: clear');
-  assert.ok(!(await foldCheck(liv, petg, { poses: { up: { fold: 117 } }, clearance: 0 })).ok, 'just past it: the panels meet');
+  // the check's bodies are the drawn ones: the panels' top corners sit 2.2 across and 1.4 above the pin (r = √(2.2² +
+  // 1.4²) = 2.6077), so folded θ they are 2 r cos(32.47° + θ / 2) apart: at 113°, 5.2154 × cos(88.97°) = 0.0936 mm;
+  // at the pinch they touch, and a degree past it they overlap (the clash found by the geometry, not only the pinch)
+  const short = await foldCheck(liv, petg, { poses: { up: { fold: 113 } }, clearance: 0 });
+  assert.ok(short.ok, 'just short of the pinch: clear'); near(short.poses.up.gap, 2 * Math.hypot(2.2, 1.4) * Math.cos(Math.atan(1.4 / 2.2) + rad(113) / 2), 1e-3, 'the gap, by hand');
+  near((await foldCheck(liv, petg, { poses: { up: { fold: deg(lm.pinch) } }, clearance: 0 })).poses.up.gap, 0, 1e-3, 'at the pinch the corners touch');
+  const past = await foldCheck(liv, petg, { poses: { up: { fold: 117 } }, clearance: 0 });
+  assert.ok(!past.ok, 'just past it: the panels meet'); assert.ok(past.findings.some((f) => f.code === 'fold.clash' && f.level === 'fail'), 'and the geometry overlaps: a clash, not only the pinch');
   assert.ok(onePiece(await foldSheet(liv)), 'the web joins the panels');
   // with a strain limit, a hinge that folds too far for it fails by name and says how far it may go: the strain is
   // linear in the fold, 9.365% at 90°, so PETG's 34 / 1810 / 1.5 = 1.2523% allows 90 × 1.2523 / 9.365 = 12.03°
