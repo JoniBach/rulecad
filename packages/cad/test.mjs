@@ -6309,3 +6309,26 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('a folding sheet in an assembly: the bench tray checked flat and folded, a block that clears it flat caught by the walls\' lands once they stand', () => {
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/flexures']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    const check = (name) => JSON.parse(cad('check', name, '--json')).findings;
+    // the tray alone: its own fold check runs with the print checks, every joint within PETG's limit at 90°
+    const t = check('flexures/tray');
+    assert.deepEqual(t.filter((x) => x.code === 'fold.strain').map((x) => x.level), ['pass', 'pass', 'pass', 'pass']);
+    assert.equal(t.find((x) => x.code === 'fold.clearance').level, 'pass'); assert.equal(t.find((x) => x.code === 'shape.pieces')?.level ?? 'pass', 'pass');
+    // the assembly: its pose sets tray.fold, so the fit is checked flat and with the walls standing
+    let a = check('flexures/tray-fit');
+    assert.deepEqual(a.find((x) => x.code === 'poses').refs.poses, ['flat', 'folded']);
+    assert.deepEqual(a.filter((x) => x.code === 'fit').map((x) => x.level), ['pass'], 'the block clears in both (a fit passing in every pose is said once)');
+    // a 50 mm block (the whole base) clears the sheet flat, 0.5 mm above it, but standing, the lands rise into it
+    const file = path.join(ws, 'projects/flexures/objects/block.json'), b = JSON.parse(fs.readFileSync(file, 'utf8'));
+    b.variables.side.value = 50; fs.writeFileSync(file, JSON.stringify(b, null, 2));
+    a = check('flexures/tray-fit');
+    assert.deepEqual(a.filter((x) => x.code === 'fit').map((x) => [x.refs.pose, x.level]).sort(), [['flat', 'pass'], ['folded', 'warn']]);
+    assert.equal(a.find((x) => x.code === 'overlap' && x.refs.pose === 'folded').level, 'fail', 'folded, the tray and the block overlap');
+  } finally { done(); }
+});
