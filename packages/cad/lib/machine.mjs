@@ -2,29 +2,104 @@
 // the task. cad plot plans a drawing on it, checks it against the task, and shows the result before anything moves.
 import fs from 'node:fs';
 import path from 'node:path';
-import { svgToStrokes, orderStrokes, planToolpath, stepBlocks, estimate, sheetFrame, fk } from '@rulecad/robots';
+import { svgToStrokes, orderStrokes, planToolpath, stepBlocks, estimate, sheetFrame, fk, gaitBlocks } from '@rulecad/robots';
+import { gaitSequence } from './gait.mjs';
 import { trainFrom, workingSpeed } from './motors.mjs';
 import { chainOf, accuracyOf, sample, jacobianError } from './task.mjs';
 import { paths } from './workspace.mjs';
 
-const r6 = (x) => +Number(x).toFixed(6), n3 = (x, d = 2) => String(Number(x.toFixed(d)));
+const num = Number.isFinite, r6 = (x) => +Number(x).toFixed(6), n3 = (x, d = 2) => String(Number(x.toFixed(d)));
 
-/** The machine as plain data. Every figure's origin is said in _why, by the name of the figure. @param {object} s a built assembly with a task */
+// One driven joint as an axis: its motor, the steps it takes a degree (or mm) through its train, and the fastest it steps
+function axisOf(s, id) {
+  const motion = s.motion, t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), j = motion.joints.find((x) => x.id === id), spec = new Map((s.a.joints || []).map((x) => [x.id, x])).get(id) ?? {};
+  if (!d?.model.stepAngle) throw new Error(`${s.project}/${s.name}: joint ${id} has no stepper driving it, and a step file needs one`);
+  const micro = d.spec.microsteps ?? 16, per = (360 / d.model.stepAngle) * micro, stepsPerUnit = j.type === 'prismatic' ? (per * t.ratio) / t.slide / 360 : (per * t.ratio) / 360;
+  const rpm = workingSpeed(d.model, d.spec, d.supply), maxRate = (rpm / 60) * per, home = spec.home;
+  const homing = home ? { endstop: home.endstop, direction: home.direction ?? -1, rate: Math.round(maxRate / 8), back: Math.round(stepsPerUnit * 3) } : null;
+  return { name: id, joint: id, motor: d.id, model: d.model.name, driver: d.spec.driver ?? null, stepAngle: d.model.stepAngle, microsteps: micro, ratio: r6(t.ratio), stepsPerUnit: r6(stepsPerUnit), unit: j.type === 'prismatic' ? 'mm' : 'deg', limits: (j.limits ?? j.dofs[0].slice(0, 2)).map(r6), maxRate: Math.round(maxRate), homing,
+    _why: { stepAngle: `${d.model.name}.step_angle`, microsteps: d.spec.microsteps != null ? `the motor item's "microsteps" (resolution only, not accuracy)` : 'the default, 1/16 (resolution only, not accuracy)', ratio: t.stages.length ? `the train from ${t.root} to ${id}` : 'direct', maxRate: `${n3(rpm, 1)} rpm, ${d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}`}` } };
+}
+
+/** The slots of a CNC shield each motor is wired to, by motor item: from a wire "<motor>.<anchor>" to "<item>.X" (X, Y, Z or A). */
+export function shieldSlots(a) {
+  const out = {};
+  for (const w of a.wires || []) { const [from, to] = [String(w.from), String(w.to)], m = /^[^.]+\.([XYZA])$/.exec(to); if (m) out[from.split('.')[0]] = m[1]; }
+  return out;
+}
+/** The step and direction slots of the streamer (arm.ino on a CNC Shield V3), in its axis order: axis 0 on X, 1 on Y, 2 on Z. */
+export const STREAMER_SLOTS = ['X', 'Y', 'Z'];
+
+/** The machine as plain data. Every figure's origin is said in _why, by the name of the figure. A machine with a gait and no
+ * task is its legs: an axis for each joint a motor turns, in the order the shield's slots are wired. @param {object} s a built assembly with a task or a gait */
 export function machineOf(s) {
-  if (!s.task) throw new Error(`${s.project}/${s.name} has no "task": a machine says what it is for`);
-  const c = chainOf(s), motion = s.motion, specs = new Map((s.a.joints || []).map((j) => [j.id, j]));
-  const axes = c.names.map((id) => {
-    const t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), j = motion.joints.find((x) => x.id === id), spec = specs.get(id) ?? {};
-    if (!d?.model.stepAngle) throw new Error(`${s.project}/${s.name}: joint ${id} has no stepper driving it, and a step file needs one`);
-    const micro = d.spec.microsteps ?? 16, per = (360 / d.model.stepAngle) * micro, stepsPerUnit = j.type === 'prismatic' ? (per * t.ratio) / t.slide / 360 : (per * t.ratio) / 360;
-    const rpm = workingSpeed(d.model, d.spec, d.supply), maxRate = (rpm / 60) * per, home = spec.home;
-    const homing = home ? { endstop: home.endstop, direction: home.direction ?? -1, rate: Math.round(maxRate / 8), back: Math.round(stepsPerUnit * 3) } : null;
-    return { name: id, joint: id, motor: d.id, model: d.model.name, driver: d.spec.driver ?? null, stepAngle: d.model.stepAngle, microsteps: micro, ratio: r6(t.ratio), stepsPerUnit: r6(stepsPerUnit), unit: j.type === 'prismatic' ? 'mm' : 'deg', limits: (j.limits ?? j.dofs[0].slice(0, 2)).map(r6), maxRate: Math.round(maxRate), homing,
-      _why: { stepAngle: `${d.model.name}.step_angle`, microsteps: d.spec.microsteps != null ? `the motor item's "microsteps" (resolution only, not accuracy)` : 'the default, 1/16 (resolution only, not accuracy)', ratio: t.stages.length ? `the train from ${t.root} to ${id}` : 'direct', maxRate: `${n3(rpm, 1)} rpm, ${d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}`}` } };
-  });
+  if (!s.task && s.gait) return gaitMachineOf(s);
+  if (!s.task) throw new Error(`${s.project}/${s.name} has no "task" and no "gait": a machine says what it is for`);
+  const c = chainOf(s), motion = s.motion;
+  const axes = c.names.map((id) => axisOf(s, id));
   const kinematics = c.names.length === 2 && motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'revolute') ? 'scara' : motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'prismatic') ? 'cartesian' : 'serial';
   const pen = s.a.task.pen ?? null;
   return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics, tool: s.task.tool, elbow: sample(s).elbow, axes, task: { sheet: s.a.task.sheet ?? null, region: s.a.task.region ?? null, volume: s.a.task.volume ?? null, speed: s.task.speed, accuracy: s.task.accuracy, accel: s.task.accel ?? 500, ...(s.task.blockTime ? { blockTime: s.task.blockTime } : {}) }, ...(pen ? { pen } : {}) };
+}
+
+function gaitMachineOf(s) {
+  const seq = gaitSequence(s), slots = shieldSlots(s.a);
+  let axes = seq.names.map((id) => { const a = axisOf(s, id); return { ...a, ...(slots[a.motor] ? { slot: slots[a.motor] } : {}) }; });
+  if (axes.every((a) => STREAMER_SLOTS.includes(a.slot))) axes = [...axes].sort((a, b) => STREAMER_SLOTS.indexOf(a.slot) - STREAMER_SLOTS.indexOf(b.slot));
+  const g = s.gait, pattern = typeof s.a.gait.pattern === 'string' ? s.a.gait.pattern : `duty ${s.a.gait.pattern?.duty}`;
+  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics: 'legged', tool: null, axes, task: null,
+    gait: { legs: g.legs.map((l) => l.name), pattern, period: g.period, stride: g.stride, lift: g.lift, height: g.height, frames: seq.q.length } };
+}
+
+/**
+ * A gait as a step file: its cycle played for some cycles from a pose of the assembly and back to it, every leg's joints
+ * in the same blocks. Findings say how long a cycle takes on the motors against the gait's period, and whether the
+ * streamer can take the file: three axes at most, each on the shield's slot of its own number.
+ * @param {object} s a built assembly with a gait @param {{ cycles?: number, period?: number, from?: string }} [o] from: a pose's name (default the pose the assembly shows)
+ */
+export function plotGait(s, { cycles = 3, period, from } = {}) {
+  if (!s.gait) throw new Error(`${s.project}/${s.name} has no "gait" to play`);
+  const m = machineOf(s), seq = gaitSequence(s), names = m.axes.map((a) => a.name), cols = names.map((n) => seq.names.indexOf(n));
+  const ordered = { period: seq.period, names, q: seq.q.map((r) => cols.map((i) => r[i])) };
+  const poses = s.motion.poses || {}, poseName = from ?? s.motion.pose ?? null;
+  if (from != null && !poses[from]) throw new Error(`--pose ${from}: no such pose (poses: ${Object.keys(poses).join(', ') || 'none'})`);
+  const pose = poseName ? poses[poseName] : null, findings = [];
+  const start = pose && names.every((n) => num(pose[n])) ? names.map((n) => pose[n]) : null;
+  if (poseName && !start) findings.push({ level: 'info', text: `the pose "${poseName}" does not set ${names.filter((n) => !num(pose?.[n])).join(', ')}, so the file starts and ends at the cycle's first frame`, code: 'gait.from', values: {} });
+  const r = gaitBlocks(ordered, { axes: m.axes.map((a) => ({ name: a.name, stepsPerUnit: a.stepsPerUnit, maxRate: a.maxRate, unit: a.unit })), cycles, ...(period != null ? { period } : {}), ...(start ? { from: start } : {}) });
+  findings.push(...r.findings);
+  // the streamer: three axes, axis k on the shield's slot X, Y or Z in that order
+  if (names.length > STREAMER_SLOTS.length) findings.push({ level: 'warn', text: `${names.length} axes, and the streamer steps ${STREAMER_SLOTS.length} (an Uno under a CNC Shield V3): the file is written, and send.mjs refuses it`, code: 'stream.axes', values: { axes: names.length, streamer: STREAMER_SLOTS.length } });
+  else for (const [k, a] of m.axes.entries()) {
+    if (!a.slot) findings.push({ level: 'info', text: `${a.name}'s motor ${a.motor} has no wire to a shield's slot: the streamer steps it as axis ${k}, on ${STREAMER_SLOTS[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
+    else if (a.slot !== STREAMER_SLOTS[k]) findings.push({ level: 'fail', text: `${a.name}'s motor ${a.motor} is wired to the shield's ${a.slot}, and the streamer steps axis ${k} on ${STREAMER_SLOTS[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
+  }
+  const n = r.blocks.length;
+  findings.push({ level: 'info', text: `${cycles} cycle${cycles === 1 ? '' : 's'} of the gait (${m.gait.pattern}) in ${n} blocks, ${n3(r.time, 1)} s${start ? `, from the pose "${poseName}" and back to it` : ''}`, code: 'plot.time', values: { time: r.time, cycles, blocks: n } });
+  const steps = { ...r, machine: m.name, drawing: 'gait', ...(start ? { pose: poseName } : {}) };
+  return { ok: findings.every((x) => x.level !== 'fail'), findings, steps, machine: m, time: { time: r.time } };
+}
+
+// A picture of a gait's step file: each axis's position through the run, from its blocks, with the gait's frames as dots
+export function gaitPicture(result) {
+  const f = result.steps, W = 720, H = 160, pad = 40, colours = ['#135', '#c33', '#383', '#a60'];
+  const series = f.axes.map(() => []);
+  let t = 0, pos = [...f.start];
+  series.forEach((p, k) => p.push([0, pos[k] / f.axes[k].stepsPerUnit]));
+  for (const b of f.blocks) { t += b.time; pos = pos.map((x, k) => x + b.steps[k]); series.forEach((p, k) => p.push([t, pos[k] / f.axes[k].stepsPerUnit, b.kind])); }
+  const panels = series.map((p, k) => {
+    const lo = Math.min(...p.map((x) => x[1])), hi = Math.max(...p.map((x) => x[1])), y = (v) => H - 20 - ((v - lo) / (hi - lo || 1)) * (H - 40), x = (s) => pad + (s / (t || 1)) * (W - 2 * pad);
+    const line = p.map(([s, v]) => `${n3(x(s))},${n3(y(v))}`).join(' '), dots = p.filter((q) => q[2] === 'gait').map(([s, v]) => `<circle cx="${n3(x(s))}" cy="${n3(y(v))}" r="1.6" fill="${colours[k % 4]}"/>`).join('');
+    return `<g transform="translate(0 ${k * H})"><text x="${pad}" y="14" font-size="12" font-family="sans-serif">${f.axes[k].name}: ${n3(lo, 0)} to ${n3(hi, 0)} ${f.axes[k].unit} (the motor's shaft)</text><polyline points="${line}" fill="none" stroke="${colours[k % 4]}" stroke-width="1"/>${dots}</g>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H * series.length + 24}" viewBox="0 0 ${W} ${H * series.length + 24}"><rect width="100%" height="100%" fill="#fff"/>${panels}<text x="${pad}" y="${H * series.length + 16}" font-size="12" font-family="sans-serif">${n3(t, 1)} s: ${f.cycles} cycles, ${n3(f.cycleTime, 2)} s each against the gait's ${f.period} s; dots are the gait's frames</text></svg>\n`;
+}
+
+export function writeGait(s, result) {
+  const dir = paths.exports(s.project); fs.mkdirSync(dir, { recursive: true }); const file = path.join(dir, `${s.name}-gait.steps.json`);
+  fs.writeFileSync(file, JSON.stringify(result.steps));
+  const prev = paths.preview(s.project, `${s.name}-gait.svg`); fs.mkdirSync(path.dirname(prev), { recursive: true }); fs.writeFileSync(prev, gaitPicture(result));
+  return { file, preview: prev };
 }
 
 // A drawing's size against the sheet: the first stroke that leaves it, named

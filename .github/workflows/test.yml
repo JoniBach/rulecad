@@ -42,7 +42,8 @@ jobs:
     # MAX_RATE refused, and the loop's fastest rate, at the cruise, speeding up and slowing down on one to three axes, above
     # MAX_RATE and what the machine description asks. Then the shortest blocks the sender passes are streamed at MAX_RATE on
     # three axes, at the cruise and slowing down every step, each line sent when the last was answered: they must keep to
-    # their planned time within 1%, or the streamer falls behind on short blocks. A toolchain download that
+    # their planned time within 1%, or the streamer falls behind on short blocks. The leg's gait (cad plot leg/stand) is
+    # streamed the same way, from its standing pose through three cycles and back, every step counted. A toolchain download that
     # still fails after three tries is a warning and skips the rest: the compile is what this job is for, not the download.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -72,9 +73,13 @@ jobs:
         run: npm ci
       - if: steps.toolchain.outcome == 'success'
         working-directory: examples/bench
-        run: node ../../packages/cad/bin/cad.mjs machine arm/arm && node ../../packages/cad/bin/cad.mjs plot arm/arm projects/arm/drawings/test.svg
+        run: |
+          node ../../packages/cad/bin/cad.mjs machine arm/arm && node ../../packages/cad/bin/cad.mjs plot arm/arm projects/arm/drawings/test.svg
+          node ../../packages/cad/bin/cad.mjs machine leg/stand && node ../../packages/cad/bin/cad.mjs plot leg/stand
       - if: steps.toolchain.outcome == 'success'
-        run: node scripts/firmware.mjs --simulate examples/bench/exports/arm/arm-test.steps.json --machine examples/bench/exports/arm/arm.machine.json
+        run: >-
+          node scripts/firmware.mjs --simulate examples/bench/exports/arm/arm-test.steps.json --machine examples/bench/exports/arm/arm.machine.json
+          --simulate examples/bench/exports/leg/stand-gait.steps.json --machine examples/bench/exports/leg/stand.machine.json
         env:
           AVR8JS: .cache/avr8js/node_modules/avr8js
   dimensions:

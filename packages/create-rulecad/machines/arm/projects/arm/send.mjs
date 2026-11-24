@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Sends a step file (rulecad.steps/1, from cad plot) to the arm's Uno, line by line, each after the last was answered.
+// Sends a step file (rulecad.steps/1, from cad plot: an arm's drawing or a leg's gait) to the Uno, line by line, each after
+// the last was answered.
 //   node send.mjs <file.steps.json> --port /dev/tty.usbmodem101 [--machine arm.machine.json] [--no-home]
 //   node send.mjs <file.steps.json> --dry-run [--machine arm.machine.json] [--quiet]
 //                                                 echoes each line it would send with the answer the streamer would give,
@@ -94,6 +95,9 @@ export function dryRun(lines, { machine, turnaround = TURNAROUND } = {}) {
   return { lines: lines.length, ...seen, peakRate: peak, axisPeaks, position, said };
 }
 
+/** What a gait's step file is, for the summary: its cycles, time and start pose (nothing for a drawing). @param {object} file */
+export const gait = (file) => (file?.kind === 'gait' ? `, ${file.cycles} cycle${file.cycles === 1 ? '' : 's'} of a gait, ${Number(file.time).toFixed(1)} s${file.pose ? ` from the pose "${file.pose}" and back` : ''}` : '');
+
 async function send(port, lines, say) {
   const r = spawnSync('stty', [process.platform === 'darwin' ? '-f' : '-F', port, '115200', 'raw', '-echo', '-hupcl'], { encoding: 'utf8' });
   if (r.status) throw new Error(`stty ${port}: ${r.stderr}`);
@@ -120,9 +124,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try { r = dryRun(lines, { machine }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   if (has('dry-run')) {
     if (!has('quiet')) for (const s of r.said) console.log(s);
-    console.log(`dry run: ${r.lines} lines, ${r.m} blocks, ${r.p} pen moves, ${r.h} homes, peak ${r.peakRate} steps/s (the streamer takes ${MAX_RATE})${machine ? `, axes at most ${r.axisPeaks.slice(0, machine.axes.length).map((x, k) => `${Math.round(x)} of ${machine.axes[k].maxRate}`).join(', ')} steps/s` : ''}`);
+    console.log(`dry run: ${r.lines} lines, ${r.m} blocks, ${r.p} pen moves, ${r.h} homes, peak ${r.peakRate} steps/s (the streamer takes ${MAX_RATE})${machine ? `, axes at most ${r.axisPeaks.slice(0, machine.axes.length).map((x, k) => `${Math.round(x)} of ${machine.axes[k].maxRate}`).join(', ')} steps/s` : ''}${gait(file)}`);
     process.exit(0);
   }
   if (!opt('port')) { console.error('--port <device>, or --dry-run'); process.exit(2); }
+  // a gait has no home: the streamer counts from where the motors stand when it starts, so the leg must be in its pose
+  if (file.kind === 'gait') console.log(`a gait${gait(file)}: the streamer counts from where the motors stand now, so the leg must be in ${file.pose ? `its pose "${file.pose}"` : "the cycle's first frame"}`);
   send(opt('port'), lines, console.log).then(() => console.log('done')).catch((e) => { console.error(e.message); process.exit(1); });
 }
