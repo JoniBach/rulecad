@@ -1211,3 +1211,74 @@ test('a folding sheet: drawn flat in one piece and folded where its pins put it;
   const st = c.findings.find((f) => f.code === 'fold.strain');
   assert.equal(st.level, 'fail'); assert.match(st.text, /sees 9\.37% strain, over the limit of 1\.25%: it folds 12° at most/); near(st.values.strain, 0.09365, 1e-5, 'the strain at 90°');
 });
+
+test('a Miura sheet folds rigidly: its facets keep their sides and angle at every fold, its creases turn as the hand sums say, and its webs set how far it folds', async () => {
+  const { miura, miuraModel } = await import('@rulecad/flexures');
+  const p = { a: 10, b: 12, angle: 60, rows: 3, columns: 4 }, m = miuraModel(p), len = (u, w) => Math.hypot(...u.map((x, i) => x - w[i]));
+  for (const fold of [0, 20, 45, 70, 89]) {
+    const v = m.at(fold).vertices;
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 4; i++) {
+      const e1 = v[j][i + 1].map((x, k) => x - v[j][i][k]), e2 = v[j + 1][i].map((x, k) => x - v[j][i][k]);
+      near(len(v[j][i + 1], v[j][i]), 10, 1e-9, `side a at ${fold}°`); near(len(v[j + 1][i], v[j][i]), 12, 1e-9, `side b at ${fold}°`);
+      const c = Math.abs(e1.reduce((s, x, k) => s + x * e2[k], 0)) / 120; near(c, Math.cos(rad(60)), 1e-9, `the angle at ${fold}°`);
+    }
+  }
+  // a = b = 1, γ 60°, tilted 30°: H = sin 30° sin 60° = 0.43301, L = √(1 - H²) = 0.90139, V = cos 60° / L = 0.55470,
+  // S = √(1 - V²) = 0.83205. The creases between columns turn 2θ = 60°; between rows acos((H²S² - H²V² + L²S²) /
+  // (H² + L²S²)) = acos((0.12981 - 0.05769 + 0.5625) / 0.75) = acos(0.84615) = 32.204°, alternately closing the top
+  const u = miuraModel({ a: 1, b: 1, angle: 60, rows: 2, columns: 3 }).at(30);
+  near(u.cell.H, 0.43301, 1e-5, 'H'); near(u.cell.L, 0.90139, 1e-5, 'L'); near(u.cell.V, 0.55470, 1e-5, 'V'); near(u.cell.S, 0.83205, 1e-5, 'S');
+  for (const c of u.creases.filter((x) => x.kind === 'across')) near(c.turn, 60, 1e-9, 'across');
+  const along = u.creases.filter((x) => x.kind === 'along');
+  for (const c of along) near(c.turn, 32.204, 1e-3, 'along');
+  assert.deepEqual(along.map((c) => c.top), [true, false, true], 'mountain, valley, mountain');
+  const across = u.creases.filter((x) => x.kind === 'across' && x.between[0][1] === 0).map((c) => c.top);
+  assert.deepEqual(across, [false, true], 'and the zigzag creases alternate too');
+  // flat it is the sheet; folded flat (near 90°) it packs to L = a cos γ across, S → 0 along
+  assert.deepEqual(m.at(0).size.map((x) => +x.toFixed(9)), [40 + 12 * 0.5, 3 * 12 * Math.sin(rad(60)), 0].map((x) => +x.toFixed(9)));
+  near(m.at(89.99).cell.L, 10 * Math.cos(rad(60)), 1e-4, 'folded flat across');
+  // printed with webs: a crease of web t on l wide strains t ψ / 2l. The zigzag creases turn most (2θ), so PETG at
+  // 34 / 1810 / 1.5 = 1.2523% on a 0.4 mm web 2 mm wide folds to θ = e l / t = 0.012523 × 2 / 0.4 = 0.0626 rad, 3.588°
+  const petg = { E: 1810, strainLimit: 34 / 1810 / 1.5 }, web = { ...p, thickness: 1.6, hinge: { flex: 2, thickness: 0.4 } }, w = miuraModel(web, petg);
+  near(w.fold, deg((petg.strainLimit * 2) / 0.4), 1e-6, 'the furthest fold'); near(w.fold, 3.588, 1e-3, 'by hand'); assert.equal(w.limit, 'strain');
+  // a material that stretches further (10%, as a TPU might: an example, not a rule set) on a web 6 mm wide strains
+  // to its limit at θ = 0.1 × 6 / 0.4 = 1.5 rad, past where the panels meet: the top-closing creases pinch at
+  // 180 - 2 max(atan(0.4 / 6), atan(1.4 / (3 + 1.2))) = 180 - 2 × 18.435 = 143.13°, which a zigzag crease turns at θ = 71.565°
+  const t = miuraModel({ ...web, hinge: { flex: 6, thickness: 0.4 } }, { E: 26, strainLimit: 0.1 }); assert.equal(t.limit, 'pinch');
+  near(t.fold, (180 - 2 * deg(Math.atan(1.4 / 4.2))) / 2, 1e-6, 'the pinch, a zigzag crease turning 2θ'); near(t.fold, 71.565, 1e-3, 'by hand');
+  // printed flat: one piece, the web the whole sheet on the bed, the panels up to the sheet's thickness
+  const g = miura(web), b = measureBoundingBox(g);
+  assert.ok(onePiece(g), 'one piece'); near(b[0][2], 0, 1e-9, 'on the bed'); near(b[1][2], 1.6, 1e-9, 'the panels'); near(b[1][0], 46, 1e-9, 'as wide as the sheet');
+  // its volume: the web (the sheet's area, 12 parallelograms of 10 × 12 sin 60°, by 0.4) and each panel a frustum
+  // from the web's top to 1.6, so at least the web and less than the whole sheet at full thickness
+  const sheet = 12 * 10 * 12 * Math.sin(rad(60));
+  assert.ok(measureVolume(g) > sheet * 0.4 && measureVolume(g) < sheet * 1.6, `volume ${measureVolume(g)}`);
+  assert.ok(measureBoundingBox(miura(web, 40))[1][2] > 5, 'drawn folded, it stands up off the bed');
+});
+
+test('folding sheets and Miura sheets: bad input is refused by name, before any sums', async () => {
+  const { letArray, letArrayModel, foldSheet, foldCheck, miura, miuraModel } = await import('@rulecad/flexures');
+  const j = { width: 12, thickness: 1.2, bar: 1, slot: 1, bridge: 1.5 }, petg = { E: 1810, nu: 0.38 };
+  const code = async (fn, c) => { let e = null; try { await fn(); } catch (x) { e = x; } assert.ok(e, `refused (${c})`); assert.equal(e.code, c, e.message); };
+  const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], let_ = { width: 12, bar: 1, slot: 1, bridge: 1.5 };
+  const panels = { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6), c: rect(0, 6, 20, 26) };
+  await code(() => letArray({ ...j, width: 4 }), 'let.bridge');
+  await code(() => letArrayModel({ ...j, series: 0 }, petg), 'let.count');
+  await code(() => letArray({ ...j, slot: 0 }), 'let.size');
+  await code(() => foldSheet({ thickness: 0, panels, hinges: [] }), 'fold.thickness');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: [[0, 0], [1, 0]] }, hinges: [] }), 'fold.panels');
+  await code(() => foldSheet({ thickness: 1.2, panels, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] }), 'fold.tree');
+  await code(() => foldSheet({ thickness: 1.2, panels, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }, { name: 'i', from: 'b', to: 'c', at: [[0, 6], [20, 6]], let: let_ }, { name: 'k', from: 'a', to: 'c', at: [[0, 6], [0, 26]], let: let_ }] }), 'fold.loop');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_, living: { flex: 2, thickness: 0.4 } }] }), 'fold.kind');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: { ...let_, width: 30 } }] }), 'fold.width');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 1.2 } }] }), 'fold.web');
+  const two = { thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] };
+  await code(() => foldSheet(two, { nope: 10 }), 'fold.pose');
+  await code(() => foldCheck(two, petg, {}), 'fold.pose');
+  await code(() => foldCheck(two, petg, { poses: { up: { h: 30 } }, clearance: -1 }), 'fold.clearance');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 90, rows: 2, columns: 2 }), 'miura.angle');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 60, rows: 1.5, columns: 2 }), 'miura.count');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 60, rows: 2, columns: 2 }).at(90), 'miura.fold');
+  await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 1.6 }), 'miura.web');
+  await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 0.4, hinge: { flex: 2, thickness: 0.4 } }), 'miura.web');
+});
