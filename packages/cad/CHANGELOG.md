@@ -17,6 +17,25 @@ and head, the parts it passes through and the part it ends in.
   bench stand's gait plays at 2.89 s a cycle against its 2 s period: its knee would need 11712 steps/s, past the 5333
   of a 17HS4401 at 200 rpm and 1/8 steps.
 
+## 0.7.75: parts milled, cast or printed in a powder bed
+### Added
+
+- Problems take how the part is made: `"mill": "+z"` (milled from that side, no undercuts), `"cast": "+z"` or
+  `"cast": { "draw": "z", "parting": 6 }` (a mould drawn off one way, or two halves from a parting plane), with
+  `"symmetry": { "mirror": "y", "turns": 4, "axis": "z" }` and `"extrude": "x"` for any process, and
+  `"voids": "refused"` for a metal powder bed print. The problem schema has each field.
+- `cad optimise` says how a milled or cast part is made and counts its undercuts (none unless an avoid region sits
+  behind material), says what is mirrored or extruded, and fails on a problem that refuses voids with each enclosed
+  void's volume and centre. `--json` gives `process`, `undercuts`, `symmetry`, `extrude`, `grey` and `voids`.
+- `cad optimise` warns when more than a tenth of a milled, cast, symmetric or extruded result is grey (neither empty
+  nor solid), and refuses a symmetry that swaps the side the part is made from for its opposite.
+- Rule sets `mill-3axis`, `mould-injection` and `dmls` (from @rulecad/rules) to read the processes' limits from.
+
+### Changed
+
+- Every optimised result is made again once, since topopt's solver file changed; a problem without the new fields
+  gets the same densities as before. No printed size moved.
+
 ## 0.7.70: printed bolts into slot nuts, a slotted snap pot
 ### Fixed
 
