@@ -5,8 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Unreleased: a leg's gait for the streamer (#199)
-
+## 0.7.77: a leg's gait for the streamer (#199)
 ### Added
 
 - `cad machine <project>/<assembly>` on an assembly with a `gait` and no `task`: a legged machine, an axis for each

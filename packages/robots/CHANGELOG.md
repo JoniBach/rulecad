@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: a gait as step blocks (#199)
-
+## 0.1.4: a gait as step blocks (#199)
 ### Added
 
 - `gaitBlocks(sequence, { axes, cycles, period, from, approach })`: a gait's frames in time as a `rulecad.steps/1` block
