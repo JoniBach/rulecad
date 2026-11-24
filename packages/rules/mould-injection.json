@@ -1,0 +1,11 @@
+{
+  "_doc": "Injection moulding (and, as far as these go, casting in a two-part mould): the mould's halves are drawn off along one axis from a parting plane, so a part optimised for it has no undercuts from either side (the problem's cast: { draw, parting }). Draft is not modelled by the optimiser (a degree or two is less than a cell): add it when the part is drawn. kind community: a moulding service's published guidance; your moulder's figures beat it.",
+  "name": "mould-injection",
+  "rules": {
+    "draft_per_inch": { "value": 1, "unit": "deg", "rule": "Rule of thumb: a degree of draft for each inch (25.4 mm) of a cavity's depth, more for deeper features", "kind": "community", "source": "Protolabs, Draft Angle Guidelines for Injection Molding, https://protolabs.com/resources/design-tips/improving-part-moldability-with-draft/", "checked": "2026-11-24" },
+    "draft_min": { "value": 0.5, "unit": "deg", "rule": "The least draft worth asking for; 0.25 to 0.5 degrees can work in some cases, confirmed with the moulder first", "kind": "community", "source": "Protolabs, Draft Angle Guidelines for Injection Molding, https://protolabs.com/resources/design-tips/improving-part-moldability-with-draft/", "checked": "2026-11-24" },
+    "draft_shutoff": { "value": 3, "unit": "deg", "rule": "Least draft where metal slides on metal in the mould (a shutoff)", "kind": "community", "source": "Protolabs, Draft Angle Guidelines for Injection Molding, https://protolabs.com/resources/design-tips/improving-part-moldability-with-draft/", "checked": "2026-11-24" },
+    "draft_texture_light": { "value": 3, "unit": "deg", "rule": "Draft a lightly textured face needs (PM-T1)", "kind": "community", "source": "Protolabs, Draft Angle Guidelines for Injection Molding, https://protolabs.com/resources/design-tips/improving-part-moldability-with-draft/", "checked": "2026-11-24" },
+    "draft_texture_heavy": { "value": 5, "unit": "deg", "rule": "Draft a heavily textured face needs (PM-T2), or more", "kind": "community", "source": "Protolabs, Draft Angle Guidelines for Injection Molding, https://protolabs.com/resources/design-tips/improving-part-moldability-with-draft/", "checked": "2026-11-24" }
+  }
+}

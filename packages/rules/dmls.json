@@ -1,0 +1,12 @@
+{
+  "_doc": "Metal printing in a powder bed (direct metal laser sintering, DMLS, or laser powder bed fusion), from a printing service's design guide: a part optimised for it has the problem's overhang ('+z') and no enclosed voids, since powder left inside can't be got out (topopt voids finds them). The optimiser holds overhangs at 45 degrees, which this set's 45 matches; 316L stainless asks 55, which it does not model. kind community: a service's published guidance; your printer's figures beat it.",
+  "name": "dmls",
+  "rules": {
+    "overhang": { "value": 45, "unit": "deg", "rule": "Faces held up by themselves at no less than this from the build plate", "kind": "community", "source": "Protolabs, DMLS design guide, https://Protolabs.com/media/1020535/protolabs_dmls_design_guide.pdf", "checked": "2026-11-24" },
+    "overhang_316l": { "value": 55, "unit": "deg", "rule": "The same for 316L stainless steel", "kind": "community", "source": "Protolabs, DMLS design guide, https://Protolabs.com/media/1020535/protolabs_dmls_design_guide.pdf", "checked": "2026-11-24" },
+    "bridge": { "value": 2.032, "unit": "mm", "rule": "The longest span left unsupported (0.080 in.); longer, the faces underneath come out poor", "kind": "community", "source": "Protolabs, DMLS design guide, https://Protolabs.com/media/1020535/protolabs_dmls_design_guide.pdf", "checked": "2026-11-24" },
+    "hole_min": { "value": 0.635, "unit": "mm", "rule": "Holes smaller than this (0.025 in.) tend to seal shut or come out small", "kind": "community", "source": "Protolabs, DMLS design guide, https://Protolabs.com/media/1020535/protolabs_dmls_design_guide.pdf", "checked": "2026-11-24" },
+    "feature_min": { "value": 0.3048, "unit": "mm", "rule": "The smallest solid feature at normal resolution (0.012 in.)", "kind": "community", "source": "Protolabs, design tip: 7 mistakes to avoid when designing 3D printed parts, https://protolabs.com/resources/design-tips/7-mistakes-to-avoid-when-designing-3d-printed-parts", "checked": "2026-11-24" },
+    "escape_hole": { "value": 2, "unit": "mm", "rule": "A hollow needs a hole at least this wide (2 to 5 mm are used) to let its powder out, on a face nobody sees", "kind": "community", "source": "Xometry, DMLS design tips, https://xometry.pro/en-eu/articles/dmls-design-tips/", "checked": "2026-11-24" }
+  }
+}
