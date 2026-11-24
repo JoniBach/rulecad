@@ -4,8 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased: simple flexures (#73, #74, #75)
-
+## 0.5.7: simple flexures (#73, #74, #75)
 No printed size moves: every change is a new generator, and `beamModel` now shares its integration with the pinned
 leaf, with the same sums.
 
