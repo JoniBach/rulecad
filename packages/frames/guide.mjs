@@ -12,7 +12,7 @@
 import jscad from '@jscad/modeling';
 import { SETS } from './catalogue.mjs';
 import { profileOf, options, roundConcave, ccw } from './fitting.mjs';
-import { nutFor, NUT_KINDS } from './slotnut.mjs';
+import { nutFor, NUT_KINDS, carrierModel } from './slotnut.mjs';
 import { partSetup, weigh, closingFindings, sideToFit } from './panel.mjs';
 
 const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract } = jscad.booleans;
@@ -175,7 +175,10 @@ export function guideFit(m, profile, o = {}) {
   try { nut = nutFor(p, face, m.rail.thread, { ...(o.nut ? { kind: o.nut } : {}), given }); }
   catch (e) {
     const there = ['M3', 'M4', 'M5', 'M6', 'M8'].filter((t) => { try { nutFor(p, face, t, { given }); return true; } catch { return false; } });
-    f('fail', `no ${m.rail.thread}${o.nut ? ` ${o.nut}` : ''} slot nut is made for ${slot.name}: ${m.set}'s holes take ${m.rail.thread}, and the nuts there take ${there.join(', ') || 'nothing in the catalogue'}. ${String(e.message).replace(/^nutFor: /, '')}`, { thread: m.rail.thread }, { slot: slot.name });
+    // where no nut is sold for it, a printed carrier holding a hex nut of the rail's thread may fit the slot: named, with its figures
+    let printed = null; try { printed = carrierModel(slot.name, { thread: m.rail.thread, given }); } catch { printed = null; }
+    const carrierSays = printed ? ` A printed carrier holding ${m.rail.thread} hex nuts fits ${slot.name}: carrierModel('${slot.name}', { thread: '${m.rail.thread}', count: ${m.holes.length}, pitch: ${mm(m.rail.pitch)} }), ${mm(printed.grams)} g a nut, holding about ${mm(Math.round(printed.hold.value))} N each (an estimate); give it as a slot nut set of your own in given.sets` : '';
+    f('fail', `no ${m.rail.thread}${o.nut ? ` ${o.nut}` : ''} slot nut is made for ${slot.name}: ${m.set}'s holes take ${m.rail.thread}, and the nuts there take ${there.join(', ') || 'nothing in the catalogue'}. ${String(e.message).replace(/^nutFor: /, '').replace(/; carrierModel prints one$/, printed ? '.' : '; carrierModel prints one')}${carrierSays}`, { thread: m.rail.thread }, { slot: slot.name, ...(printed ? { carrier: printed.name } : {}) });
   }
   if (nut) f('pass', `its ${m.holes.length} ${m.rail.thread} screws go into ${nut.name} (${nut.nutKind}), one at each hole ${mm(m.rail.pitch)} mm apart`, { screws: m.holes.length, pitch: m.rail.pitch }, { nut: nut.name, slot: slot.name });
   // its ends on the beam, and clear of what crosses the face

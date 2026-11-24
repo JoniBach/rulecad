@@ -70,7 +70,8 @@ export function pinFit(x, s, f) {
     const holes = segs.filter((g) => g.hole), size = (g) => (g.a.loop?.shape === 'round' && g.a.loop.d != null ? Math.min(g.a.loop.d, g.b.loop?.d ?? Infinity) : 2 * Math.min(g.a.free, g.b.free));
     return { lo: segs[0].z0, hi: segs.at(-1).z1, segs, hole: holes.length ? Math.min(...holes.map(size)) : null, solidAt: segs.find((g) => g.solid) ?? null };
   };
-  // The pins' places: round holes in a about the pin's hole, standing on an axis that goes on into b
+  // The pins' places: round holes in a about the pin's hole (a teardrop lying on its side is one: holesIn leaves its
+  // roof out of the round), on an axis that goes on into b
   const axes = [];
   for (const q of A) for (const h of holesIn(q)) {
     if (Math.abs(h.d - m0.hole.diameter) > LOOK && !wanted.some((w) => Math.abs(h.d - w.diameter) <= LOOK)) continue;

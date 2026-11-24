@@ -3,6 +3,19 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.20: MISUMI slot 10 nuts
+### Added
+
+- `slot-nut-10-misumi-m4-slide-in` to `-m8-slide-in` and `-m4-drop-in` to `-m8-drop-in` (issue 308): MISUMI's 8 series
+  (10 mm slot) HNTT8 and HNTF8 nuts in M4, M5, M6 and M8, their sizes, heights and tongues from the 2014 catalogue's
+  pages 2-669 to 2-672 (spec). MISUMI gives a tightening torque and no pull, so each `hold` is an estimate: Rexroth's
+  8 mm slot figures (sliding block 6000 N, T-nut 4000 N), or the screw's proof load where that is less (M4, 5092 N).
+  MISUMI makes no M3 for this series and no M2 for its 5 series: the catalogue lists none, so no set is added for them.
+
+### Values
+
+- None changed.
+
 ## 0.3.19: pins, magnets and the printer's new fits (Fixings 4)
 
 ### Added
