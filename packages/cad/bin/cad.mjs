@@ -255,7 +255,8 @@ async function optimiseProblem(ref) {
   const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
   const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => c.moment ? `${c.name} ${sig(c.angle * 180 / Math.PI)}° (${sig(c.torsion / 1000 * Math.PI / 180)} N·m/°)` : `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
     `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}${r.dropped ? `; ${r.dropped.length} loose ${r.dropped.length === 1 ? 'piece' : 'pieces'} dropped (${sig(r.dropped.reduce((t, v) => t + v, 0))} mm³)` : ''}${r.emptied ? `; ${r.emptied} ${r.emptied === 1 ? 'cell' : 'cells'} that wouldn't print emptied` : ''}${r.cleared ? `; sliced as the printer will, ${r.cleared} ${r.cleared === 1 ? 'cell' : 'cells'} under islands emptied` : ''}`,
-    ...(r.unsupported > 0.01 ? [`${fmt(r.unsupported * 100)}% of the kept regions has nothing holding it up (at ${r.overhang ? 'the printer\'s overhang limit' : '45°'} or less): give the part more material to stand them on, or keep less`] : [])];
+    ...(r.unsupported > 0.01 ? [`${fmt(r.unsupported * 100)}% of the kept regions has nothing holding it up (at ${r.overhang ? 'the printer\'s overhang limit' : '45°'} or less): give the part more material to stand them on, or keep less`] : []),
+    ...(r.process ? [processLine(r)] : []), ...(r.voids?.length ? [voidsLine(r)] : [])];
   let out;
   if (r.dim === 3) {
     out = paths.preview(project, `${name.replace(':', '-')}-optimised.png`);
@@ -274,7 +275,27 @@ async function optimiseProblem(ref) {
   if (r.dim === 3) console.log(`  ${fmt(r.volume * 100)}% of the space filled: ${fmt(r.solid / 1000)} cm³ (${fmt(r.solid / 1000 * (p.material.density || 0))} g of ${p.material.name})${r.overhang ? `, printable built ${r.overhang}` : ''}`);
   else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
   console.log(`  ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
+  if (r.process) console.log(`  ${processLine(r)}`);
+  if (r.symmetry || r.extrude) console.log(`  ${[r.symmetry?.mirror ? `mirrored across ${[...r.symmetry.mirror].join(' and ')}` : '', r.symmetry?.turns ? `the same each ${r.symmetry.turns === 4 ? 'quarter' : 'half'} turn about ${r.symmetry.axis || 'z'}` : '', r.extrude ? `one section along ${r.extrude}` : ''].filter(Boolean).join(', ')}`);
+  if (r.grey > 0.1) console.log(`  warning: ${greyLine(r)}`);
+  if (r.voids?.length) { console.log(`  error: ${voidsLine(r)}`); process.exitCode = 1; }
   console.log(out);
+}
+// How a milled or cast result is made, and its undercuts (none, unless an avoid region or the space's own shape sits
+// behind material: the optimiser keeps every cell as solid as those on its way out, but can't fill a cell it mustn't)
+function processLine(r) {
+  const how = r.process.mill ? `milled from ${r.process.mill}` : typeof r.process.cast === 'string' ? `cast, drawn off ${r.process.cast}` : `cast in two halves drawn off along ${r.process.cast.draw} from ${fmt(r.process.cast.parting)} mm`;
+  return r.undercuts ? `${how}: ${r.undercuts} ${r.undercuts === 1 ? 'cell is' : 'cells are'} undercut (an avoid region, or the edge of the space, with material between it and the ${r.process.mill ? 'tool' : 'draw'}: move it, or make it from that side)` : `${how}: no undercuts`;
+}
+// A grey result (warned of above a tenth): its design cells between a tenth and nine tenths solid. A clear design has
+// a few per cent, on its surfaces (the 3D cantilever milled from above 5.3%, free 2D cantilevers 1 to 3%): a tenth
+// is a choice from those, an estimate
+function greyLine(r) {
+  return `${fmt(r.grey * 100)}% of the design is grey (neither empty nor solid): the outline drawn at half density is a guess, not a part. A section milled, cast or extruded across its own plane often comes out so; give the problem in 3D, make it from another side, or allow more steps`;
+}
+// Enclosed voids, refused by the problem (powder that can't get out, a trapped core)
+function voidsLine(r) {
+  return `${r.voids.length} enclosed ${r.voids.length === 1 ? 'void' : 'voids'} (${r.voids.map((v) => `${sig(v.volume)} ${r.dim === 3 ? 'mm³' : 'mm²'} at ${v.at.map(fmt).join(', ')}`).join('; ')}): powder or a core can't get out: open ${r.voids.length === 1 ? 'it' : 'each'} to the outside with an avoid region (an escape hole), or allow voids`;
 }
 
 // An object's analyses for cad check: each problem's load cases on the part, and its volume against a target

@@ -3,6 +3,19 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.22: how parts are made
+### Added
+
+- `mill-3axis`: 3-axis milling's thinnest walls (metal 0.8 mm, plastic 1.5 mm, and what is feasible), inside corners
+  a third of the pocket's depth, pockets at most four times as deep as wide, and holes from 1 mm (community, Protolabs
+  Network's CNC design guide).
+- `mould-injection`: draft for injection moulding: a degree per inch of depth, 0.5 at least, 3 at a shutoff and for a
+  light texture, 5 for a heavy one (community, Protolabs' draft guidelines).
+- `dmls`: metal powder bed printing: overhangs at 45 degrees (316L: 55), 2.032 mm bridges, holes from 0.635 mm,
+  features from 0.3048 mm (community, Protolabs' DMLS guide), and powder escape holes from 2 mm (community, Xometry).
+
+No existing value changed.
+
 ## 0.3.20: MISUMI slot 10 nuts
 ### Added
 
