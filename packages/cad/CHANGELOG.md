@@ -22,6 +22,37 @@ and head, the parts it passes through and the part it ends in.
 
 No printed size moved.
 
+## 0.7.78: frames solved under their joints' loads, sized with joins that fit (#302, #303, #304)
+
+### Added
+
+- The frame checks carry each `"loads"` entry on a joint (a force on a slide, a torque on a hinge) and a belt guide's
+  push at its carriage's acceleration into the beam the joint is mounted on, as a force and its moment at that node,
+  solved one way and then the other in every pose (#302). `frame.solve` names them (`refs.onJoints`).
+- `frame.size` holds every join of a grouped beam to fit the profiles chosen (#303): a blind join's screw must pass
+  the other beam's slot opening and its button head sit under the lips; an end-tap's cap head must not fall through
+  the far face's slot; a bought fitting must fit both profiles. A group whose next lighter profile breaks a join says
+  so as what set it ("set by a join").
+- Racking as a sizing limit (#303): with `"frame": { "rack" }` or `"size": { "limits": { "rack": mm } }`, the side
+  push each way across, alone, is a case of its own, and the sway at each top node is held to the limit. A way nothing
+  holds the frame is said and left out.
+- `frame.solve`, `frame.rack`, `frame.buckling` and `frame.frequency` say how a frame moves where nothing holds it
+  ("the frame tips over along y", "x1 spins on its own axis", `refs.how`), with the freedoms that show it, where
+  they named a freedom at a node (#304).
+
+### Changed
+
+- A moving joint mounted on a beam is swept through its travel: each end and its quarters between
+  (`FRAME_CHECK.sweep`, 4), where a slide was solved at its ends and middle and a hinge at its ends (#302). A
+  carriage's worst place for the sag at a point off a span's middle lies between the two: on the riding test's
+  600 mm beam, 325 mm along where the far end was taken before. Frames with a moving joint now say more poses.
+- A frame stood on its lowest ends with nothing saying so (no feet, no `"frame": { "supports" }`) now warns in
+  `frame.solve` even where those ends, pinned, hold it (#304); before, only a guess that changed how they are held
+  warned. Give a frame feet or supports to clear it.
+- `"frame": { "supports": {} }` is refused by name: it names nowhere the frame is held (#304).
+- The sizing table's example in the README: the table's legs and short rails are 2020, not 1515 OpenBeam, whose joins
+  to the 2040 rails and 2020 legs do not go together.
+
 ## 0.7.77: a leg's gait for the streamer (#199)
 ### Added
 

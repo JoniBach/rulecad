@@ -612,3 +612,77 @@ test('frame sizing: what is wrong with a request is said by name, before any sol
   assert.equal(t.groups[0].choice, 'on edge');
   assert.equal(t.model.elements[0].roll, 90);
 });
+
+test('frame: a held frame names the way it moves; sizing keeps to designs that fit, says where a lighter choice does not, and holds each case to its own limits and gravity', () => {
+  // The held portal of the test above: on pinned feet A and D it leans over out of its plane, so the way it moves
+  // has its feet still and its top (B, M, C) moving across the plane, along y, by the most (1)
+  const h = 400, L = 600, sec = { A: 1e9, Iy: 20000, Iz: 20000, J: 1e4 };
+  const portal = frame({ nodes: { A: [0, 0, 0], B: [0, 0, h], M: [L / 2, 0, h], C: [L, 0, h], D: [L, 0, 0] },
+    elements: [['AB', 'A', 'B'], ['BM', 'B', 'M'], ['MC', 'M', 'C'], ['DC', 'D', 'C']].map(([id, a, b]) => ({ id, a, b, section: sec, material: alu })),
+    supports: { A: 'pinned', D: 'pinned' }, loose: 'hold' });
+  assert.equal(portal.mechanisms.length, 1);
+  const way = portal.mechanisms[0].shape;
+  for (const n of ['A', 'D']) assert.ok(Math.hypot(...way[n].slice(0, 3)) < 1e-9, `${n} stays put`);
+  for (const n of ['B', 'M', 'C']) { close(`the portal's top leans along y at ${n}`, Math.abs(way[n][1]), 1, 1e-6); assert.ok(Math.abs(way[n][0]) + Math.abs(way[n][2]) < 1e-6); }
+  assert.deepEqual(frame({ nodes: { a: [0, 0, 0], b: [100, 0, 0] }, elements: [{ id: 'e', a: 'a', b: 'b', section: sec, material: alu }], supports: { a: 'fixed' }, loose: 'hold' }).mechanisms, []);
+
+  // Fits: the 1000 mm beam on two supports with 1000 N at its middle (the first sizing test), each half its own group,
+  // and a splice at the middle that takes one bar size both sides. Hand, as there: a 2 mm sag wants I >= 148 810 mm^4,
+  // so one bar along it is bar 40 (213 333 mm^4, 1.395 mm), 4.32 kg. Each half's next lighter choice, bar 30, does not
+  // go with the other's bar 40: the fit, not a limit, set each.
+  const beam = { nodes: { a: [0, 0, 0], m: [500, 0, 0], b: [1000, 0, 0] }, elements: [{ id: 'l', a: 'a', b: 'm', section: square(20).section, material: strong }, { id: 'r', a: 'm', b: 'b', section: square(20).section, material: strong }],
+    supports: { a: { x: true, y: true, z: true, rx: true }, b: { y: true, z: true } }, loads: [{ node: 'm', force: [0, 0, -1000] }] };
+  const splice = (d) => (d.left === d.right ? [] : [{ where: 'the splice at m', why: `${d.left} on one side and ${d.right} on the other` }]);
+  for (const search of ['every', 'steps']) {
+    const r = sizing(beam, { groups: { left: ['l'], right: ['r'] }, choices: [20, 30, 40, 50].map(square), fits: splice, limits: { deflection: [{ node: 'm', limit: 2 }] }, search });
+    assert.ok(r.ok, search);
+    assert.deepEqual(r.groups.map((g) => [g.choice, g.governs.limit, g.governs.lighter, g.governs.where]), [['bar 40', 'fit', 'bar 30', 'the splice at m'], ['bar 40', 'fit', 'bar 30', 'the splice at m']], search);
+    close(`fits (${search}): one bar 40 along the beam weighs 4.32 kg`, r.total, 4.32, 1e-9);
+    close(`fits (${search}): its sag is P L^3 / 48 E I`, r.checks.find((c) => c.limit === 'deflection').value, 1e12 / (48 * 70000 * 40 ** 4 / 12));
+  }
+  // steps start where the lightest design does not fit: a splice that takes bar 30 or more each side
+  const big = (d) => [d.left, d.right].filter((c) => c === 'bar 20').map((c) => ({ where: 'the splice at m', why: `${c} is too small for its plate` }));
+  const st = sizing(beam, { groups: { left: ['l'], right: ['r'] }, choices: [20, 30, 40, 50].map(square), fits: (d) => [...big(d), ...splice(d)], limits: { deflection: [{ node: 'm', limit: 5 }] }, search: 'steps' });
+  assert.deepEqual([st.ok, st.groups[0].choice, st.groups[1].choice], [true, 'bar 30', 'bar 30']);
+  assert.throws(() => sizing(beam, { groups: { left: ['l'], right: ['r'] }, choices: [20, 30].map(square), fits: () => [{ where: 'm', why: 'nothing goes' }], limits: { deflection: [{ node: 'm', limit: 2 }] } }), (e) => e.code === 'fea.frame.fit' && /no design of these choices goes together: m: nothing goes/.test(e.message));
+  assert.throws(() => sizing(beam, { groups: { left: ['l'], right: ['r'] }, choices: [20].map(square), fits: () => 'yes', limits: { deflection: [{ node: 'm', limit: 2 }] } }), (e) => e.code === 'fea.frame.input' && /fits returns a list/.test(e.message));
+  assert.throws(() => sizing(beam, { groups: { left: ['l'], right: ['r'] }, choices: [20].map(square), fits: 1, limits: { deflection: [{ node: 'm', limit: 2 }] } }), (e) => e.code === 'fea.frame.input' && /fits is a function/.test(e.message));
+
+  // A case's own gravity and limits: a 500 mm post fixed at its foot, its gravity sideways (along -x, to be seen), and
+  // a side push of 100 N along +x at its top as a case of its own with no gravity, held to a sway of 1 mm there and
+  // to nothing else. Hand: sway = P L^3 / 3 E I (Roark's, table 8.1, case 1a) wants I >= 100 x 500^3 / (3 x 70000) =
+  // 59 524 mm^4: bar 30 (67 500) sways 0.882 mm; bar 20 (13 333) 4.46 mm, 4.46 times over. With gravity left on in the
+  // push case, bar 30's own weight (900 mm^2 x 2.7e-6 kg/mm^3 x 9.807 = 0.0238 N/mm along -x) would take
+  // w L^4 / 8 E I = 0.039 mm off it, 4%. A stress margin of 100 is held in the weight case only: bar 30's own weight
+  // bends its foot by w L^2 / 2 = 2979 N mm, 0.66 MPa over W = 4500 mm^3, 66 MPa at the margin, under 205. Held in
+  // the push case too, 100 x 50 000 N mm / W is 1111 MPa for bar 30 and 240 MPa for bar 50 (W = 20 833): none meets it.
+  const post = { nodes: { f: [0, 0, 0], t: [0, 0, 500] }, elements: [{ id: 'post', a: 'f', b: 't', section: square(20).section, material: strong }], supports: { f: 'fixed' }, gravity: [-9.80665, 0, 0] };
+  const cases = [{ label: 'weight' }, { label: 'push', loads: [{ node: 't', force: [100, 0, 0] }], gravity: [0, 0, 0], limits: ['deflection'] }];
+  const sway = sizing(post, { groups: { post: ['post'] }, choices: [20, 30, 40, 50].map(square), cases, limits: { deflection: [{ node: 't', limit: 1, along: [1, 0, 0], cases: ['push'] }], stress: { margin: 100 } } });
+  assert.deepEqual([sway.ok, sway.groups[0].choice, sway.groups[0].governs.limit, sway.groups[0].governs.case], [true, 'bar 30', 'deflection', 'push']);
+  close('a side push alone sways the post P L^3 / 3 E I', sway.checks.find((c) => c.limit === 'deflection').value, (100 * 500 ** 3) / (3 * 70000 * 30 ** 4 / 12));
+  assert.ok(!sway.checks.some((c) => c.limit === 'deflection' && c.case === 'weight'), 'the sway limit holds in the push case only');
+  assert.ok(sway.checks.filter((c) => c.limit === 'stress').every((c) => c.case === 'weight'), 'the push case is held to its sway alone');
+  const all = sizing(post, { groups: { post: ['post'] }, choices: [20, 30, 40, 50].map(square), cases: cases.map(({ limits, ...c }) => c), limits: { deflection: [{ node: 't', limit: 1, along: [1, 0, 0], cases: ['push'] }], stress: { margin: 100 } } });
+  assert.deepEqual([all.ok, all.worst.limit, all.worst.case, all.groups[0].choice], [false, 'stress', 'push', 'bar 50']);
+  close('the push case held to the stress margin: bar 50 at 100 times its stress', all.worst.ratio, (100 * 50000 / (50 ** 3 / 6)) / 205);
+  const bad = (change, text) => assert.throws(() => sizing(post, { groups: { post: ['post'] }, choices: [square(20)], limits: { deflection: [{ node: 't', limit: 1 }] }, ...change }), (e) => e.code === 'fea.frame.input' && text.test(e.message));
+  bad({ cases: [{ label: 'x', gravity: 'down' }] }, /case "x"'s gravity is \[x, y, z\]/);
+  bad({ cases: [{ label: 'x', limits: ['sag'] }] }, /case "x"'s limits is a list of the limits it is held to/);
+  bad({ limits: { deflection: [{ node: 't', limit: 1, cases: ['y'] }] } }, /limits.deflection 1 names case "y", and there is no such case/);
+});
+
+test('frame sizing: a member is as long as its elements in the Euler check, whichever case comes first', () => {
+  // A 1000 mm column of bar 20 (I = 20^4 / 12 = 13 333 mm^4, E = 70 000 MPa) pushed down by 2000 N at its top, with
+  // a second case held to deflection alone. Euler's load with K = 1: pi^2 E I / L^2 = pi^2 x 70 000 x 13 333 /
+  // 1000^2 = 9211 N, so at a factor of 2 the ratio is 2 x 2000 / 9211 = 0.434. The order of the cases must not change
+  // it: with the deflection-only case first, the column's length was once left at 0 and its Euler load infinite.
+  const column = { nodes: { a: [0, 0, 0], b: [0, 0, 1000] }, elements: [{ id: 'c', a: 'a', b: 'b', section: square(20).section, material: strong }], supports: { a: 'fixed', b: { x: 0, y: 0 } }, gravity: [0, 0, 0] };
+  const push = { label: 'push', loads: [{ node: 'b', force: [0, 0, -2000] }] }, side = { label: 'side', loads: [{ node: 'b', force: [0, 0, 0] }], limits: ['deflection'] };
+  for (const cases of [[push, side], [side, push]]) {
+    const r = sizing(column, { groups: { c: ['c'] }, choices: [square(20)], cases, limits: { buckling: { factor: 2, euler: 1 } } });
+    const euler = r.checks.find((c) => c.where === 'c (Euler)');
+    assert.equal(euler.case, 'push');
+    close(`the Euler ratio with ${cases.map((c) => c.label).join(' then ')}`, euler.ratio, (2 * 2000 * 1000 ** 2) / (Math.PI ** 2 * 70000 * 20 ** 4 / 12), 1e-3);
+  }
+});
