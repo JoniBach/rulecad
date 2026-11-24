@@ -375,6 +375,7 @@ three cases) about 4 seconds.
   freedoms times the cases: a few thousand rows is the practical most).
 - With several cases, the forces within a case may not be unique (above), and members of equal merit may share a
   load: a joint cost (`joint`) settles on fewer.
+- A flat layout's members may cross without meeting (a node is needed where they cross to join them).
 - The joints' problems carry the members' forces as point loads at the stubs' ends, held at one stub: the joint's own
   stiffness against the frame's is not modelled.
 

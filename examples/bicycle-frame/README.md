@@ -47,7 +47,8 @@ The layout keeps 11 members out of 1242 candidates, the least volume over all of
 stressed). Among them are the diamond frame's six tubes: the chainstay (`rear-bb`), the seat stay (`rear-seat`), the
 seat tube (`bb-seat`), the top tube (`seat-head`), the down tube (`bb-head`) and the head tube (`head-bars`), with a
 node behind the head tube (`4,7`) bracing the front triangle, and a brace from the bottom bracket and the rear axle to
-the bars.
+the bars. Two members cross others without meeting them: a flat layout lets them pass, where a real frame would
+set them side by side or join them where they cross.
 
 Each tube is then sized from round steel tubes in the inch sizes bicycle tubing is sold in (12.7 to 34.9 mm, walls
 0.9 and 1.2 mm: an estimate of what a supplier lists, so check yours), with welded joints, for a stress margin of 2,
@@ -58,4 +59,6 @@ need; real frames are sized by what a flat layout leaves out: the pedal's push t
 and dents.
 
 Each of the bottom bracket, the seat cluster and the head tube's bottom is handed on as a problem file for the voxel
-optimiser (`cad optimise`), the tubes as stubs carrying the sized frame's forces in each case.
+optimiser (`cad optimise`), the tubes as stubs carrying the sized frame's forces in each case. Saved as
+`problems/seat.json` in a project of a workspace, `cad optimise <project>/seat` shapes that joint (a flat 24 x 24
+cell problem, under a second).
