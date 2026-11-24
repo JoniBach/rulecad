@@ -62,7 +62,7 @@ export function plotGait(s, { cycles = 3, period, from } = {}) {
   const m = machineOf(s), seq = gaitSequence(s), names = m.axes.map((a) => a.name), cols = names.map((n) => seq.names.indexOf(n));
   const ordered = { period: seq.period, names, q: seq.q.map((r) => cols.map((i) => r[i])) };
   const poses = s.motion.poses || {}, poseName = from ?? s.motion.pose ?? null;
-  if (from != null && !poses[from]) throw new Error(`--from ${from}: no such pose (poses: ${Object.keys(poses).join(', ') || 'none'})`);
+  if (from != null && !poses[from]) throw new Error(`--pose ${from}: no such pose (poses: ${Object.keys(poses).join(', ') || 'none'})`);
   const pose = poseName ? poses[poseName] : null, findings = [];
   const start = pose && names.every((n) => num(pose[n])) ? names.map((n) => pose[n]) : null;
   if (poseName && !start) findings.push({ level: 'info', text: `the pose "${poseName}" does not set ${names.filter((n) => !num(pose?.[n])).join(', ')}, so the file starts and ends at the cycle's first frame`, code: 'gait.from', values: {} });

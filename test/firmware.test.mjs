@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck, shortBlock } from '../scripts/firmware.mjs';
+import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck, shortBlock, simulations } from '../scripts/firmware.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (f) => fs.readFileSync(`${ROOT}${f}`, 'utf8').replace(/\r\n/g, '\n');
@@ -114,7 +114,7 @@ test('firmware: the loop\'s ceiling is measured speeding up and slowing down as 
   assert.throws(() => ceilingCheck({ cruise: [1, 2, 3], up: [1, 2] }, 8000), /ceilings\.up: three rates/);
   // and the simulation run in CI uses this check, not the cruise's three-axis figure alone
   const script = read('scripts/firmware.mjs');
-  assert.match(script, /ceilings: Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, \[1, 2, 3\]\.map\(\(a\) => ceiling\(fast, avr, a, p\)\)\]\)\)/);
+  assert.match(script, /ceilings: measure \? Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, \[1, 2, 3\]\.map\(\(a\) => ceiling\(fast, avr, a, p\)\)\]\)\)/);
   assert.match(script, /for \(const p of held\.problems\) fail\(p\)/);
   assert.doesNotMatch(script, /r\.ceilings\[2\] < max/);
 });
@@ -167,4 +167,20 @@ test('firmware: CI streams the shortest blocks the sender passes, and the stream
   // the job's comment says so
   const yml = read('.github/workflows/test.yml');
   assert.match(yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n    runs-on:', yml.indexOf('\n  firmware:'))), /shortest blocks the sender passes/);
+});
+
+test('firmware: CI streams the leg\'s gait through the streamer as well as the arm\'s drawing, each step file with its own machine', () => {
+  const arm = ['examples/bench/exports/arm/arm-test.steps.json', 'examples/bench/exports/arm/arm.machine.json'], leg = ['examples/bench/exports/leg/stand-gait.steps.json', 'examples/bench/exports/leg/stand.machine.json'];
+  assert.deepEqual(simulations(['--simulate', arm[0], '--machine', arm[1], '--simulate', leg[0], '--machine', leg[1]]), [{ steps: arm[0], machine: arm[1] }, { steps: leg[0], machine: leg[1] }]);
+  assert.deepEqual(simulations(['--list']), []);
+  assert.throws(() => simulations(['--simulate', arm[0], '--simulate', leg[0], '--machine', leg[1]]), /--simulate examples\/bench\/exports\/arm\/arm-test\.steps\.json needs --machine <file\.machine\.json> after it/);
+  assert.throws(() => simulations(['--simulate', '--machine', arm[1]]), /--simulate needs a step file/);
+  // the loop's ceilings and the shortest blocks are measured once, on the first file; every file is streamed and counted
+  const script = read('scripts/firmware.mjs');
+  assert.match(script, /measure: n === 0/);
+  // the job writes the leg's machine and gait, then streams both files in one run
+  const yml = read('.github/workflows/test.yml'), job = yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n  dimensions:'));
+  assert.match(job, /cad\.mjs machine leg\/stand && node \.\.\/\.\.\/packages\/cad\/bin\/cad\.mjs plot leg\/stand\n/);
+  const last = job.slice(job.lastIndexOf('      - '));
+  assert.match(last, /--simulate examples\/bench\/exports\/arm\/arm-test\.steps\.json --machine examples\/bench\/exports\/arm\/arm\.machine\.json\n\s+--simulate examples\/bench\/exports\/leg\/stand-gait\.steps\.json --machine examples\/bench\/exports\/leg\/stand\.machine\.json/);
 });
