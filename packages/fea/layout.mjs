@@ -225,18 +225,18 @@ function invert(h, m) {
   return out;
 }
 const mul = (c, h, rows, m) => { const out = new Float64Array(rows * m); for (let i = 0; i < rows; i++) for (let j = 0; j < m; j++) { let s = 0; for (let t = 0; t < m; t++) s += c[i * m + t] * h[t * m + j]; out[i * m + j] = s; } return out; };
-// Cholesky of a dense symmetric matrix from its lower triangle, in place. A pivot that is nothing beside the
-// diagonal's largest (a row no column reaches, or one the iteration has emptied) is made huge, so that direction is
-// solved as 0 (as Zhang's LIPSOL does).
+// Cholesky of a dense symmetric matrix from its lower triangle, in place. A pivot that is nothing beside its own
+// row's diagonal (a row no column reaches, or one that depends on the rows before it, so all but rounding cancelled)
+// is made huge, so that direction is solved as 0 (as Zhang's LIPSOL does). The test is against the row's own
+// diagonal, not the matrix's largest: near the optimum the diagonal spans many orders (a lightly loaded joint beside
+// a main member), and a small but sound pivot dropped there leaves its equilibrium error unmended for good.
 function cholesky(S, n) {
-  let big = 0;
-  for (let i = 0; i < n; i++) big = Math.max(big, S[i * n + i]);
-  const tiny = 1e-30 + 1e-13 * big;
   for (let j = 0; j < n; j++) {
     const rj = j * n;
     let d = S[rj + j];
+    const own = d;
     for (let k = 0; k < j; k++) d -= S[rj + k] * S[rj + k];
-    if (!(d > tiny)) { S[rj + j] = 1e64; for (let i = j + 1; i < n; i++) S[i * n + j] = 0; continue; }
+    if (!(d > 1e-30 + 1e-13 * own)) { S[rj + j] = 1e64; for (let i = j + 1; i < n; i++) S[i * n + j] = 0; continue; }
     const p = Math.sqrt(d);
     S[rj + j] = p;
     for (let i = j + 1; i < n; i++) {

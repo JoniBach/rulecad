@@ -199,3 +199,22 @@ test('layout: a load may name its node by number, as nodes given as a list are n
   near(layout({ ...four, loads: [{ node: 2, force: [0, -1000] }, { node: '3', force: [0, -1000] }] }).volume, layout({ ...four, loads: [{ node: '2', force: [0, -1000] }, { node: '3', force: [0, -1000] }] }).volume, 1e-9, 'a number and a string');
   assert.throws(() => layout({ ...list, loads: [{ node: [2], force: [0, -1000] }] }), (e) => e.code === 'fea.layout.load');
 });
+
+test('layout: a 3D problem whose normal matrix spans many orders is solved by adding members, and agrees with HiGHS', () => {
+  // A 4 × 3 × 3 grid at a 30 mm pitch, each node moved off it in x and y by up to 8 mm; three pins along z at one
+  // corner and rollers in x up that side; two cases at two nodes; compression half as strong as tension; a joint cost
+  // of 20 mm. Near the optimum the normal matrix's diagonal spans many orders, and its factorisation once dropped
+  // every pivot below a 1e-13 share of the largest: the sound small pivots of lightly loaded joints went with them,
+  // equilibrium stalled at 1.1e-6 against a 1e-9 test, and the default run (members added round by round) was refused
+  // as unstable. The same linear programme in scipy's HiGHS (dual simplex) gives 328.48784063 mm³.
+  const nodes = { '0_0_0': [3.52, 2.96, 0], '0_0_1': [7.17, 4.14, 30], '0_0_2': [0.15, 1.72, 60], '0_1_0': [1.96, 37.44, 0], '0_1_1': [3.21, 31.8, 30], '0_1_2': [5.39, 36.41, 60],
+    '0_2_0': [7.06, 64.12, 0], '0_2_1': [3.48, 66.11, 30], '0_2_2': [1.27, 62.74, 60], '1_0_0': [37.11, 6.89, 0], '1_0_1': [36.39, 5.26, 30], '1_0_2': [33.88, 4.69, 60],
+    '1_1_0': [33.32, 36.76, 0], '1_1_1': [33.86, 35.56, 30], '1_1_2': [35.71, 30.53, 60], '1_2_0': [35.79, 60.97, 0], '1_2_1': [34.44, 61.69, 30], '1_2_2': [35.42, 66.35, 60],
+    '2_0_0': [60.94, 0.71, 0], '2_0_1': [63.85, 4.19, 30], '2_0_2': [60.88, 0.76, 60], '2_1_0': [67.47, 30.86, 0], '2_1_1': [64.34, 31.61, 30], '2_1_2': [64.69, 30.74, 60],
+    '2_2_0': [61.22, 63.5, 0], '2_2_1': [65.98, 64.01, 30], '2_2_2': [61.43, 66.48, 60], '3_0_0': [94.17, 2.98, 0], '3_0_1': [90.04, 0.95, 30], '3_0_2': [91.48, 4.23, 60],
+    '3_1_0': [93.41, 34.05, 0], '3_1_1': [91.08, 34.18, 30], '3_1_2': [95.94, 31.21, 60], '3_2_0': [92.44, 62.81, 0], '3_2_1': [94.5, 65.66, 30], '3_2_2': [94.51, 62.87, 60] };
+  const r = layout({ nodes, supports: { '0_0_0': 'pinned', '0_0_1': 'pinned', '0_0_2': 'pinned', '0_1_0': { x: true }, '0_1_2': { x: true }, '0_2_1': { x: true } },
+    cases: [{ loads: [{ node: '1_2_1', force: [-7.96, 5.17, -43.35] }] }, { loads: [{ node: '2_2_2', force: [-45.35, -36.15, 41.82] }] }], strength: { tension: 100, compression: 49.24 }, joint: 20 });
+  near(r.volume, 328.48784063, 1e-8, 'volume against HiGHS');
+  assert.ok(r.strain <= 1 + 1e-5, `no candidate past its limit (${r.strain})`);
+});
