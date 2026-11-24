@@ -1,7 +1,7 @@
 // Composing flexures into mechanisms: where each one attaches (ports), how big one must be for a job (sizing), and one
 // report for a mechanism's worth of them (report). Units: mm, N, MPa, radians.
 import { curvePath, curveModel } from './curves.mjs';
-import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable, need } from './core.mjs';
+import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, filletHingeModel, hyperbolicHingeModel, spiralSpringModel, pinnedLeafModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable, need } from './core.mjs';
 
 /** @typedef {{ at: number[], dir: number[] }} Port a point on a flexure and the direction a mating part faces from it */
 
@@ -12,7 +12,8 @@ const X = [1, 0, 0], Y = [0, 1, 0], mX = [-1, 0, 0], mY = [0, -1, 0];
  * what moves there (`moves`: the axis the end travels along, or 'turn' about z). A design places the shape and its
  * mates by these instead of by arithmetic.
  * @param {string} kind the generator's name (leaf, fixedGuided, parallelGuide, compoundGuide, foldedGuide, serpentine,
- *   notchHinge, ellipticalHinge, cartwheel, livingHinge, letJoint, bistable, constantForce, contactLeaf,
+ *   notchHinge, ellipticalHinge, filletHinge, hyperbolicHinge, cartwheel, livingHinge, letJoint, bistable, constantForce, contactLeaf,
+ *   spiralSpring, pinnedLeaf,
  *   parallelogram, tweezers, snapHook)
  * @param {object} p the generator's parameters
  * @returns {{ root: Port, end: Port, moves: 'x' | 'y' | 'turn', [name: string]: any }}
@@ -44,6 +45,10 @@ export function ports(kind, p) {
     case 'notchHinge': { const a = p.arms ?? 4 * p.radius; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.radius, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.radius, 0, z], dir: [0, 0, 1] } }; }
     case 'ellipticalHinge': { const a = p.arms ?? 4 * p.along; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.along, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.along, 0, z], dir: [0, 0, 1] } }; }
     case 'livingHinge': { const a = p.arms ?? 10; return { root: { at: [-a, 0, z], dir: mX }, end: { at: [p.flex + a, 0, z], dir: X }, moves: 'turn', pivot: { at: [p.flex / 2, 0, z], dir: [0, 0, 1] } }; }
+    case 'filletHinge': { const a = p.arms ?? Math.max(3, 4 * p.radius), n = p.flex + 2 * p.radius; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + n, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + n / 2, 0, z], dir: [0, 0, 1] } }; }
+    case 'hyperbolicHinge': { const a = p.arms ?? 4 * p.along; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.along, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.along, 0, z], dir: [0, 0, 1] } }; }
+    case 'spiralSpring': { const f = 2 * Math.PI * p.turns, ro = p.hub + p.pitch * p.turns, c = Math.cos(f), s = Math.sin(f), Rb = p.anchor ?? Math.max(2, 2 * p.thickness), o = ro + Rb - p.thickness; return { root: { at: [o * c, o * s, z], dir: [c, s, 0] }, end: { at: [0, 0, z], dir: [0, 0, 1] }, moves: 'turn', pivot: { at: [0, 0, z], dir: [0, 0, 1] } }; } // the boss's centre, the hub's
+    case 'pinnedLeaf': { const T = p.link ?? Math.max(2, 3 * p.thickness), e = p.ends ?? Math.max(3, 2 * p.thickness), n = 2 * (p.flex + T - p.thickness) + p.length; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * e + n, 0, z], dir: X }, moves: 'y' }; }
     case 'cartwheel': { const r = p.hub ?? Math.max(2, 2 * p.thickness), Ro = r + p.spoke + (p.rim ?? 3), reach = p.arm ?? 2 * p.spoke; return { root: { at: [0, -Ro, z], dir: mY }, end: { at: [Ro + reach, 0, z], dir: X }, moves: 'turn', pivot: { at: [0, 0, z], dir: [0, 0, 1] } }; }
     case 'letJoint': { const a = p.panel ?? p.width, c = p.slot / 2 + p.bar + p.slot, h = p.thickness; return { root: { at: [-(a + c), 0, h / 2], dir: mX }, end: { at: [a + c, 0, h / 2], dir: X }, moves: 'turn', pivot: { at: [0, 0, h / 2], dir: Y } }; }
     case 'bistable': { const e = p.ends ?? Math.max(3, 3 * p.thickness); return { root: { at: [-e, 0, z], dir: mX }, end: { at: [p.length / 2, p.rise, z], dir: Y }, moves: 'y', far: { at: [p.length + e, 0, z], dir: X } }; }
@@ -55,7 +60,7 @@ export function ports(kind, p) {
 }
 
 /** The model for a kind, by name */
-export const models = { curve: curveModel, waveSpring: waveSpringModel, pivotPair: pivotPairModel, leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
+export const models = { curve: curveModel, waveSpring: waveSpringModel, pivotPair: pivotPairModel, leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, filletHinge: filletHingeModel, hyperbolicHinge: hyperbolicHingeModel, spiralSpring: spiralSpringModel, pinnedLeaf: pinnedLeafModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
 
 const lines = (printer, from = 2, to = 8) => Array.from({ length: to - from + 1 }, (_, i) => +((from + i) * printer.line).toFixed(4));
 /**

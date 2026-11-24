@@ -7,7 +7,9 @@
 // against. The pot prints standing on its floor and the lid on its top: the bead's return face and the groove's mating
 // face are the only overhangs, at 45°. Each first layer is one plain disc (the lid's with its tab), its edge chamfered
 // against the first layer's spread. Inside corners are rounded: the pot's floor into its wall, the lid's top into its
-// skirt, with the pot's rim chamfered more than that round so the two clear.
+// skirt, with the pot's rim chamfered more than that round so the two clear. With fingers above 0 (the "slotted" variant)
+// the skirt is slotted into that many fingers, each a cantilever from the slots' round-ended roots, which brings the
+// push to put the lid on down several times over (v.fixings.snapSlots cuts the slots).
 import jscad from '@jscad/modeling'
 const { polygon, roundedRectangle } = jscad.primitives
 const { extrudeRotate, extrudeLinear } = jscad.extrusions
@@ -17,7 +19,7 @@ export function main (v) {
   const R = v.diameter / 2, seg = v.segments, ch = v.x1c.chamfer
   // The joint's ends: the pot's rim (free) and floor (closed), the skirt's mouth (free) and the lid's top (closed), whose
   // underside sits on the rim, so the groove's top is below_rim less the fit under it. The bead's length comes first
-  const joint = { diameter: v.diameter, wall: v.wall, skirt: v.skirt, boxEnd: v.below_rim, lidEnd: v.below_bead, lidTop: v.below_rim - v.x1c.fit }
+  const joint = { diameter: v.diameter, wall: v.wall, skirt: v.skirt, boxEnd: v.below_rim, lidEnd: v.below_bead, lidTop: v.below_rim - v.x1c.fit, ...(v.fingers > 0 ? { slots: { count: v.fingers, reach: v.slot_reach } } : {}) }
   const length = v.fixings.annularSnapModel(joint, { pull: v.pull }).length
   const snap = v.fixings.annularSnapModel({ ...joint, boxFloor: v.height - v.below_rim - length - v.floor }, { pull: v.pull })
   // the bead's foot, its length (return face, land and lead face) under its top
@@ -38,7 +40,8 @@ export function main (v) {
   const lidUp = v.ops.union(extrudeRotate({ segments: seg }, polygon({ points: [
     [0, top], ...arc(R + c - v.fillet, top - v.fillet, v.fillet, Math.PI / 2, 0), [R + c, low], [lidR, low], [lidR, top + v.lid - ch], [lidR - ch, top + v.lid], [0, top + v.lid]] })),
   translate([lidR, 0, top], extrudeLinear({ height: v.lid }, roundedRectangle({ size: [v.tab * 2, v.tab * 2], roundRadius: v.tab / 2, segments: seg }))))
-  const lid = v.ops.subtract(lidUp, v.fixings.annularGroove(snap, { at: foot, mouth, segments: seg }))
+  const cut = [v.fixings.annularGroove(snap, { at: foot, mouth, segments: seg }), ...(v.fingers > 0 ? [v.fixings.snapSlots(snap, { at: foot, mouth })] : [])]
+  const lid = v.ops.subtract(lidUp, ...cut)
   // As printed: turned over on to its top
   const lidPrinted = translate([0, 0, top + v.lid], rotateX(Math.PI, lid))
   const parts = [pot, lidPrinted]

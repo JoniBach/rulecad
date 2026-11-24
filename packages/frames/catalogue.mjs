@@ -134,6 +134,14 @@ import s_slot_8_item from '@rulecad/rules/slot-8-item.json' with { type: 'json' 
 import s_slot_8_misumi from '@rulecad/rules/slot-8-misumi.json' with { type: 'json' };
 import s_slot_8_motedis_i from '@rulecad/rules/slot-8-motedis-i.json' with { type: 'json' };
 import s_slot_8 from '@rulecad/rules/slot-8.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m4_drop_in from '@rulecad/rules/slot-nut-10-misumi-m4-drop-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m4_slide_in from '@rulecad/rules/slot-nut-10-misumi-m4-slide-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m5_drop_in from '@rulecad/rules/slot-nut-10-misumi-m5-drop-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m5_slide_in from '@rulecad/rules/slot-nut-10-misumi-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m6_drop_in from '@rulecad/rules/slot-nut-10-misumi-m6-drop-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m6_slide_in from '@rulecad/rules/slot-nut-10-misumi-m6-slide-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m8_drop_in from '@rulecad/rules/slot-nut-10-misumi-m8-drop-in.json' with { type: 'json' };
+import s_slot_nut_10_misumi_m8_slide_in from '@rulecad/rules/slot-nut-10-misumi-m8-slide-in.json' with { type: 'json' };
 import s_slot_nut_3_openbeam_m3_hex from '@rulecad/rules/slot-nut-3-openbeam-m3-hex.json' with { type: 'json' };
 import s_profile_1515_printed from '@rulecad/rules/profile-1515-printed.json' with { type: 'json' };
 import s_profile_2020_printed from '@rulecad/rules/profile-2020-printed.json' with { type: 'json' };
@@ -261,7 +269,8 @@ export const SETS = Object.fromEntries([
   s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,
-  s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_slot_nut_3_openbeam_m3_hex, s_pla, s_petg, s_profile_1515_printed, s_profile_2020_printed, s_profile_3030_printed, s_profile_4040_printed, s_slot_3_printed_1515, s_slot_6_printed_2020, s_slot_8_printed_3030, s_slot_8_printed_4040, s_slot_nut_6_bosch_m3_roll_in, s_slot_nut_6_bosch_m4_drop_in,
+  s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_slot_nut_10_misumi_m4_drop_in, s_slot_nut_10_misumi_m4_slide_in, s_slot_nut_10_misumi_m5_drop_in, s_slot_nut_10_misumi_m5_slide_in, s_slot_nut_10_misumi_m6_drop_in, s_slot_nut_10_misumi_m6_slide_in, s_slot_nut_10_misumi_m8_drop_in, s_slot_nut_10_misumi_m8_slide_in,
+  s_slot_nut_3_openbeam_m3_hex, s_pla, s_petg, s_profile_1515_printed, s_profile_2020_printed, s_profile_3030_printed, s_profile_4040_printed, s_slot_3_printed_1515, s_slot_6_printed_2020, s_slot_8_printed_3030, s_slot_8_printed_4040, s_slot_nut_6_bosch_m3_roll_in, s_slot_nut_6_bosch_m4_drop_in,
   s_slot_nut_6_bosch_m4_roll_in, s_slot_nut_6_bosch_m4_slide_in, s_slot_nut_6_bosch_m5_roll_in, s_slot_nut_6_bosch_m5_slide_in,
   s_slot_nut_6_misumi_m3_drop_in, s_slot_nut_6_misumi_m3_roll_in, s_slot_nut_6_misumi_m3_slide_in, s_slot_nut_6_misumi_m3_square,
   s_slot_nut_6_misumi_m4_drop_in, s_slot_nut_6_misumi_m4_roll_in, s_slot_nut_6_misumi_m4_slide_in, s_slot_nut_6_misumi_m4_square,

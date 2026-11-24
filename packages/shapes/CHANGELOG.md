@@ -10,6 +10,25 @@ why.
 - `optimisedOutline` leaves a design's part named as a keep or avoid region to the design, as `optimisedSolid` does:
   `regionShape` gives null for one. Before, it was drawn as a circle with no radius, and the build failed.
 
+## 0.4.7: shaft bores in one place
+### Added
+
+- `shaftBore(shaft, { fit, across, printer })` and its table `SHAFT_FITS`: the bore a printed part takes for a bought
+  shaft, in one place (#307). `slide` is the fit bar's measured D-bore (0.05 mm each side, so 5.2 mm drawn for a 5 mm
+  shaft on the X1C), `press` the estimate of -0.02 mm each side, `run` the printer's `fit`, or a gap in mm. Each answer
+  says how far its fit is trusted (`kind`). `@rulecad/motors` now reads its bore from here, so the three agree.
+- `plainBearing` and `pulleyBore` take `fit` as `shaftBore` does.
+- `shaftBore` takes a `hole_comp` below 0, for a printer whose holes come out large, as `@rulecad/motors`' bore always
+  has; `plainBearing` and `pulleyBore` now take one too (they refused it). It refuses a `hole_comp` that is not a
+  number, or one that leaves no bore, by name.
+
+### Printed sizes
+
+- `pulleyBore` is drawn at the measured slide fit: 5.2 mm for a 5 mm shaft, 8.2 mm for 8 mm (it was 5.3 and 8.3). It
+  read the printer's `slip`, a figure across the diameter, as a gap each side. Give `fit: 'run'` for an idler that
+  turns on its axle. No example project draws a `pulleyBore`.
+- `plainBearing` is unchanged (8.5 mm for 8 mm on the X1C).
+
 ## 0.4.6: print-in-place clearances (#162)
 
 ### Added

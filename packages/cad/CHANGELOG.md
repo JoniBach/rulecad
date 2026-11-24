@@ -41,6 +41,30 @@ and head, the parts it passes through and the part it ends in.
   0.56 mm or more. No existing problem's result moves: the kit's problems all give their filter or use cells of 1 mm
   or more.
 
+## 0.7.70: printed bolts into slot nuts, a slotted snap pot
+### Fixed
+
+- **A printed bolt into a slot nut** (issue 305): its length is now any whole millimetre between the nut's thread and
+  the slot's floor, as a printed bolt's is everywhere else, and `fasten.length` says "the shortest that fits (a printed
+  bolt is printed to any whole millimetre)", not "the shortest sold". A 10 mm plate on a 3030's slot, where no M6 is
+  sold from 16.4 to 18.7 mm, takes an M6x17 printed bolt.
+- **A torque given for a printed bolt** is worded as a turn by hand, not a tightening: `fasten.seat` says "turned by
+  hand to 1 N m, it clamps with about 833.3 N (T = K d F, fixings.nut_factor 0.2 for steel threads: an estimate for a
+  printed one)", and `cad order` says "to 1 N m and no further (a printed bolt, turned by hand, not tightened)". A new
+  finding, `fasten.torque`, holds that clamp against what the bolt breaks at, about twice over: an M6 printed bolt in
+  PLA breaks at 625.2 N, so 1 N m fails and names 0.37 N m as the most (rounded down, so it passes its own check). The seat's values no longer carry a
+  tightening torque for a printed bolt.
+
+- **Pins lying on their side** (issue 306): a pin in teardrop holes, as `v.fixings.pinHole` draws one lying on its
+  side, is found and checked as a round one is. It already was: `holesIn` leaves a teardrop's roof out of the round
+  it fits. A test now holds it (press, slip and snap sockets, along x and along y, blind, and the failures by name),
+  and the README says so.
+
+### Added
+
+- The bench project `enclosures` has a `slotted` variant of `snap-pot`, its lid's skirt in 16 fingers (issue 309), and
+  the assembly `snap-pot-slotted-closed`.
+
 ## 0.7.69: --dry-run never writes
 
 ### Fixed
