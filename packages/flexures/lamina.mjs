@@ -160,7 +160,7 @@ export async function lamina(spec) {
   // flexure and a band of each body, outside the body, is added to the flexure
   // (only round where it meets them: within two radii of where they touch, so a gap beside the flexure stays open;
   // flexures with blocks of their own, guides and serpentines, round into those already)
-  const OWN_BLOCKS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']);
+  const OWN_BLOCKS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'filletHinge', 'hyperbolicHinge', 'spiralSpring', 'pinnedLeaf', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']);
   for (const [n, j] of Object.entries(joints)) {
     const r = j.params?.fillet;
     if (!(r > 0) || OWN_BLOCKS.has(j.kind) || j.kind === 'curve') continue; // (a curve draws its own rounds, as true quarter circles)

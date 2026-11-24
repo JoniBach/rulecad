@@ -26,7 +26,7 @@ const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
 
 // Sizes are sizes: a model or a sizer given a length, thickness or width of 0, below 0 or not a number says so by name,
 // where it would give an infinite or negative stiffness, or a length of infinity
-const SIZES = ['length', 'thickness', 'width', 'radius', 'neck', 'along', 'across', 'flex', 'link', 'span', 'leaf', 'pitch', 'crank', 'stop', 'apart', 'bar', 'rise', 'travel', 'force', 'stroke', 'energy'];
+const SIZES = ['length', 'thickness', 'width', 'radius', 'neck', 'along', 'across', 'flex', 'slot', 'link', 'span', 'leaf', 'pitch', 'crank', 'stop', 'apart', 'bar', 'rise', 'travel', 'force', 'stroke', 'energy'];
 export function need(what, p = {}, m) {
   for (const k of SIZES) {
     if (!(k in p) || p[k] === undefined) continue;
@@ -808,6 +808,49 @@ export function pinnedLeafModel(p, m) {
   let c = 0;
   for (let i = 0; i < n; i++) c += ds / (E * w * 2 * q.half((i + 0.5) * ds));
   return { ...g, pivot: K, apart: q.span - q.pivot, along: 1 / c };
+}
+
+// ---------- the split tube ----------
+function refuseTube(what, p, m) {
+  need(what, p, m);
+  const { radius: r, thickness: t, slot: s } = p;
+  if (!(t < r)) throw new Error(`${what}: the wall (${t} mm) must be thinner than the tube's mean radius (${r} mm)`);
+  if (!(s < Math.PI * r)) throw new Error(`${what}: the slot (${s} mm) must be under half the tube's round (${+(Math.PI * r).toFixed(2)} mm)`);
+  if (m?.nu !== undefined && !(m.nu >= 0 && m.nu < 0.5)) throw new Error(`${what}: Poisson's ratio nu is from 0 to under 0.5 (got ${m.nu})`);
+}
+/**
+ * A split tube: a thin tube standing on the bed, slotted along its length between two closed collars. Cut open, it
+ * twists about its axis far more easily than a whole tube (an open section's torsion constant b t³ / 3, b the wall's
+ * width round, for the closed tube's 2π r³ t: Roark), while staying stiff in bending and along its axis: a torsion
+ * pivot with a long reach for its size. The slot's ends are round, so it has no square inside corner. Standing is the
+ * only way it prints without support, and then its twist shears the wall along the layers' bonds: the model says so.
+ * Drawn with its axis up z from the origin, the slot on +x.
+ * @param {{ radius: number, thickness: number, length: number, slot: number, collar?: number }} p radius: the wall's
+ *   mean radius (r); thickness: the wall's (t); length: the slot's straight run, the part that twists (L); slot: its
+ *   width (s); collar: the closed ring at each end, up z (default 2 × thickness, at least 3)
+ */
+export function splitTube(p) {
+  refuseTube('splitTube', p);
+  const { radius: r, thickness: t, length: L, slot: s } = p, c = p.collar ?? Math.max(3, 2 * t), H = L + 2 * c;
+  const tube = subtract(cylinder({ radius: r + t / 2, height: H, center: [0, 0, H / 2], segments: 96 }), cylinder({ radius: r - t / 2, height: H + 2, center: [0, 0, H / 2], segments: 96 }));
+  const end = (z) => translate([r, 0, z], jscad.transforms.rotateY(Math.PI / 2, cylinder({ radius: s / 2, height: 2 * t + 2, segments: 32 })));
+  return subtract(tube, block(r, 0, c + L / 2, [2 * t + 2, s, L]), end(c), end(c + L));
+}
+/**
+ * Saint-Venant torsion of the open section (Roark: J = b t³ / 3, the peak shear G t θ / L at the wall's faces), the
+ * shear given as the tensile strain that yields alongside it (von Mises: σ = √3 τ), so one strain limit checks it.
+ * The collars hold the slot's ends from warping, which stiffens a short tube: the model is the least it is.
+ * @param {{ radius: number, thickness: number, length: number, slot: number }} p
+ * @param {Material & { nu?: number }} m nu: Poisson's ratio (default 0.35)
+ * @returns {Model & { angle: (strain: number) => number, closed: number, findings: { level: string, text: string, code: string }[] }}
+ *   stiffness in N·mm a radian; closed: the same tube unslotted, for comparison
+ */
+export function splitTubeModel(p, m) {
+  refuseTube('splitTubeModel', p, m);
+  const { radius: r, thickness: t, length: L, slot: s } = p, { E, nu = 0.35 } = m, G = E / (2 * (1 + nu)), J = ((2 * Math.PI * r - s) * t ** 3) / 3;
+  const per = (Math.sqrt(3) * G * t) / (L * E), strain = (th) => per * Math.abs(th), angle = (e) => e / per;
+  const findings = [{ level: 'warn', code: 'flexure.layers', text: `a split tube prints standing, so its twist shears the wall along the layers' bonds: the strain limit is the filament's, and the bonds are weaker, so allow it less travel than the limit says or test it` }];
+  return { stiffness: (G * J) / L, strain, angle, travel: angle, stress: (th) => E * strain(th), closed: (G * 2 * Math.PI * r ** 3 * t) / L, findings };
 }
 
 // ---------- the XY stage ----------
