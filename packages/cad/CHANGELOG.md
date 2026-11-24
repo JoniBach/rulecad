@@ -14,6 +14,13 @@ and head, the parts it passes through and the part it ends in.
   `cad optimise` gives its peak stress at its push and the push and output travel that take it to the limit.
 - The rule set schema takes `low` and `high` on a rule: the range it is found in.
 
+### Changed
+
+- A project whose material has no rule set is refused with every plastic the workspace and the kit have a set for
+  (abs, asa, pa_cf, petg and pla in the kit), where it named only pla and petg. A plastic is a set that gives
+  strength, modulus, density and modulus_z. `plastics()` in `lib/fittings.mjs` lists them. A project of ABS, ASA or
+  PA-CF has its printed fittings sized from the kit's set.
+
 No printed size moved.
 
 ## 0.7.69: --dry-run never writes

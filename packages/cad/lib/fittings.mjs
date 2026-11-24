@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import * as frames from '@rulecad/frames';
 const { bracketModel, bracket, plateModel, plate } = frames;
 import { host } from './host.mjs';
-import { paths } from './workspace.mjs';
+import { paths, RULE_DIRS } from './workspace.mjs';
 import { named } from './parts.mjs';
 import { givenFor } from './frames.mjs';
 import { peekRuleSet } from './rules.mjs';
@@ -77,7 +77,25 @@ export function plasticNamed(raw, where = 'the project') {
   let set = null; try { set = peekRuleSet(m); } catch {}
   const lacks = ['strength', 'modulus', 'density'].filter((k) => !(typeof set?.rules?.[k]?.value === 'number'));
   if (set && !lacks.length) return set;
-  throw new Error(`${where}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit has pla and petg, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to pla or petg`);
+  const have = plastics().join(', ');
+  throw new Error(`${where}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit and this workspace have rule sets for ${have}, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to one of ${have}`);
+}
+
+/**
+ * The plastics a project can name: the rule sets (the workspace's rules/, then the kit's) that give strength, modulus,
+ * density and modulus_z, the modulus across a print's layers, which only a printed plastic's set gives.
+ * @returns {string[]} their names, sorted
+ */
+export function plastics() {
+  const out = new Set();
+  for (const d of RULE_DIRS) {
+    let files = []; try { files = fs.readdirSync(d).filter((f) => f.endsWith('.json')); } catch { continue; }
+    for (const f of files) {
+      let r; try { r = JSON.parse(fs.readFileSync(path.join(d, f), 'utf8')).rules; } catch { continue; }
+      if (['strength', 'modulus', 'density', 'modulus_z'].every((k) => typeof r?.[k]?.value === 'number')) out.add(f.slice(0, -5));
+    }
+  }
+  return [...out].sort();
 }
 
 /**
