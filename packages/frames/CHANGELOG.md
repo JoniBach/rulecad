@@ -2,6 +2,22 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## Unreleased
+
+### Added
+
+- MISUMI's 8 series nuts (issue 308): the catalogue reads the new `slot-nut-10-misumi-*` sets (HNTT8 slide-in and HNTF8
+  drop-in, M4 to M8), so the 4040-misumi-hfs8 takes printed brackets and gussets (on M8 nuts) and fittings on M5 nuts,
+  where it was refused for want of any nut.
+- `guideFit` names the printed carrier that fits where no nut is sold for the rail's thread: an MGN7 (M2) on a 2020
+  and an MGN15 (M3) on a 4040, neither made by MISUMI, are told `carrierModel(slot, { thread, count, pitch })` with its
+  grams and estimated hold. They still fail `guide.fit` until such a nut is given in `given.sets`.
+
+### Changed
+
+- A box of 4040-misumi-hfs8 asked for a blind or end-tap join is now pointed to a printed bracket or gusset, which it
+  can take; Bosch's 4040 L, with no nuts in the kit, is pointed to the two ways it was before.
+
 ## 0.1.11: belt guides (Frames 4)
 
 ### Added

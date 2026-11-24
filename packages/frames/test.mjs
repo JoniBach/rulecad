@@ -934,7 +934,8 @@ test('a bracket refuses what it cannot draw, by name', () => {
   assert.throws(() => bracketModel('2020-misumi-hfs5', { head: 'hex' }), /head is cap or button \(got "hex"\)/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { width: 9 }), /a bracket 9 mm wide leaves no room round M5's 8.5 mm head: 10.5 mm or more/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { thread: 'M8' }), /no M8 nut is made for profile-2020-misumi-hfs5's top face/);
-  assert.throws(() => bracketModel('4040-misumi-hfs8'), /The kit has no nut sets for that family/);
+  assert.throws(() => bracketModel('4040-bosch-l'), /The kit has no nut sets for that family/);
+  assert.equal(bracketModel('4040-misumi-hfs8').thread, 'M8', 'MISUMI\'s 8 series has its own nuts now (#308): the bracket takes the largest, M8');
   assert.throws(() => bracketModel('2020-nobody'), /bracketModel: no profile "2020-nobody"/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { face: 'side' }), /face is top, bottom, front or back/);
 });
