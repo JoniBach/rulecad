@@ -15,7 +15,8 @@ why. Releases before this file was started are described in their pull requests 
   inside corner rounded, and solved as a frame of beams in `@rulecad/fea` for its stiffness, its walls' strain at a
   travel, the force at which they buckle, how its sides move, and its grams. `ends: 'sliding'` lets the walls' ends
   slide on the plates; a wide block of thin walls then comes to Gibson and Ashby's figures, which the tests check.
-- `latticeFindings`: walls in whole lines, openings at least two lines, depth in whole layers, the cells in the bed's
+- `latticeFindings`: walls in whole lines, openings at least two lines (an ordinary cell's narrowest opening measured
+  straight across between its parallel slanted walls, cos θ (h + 2 l sin θ) - t, not up y), depth in whole layers, the cells in the bed's
   plane, the strain at a travel against the material's limit and the travel against buckling, as findings in the
   kit's one shape. Bad cells are refused by name (`lattice.angle`, `lattice.cross`, `lattice.thick`, `lattice.size`,
   `lattice.count`, `lattice.ends`, `lattice.material`, `lattice.printer`).

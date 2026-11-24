@@ -45,7 +45,11 @@ function cellOf(what, p) {
   if (!(typeof angle === 'number' && Math.abs(angle) >= 5 && Math.abs(angle) <= 85)) refuse('lattice.angle', `${what}: angle is the slanted walls' angle to x, from 5 to 85 degrees (a honeycomb) or -5 to -85 (re-entrant); got ${said(angle)}. Nearer 0 the walls stretch instead of bending, past 85 the cell has no width`);
   const s = Math.sin(angle * DEG), c = Math.cos(angle * DEG), dx = l * c, rise = h + l * s;
   if (h / 2 + l * s <= 0) refuse('lattice.cross', `${what}: a re-entrant cell's upright walls must be over 2 l |sin θ| = ${(2 * l * Math.abs(s)).toFixed(3)} mm long, or its top and bottom points cross (got ${h})`);
-  const across = 2 * dx - t, tall = h + 2 * l * s - t / c, gap = Math.min(across, tall);
+  // The opening's narrowest width. An ordinary cell is a convex hexagon, narrowest straight across between a pair of
+  // parallel walls: the uprights, 2 l cos θ apart, or two opposite slanted walls, cos θ (h + 2 l sin θ) apart (their
+  // normal is (sin θ, cos θ)), less one wall's thickness either way. A re-entrant cell is a bow tie, narrowest between
+  // its two inward points, h + 2 l sin θ apart up y, less t / cos θ where the walls meet at a slant.
+  const across = 2 * dx - t, tall = h + 2 * l * s - t / c, gap = Math.min(across, s > 0 ? c * tall : tall);
   if (!(gap > 0)) refuse('lattice.thick', `${what}: walls ${t} mm thick fill the cell (its opening would be ${across.toFixed(3)} mm across and ${tall.toFixed(3)} mm tall): thinner walls, or a larger cell`);
   return { l, h, t, b, s, c, dx, rise, gap, across, tall, reentrant: s < 0 };
 }

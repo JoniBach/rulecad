@@ -1243,3 +1243,21 @@ test('latticeBlock: the block\'s shape weighs what its model says, each inside c
   assert.equal(V.thickness.value, 'x1c.line * 2');
   assert.ok(V.load.rule.includes(`takes it ${travel.toFixed(2)} mm`) && V.load.rule.includes(`go ${m.travel(petg.strainLimit).toFixed(2)} mm`) && V.load.rule.includes(`(${(m.travel(petg.strainLimit) / travel).toFixed(2)} times the margin)`), V.load.rule);
 });
+
+test('latticeCell: an ordinary honeycomb\'s narrowest opening runs straight across between its parallel slanted walls, and lattice.gap reads it', () => {
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), pet = { E: 1810 };
+  // l 1.8, h 0.2, θ 60, t 0.84. Up y between the points: 0.2 + 2 × 1.8 × 0.8660 − 0.84 / 0.5 = 1.638 mm. Across x
+  // between the uprights: 2 × 1.8 × 0.5 − 0.84 = 0.96 mm. Straight across between two opposite slanted walls, along
+  // their normal (sin θ, cos θ): cos 60 × (0.2 + 2 × 1.8 × sin 60) − 0.84 = 0.5 × 3.3177 − 0.84 = 0.819 mm, the narrowest,
+  // and under two 0.42 mm lines (0.84 mm), so the walls print joined
+  const thin = { slant: 1.8, upright: 0.2, angle: 60, thickness: 0.84, depth: 4 };
+  near(latticeCell(thin, pet).gap, 0.8188, 1e-3, 'slanted walls set the gap');
+  const g = latticeFindings(thin, { line: 0.42, layer: 0.2 }).find((f) => f.code === 'lattice.gap');
+  assert.equal(g.level, 'fail'); assert.match(g.text, /0\.82 mm, under two lines/);
+  // thin walls (t 0.01): l 5, h 1, θ 60 gives 0.5 × (1 + 10 × 0.8660) − 0.01 = 4.820, under 2 × 2.5 − 0.01 = 4.99;
+  // l 5, h 2, θ 45 gives 0.7071 × (2 + 10 × 0.7071) − 0.01 = 6.404, under 2 × 3.5355 − 0.01 = 7.061
+  near(latticeCell({ slant: 5, upright: 1, angle: 60, thickness: 0.01, depth: 4 }, pet).gap, 4.820, 1e-3, 'l5 h1 θ60');
+  near(latticeCell({ slant: 5, upright: 2, angle: 45, thickness: 0.01, depth: 4 }, pet).gap, 6.4036, 1e-3, 'l5 h2 θ45');
+  // a regular cell is the same width each way: 2 × 6 × cos 30 − 0.84 = 9.552
+  near(latticeCell({ slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 6 }, pet).gap, 9.5523, 1e-3, 'regular');
+});

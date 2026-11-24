@@ -541,6 +541,7 @@ the cell rows from plate to plate; each plate cuts its row's uprights at their m
 | A wall's peak strain for a strain ε along x | 3 (t/l) cos θ / abs(sin θ) × ε |
 | A wall's peak strain for a strain ε along y | 3 (t/l)(h/l + sin θ) / cos θ × ε |
 | Stress along y at which the uprights buckle | E n² π² (t/l)³ / (24 (h/l)² cos θ), n = 0.686 |
+| The narrowest opening, `gap` (geometry) | the least of 2 l cos θ - t (between the uprights) and cos θ (h + 2 l sin θ) - t (straight across between two opposite slanted walls); re-entrant, the least of 2 l cos θ - t and h + 2 l sin θ - t / cos θ (up y between its inward points) |
 
 A regular honeycomb (h = l, θ = 30°) has E1 = E2 = 2.31 E (t/l)³ and ν = 1; its buckling stress is 0.22 E (t/l)³.
 The formulas leave out the walls' stretching, so they hold while the walls are thin (t / l under about 0.25), and the
