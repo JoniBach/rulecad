@@ -5,6 +5,12 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.25: the arm's sender says what a gait file is (#199)
+### Changed
+
+- The arm's `send.mjs` names a gait's cycles, time and start pose in its dry run's summary, and before it sends one it
+  says the leg must stand in that pose. `STREAMER.md` explains how a leg's stand runs on the same streamer.
+
 ## 0.3.23: the leg on a 17HS4401 knee and 12 V
 
 ### Changed

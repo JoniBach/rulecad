@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   chain, planar2R, chainFromMotion, checkChain, fk, ik, jacobian, manipulability, singularityDistance, zeros,
-  reach, sheetFrame, sheetCorners, PAPER, svgToStrokes, orderStrokes, planToolpath, stepBlocks, estimate, replay
+  reach, sheetFrame, sheetCorners, PAPER, svgToStrokes, orderStrokes, planToolpath, stepBlocks, estimate, replay, gaitBlocks
 } from '@rulecad/robots';
 
 const near = (a, b, tol, what = '') => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
@@ -722,4 +722,57 @@ test('legs and gaits: a crawl stable with its margin, a trot quasi-static with t
   assert.equal(far.ok, false); assert.match(far.findings[0].text, /leg \w+ can't reach its foot/); assert.equal(far.findings[0].code, 'gait.reach');
   assert.throws(() => gait({ legs: quad, pattern: 'gallop', stride: 40, lift: 15, height: 120, period: 1, mass: 1 }), /no pattern "gallop"/);
   assert.throws(() => leg('x', { at: [0, 0], upper: 1, lower: 1 }), /at is the hip/);
+});
+
+test('a gait as step blocks: in time, held to each axis\'s rate, slowed where a joint reverses, from a pose and back to it', () => {
+  // Two joints, 10 steps a degree, a 4 s cycle of 4 frames (1 s each): a rises 0, 90, 180, 90 and b half that, so the
+  // moves are +900/+450 steps twice, then -900/-450 twice, back to the first frame. Each at the gait's pace is 900 steps
+  // in 1 s on its major axis (a). Default jump maxRate / 8 = 1250 steps/s, accel 4 maxRate = 40000 steps/s².
+  const seq = { period: 4, names: ['a', 'b'], q: [[0, 0], [90, 45], [180, 90], [90, 45]] };
+  const axes = [{ name: 'a', stepsPerUnit: 10, maxRate: 10000 }, { name: 'b', stepsPerUnit: 10, maxRate: 10000 }];
+  const r = gaitBlocks(seq, { axes });
+  assert.equal(r.format, 'rulecad.steps/1'); assert.equal(r.kind, 'gait');
+  assert.deepEqual(r.blocks.map((b) => b.steps), [[900, 450], [900, 450], [-900, -450], [-900, -450]]);
+  assert.deepEqual(r.start, [0, 0]);
+  // At the top a reverses, +900 to -900 steps/s (b +450 to -450): the junction is slowed to the share
+  // min(1250 / 1800, 1250 / 900) = 0.6944 of each side's rate, 625 steps/s, so a changes by 1250, its jump, and b by 625.
+  // Block 1: from 900 down to 625 at 40000 steps/s² takes (900² - 625²) / (2 x 40000) = 5.24 steps, so 5;
+  // its time (900 - 625) / 40000 + (900 - 5.2422) / 900 = 0.006875 + 0.994175 = 1.00105 s.
+  // Block 0 from rest: 900² / 80000 = 10.125 steps up, 900 / 40000 + (900 - 10.125) / 900 = 1.01125 s.
+  const [b0, b1, b2, b3] = r.blocks;
+  near(b0.rate.entry, 0, 1e-9, 'from rest'); near(b0.rate.peak, 900, 1e-9, 'at the pace'); near(b0.rate.exit, 900, 1e-9, 'straight on');
+  near(b1.rate.exit, 625, 1e-6, 'slowed at the reversal'); near(b2.rate.entry, 625, 1e-6); near(b3.rate.exit, 0, 1e-9, 'to rest');
+  assert.deepEqual([b0.accelSteps, b0.decelSteps, b1.accelSteps, b1.decelSteps], [10, 0, 0, 5]);
+  near(b0.time, 1.01125, 1e-6, 'block 0'); near(b1.time, 1.00105, 1e-5, 'block 1');
+  near(r.cycleTime, 2 * 1.01125 + 2 * 1.00105, 1e-4, 'a cycle');
+  assert.equal(r.findings.find((f) => f.code === 'gait.period').level, 'pass', 'within 5% of 4 s');
+  assert.equal(r.findings.find((f) => f.code === 'steps.jump').values.slowed, 1);
+  // No axis changes speed at a junction by more than its jump: each axis's speed is the block's rate in proportion
+  const speed = (b, k, end) => (b.rate[end] * b.steps[k]) / b.major;
+  for (let j = 1; j < r.blocks.length; j++) for (const k of [0, 1]) assert.ok(Math.abs(speed(r.blocks[j - 1], k, 'exit') - speed(r.blocks[j], k, 'entry')) <= 1250 + 1e-6, `junction ${j}, axis ${k}`);
+  // a slower axis: a capped at 600 steps/s, under the 900 the pace asks; the cycle takes longer and says so
+  const slow = gaitBlocks(seq, { axes: [{ ...axes[0], maxRate: 600 }, axes[1]], cycles: 2 });
+  assert.ok(slow.blocks.every((b) => b.rate.peak <= 600 + 1e-9));
+  const rate = slow.findings.find((f) => f.code === 'steps.rate');
+  assert.deepEqual([rate.values.clipped, rate.values.axis, rate.values.asked], [8, 'a', 900]);
+  assert.equal(slow.findings.find((f) => f.code === 'gait.period').level, 'warn');
+  assert.ok(slow.cycleTime > 4 * 1.4, `${slow.cycleTime} s: 900 / 600 = 1.5 times the cycle, less a little`);
+  // From a pose 10 degrees back on a, and back to it: 100 steps at half of a's 10000, a rest-to-rest triangle at
+  // 40000 steps/s² peaking at sqrt(40000 x 100) = 2000 steps/s, 2 x 2000 / 40000 = 0.1 s each way
+  const posed = gaitBlocks(seq, { axes, from: [-10, 0] });
+  assert.deepEqual(posed.start, [-100, 0]);
+  assert.deepEqual(posed.blocks.map((b) => b.kind), ['approach', 'gait', 'gait', 'gait', 'gait', 'return']);
+  near(posed.blocks[0].rate.peak, 2000, 1e-9, 'the approach'); near(posed.blocks[0].time, 0.1, 1e-9);
+  assert.deepEqual([0, 1].map((k) => posed.blocks.reduce((t, b) => t + b.steps[k], 0)), [0, 0], 'it ends where it started');
+  // two cycles run on through the first frame without stopping (a reverses there, so 625 again): at rest only at the ends
+  const two = gaitBlocks(seq, { axes, cycles: 2 });
+  assert.equal(two.blocks.length, 8); near(two.blocks[3].rate.exit, 625, 1e-6, 'through the first frame, slowed only for a reversing'); near(two.time, 2 * two.cycleTime, 1e-9);
+  // refused by name
+  refused(() => gaitBlocks({ period: 4, names: ['a'], q: [[0]] }, { axes }), 'gaitBlocks.sequence', /two frames or more/);
+  refused(() => gaitBlocks({ ...seq, q: [[0, 0], [1]] }, { axes }), 'gaitBlocks.sequence', /frame 2 is 2 numbers/);
+  refused(() => gaitBlocks(seq, { axes: [axes[0]] }), 'gaitBlocks.axes', /no axis for joint "b"/);
+  refused(() => gaitBlocks(seq, { axes: [axes[0], { name: 'b', stepsPerUnit: 10 }] }), 'gaitBlocks.axes', /axis "b" maxRate is above 0/);
+  refused(() => gaitBlocks(seq, { axes, cycles: 1.5 }), 'gaitBlocks.cycles', /whole number/);
+  refused(() => gaitBlocks(seq, { axes, from: [0] }), 'gaitBlocks.from', /2 values for a, b/);
+  refused(() => gaitBlocks(seq, { axes, period: 0 }), 'gaitBlocks.period');
 });

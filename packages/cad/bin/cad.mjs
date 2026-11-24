@@ -111,6 +111,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad machine <project>/<assembly>  the machine as plain data: axes, steps, limits, homing, the task, in exports/
   cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
+  cad plot <project>/<assembly>     on an assembly with a gait: its cycle as a step file in exports/ for the streamer, from a pose and
+                                    back to it, and a picture of each axis through the run in .preview/ [--cycles 3] [--period s] [--pose <start>] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners; a frame from bars to square: cut, drill, sides built flat, nuts to load, joins with their torque, diagonals [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by material and filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate; a frame's jigs on plates of their own [--gap mm] [--no-jigs] [--json]
   cad kit <project>/<assembly>      the folder to build it from without the model, in exports/: README.md (checks, what to buy and print, cut list, drilling, the build step by step), buy.csv, the plates' 3MFs, the jigs, each beam's sheet [--pictures] [--json]
@@ -164,7 +166,7 @@ const COMMANDS = ['new', 'remove', 'move', 'import-kle', 'clone', 'agents', 'tru
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'no-jigs', 'expand', 'size', 'write', 'pictures', // cad set, cad rules, cad beams, cad frame, cad plates, cad kit
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'no-jigs', 'expand', 'size', 'write', 'pictures', 'cycles', 'period', // cad set, cad rules, cad beams, cad frame, cad plates, cad kit, cad plot
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting', // cad add join
@@ -1116,7 +1118,8 @@ async function machineCommand(what, ref) {
   const m = await import('../lib/machine.mjs'), s = await buildAssembly(ref);
   if (what === 'machine') { const out = m.machineOf(s), file = m.writeMachine(s, out); (await import('../lib/buildpage.mjs')).writeWiring(s); return console.log(opt('json') ? JSON.stringify(out, null, 2) : file); }
   const source = positional()[2], tol = opt('tol') != null ? Number(opt('tol')) : undefined;
-  if (!source && !opt('calibrate')) throw new Error('usage: cad plot <project>/<assembly> <drawing.svg> [--calibrate]');
+  if (!source && !opt('calibrate') && s.gait && !s.task?.sheet) return gaitPlot(m, s, ref);
+  if (!source && !opt('calibrate')) throw new Error('usage: cad plot <project>/<assembly> <drawing.svg> [--calibrate], or cad plot <project>/<assembly> on an assembly with a gait');
   const { sheetFrame } = await import('@rulecad/robots'), f = s.task?.sheet ? sheetFrame(s.task.sheet) : null;
   const svg = opt('calibrate') ? m.CALIBRATION(f?.width ?? 148, f?.height ?? 210) : fs.readFileSync(source, 'utf8'), base = `${s.name}-${opt('calibrate') ? 'calibration' : path.basename(source, path.extname(source))}`;
   const r = m.plot(s, svg, { tolerance: tol, name: base });
@@ -1125,6 +1128,18 @@ async function machineCommand(what, ref) {
   report(r.findings, { assembly: ref, title: `${ref}: ${base}` });
   if (r.ok) { const w = m.writePlot(s, r, base); console.log(path.relative(WS, w.file)); console.log(path.relative(WS, w.preview)); }
   process.exitCode = failed ? 1 : 0;
+}
+
+// A gait as a step file: --cycles (3), --period (s a cycle; default the gait's), --pose (where it starts and ends; default the one shown)
+async function gaitPlot(m, s, ref) {
+  const cycles = opt('cycles') != null ? Number(opt('cycles')) : 3, period = opt('period') != null ? Number(opt('period')) : undefined;
+  if (!Number.isInteger(cycles) || cycles < 1) throw new Error(`--cycles is a whole number, 1 or more (got ${opt('cycles')})`);
+  if (period != null && !(period > 0)) throw new Error(`--period is the seconds of one cycle, above 0 (got ${opt('period')})`);
+  const r = m.plotGait(s, { cycles, period, from: opt('pose') });
+  if (opt('json')) { console.log(JSON.stringify({ ok: r.ok, findings: r.findings, time: r.time, ...(r.ok ? { file: m.writeGait(s, r).file } : {}) }, null, 2)); process.exitCode = r.ok ? 0 : 1; return; }
+  report(r.findings, { assembly: ref, title: `${ref}: its gait` });
+  if (r.ok) { const w = m.writeGait(s, r); console.log(path.relative(WS, w.file)); console.log(path.relative(WS, w.preview)); }
+  process.exitCode = r.ok ? 0 : 1;
 }
 
 async function platesCommand(what, ref) {
