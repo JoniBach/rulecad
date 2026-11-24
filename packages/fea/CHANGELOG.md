@@ -21,9 +21,12 @@ What changed in each release, for someone upgrading a workspace.
 - Refused by name (`fea.layout.input`, `node`, `support`, `load`, `strength`) before any maths, and
   `fea.layout.unstable` when the programme has no answer. A load may name its node by number, as nodes given as a list
   are named by place.
-- The interior point method stops at a relative error of 1e-9 in equilibrium, the members' limits and the gap; where
-  rounding stalls it short of that (some problems in space with several cases), it keeps its best point and answers
-  if that point is within 1e-6, so a solvable problem is not refused as unstable.
+- The interior point method stops at a relative error of 1e-9 in equilibrium, the members' limits and the gap. Its
+  factorisation drops a pivot only when it has cancelled to a 1e-13 share of its own row's diagonal, not of the
+  largest: near the optimum the diagonal spans many orders, and the old test also dropped the sound small pivots of
+  lightly loaded joints, so equilibrium stalled short of 1e-9 and some solvable problems in space with several cases
+  were refused as unstable. As a last guard, a run that still stalls keeps its best point and answers if that point
+  is within 1e-6.
 
 ## 0.2.11: frames held, sized and their modes said (Frames 3)
 
