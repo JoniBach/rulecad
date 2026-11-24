@@ -1137,3 +1137,141 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   assert.ok(readme.includes(`stop: { open: ${v.stop_open}, close: ${v.stop_close}, tongue: ${v.stop_tongue} }`), 'the README\'s example has the arm\'s stops');
   for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
+
+test('corner-filleted and hyperbolic hinges: the fillet hinge is a strip EI / l when its rounds are small and the circular notch when its flat is; it turns four times as far as a notch as deep; the hyperbola is the stiff, precise end', async () => {
+  const { filletHinge, filletHingeModel, hyperbolicHinge, hyperbolicHingeModel } = await import('@rulecad/flexures');
+  // Rounds of 0.001 mm on a 4 mm flat, 0.84 thick, 8 wide: a strip. I = 8 × 0.84³ / 12 = 0.395136 mm⁴, EI / l =
+  // 2680 × 0.395136 / 4 = 264.74 N·mm a radian; its strain tθ / 2l times 1.2 for the corners, so 2% at
+  // θ = 2 × 4 × 0.02 / (0.84 × 1.2) = 0.1587 rad
+  const strip = filletHingeModel({ flex: 4, radius: 0.001, neck: 0.84, width: 8 }, pla);
+  near(strip.stiffness, 264.74, 0.3, 'a strip\'s EI / l'); near(strip.angle(0.02), 0.1587, 0.0005, 'a strip\'s angle at 2%');
+  // No flat: the neck is two quarter circles, the circular notch of the same radius (the elliptical hinge with equal axes)
+  near(filletHingeModel({ flex: 0.001, radius: 1.5, neck: 0.84, width: 8 }, pla).stiffness, ellipticalHingeModel({ along: 1.5, across: 1.5, neck: 0.84, width: 8 }, pla).stiffness, 2, 'no flat is the circle');
+  // A 4 mm flat with 1.5 mm rounds against a circular notch 1.5 mm deep: the same bar, four times the angle at 2%
+  const fillet = filletHingeModel({ flex: 4, radius: 1.5, neck: 0.84, width: 8 }, pla), notch = notchHingeModel({ radius: 1.5, neck: 0.84, width: 8 }, pla);
+  assert.ok(fillet.angle(0.02) > 3.5 * notch.angle(0.02) && fillet.stiffness < notch.stiffness / 3.5, `${fillet.angle(0.02)} rad against ${notch.angle(0.02)}`);
+  assert.ok(Math.abs(fillet.strain(fillet.angle(0.02)) - 0.02) < 1e-12 && fillet.travel === fillet.angle);
+  // The hyperbola against an ellipse of the same length and depth: stiffer, less angle at the same strain
+  const hyp = hyperbolicHingeModel({ along: 4, across: 2, neck: 0.84, width: 8 }, pla), ell = ellipticalHingeModel({ along: 4, across: 2, neck: 0.84, width: 8 }, pla);
+  assert.ok(hyp.stiffness > 2 * ell.stiffness && hyp.angle(0.02) < ell.angle(0.02) / 2, `${hyp.stiffness} against ${ell.stiffness}`);
+  // Drawn: one piece, the bar t + 2r high, arms of 4r (at least 3) each side; the hyperbola's bar t + 2b
+  const a = filletHinge({ flex: 4, radius: 1.5, neck: 0.84, width: 8 }), ba = measureBoundingBox(a);
+  assert.ok(onePiece(a) && Math.abs(ba[1][1] - ba[0][1] - 3.84) < 1e-6 && Math.abs(ba[1][0] - 19) < 1e-6, 'arms of 6, a notch of 4 + 2 × 1.5');
+  const h = hyperbolicHinge({ along: 4, across: 2, neck: 0.84, width: 8 }), bh = measureBoundingBox(h);
+  assert.ok(onePiece(h) && Math.abs(bh[1][1] - bh[0][1] - 4.84) < 1e-6 && Math.abs(bh[1][0] - 40) < 1e-6, 'arms of 16, a notch of 8');
+  // The thinnest neck is the neck: no slice of either is thinner than t
+  const thinnest = (g) => { const p = jscad.geometries.geom3.toPolygons(g).flatMap((q) => q.vertices).filter((v) => v[1] > 0); return Math.min(...p.map((v) => v[1])); };
+  near(thinnest(a), 0.42, 1e-6, 'the fillet hinge\'s neck'); near(thinnest(h), 0.42, 1e-6, 'the hyperbola\'s neck');
+  assert.throws(() => filletHingeModel({ flex: 4, radius: 1.5, neck: 0.84, width: 8 }, { ...pla, concentration: 0.5 }), /concentration is a factor of 1 or more/);
+  assert.throws(() => hyperbolicHinge({ along: 0, across: 2, neck: 0.84, width: 8 }), /hyperbolicHinge: along is a size above 0/);
+});
+
+test('a spiral spring: the model is the beam solver\'s within 1% held at its hub\'s centre or floating, thickened ends, one piece flat with its coils apart', async () => {
+  const { spiralSpring, spiralSpringModel, spiralPath, beamSystem, equilibrium } = await import('@rulecad/flexures');
+  for (const p of [{ hub: 4, turns: 3, pitch: 2.5, thickness: 0.84, width: 6 }, { hub: 3, turns: 2, pitch: 2, thickness: 0.84, width: 6 }]) {
+    // the strip as the solver's beams, span by span at the drawn thickness, its outer end fixed, the hub turned a milliradian
+    const sp = spiralPath(p), th = sp.path.slice(1).map((_, i) => (sp.thickness[i] + sp.thickness[i + 1]) / 2);
+    const sys = beamSystem({ bodies: { rim: { at: [0, 0], fixed: true }, hub: { at: [0, 0] } }, segments: 1, beams: [{ name: 's', path: sp.path, thickness: th, width: p.width, E: pla.E, from: 'hub', to: 'rim' }] });
+    const d = sys.body.hub.dof, held = equilibrium(sys, { held: new Map([[d, 0], [d + 1, 0], [d + 2, 1e-3]]) }), free = equilibrium(sys, { held: new Map([[d + 2, 1e-3]]) });
+    const m = spiralSpringModel(p, pla), f = spiralSpringModel({ ...p, floating: true }, pla);
+    near(m.stiffness / (held.reaction.get(d + 2) / 1e-3), 1, 0.01, `${p.turns} turns held: the model's stiffness over the solver's`);
+    near(m.strain(1e-3) / held.strain.s, 1, 0.01, `${p.turns} turns held: the strain`);
+    near(f.stiffness / (free.reaction.get(d + 2) / 1e-3), 1, 0.01, `${p.turns} turns floating: the stiffness`);
+    near(f.strain(1e-3) / free.strain.s, 1, 0.01, `${p.turns} turns floating: the strain`);
+    assert.ok(m.strain(1) > f.strain(1), 'holding the hub\'s centre bends the strip more on one side');
+  }
+  // Floating, the moment is even, so the strip's own stiffness is EI / L where it is t thick: L 146.3 mm, EI / L =
+  // 2680 × 6 × 0.84³ / 12 / 146.28 = 5.43 N·mm a radian; the thickened ends (2t over a quarter turn each) add 11%
+  const p = { hub: 4, turns: 3, pitch: 2.5, thickness: 0.84, width: 6 }, f = spiralSpringModel({ ...p, floating: true }, pla);
+  near(f.length, 146.28, 0.05, 'the strip\'s length'); near(f.stiffness / ((pla.E * 6 * 0.84 ** 3) / 12 / f.length), 1.108, 0.01, 'EI / L and the ends');
+  // Its strain is the even moment's t θ / 2L where the strip is thinnest: 0.84 / (2 × 146.28) = 0.002871 a radian, times
+  // the moment's share there: T / (EI / L) = 1.108
+  near(f.strain(1), (1.108 * 0.84) / (2 * 146.28), 2e-5, 'the floating strain a radian');
+  // The coils' least gap at rest is at the thickened ends: 2.5 - 1.5 × 0.84 = 1.24 mm
+  const m = spiralSpringModel(p, pla); near(m.gap, 1.24, 1e-9, 'the gap');
+  const shape = spiralSpring(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape), 'hub, strip and boss as one piece');
+  near(box[1][2] - box[0][2], 6, 1e-6, 'as tall as its width');
+  // the strip's centreline ends at r = 4 + 3 × 2.5 = 11.5 on +x; the boss (radius 2 × 0.84 = 1.68, at least 2) reaches
+  // in to its inner face, so out to 11.5 - 0.84 + 2 × 2 = 14.66
+  near(box[1][0], 14.66, 0.01, 'the boss outside the last coil');
+  assert.throws(() => spiralSpring({ ...p, pitch: 1.2 }), /pitch 1\.2 mm must be more than 1\.5 × the thickness \(1\.26 mm\)/);
+  assert.throws(() => spiralSpringModel({ ...p, turns: 0.5 }, pla), /turns is 1 or more/);
+  assert.throws(() => spiralSpring({ ...p, hub: 0.5 }), /hub's radius 0\.5 mm must be more than the thickness/);
+});
+
+test('a pinned-pinned leaf: a stiff link on two filleted pivots, the beam solver\'s stiffness within 1% and the pseudo-rigid-body 2K / Lp² within 5%; stiff along itself', async () => {
+  const { pinnedLeaf, pinnedLeafModel, beamSystem, equilibrium } = await import('@rulecad/flexures');
+  const p = { length: 20, flex: 3, thickness: 0.84, width: 8 }, m = pinnedLeafModel(p, pla);
+  // the link 3 × 0.84 = 2.52 thick, rounds (2.52 - 0.84) / 2 = 0.84, each pivot 3 + 2 × 0.84 = 4.68 long, 29.36 in all
+  const T = 2.52, r = 0.84, piv = 4.68, span = 29.36, N = 400, neck = (x) => { const d = x < r ? r - x : x > r + 3 ? x - r - 3 : 0; return 0.42 + r - Math.sqrt(Math.max(0, r * r - d * d)); };
+  const half = (s) => (s < piv ? neck(s) : s <= piv + 20 ? T / 2 : neck(s - piv - 20));
+  const path = Array.from({ length: N + 1 }, (_, i) => [(span * i) / N, 0]), tk = Array.from({ length: N }, (_, i) => 2 * half(((i + 0.5) * span) / N));
+  const sys = beamSystem({ bodies: { g: { at: [0, 0], fixed: true }, e: { at: [span, 0] } }, segments: 1, beams: [{ name: 'l', path, thickness: tk, width: 8, E: pla.E, from: 'g', to: 'e' }] });
+  const d = sys.body.e.dof, res = equilibrium(sys, { held: new Map([[d, 0], [d + 1, 0.01], [d + 2, 0]]) });
+  near(m.stiffness / (res.reaction.get(d + 1) / 0.01), 1, 0.01, 'the guided stiffness against the solver');
+  near(m.strain(0.01) / res.strain.l, 1, 0.01, 'the strain against the solver');
+  // The pseudo-rigid-body model: pivots K 24.68 mm apart (20 + 4.68), the link turning δ / Lp, each pivot through it:
+  // k = 2K / Lp² = 2 × 273.7 / 24.68² = 0.899 N/mm, against the integrated 0.873
+  near(m.apart, 24.68, 1e-9, 'pivot to pivot'); near(m.stiffness / ((2 * m.pivot) / m.apart ** 2), 1, 0.05, 'the PRBM');
+  // Along it: each pivot's 3 mm flat 0.84 × 8 in series with the link 20 × 2.52 × 8 and the rounds: under
+  // 1 / (2 × 3 / (2680 × 8 × 0.84) + 20 / (2680 × 8 × 2.52)) = 2122 N/mm, over a thousand times its sideways stiffness
+  assert.ok(m.along < 2122 && m.along > 1000 * m.stiffness, `${m.along} N/mm along`);
+  const shape = pinnedLeaf(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape), 'blocks, pivots and link as one piece');
+  near(box[1][0], 3 + 29.36 + 3, 1e-6, 'blocks of 3 either end'); near(box[1][1] - box[0][1], 2.52, 1e-6, 'as high as the link');
+  assert.throws(() => pinnedLeafModel({ ...p, link: 1 }, pla), /link \(1 mm\) must be at least 1\.5 × the necks' thickness/);
+});
+
+test('an XY stage: two parallel guides in series at right angles, each axis one guide\'s stiffness, each guide\'s drop the other axis\'s stray; one piece', async () => {
+  const { xyStage, xyStageModel } = await import('@rulecad/flexures');
+  const p = { length: 30, thickness: 1.26, width: 8, gap: 10 }, m = xyStageModel(p, pla);
+  // Each axis 2 E w t³ / L³ = 2 × 2680 × 8 × 1.26³ / 30³ = 3.1769 N/mm; along its leaves 2 E w t / L =
+  // 2 × 2680 × 8 × 1.26 / 30 = 1800.96 N/mm
+  near(m.stiffness[0], 3.1769, 1e-4, 'x'); near(m.stiffness[1], 3.1769, 1e-4, 'y'); near(m.across, 1800.96, 1e-6, 'across');
+  // At [2, 1] mm: the second guide drops 3 × 2² / (5 × 30) = 0.08 mm along y, the first 3 × 1² / 150 = 0.02 along x
+  const s = m.parasitic([2, 1]); near(s[0], -0.02, 1e-12, 'stray along x'); near(s[1], -0.08, 1e-12, 'stray along y');
+  // The strain is the worse axis's: a guided leaf's 3tδ / L², 3 × 1.26 × 2 / 900 = 0.0084 at 2 mm
+  near(m.strain([2, -1]), 0.0084, 1e-12, 'the strain at 2 mm');
+  const shape = xyStage({ ...p, fillet: 1.26 }), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape), 'both guides and the stage as one piece');
+  // The first guide's base at x = -3; its shuttle 10 + 2 × 1.26 + 2 × 1.26 = 15.04 wide at x = 30, so out to 45.04;
+  // the second's leaves rise 30 from the shuttle's top (7.52) to the stage, 3 deep: 40.52
+  near(box[0][0], -3, 1e-6, 'the base'); near(box[1][0], 45.04, 1e-6, 'the shuttle'); near(box[1][1], 40.52, 1e-6, 'the stage');
+  assert.throws(() => xyStage({ ...p, gap: 0 }), /xyStage: gap is a size above 0/);
+});
+
+test('a split tube: Saint-Venant torsion of the open section by hand, a hundred times softer than the closed tube, and a warning that its twist shears the layers', async () => {
+  const { splitTube, splitTubeModel } = await import('@rulecad/flexures');
+  const p = { radius: 5, thickness: 0.84, length: 20, slot: 1 }, m = splitTubeModel(p, pla);
+  // G = 2680 / (2 × 1.36) = 985.29 MPa; J = (2π × 5 - 1) × 0.84³ / 3 = 6.0092 mm⁴; k = G J / L = 296.04 N·mm a radian.
+  // The peak shear G t θ / L as a tensile strain √3 G t / (L E) = 0.026745 a radian, so 2% at 0.7478 rad (42.8°)
+  near(m.stiffness, 296.04, 0.01, 'k'); near(m.strain(1), 0.026745, 1e-6, 'the strain a radian'); near(m.angle(0.02), 0.7478, 1e-4, 'the angle at 2%');
+  // Closed, J = 2π r³ t = 659.73 mm⁴: 32,502 N·mm a radian, 110 times as stiff
+  near(m.closed, 32501.6, 0.1, 'closed'); assert.ok(m.closed / m.stiffness > 100);
+  assert.deepEqual(m.findings.map((f) => [f.level, f.code]), [['warn', 'flexure.layers']]);
+  const shape = splitTube(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape), 'one piece: the collars join it round the slot');
+  near(box[1][2], 26, 1e-6, 'a 20 mm slot between collars of 3'); near(box[1][0], 5.42, 1e-6, 'the wall out to r + t / 2');
+  const found = printCheck(jscad.geometries.geom3.toPolygons(shape).map((q) => q.vertices), { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 });
+  assert.deepEqual(found.filter((f) => f.level !== 'pass').map((f) => f.code), [], 'it prints standing without support');
+  assert.throws(() => splitTubeModel({ ...p, slot: 20 }, pla), /slot \(20 mm\) must be under half the tube's round/);
+  assert.throws(() => splitTube({ ...p, thickness: 6 }), /wall \(6 mm\) must be thinner than the tube's mean radius/);
+});
+
+test('the new flexures have ports and models by name, so a report checks them and a lamina can place them', async () => {
+  const { ports, models, report, lamina } = await import('@rulecad/flexures');
+  const kinds = { filletHinge: { flex: 4, radius: 1.5, neck: 0.84, width: 8 }, hyperbolicHinge: { along: 4, across: 2, neck: 0.84, width: 8 }, spiralSpring: { hub: 4, turns: 3, pitch: 2.5, thickness: 0.84, width: 6 }, pinnedLeaf: { length: 20, flex: 3, thickness: 0.84, width: 8 } };
+  for (const [kind, p] of Object.entries(kinds)) {
+    const q = ports(kind, p); assert.ok(q.root && q.end && q.moves && models[kind], kind);
+    const past = models[kind](p, pla).travel(0.03), r = report([{ name: kind, kind, params: p, travel: past, angle: past }], { line: 0.42, layer: 0.2 }, pla);
+    assert.ok(r.findings.some((x) => x.level === 'fail' && x.text.includes('% strain')) && !r.ok, `${kind}: past its limit fails`);
+  }
+  near(ports('filletHinge', kinds.filletHinge).pivot.at[0], 9.5, 1e-9, 'the fillet hinge turns about its flat\'s middle');
+  const sp = ports('spiralSpring', kinds.spiralSpring); near(sp.root.at[0], 14.66 - 2, 1e-9, 'the spiral\'s root at its boss'); assert.equal(sp.moves, 'turn');
+  // A lamina places a fillet hinge between two bodies, and checks its strain like any hinge
+  const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  const made = await lamina({ height: 8, gap: 0.3, material: { E: 2680, strainLimit: 0.02 }, physics: false, ground: rect(-20, -5, 3, 5), bodies: { arm: rect(16, -3, 40, 3) },
+    joints: { h: { kind: 'filletHinge', params: { flex: 4, radius: 1.5, neck: 0.84, arms: 6 }, from: 'ground', to: 'arm' } }, states: { bent: { h: 20 } }, sequence: ['rest', 'bent'] }); // degrees: past the 11.9° that 2% allows
+  assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'fail'), made.findings.filter((x) => x.code === 'lamina.strain').map((x) => x.text).join('; '));
+});
