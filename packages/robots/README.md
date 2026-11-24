@@ -218,6 +218,23 @@ A leg is a chain with a foot. `leg(name, { at, upper, lower, hip, knee })` makes
 
 A crawl's or a walk's body surges along x by `surge` (a quarter of the stride by default), away from each foot as it swings, since a centred body would sit on the line between two feet.
 
+`gaitBlocks(sequence, { axes, cycles, period, from, approach })` turns a gait's frames in time (`{ period, names, q }`, a
+value per driven joint each frame, as cad's `gaitSequence` gives them) into a block file of the same `rulecad.steps/1`
+format, with `kind: 'gait'`: a move from the pose `from` to the first frame, the cycle `cycles` times, and a move back.
+Each block is every axis's move from one frame to the next, so the legs keep to each other however the time is
+stretched.
+
+| Figure | Formula |
+|---|---|
+| A block's rate | major steps over the frame's time, period / frames, held to each axis's `maxRate`: × min(1, maxRate · T / abs(steps[k])) |
+| Speed at a junction | the share λ of each side's rate, λ = min(1, jump[k] / abs(u[k] before - u[k] after)) over the axes, u[k] an axis's speed in the block at its rate; at rest at the run's ends |
+| Speed ramps | λ² ≤ λ'² + 2 a M / R², a backward and a forward pass, a the block's acceleration on its major axis, min over the axes of accel[k] · M / abs(steps[k]); then a trapezoid per block, as `stepBlocks` |
+| To and from the cycle | rest to rest at `approach` (0.5) of the slowest axis's share of its `maxRate` |
+
+`jump` defaults to `maxRate / 8` and `accel` to `4 maxRate` (full speed in 0.25 s): both estimates. The finding
+`gait.period` compares a cycle's time on the motors with the gait's period (a warning past 5% longer), `steps.rate` names
+the axis that held a block back, and `steps.jump` counts the junctions slowed.
+
 Only static and quasi-static gaits: the body's own acceleration, balance and feedback are not modelled. A trot rests on two feet, so it is reported quasi-static with its torques and no stability claim.
 
 ## Not here

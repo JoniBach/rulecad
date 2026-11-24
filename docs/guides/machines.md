@@ -119,6 +119,23 @@ npx cad measured arm/arm arm.play_shoulder=0.03 arm.twist_shoulder=0.015
 predicted against measured grows. `npx cad check arm/arm` then gives you the budget that the arm actually has. The figures above are
 examples: use what your bench says, not these.
 
+## A leg on the same streamer
+
+The streamer knows only axes and steps, so the leg's stand (EXAMPLES chapter 14) runs on it too, its hip's motor on the
+shield's X slot and its knee's on Y:
+
+```sh
+npx cad machine leg/stand              # exports/leg/stand.machine.json: an axis for each motor's shaft, in the shield's slot order
+npx cad plot leg/stand                 # exports/leg/stand-gait.steps.json: three cycles of its gait, from its standing pose and back
+node projects/arm/send.mjs exports/leg/stand-gait.steps.json --machine exports/leg/stand.machine.json --dry-run
+```
+
+`cad plot` on an assembly with a gait needs no drawing. It plays the gait's frames in time, each block every axis's move
+from one frame to the next, slowed where a motor cannot keep up and where a joint turns back, and says how long a cycle
+takes against the gait's period. The stand has no home switches: stand the leg in its pose before you send the file.
+`projects/arm/STREAMER.md` explains how the gait becomes blocks. A machine with more than three motors, such as the
+quadruped, needs more than one Uno: the sender refuses its file by name.
+
 ## A machine on a frame
 
 The arm stands on its own base. A machine with axes along beams (a slider, a plotter, a gantry) stands on a frame

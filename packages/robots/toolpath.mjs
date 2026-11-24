@@ -343,3 +343,91 @@ export function replay(blocks, c, axes) {
   }
   return { strokes, travels, steps: pos, q: pos.map((s, k) => s / spu[k]), pen };
 }
+
+/**
+ * Step blocks for a gait: its frames in time, each driven joint an axis, played for some cycles from a start pose and back
+ * to it. Every block moves all the axes at once, so the legs keep to each other however the time is stretched. A block is
+ * the move from one frame to the next, at the rate that keeps to the gait's period, held to each axis's maxRate. Where the
+ * axes' speeds change between blocks (a foot lifting off or setting down reverses a joint), the run slows so that no axis
+ * changes speed by more than its jump, and it speeds up and slows down at no more than each axis's accel; it starts and
+ * ends at rest. The start pose and the cycle's first frame are joined by a move from rest to rest.
+ * @param {{ period: number, names: string[], q: number[][] }} sequence frames of the cycle, evenly spaced in time: a value per name each (degrees or mm), as cad's gaitSequence gives them
+ * @param {{ axes: { name: string, stepsPerUnit: number, maxRate: number, jump?: number, accel?: number }[], cycles?: number, period?: number, from?: number[], approach?: number }} opts
+ *   axes: one per name, by name; jump: the largest change of speed an axis takes at once, steps/s (default maxRate / 8, an estimate:
+ *   the rate cad machine homes it at, from rest); accel: steps/s² (default 4 maxRate, full speed in 0.25 s, an estimate);
+ *   cycles: how many (default 1); period: seconds a cycle (default the sequence's); from: the pose it starts and ends at,
+ *   a value per name (default the first frame); approach: the share of the axes' fastest it moves to and from the cycle at (default 0.5)
+ * @returns {{ format: string, kind: string, axes: object[], start: number[], period: number, cycles: number, frames: number, blocks: object[], findings: object[], time: number, cycleTime: number }}
+ */
+export function gaitBlocks(sequence, opts) {
+  const sq = sequence;
+  if (!sq || typeof sq !== 'object' || !Array.isArray(sq.names) || !Array.isArray(sq.q)) throw refuse('gaitBlocks.sequence', `gaitBlocks: give a sequence { period, names, q } (got ${JSON.stringify(sq)?.slice(0, 80)})`);
+  if (!sq.names.length || !sq.names.every((n) => typeof n === 'string' && n)) throw refuse('gaitBlocks.sequence', `gaitBlocks: names is a list of the joints' names (got ${JSON.stringify(sq.names)})`);
+  if (sq.q.length < 2) throw refuse('gaitBlocks.sequence', `gaitBlocks: a cycle is two frames or more (got ${sq.q.length})`);
+  sq.q.forEach((r, i) => { if (!Array.isArray(r) || r.length !== sq.names.length || !r.every(num)) throw refuse('gaitBlocks.sequence', `gaitBlocks: frame ${i + 1} is ${sq.names.length} numbers, one for each of ${sq.names.join(', ')} (got ${JSON.stringify(r)})`); });
+  if (!opts || typeof opts !== 'object' || !Array.isArray(opts.axes)) throw refuse('gaitBlocks.axes', `gaitBlocks: axes is a list of { name, stepsPerUnit, maxRate }, one for each of ${sq.names.join(', ')}`);
+  const { cycles = 1, approach = 0.5 } = opts, period = opts.period ?? sq.period;
+  if (!Number.isInteger(cycles) || cycles < 1) throw refuse('gaitBlocks.cycles', `gaitBlocks: cycles is a whole number, 1 or more (got ${JSON.stringify(cycles)})`);
+  if (!num(period) || !(period > 0)) throw refuse('gaitBlocks.period', `gaitBlocks: period is the seconds of one cycle, above 0 (got ${JSON.stringify(period)})`);
+  if (!num(approach) || !(approach > 0 && approach <= 1)) throw refuse('gaitBlocks.approach', `gaitBlocks: approach is a share of the axes' fastest, above 0 and at most 1 (got ${JSON.stringify(approach)})`);
+  const axes = sq.names.map((name) => {
+    const a = opts.axes.find((x) => x?.name === name);
+    if (!a) throw refuse('gaitBlocks.axes', `gaitBlocks: no axis for joint "${name}" (axes given: ${opts.axes.map((x) => x?.name).join(', ')})`);
+    const { stepsPerUnit: spu, maxRate, jump = maxRate / 8, accel = 4 * maxRate } = a;
+    for (const [k, v] of [['stepsPerUnit', spu], ['maxRate', maxRate], ['jump', jump], ['accel', accel]]) if (!num(v) || !(v > 0)) throw refuse('gaitBlocks.axes', `gaitBlocks: axis "${name}" ${k} is above 0 (got ${JSON.stringify(v)})`);
+    return { name, stepsPerUnit: spu, maxRate, jump, accel, unit: a.unit ?? 'deg' };
+  });
+  const N = axes.length;
+  if (opts.from != null && (!Array.isArray(opts.from) || opts.from.length !== N || !opts.from.every(num))) throw refuse('gaitBlocks.from', `gaitBlocks: from is a pose, ${N} values for ${sq.names.join(', ')} (got ${JSON.stringify(opts.from)})`);
+  const toSteps = (row) => row.map((v, k) => Math.round(v * axes[k].stepsPerUnit)), frames = sq.q.map(toSteps), n = frames.length, dt = period / n;
+  const home = opts.from ? toSteps(opts.from) : frames[0];
+  let capped = 0, worst = null;
+  // A segment from one position to the next, its nominal time T: its major axis's rate at the gait's pace, held to the axes' maxRate
+  const segment = (from, to, T, kind, frame) => {
+    const steps = to.map((s, k) => s - from[k]), major = Math.max(...steps.map(Math.abs));
+    if (!major) return null;
+    let c = 1, by = null;
+    for (let k = 0; k < N; k++) if (steps[k]) { const f = (axes[k].maxRate * T) / Math.abs(steps[k]); if (f < c) { c = f; by = k; } }
+    if (c < 1) { capped++; if (!worst || 1 / c > worst.over) worst = { over: 1 / c, axis: axes[by].name, asked: Math.abs(steps[by]) / T, maxRate: axes[by].maxRate }; }
+    const R = (major / T) * c, a = Math.min(...steps.flatMap((s, k) => (s ? [(axes[k].accel * major) / Math.abs(s)] : [])));
+    return { kind, frame, steps, major, R, a, u: steps.map((s) => (s / major) * R) };
+  };
+  // A run from rest to rest: junction speeds as a share lam of each side's rate, held to the axes' jump, then a backward
+  // and a forward pass so each block can reach its exit from its entry at its acceleration, then a trapezoid per block
+  const run = (segs) => {
+    const m = segs.length, lam = new Array(m + 1).fill(0);
+    for (let j = 1; j < m; j++) { let l = 1; for (let k = 0; k < N; k++) { const d = Math.abs(segs[j - 1].u[k] - segs[j].u[k]); if (d > 0) l = Math.min(l, axes[k].jump / d); } lam[j] = l; }
+    for (let j = m - 1; j >= 0; j--) lam[j] = Math.min(lam[j], Math.sqrt(lam[j + 1] ** 2 + (2 * segs[j].a * segs[j].major) / segs[j].R ** 2));
+    for (let j = 0; j < m; j++) lam[j + 1] = Math.min(lam[j + 1], Math.sqrt(lam[j] ** 2 + (2 * segs[j].a * segs[j].major) / segs[j].R ** 2));
+    return segs.map((g, j) => {
+      const { R, a, major: M } = g, e = lam[j] * R, x = lam[j + 1] * R, p = Math.max(e, x, Math.sqrt(Math.min(R * R, (2 * a * M + e * e + x * x) / 2)));
+      const d1 = (p * p - e * e) / (2 * a), d3 = (p * p - x * x) / (2 * a), cruise = Math.max(0, M - d1 - d3), time = (p - e) / a + (p > 0 ? cruise / p : 0) + (p - x) / a;
+      return { type: 'move', kind: g.kind, ...(g.frame != null ? { frame: g.frame } : {}), steps: g.steps, major: M, rate: { entry: e, peak: p, exit: x, accel: a }, accelSteps: Math.round(d1), decelSteps: Math.round(d3), time, slowed: lam[j] < 1 && j > 0 };
+    });
+  };
+  const fastest = (from, to, kind) => { // to and from the cycle at a share of the axes' fastest
+    const steps = to.map((s, k) => s - from[k]), T = Math.max(...steps.map((s, k) => Math.abs(s) / (axes[k].maxRate * approach)));
+    return T > 0 ? segment(from, to, T, kind, null) : null;
+  };
+  const blocks = [], there = fastest(home, frames[0], 'approach');
+  if (there) blocks.push(...run([there]));
+  const segs = [];
+  let at = frames[0], carry = 0;
+  for (let c = 0; c < cycles; c++) for (let i = 0; i < n; i++) {
+    carry += dt;
+    const to = frames[(i + 1) % n], g = segment(at, to, carry, 'gait', i);
+    if (g) { segs.push(g); at = to; carry = 0; }
+  }
+  const cycleBlocks = segs.length ? run(segs) : [];
+  blocks.push(...cycleBlocks);
+  const back = fastest(frames[0], home, 'return');
+  if (back) blocks.push(...run([back]));
+  const time = blocks.reduce((t, b) => t + b.time, 0), cycleTime = cycleBlocks.reduce((t, b) => t + b.time, 0) / cycles, slowed = cycleBlocks.filter((b) => b.slowed).length;
+  for (const b of blocks) delete b.slowed;
+  const findings = [];
+  if (capped) findings.push({ level: 'info', text: `${capped} move${capped === 1 ? '' : 's'} slowed by an axis's step-rate limit: at a ${period} s cycle ${worst.axis} would step at ${Math.round(worst.asked)} steps/s, past its ${Math.round(worst.maxRate)}`, code: 'steps.rate', values: { clipped: capped, axis: worst.axis, asked: worst.asked, maxRate: worst.maxRate } });
+  if (slowed) findings.push({ level: 'info', text: `${slowed} change${slowed === 1 ? '' : 's'} of direction slowed so no axis changes speed by more than its jump at once (${axes.map((a) => `${a.name} ${Math.round(a.jump)}`).join(', ')} steps/s)`, code: 'steps.jump', values: { slowed } });
+  const late = cycleTime > period * 1.05;
+  findings.push({ level: late ? 'warn' : 'pass', text: `a cycle takes ${cycleTime.toFixed(2)} s on the motors, against the gait's ${period} s${late ? `: ${capped ? 'the motors are too slow for it' : 'its changes of direction slow it'}, so the legs step more slowly than the gait was checked at (a quasi-static gait still holds)` : ''}`, code: 'gait.period', values: { cycleTime, period } });
+  return { format: 'rulecad.steps/1', kind: 'gait', axes, start: home, period, cycles, frames: n, blocks, findings, time, cycleTime };
+}
