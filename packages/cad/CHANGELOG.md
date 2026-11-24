@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## 0.7.72: strength in optimisation
+## 0.7.79: strength in optimisation
 ### Added
 
 - A problem takes `strain`, a strain limit (a share: `"pla.strength / pla.modulus / 2"`), in place of `stress`: the
@@ -21,6 +21,25 @@ and head, the parts it passes through and the part it ends in.
   PA-CF has its printed fittings sized from the kit's set.
 
 No printed size moved.
+
+## 0.7.75: parts milled, cast or printed in a powder bed
+### Added
+
+- Problems take how the part is made: `"mill": "+z"` (milled from that side, no undercuts), `"cast": "+z"` or
+  `"cast": { "draw": "z", "parting": 6 }` (a mould drawn off one way, or two halves from a parting plane), with
+  `"symmetry": { "mirror": "y", "turns": 4, "axis": "z" }` and `"extrude": "x"` for any process, and
+  `"voids": "refused"` for a metal powder bed print. The problem schema has each field.
+- `cad optimise` says how a milled or cast part is made and counts its undercuts (none unless an avoid region sits
+  behind material), says what is mirrored or extruded, and fails on a problem that refuses voids with each enclosed
+  void's volume and centre. `--json` gives `process`, `undercuts`, `symmetry`, `extrude`, `grey` and `voids`.
+- `cad optimise` warns when more than a tenth of a milled, cast, symmetric or extruded result is grey (neither empty
+  nor solid), and refuses a symmetry that swaps the side the part is made from for its opposite.
+- Rule sets `mill-3axis`, `mould-injection` and `dmls` (from @rulecad/rules) to read the processes' limits from.
+
+### Changed
+
+- Every optimised result is made again once, since topopt's solver file changed; a problem without the new fields
+  gets the same densities as before. No printed size moved.
 
 ## 0.7.70: printed bolts into slot nuts, a slotted snap pot
 ### Fixed

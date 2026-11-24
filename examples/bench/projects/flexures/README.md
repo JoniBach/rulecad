@@ -101,6 +101,12 @@ until it clicks (predicted 6 N in PLA, the barb's halves at 0.6% strain) and pul
 it for good. Where a flexure's travel is enough, it has none of this play and nothing to break free; where it isn't,
 this is the joint.
 
+`lattice` (`npx cad export flexures/lattice`) is a spring block: re-entrant honeycomb cells, two lines thick, between
+two 3 mm plates, printed flat in PETG (38.4 x 52.3 x 6 mm, 3.72 g). Stand it on a plate and press the top plate with
+the dial gauge: predicted 5.09 N/mm, so 5 N (510 g) presses it 0.98 mm, and its walls reach PETG's strain limit at
+2.03 mm. Watch its sides: they should draw in by 0.45 of the press's strain, where a plain honeycomb's bulge. Past
+about 30 N the walls buckle and the block gives way sharply; that is where its stiffness stops being a straight line.
+
 ## Results
 
 `results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA

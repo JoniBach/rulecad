@@ -11,7 +11,7 @@ import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, undercuts, voids, grey } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
@@ -77,6 +77,9 @@ export async function readProblem(project, ref) {
     ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
+    // How it's made other than printed: milled from a side, cast in a mould; symmetric, extruded (topopt's filters)
+    ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: typeof p.cast === 'string' ? p.cast : { draw: p.cast.draw, ...(p.cast.parting != null ? { parting: ev(p.cast.parting) } : {}) } } : {}),
+    ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
     ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
     ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
@@ -87,7 +90,7 @@ export async function readProblem(project, ref) {
   // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
   // tipped corners leave dips that slice as islands, and the layers step out no further for it)
   if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42, ...(p.outline?.tip ? { tip: true } : {}) }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
-  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
+  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical, voids: p.voids || 'allowed' };
 }
 
 /**
@@ -104,6 +107,23 @@ function holdEmpty(spec) {
   for (let e = 0; e < g.cells; e++) if (spec.passive[e] >= 0) for (let k = 0; k < corners; k++) on[g.edof[e * g.cellDofs + dim * k] / dim] = 1;
   for (let m = 0; m < g.nodes; m++) if (!on[m]) for (let a = 0; a < dim; a++) spec.fixed[dim * m + a] = 1;
   return spec;
+}
+// How a result is made, and what that process can't make in it: for a milled or cast part, the cells a tool or mould
+// half could not reach (undercuts, none by construction unless an avoid region or the space's own shape leaves material between a cell and its side), how grey it is; where enclosed voids are
+// refused (a powder bed print, a trapped core), each void with its volume (mm³, or mm² in 2D) and where it is
+function made(r, spec, density) {
+  const p = r.problem, out = {};
+  if (p.mill || p.cast) {
+    const c = spec.cast, from = p.mill || (typeof c === 'string' ? c : c.draw), u = undercuts(spec.grid, density, { from, ...(c && typeof c === 'object' ? { parting: c.parting } : {}) });
+    out.process = p.mill ? { mill: p.mill } : { cast: typeof c === 'string' ? c : { draw: c.draw, parting: round(c.at, 3) } };
+    out.undercuts = u.count;
+  }
+  if (p.symmetry) out.symmetry = p.symmetry;
+  if (p.extrude) out.extrude = p.extrude;
+  // How grey it came out: a process or a tie can leave no clear part (a 2D section milled from its side)
+  if (p.mill || p.cast || p.symmetry || p.extrude) out.grey = round(grey(density, spec.passive), 3);
+  if (r.voids === 'refused') out.voids = voids(spec.grid, density, { origin: spec.origin }).map((v) => ({ volume: round(v.volume, 3), at: v.at.map((x) => round(x, 3)) }));
+  return out;
 }
 const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 /**
@@ -126,7 +146,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
   // Two keeps: the densities, by the problem and the code that decides them (the slow part), and the shape drawn from
   // them, by everything: a change to how shapes are drawn redraws them without optimising again
   // The shape's key holds this file too, so a change to how cad draws a result (anchored below) redraws it
-  const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
+  const hash = digest([VERSION, r.problem, r.outline, r.voids, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
   const spec = holdEmpty(discretise(r.problem)), densities = paths.cache('densities', `${densitiesKey(r.problem)}.json`);
   // A mark that this problem has been optimised before (by any solver), so a run can say whether it's the solver that changed
@@ -206,6 +226,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
     grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
+    ...made(r, spec, o.density),
     volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.mechanism ? { mechanism: o.mechanism } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
     supports: named(r.problem.supports), loads: named(r.problem.loads),

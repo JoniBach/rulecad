@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## 0.3.21: ABS, ASA and PA-CF with ranges
+## 0.3.23: ABS, ASA and PA-CF with ranges
 ### Added
 
 - `abs`, `asa` and `pa_cf`: Polymaker PolyLite ABS (data sheet V5.6), Bambu Lab ASA (V2.0) and Bambu Lab PAHT-CF (V2.0,
@@ -11,6 +11,19 @@ read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value chan
   Poisson's ratio (an estimate: no maker publishes one) and, for ASA and PAHT-CF, the softening point.
 - A rule may give the range it is found in, `low` and `high` in its unit. The printed plastics carry their data
   sheets' spread: `pla` and `petg` gain `low` and `high` on their moduli and strengths. No value changed.
+
+## 0.3.22: how parts are made
+### Added
+
+- `mill-3axis`: 3-axis milling's thinnest walls (metal 0.8 mm, plastic 1.5 mm, and what is feasible), inside corners
+  a third of the pocket's depth, pockets at most four times as deep as wide, and holes from 1 mm (community, Protolabs
+  Network's CNC design guide).
+- `mould-injection`: draft for injection moulding: a degree per inch of depth, 0.5 at least, 3 at a shutoff and for a
+  light texture, 5 for a heavy one (community, Protolabs' draft guidelines).
+- `dmls`: metal powder bed printing: overhangs at 45 degrees (316L: 55), 2.032 mm bridges, holes from 0.635 mm,
+  features from 0.3048 mm (community, Protolabs' DMLS guide), and powder escape holes from 2 mm (community, Xometry).
+
+No existing value changed.
 
 ## 0.3.20: MISUMI slot 10 nuts
 ### Added
