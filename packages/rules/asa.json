@@ -1,0 +1,13 @@
+{
+  "_doc": "Bambu Lab ASA, printed, for analysis: stiffness and strength along the layers (x-y) and across them (z). Printed values vary with the printer, settings and spool: low and high are the data sheet's own spread either side; measure your own (the lever bench does) and record it as kind measured.",
+  "name": "asa",
+  "rules": {
+    "modulus": {"value": 2450, "low": 2180, "high": 2720, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), ± 270", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 527, GB/T 1040), as hosted by a reseller: https://www.additive-x.com/shop/mpattachments/file/viewonline/id/612/product_id/2399", "checked": "2026-11-24"},
+    "modulus_z": {"value": 2120, "low": 1860, "high": 2380, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 260", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength": {"value": 52, "low": 47, "high": 57, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 5", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength_z": {"value": 35, "low": 31, "high": 39, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 4", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "poisson": {"value": 0.35, "rule": "Poisson's ratio (Bambu publish none): an estimate for a printed amorphous plastic, as the kit takes PLA's (0.36) and PETG's (0.38)", "kind": "estimate", "source": "An estimate of @rulecad/rules: no maker's data sheet gives one", "checked": "2026-11-24"},
+    "density": {"value": 1.05, "unit": "g/cm³", "rule": "Density of the filament", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 1183)", "checked": "2026-11-24"},
+    "softening": {"value": 100, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Bambu Lab ASA technical data sheet V2.0 (ISO 75)", "checked": "2026-11-24"}
+  }
+}

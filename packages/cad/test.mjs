@@ -6314,3 +6314,17 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('the printed plastics ABS, ASA and PA-CF load in cad values with their units, and a strain limit reads off them', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/plastics', { uses: ['abs', 'asa', 'pa_cf'], variables: {
+      // PA-CF's strain at its strength along the layers: 88 / 3860 = 0.0228
+      give: { value: 'pa_cf.strength / pa_cf.modulus', rule: 'Strain at strength' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const all = JSON.parse(cad('values', 'demo/plastics', '--json')).values, at = (n) => all.find((v) => v.name === n);
+    assert.ok(Math.abs(at('give').value - 88 / 3860) < 1e-9, JSON.stringify(at('give')));
+    const rules = JSON.parse(cad('rules', 'demo/plastics', '--json')).variables, rule = (n) => rules.find((v) => v.name === n);
+    assert.deepEqual([rule('abs.modulus').value, rule('abs.modulus').unit, rule('asa.strength_z').value, rule('asa.strength_z').unit, rule('pa_cf.density').unit], [2246.6, 'MPa', 35, 'MPa', 'g/cm³']);
+  } finally { done(); }
+});

@@ -276,6 +276,8 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
 //   { "ascending": ["tap_drill", "major_diameter", "clearance"], "says": "…" }   the names it has, each larger than the last
 //   { "near": "tap_drill", "to": "major_diameter - pitch", "within": "0.2 * pitch", "says": "…" }   expressions over its own rules
 // and a field marked "list": true holds a list (the lengths a screw is sold in), which must ascend.
+// A number may carry the range it is found in, "low" and "high" (a printed plastic's, which varies with the printer and
+// the spool), each a number in its unit, low at most the value and high at least it.
 const KINDS = ['measured', 'spec', 'community', 'default', 'derived', 'estimate'];
 const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 /**
@@ -294,6 +296,11 @@ export function checkRuleSet(set, vocabulary) {
     if (!(typeof r.rule === 'string' && r.rule.length > 5)) f('rules.says', `${name} doesn't say what it is ("rule")`, name);
     if (!KINDS.includes(r.kind)) f('rules.kind', `${name}: kind ${JSON.stringify(r.kind)} is not one of ${KINDS.join(', ')}`, name);
     if (!(typeof r.source === 'string' && r.source)) f('rules.source', `${name} has no source`, name);
+    for (const [k, ok] of [['low', (v) => v <= r.value], ['high', (v) => v >= r.value]]) {
+      if (r[k] == null) continue;
+      if (!finite(r[k]) || !finite(r.value)) f('rules.range', `${name}: ${k} is a number in the rule's unit, beside a number value (got ${JSON.stringify(r[k])})`, name);
+      else if (!ok(r[k])) f('rules.range', `${name}: ${k} (${r[k]}) is ${k === 'low' ? 'above' : 'below'} its value (${r.value}): the range it is found in holds the value`, name, { value: r.value, [k]: r[k] });
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.checked))) f('rules.checked', `${name}: checked is the date it was last checked, YYYY-MM-DD (got ${JSON.stringify(r.checked)})`, name);
     if (set.part) {
       if (r.unit != null && !units.includes(r.unit)) f('rules.unit', `${name}: unit ${JSON.stringify(r.unit)} is not one of ${units.filter(Boolean).join(', ')}`, name);

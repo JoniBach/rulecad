@@ -128,6 +128,9 @@ falls by 46%. Two things to know:
   cells, not on finer ones. Check the final part on finer cells (cad's `analysis` with a `cell`), and set the limit
   with that margin in mind.
 - **It may not settle within its steps.** This one ran its 1,000 steps with the peak hovering 5% over the limit.
+- **Stress at each cell's corners does not round it either.** Limiting every cell at its four corners, where a sharp
+  corner's stress shows, in place of its centre, was tried on 2 mm cells: at 25 MPa the peak as made fell from 33.7 to
+  28.9 MPa, but the corner stayed solid, and at 20 MPa the run did not settle (a peak of 109 MPa). It is not built in.
 
 ## Mechanisms
 
@@ -159,6 +162,30 @@ made between them. A hinge that survives erosion has real width, and the result 
 price: the design as made is stiffer than the eroded copy it was optimised on, by a hinge width's worth of
 stiffness (which goes as the width cubed), so `result.mechanism` reports what the design as made does, and it moves
 less than the run's progress figures suggested.
+
+### A mechanism's strength
+
+A mechanism bends, so its hinges are where it breaks. Give a mechanism a `stress` limit (MPa), or a `strain` limit (a
+share of the length, times the material's E: a printed plastic's strain at yield is about its strength over its
+modulus), and once optimised it is checked against it at its input force:
+
+```js
+const result = optimise(discretise({ ...inverter, material: { E: 2680, nu: 0.36 }, strain: 0.003 })); // PLA, 0.3%
+result.stress; // { peak, limit, strain, strainLimit, force, travel }
+```
+
+`peak` is the largest von Mises stress in the design as made (cells at least half solid) under the input force;
+`force` is the input force that takes the peak to the limit, and `travel` how far the output moves then. The part is
+linear, so both are the input force and the output's travel times limit over peak. For the PLA inverter above (40 by
+20 mm, 4 mm thick, pushed with 10 N against springs of 0.268 N/mm), the peak is 12.1 MPa and the output moves 1.81 mm,
+so at 0.3% (8.04 MPa) it may be pushed with 10 × 8.04 / 12.1 = 6.6 N, its output then 1.2 mm along.
+
+The limit checks the layout; it does not shape it yet. Two ways of optimising under it were tried on that inverter and
+neither held it: the lightest layout's augmented Lagrangian added to the travel (the design lost all its travel), and
+the stresses' p-norm (p = 8, relaxed by density to the power 2.5) as a second limit for the method of moving
+asymptotes, after de Leon, Alexandersen, Fonseca and Sigmund (2015), with Le et al.'s (2010) correction to the largest
+stress (on the design as made the peak jumps from step to step as hinge cells cross half solid, and the final peaks
+missed the limit by up to 80%).
 
 ## Checked against the published code
 
@@ -197,5 +224,9 @@ Its gradients agree with finite differences through the filter and the projectio
 - Taubin (1995). A signal processing approach to fair surface design. *SIGGRAPH '95*, 351–358.
 - Senhora, Giraldo-Londoño, Menezes, Paulino (2020). Topology optimization with local stress constraints: a stress
   aggregation-free approach. *Structural and Multidisciplinary Optimization* 62, 1639–1668.
+- Le, Norato, Bruns, Ha, Tortorelli (2010). Stress-based topology optimization for continua. *Structural and
+  Multidisciplinary Optimization* 41, 605–620.
+- de Leon, Alexandersen, Fonseca, Sigmund (2015). Stress-constrained topology optimization for compliant mechanism
+  design. *Structural and Multidisciplinary Optimization* 52, 929–943.
 - Svanberg (1987). The method of moving asymptotes: a new method for structural optimization. *International Journal
   for Numerical Methods in Engineering* 24, 359–373.

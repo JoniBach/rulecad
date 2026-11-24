@@ -5,6 +5,17 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+
+### Added
+
+- A problem takes `strain`, a strain limit (a share: `"pla.strength / pla.modulus / 2"`), in place of `stress`: the
+  stress limit is it times the material's modulus. A mechanism given either is optimised as before and then checked:
+  `cad optimise` gives its peak stress at its push and the push and output travel that take it to the limit.
+- The rule set schema takes `low` and `high` on a rule: the range it is found in.
+
+No printed size moved.
+
 ## 0.7.69: --dry-run never writes
 
 ### Fixed
