@@ -8,9 +8,10 @@
 // change. The result is a table: each group's profile, the limit that set it (the one its next lighter profile breaks)
 // and the margin, written into the assembly by cad frame --size --write.
 // Units: mm, N, MPa, kg, Hz.
-import { sizing } from '@rulecad/fea/frame';
-import { profileModel, profileChoices } from '@rulecad/frames';
-import { frameModelOf, FRAME_CHECK, excitesOf } from './framecheck.mjs';
+import { sizing, frame as solveFrame } from '@rulecad/fea/frame';
+import { profileModel, profileChoices, beamModel, boughtFittingModel, JOINS } from '@rulecad/frames';
+import { fixingModel } from '@rulecad/fixings';
+import { frameModelOf, FRAME_CHECK, excitesOf, rackOf, sideways, freeSaid } from './framecheck.mjs';
 import { framesContext } from './beams.mjs';
 import { givenFor } from './frames.mjs';
 
@@ -24,7 +25,7 @@ export const FRAME_SIZING = {
 };
 
 const SIZE_KEYS = ['profiles', 'groups', 'limits', 'by'];
-const LIMIT_KEYS = ['deflection', 'stress', 'buckling', 'frequency'];
+const LIMIT_KEYS = ['deflection', 'stress', 'buckling', 'frequency', 'rack'];
 
 /**
  * frame.size read and refused by name: { profiles, groups, limits, by }.
@@ -41,14 +42,64 @@ export function sizeOption(s) {
   if (typeof groups !== 'object' || Array.isArray(groups)) throw new Error(`frame.size.groups is { "legs": ["z1", "z2", "z3", "z4"] }: beams that must take one profile, by name (got ${shown(o.groups)})`);
   for (const [g, list] of Object.entries(groups)) if (!Array.isArray(list) || !list.length || !list.every((x) => typeof x === 'string')) throw new Error(`frame.size.groups.${g} is a list of beams by name (got ${shown(list)})`);
   const limits = o.limits ?? {};
-  if (typeof limits !== 'object' || Array.isArray(limits)) throw new Error(`frame.size.limits is { "deflection": mm, "stress": margin, "buckling": factor, "frequency": Hz } (got ${shown(o.limits)})`);
-  for (const k of Object.keys(limits)) if (!LIMIT_KEYS.includes(k)) throw new Error(`frame.size.limits has no "${k}": it takes deflection (mm), stress (a margin), buckling (a factor) and frequency (Hz)`);
+  if (typeof limits !== 'object' || Array.isArray(limits)) throw new Error(`frame.size.limits is { "deflection": mm, "stress": margin, "buckling": factor, "frequency": Hz, "rack": mm } (got ${shown(o.limits)})`);
+  for (const k of Object.keys(limits)) if (!LIMIT_KEYS.includes(k)) throw new Error(`frame.size.limits has no "${k}": it takes deflection (mm), stress (a margin), buckling (a factor), frequency (Hz) and rack (the sway allowed at the top, mm)`);
   const out = {};
   for (const [k, v] of Object.entries(limits)) { const x = s.num(v); if (!(x > 0)) throw new Error(`frame.size.limits.${k} is above 0 (got ${shown(v)})`); out[k] = x; }
   if (o.by != null && !['mass', 'cost'].includes(o.by)) throw new Error(`frame.size.by is mass or cost (got ${shown(o.by)})`);
   if (o.by === 'cost') throw new Error('frame.size.by is cost, and no profile set in the kit gives a price per metre: size by mass');
   return { profiles, groups, limits: out, by: o.by ?? 'mass' };
 }
+
+// The world direction a beam's face looks, from its section's normal: x across its width, y up its height, turned by roll
+const faceAxes = (b, roll) => { const X = [b.W[0], b.W[4], b.W[8]], Y = [b.W[1], b.W[5], b.W[9]], c = Math.cos((roll * Math.PI) / 180), sn = Math.sin((roll * Math.PI) / 180); return { X: X.map((v, k) => c * v + sn * Y[k]), Y: Y.map((v, k) => c * v - sn * X[k]) }; };
+const looks = (ax, n) => ax.X.map((v, k) => v * n[0] + ax.Y[k] * n[1]);
+
+/**
+ * Whether a join still goes together when its beams take other profiles: a's end on b's face where the drawn join
+ * meets it (the face of b's new profile that looks the same way in the world). A blind join needs a bore in a's end and
+ * a slot in b's face whose opening passes the screw (the bore's thread) and holds its button head under the lips, the
+ * head no wider than the slot's cavity; an end-tap join a bore in a's end and, where b's far face has a slot, a cap
+ * head wider than its opening. A bought fitting must fit both profiles (its set's fitting.fit). A printed fitting is
+ * drawn for the profiles it joins, so it goes with any; a join whose fitting comes later is not held to one. Null where
+ * it fits, else why not. @param {object} x a frame join (frameModelOf's joins) @param {{ model: object, roll: number }} pa a's profile as sized
+ * @param {{ model: object, roll: number }} pb b's @param {object} given the workspace's sets
+ * @returns {string | null}
+ */
+export function joinFit(x, pa, pb, given) {
+  const kind = x.j.kind, A = pa.model, Bm = pb.model, name = (m) => m.name.replace(/^profile-/, '');
+  if (x.j.fitting && x.j.fitting !== 'printed' && JOINS[kind]?.bought) {
+    let fm;
+    try { fm = boughtFittingModel(x.j.fitting, { given, profile: Bm, other: A, join: kind }); } catch (e) { return String(e.message).replace(/^\w+: /, ''); }
+    const bad = fm.findings.find((f) => f.code === 'fitting.fit' && f.level === 'fail');
+    return bad ? `${x.j.fitting} does not fit ${name(A)} to ${name(Bm)}: ${bad.text}` : null;
+  }
+  if (!['blind', 'end-tap'].includes(kind)) return null;
+  const e = String(x.j.end ?? 'a')[0], bores = A.bores ?? [];
+  if (!bores.length) return `${name(A)} has no bore in its ends to tap, and a ${kind} join screws into one`;
+  // b's face where the join meets it, in the world, and the place of the new profile that looks that way
+  const drawn = x.B.m.places.find((q) => q.name === x.j.model.b.place);
+  if (!drawn) return null;
+  const n = looks(faceAxes(x.B, 0), drawn.normal), B = beamModel(Bm, { length: x.B.L }), ax = faceAxes(x.B, pb.roll);
+  const place = B.places.filter((q) => { const w = looks(ax, q.normal); return w[0] * n[0] + w[1] * n[1] + w[2] * n[2] > 0.99; })[0];
+  const thread = bores[0].thread;
+  if (!thread) return `${name(A)}'s bores name no thread`;
+  const head = (form) => { try { return fixingModel(`${thread} ${form}`); } catch { return null; } };
+  if (kind === 'blind') {
+    if (!place?.slot) return `${name(Bm)}'s face there is closed, and a blind join's head sits in a slot`;
+    const sl = Bm.slots[place.slot], fx = head('button');
+    if (!sl || !fx) return null;
+    if (fx.major > sl.opening) return `${a(thread)} ${thread} screw (${name(A)}'s bore) does not pass ${name(Bm)}'s ${sl.opening} mm slot opening`;
+    if (fx.head.across <= sl.opening) return `${a(thread)} ${thread} button head, ${fx.head.across} mm across, pulls through ${name(Bm)}'s ${sl.opening} mm slot opening`;
+    if (fx.head.across > sl.cavityWidth) return `${a(thread)} ${thread} button head, ${fx.head.across} mm across, does not go into ${name(Bm)}'s slot, ${sl.cavityWidth} mm wide under its lips`;
+    return null;
+  }
+  // end-tap: the screw through b, its cap head on b's far face
+  const far = place ? B.places.find((q) => Math.abs(q.normal[0] + place.normal[0]) < 1e-9 && Math.abs(q.normal[1] + place.normal[1]) < 1e-9) : null, fx = head('cap');
+  if (far?.slot && fx && Bm.slots[far.slot] && fx.head.across <= Bm.slots[far.slot].opening) return `${a(thread)} ${thread} cap head, ${fx.head.across} mm across, falls through ${name(Bm)}'s ${Bm.slots[far.slot].opening} mm slot opening on its far face`;
+  return null;
+}
+const a = () => 'an'; // (a metric thread's name is said em: an M5, an M3)
 
 /**
  * The frame's sizing: frameModelOf's frame, its beams grouped, each group given the lightest profile from the list that
@@ -80,7 +131,7 @@ export function frameSizing(s, helpers, given) {
   }
   for (const x of auto) groups[x.ids.join(', ')] = x.ids;
   // the choices, from the workspace's sets before the kit's
-  const context = framesContext(), choices = [];
+  const context = framesContext(), choices = [], models = new Map(), modelOf = (name) => { if (!models.has(name)) models.set(name, profileModel(name, {}, givenFor(context, name))); return models.get(name); };
   for (const name of opt.profiles) {
     let m;
     try { m = profileModel(name, {}, givenFor(context, name)); } catch (e) { throw new Error(`frame.size.profiles: ${String(e.message).replace(/^profileModel: /, '')}`); }
@@ -108,17 +159,55 @@ export function frameSizing(s, helpers, given) {
   limitRows.push({ limit: 'buckling', where: 'the frame and each grouped beam (Euler, K 1)', value: factor, from: opt.limits.buckling != null ? 'frame.size.limits.buckling' : 'frame.margin' });
   const moves = excitesOf(s).filter((x) => x.kind === 'move'), Hz = opt.limits.frequency ?? (moves.length ? Math.max(...moves.map((x) => x.Hz)) * margin : null);
   if (Hz != null) limitRows.push({ limit: 'frequency', where: 'the frame', value: Hz, from: opt.limits.frequency != null ? 'frame.size.limits.frequency' : `twice the task's moves (frame.frequency)` });
+  // racking, where the assembly asks it of the frame (frame.rack) or of its sizing (limits.rack): each way across, the
+  // side push alone at the top, with no weight, held to the sway allowed at each top node; a way nothing holds the
+  // frame (one plane on pinned feet) cannot be sized against, and is said
+  const rackCases = [];
+  const rk = s.a.frame?.rack != null || opt.limits.rack != null ? rackOf(s, fm) : null;
+  if (rk) {
+    const lim = opt.limits.rack != null ? { value: opt.limits.rack, from: 'frame.size.limits.rack' } : rk.lim, drawnFrame = solveFrame(fm.model);
+    for (const { dir, name } of sideways(fm.down)) {
+      const label = `racked ${name}`, loads = rk.top.map((n) => ({ node: n, force: dir.map((v) => (v * rk.F) / rk.top.length) }));
+      try { drawnFrame.statics({ loads, gravity: [0, 0, 0] }); } catch (e) {
+        if (e.code !== 'fea.frame.mechanism' || !e.driven) throw e;
+        limitRows.push({ limit: 'rack', where: name, what: `not sized: nothing holds the frame ${name}, ${freeSaid(fm, (drawnFrame.mechanisms ?? []).filter((m) => e.loose.some((l) => l.node === m.node && l.freedom === m.freedom)))}; a brace or fixed feet, not a profile, holds it`, value: null, from: rk.loadFrom });
+        continue;
+      }
+      rackCases.push({ label, loads, gravity: [0, 0, 0], limits: ['deflection'] });
+      for (const n of rk.top) deflection.push({ node: n, limit: lim.value, along: dir, cases: [label] });
+      limitRows.push({ limit: 'deflection', where: rk.top.join(', '), what: `the top, ${label} by ${n3(rk.F, 1)} N (${rk.loadFrom})`, value: lim.value, from: lim.from });
+    }
+    // the sag limits hold in the poses, not under the push
+    if (rackCases.length) for (const d of deflection) if (!d.cases) d.cases = fm.cases.map((c) => c.label);
+  }
   const limits = { ...(deflection.length ? { deflection } : {}), stress: { margin: stress }, buckling: { factor, euler: FRAME_CHECK.euler.value }, ...(Hz != null ? { frequency: { Hz } } : {}) };
   // every beam's alloy carries its strength, so the beams outside the groups are held to it too
   const withStrength = (model) => ({ ...model, materials: Object.fromEntries(Object.entries(model.materials).map(([k, v]) => [k, fm.beams.get(k)?.strength ? { ...v, strength: fm.beams.get(k).strength } : v])) });
-  const cases = fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values, null, c.push), inertia: fm.nodeMasses(c.values) }));
-  const sized = sizing([withStrength(fm.model), withStrength(fm.rigid)], { groups, choices, limits, cases, by: opt.by });
+  const cases = [...fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values, null, c.push), inertia: fm.nodeMasses(c.values) })), ...rackCases];
   const byName = new Map(choices.map((c) => [c.name, c]));
+  // every join a group's beam makes must go together with the profiles chosen (joinFit): a design where one does not is
+  // never solved, and a lighter choice that breaks one is what set the group. A join as drawn is not asked again
+  const groupOf = new Map(Object.entries(groups).flatMap(([g, ids]) => ids.map((id) => [id, g]))), sets = { sets: context?.sets ?? {} }, fitMemo = new Map();
+  const asSized = (b, design) => { const g = groupOf.get(b.id), c = g ? byName.get(design[g]) : null; return c ? { name: c.profile, roll: c.roll ?? 0 } : { name: b.m.profile.name, roll: 0, drawn: true }; };
+  const pairs = fm.joins.filter((x) => fm.beams.has(x.A.id) && fm.beams.has(x.B.id) && (groupOf.has(x.A.id) || groupOf.has(x.B.id)));
+  const fits = (design) => {
+    const out = [];
+    for (const x of pairs) {
+      const pa = asSized(x.A, design), pb = asSized(x.B, design);
+      if (pa.drawn && pb.drawn) continue;
+      const key = `${x.j.index}|${pa.name}|${pa.roll}|${pb.name}|${pb.roll}`;
+      if (!fitMemo.has(key)) fitMemo.set(key, joinFit(x, { model: modelOf(pa.name), roll: pa.roll }, { model: modelOf(pb.name), roll: pb.roll }, sets));
+      const why = fitMemo.get(key);
+      if (why) out.push({ where: x.j.label, why });
+    }
+    return out;
+  };
+  const sized = sizing([withStrength(fm.model), withStrength(fm.rigid)], { groups, choices, limits, cases, by: opt.by, ...(pairs.length ? { fits } : {}) });
   const rows = sized.groups.map((g) => {
     const c = byName.get(g.choice), drawn = [...new Set(g.members.map((id) => fm.beams.get(id).m.profile.name.replace(/^profile-/, '')))];
     const drawnKg = g.members.reduce((t, id) => t + fm.beams.get(id).grams / 1000, 0);
     return { group: g.name, beams: g.members, profile: c.profile, roll: c.roll, choice: g.choice, drawn, length: r3(g.length), kg: r3(g.mass), drawnKg: r3(drawnKg), lighter: g.lighter,
-      governs: g.governs ? { limit: g.governs.limit, where: g.governs.where, value: r3(g.governs.value), allowed: r3(g.governs.allowed), case: g.governs.case, lighter: g.governs.lighter, broken: r3(g.governs.broken) } : null, margin: g.margin == null ? null : r3(g.margin) };
+      governs: g.governs ? (g.governs.limit === 'fit' ? { limit: 'fit', where: g.governs.where, why: g.governs.why, lighter: g.governs.lighter, broken: null } : { limit: g.governs.limit, where: g.governs.where, value: r3(g.governs.value), allowed: r3(g.governs.allowed), case: g.governs.case, lighter: g.governs.lighter, broken: r3(g.governs.broken) }) : null, margin: g.margin == null ? null : r3(g.margin) };
   });
   const drawn = [...fm.beams.values()].filter((b) => sized.groups.some((g) => g.members.includes(b.id))).reduce((t, b) => t + b.grams / 1000, 0);
   return { ok: sized.ok, rows, limits: limitRows, total: r3(sized.total), drawn: r3(drawn), tried: sized.tried, search: sized.search, worst: sized.worst, sized, fm };
@@ -128,6 +217,8 @@ export function frameSizing(s, helpers, given) {
 const unitOf = { deflection: 'mm', stress: 'MPa', buckling: 'x', frequency: 'Hz' };
 const sayLimit = (g) => {
   if (!g) return 'the lightest in the list';
+  if (g.limit === 'fit') return `a join: with ${g.lighter}, ${g.where} does not go together (${g.why})`;
+  if (g.limit === 'deflection' && /^racked /.test(g.case ?? '')) return `racking: with ${g.lighter}, the sway at ${g.where} ${g.case.replace(/^racked /, '')} breaks its limit ${n3(g.broken, 2)} times over`;
   const u = unitOf[g.limit], what = g.limit === 'deflection' ? `the sag at ${g.where}` : g.limit === 'stress' ? `the stress in ${g.where}` : g.limit === 'buckling' ? (g.where === 'frame' ? 'the frame\'s buckling factor' : `${g.where.replace(' (Euler)', '')}'s Euler margin`) : 'the lowest mode';
   return `${g.limit}: with ${g.lighter}, ${what} breaks its limit ${n3(g.broken, 2)} times over`;
 };
@@ -139,7 +230,7 @@ export function sizingText(r) {
   const lines = [`${r.ok ? 'sized' : 'no profile in the list meets every limit; nearest'}: ${n3(r.total, 3)} kg of grouped beams (drawn ${n3(r.drawn, 3)} kg), ${r.tried} designs solved (${r.search === 'every' ? 'every design ranked by mass' : 'by steps'})`];
   lines.push('group | profile | kg | set by | margin');
   for (const x of r.rows) lines.push(`${x.group} | ${x.choice}${x.drawn.length === 1 && x.drawn[0] === x.choice ? '' : ` (drawn ${x.drawn.join(', ')})`} | ${n3(x.kg, 3)} | ${sayLimit(x.governs)} | ${x.margin == null ? '-' : `${n3(x.margin, 2)}x`}`);
-  lines.push(`limits: ${r.limits.map((l) => `${l.limit} ${l.limit === 'deflection' ? `${n3(l.value, 3)} mm at ${l.what ?? l.where}` : l.limit === 'frequency' ? `${n3(l.value, 1)} Hz` : `${n3(l.value, 2)}x`} (${l.from})`).join('; ')}`);
+  lines.push(`limits: ${r.limits.map((l) => `${l.limit} ${l.limit === 'rack' ? `${l.where}: ${l.what}` : l.limit === 'deflection' ? `${n3(l.value, 3)} mm at ${l.what ?? l.where}` : l.limit === 'frequency' ? `${n3(l.value, 1)} Hz` : `${n3(l.value, 2)}x`} (${l.from})`).join('; ')}`);
   return lines;
 }
 
@@ -152,8 +243,9 @@ export function sizeChecks(s, f, helpers) {
   let r;
   try { r = frameSizing(s, helpers); } catch (e) { f('fail', `frame.size: ${e.message}`, 'frame.size: refused', { code: 'frame.size' }); return; }
   if (!r) return;
-  const text = r.rows.map((x) => `${x.group}: ${x.choice}, ${n3(x.kg, 3)} kg, ${x.governs ? `set by ${sayLimit(x.governs)}, ${n3(x.margin, 2)} times inside it as chosen` : 'the lightest in the list'}`).join('; ');
-  f(r.ok ? 'info' : 'warn', `${r.ok ? 'sized' : `no profile in the list meets every limit: the nearest breaks ${r.worst.limit} at ${r.worst.where} ${n3(r.worst.ratio, 2)} times over`}: ${text}. ${n3(r.total, 3)} kg of grouped beams against ${n3(r.drawn, 3)} kg drawn (cad frame --size --write writes the profiles in)`, r.ok ? null : 'frame.size: not met',
+  const text = r.rows.map((x) => `${x.group}: ${x.choice}, ${n3(x.kg, 3)} kg, ${x.governs ? `set by ${sayLimit(x.governs)}, ${n3(x.margin, 2)} times inside ${x.governs.limit === 'fit' ? 'its nearest limit' : 'it'} as chosen` : 'the lightest in the list'}`).join('; ');
+  const broke = r.worst && /^racked /.test(r.worst.case ?? '') ? `racking (${r.worst.case}) at ${r.worst.where}` : `${r.worst?.limit} at ${r.worst?.where}`;
+  f(r.ok ? 'info' : 'warn', `${r.ok ? 'sized' : `no profile in the list meets every limit: the nearest breaks ${broke} ${n3(r.worst.ratio, 2)} times over`}: ${text}. ${n3(r.total, 3)} kg of grouped beams against ${n3(r.drawn, 3)} kg drawn (cad frame --size --write writes the profiles in)`, r.ok ? null : 'frame.size: not met',
     { code: 'frame.size', values: { kg: r.total, drawn: r.drawn, tried: r.tried }, refs: { groups: r.rows, limits: r.limits, search: r.search } });
 }
 

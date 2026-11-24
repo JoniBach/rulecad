@@ -625,7 +625,7 @@ export function frameChecks(s, f, helpers) {
 }
 
 // the two directions across "down" a frame is racked in, each named by the world axis it is nearest
-function sideways(down) {
+export function sideways(down) {
   const flat = (v) => sub(v, scale(down, dot(v, down))), x = flat([1, 0, 0]), e1 = Math.hypot(...x) > 0.5 ? unitv(x) : unitv(flat([0, 1, 0])), e2 = unitv(cross(down, e1));
   const name = (v) => { const k = [0, 1, 2].reduce((p, q) => (Math.abs(v[q]) > Math.abs(v[p]) ? q : p), 0); return `along ${'xyz'[k]}`; };
   return [e1, e2].map((v) => ({ dir: v, name: name(v) }));
@@ -640,14 +640,30 @@ const RACK_PANEL = { sheet: 'acrylic', thickness: 3 };
  * best bay that way alone and in every open bay that way, each solved, with its gain; the cheapest that brings the sway
  * under the limit advised.
  */
-function rackCheck(s, fm, f, { restsJoins, restsOn }) {
+/**
+ * How a frame is racked: the side push (frame.rack.load, else frame.push), the nodes at its top it is shared among (its
+ * bays' top corners, else its highest nodes), its height above its supports, and the sway allowed (frame.rack.limit,
+ * the task's accuracy, else its height over frame.sway). Null where it has no height to rack. frame.rack and the
+ * sizing's racking limit both read it. @param {object} s a built assembly @param {object} fm frameModelOf's
+ * @returns {{ F: number, loadFrom: string, top: string[], H: number, lim: { value: number, from: string } } | null}
+ */
+export function rackOf(s, fm) {
   const opts = s.a.frame?.rack ?? {}, F = opts.load != null ? s.num(opts.load) : FRAME_CHECK.push.value, down = fm.down, height = (n) => -dot(fm.nodes[n], down);
   const feet = fm.supports.map((sp) => fm.nodeAt(sp.beam, sp.z)).filter(Boolean);
   const pool = fm.bays.length ? [...new Set(fm.bays.flatMap((b) => b.corners))] : Object.keys(fm.nodes), topH = Math.max(...pool.map(height)), top = pool.filter((n) => height(n) > topH - 1);
   const H = topH - Math.min(...feet.map(height));
-  if (!(H > 1) || !top.length) return;
+  if (!(H > 1) || !top.length) return null;
   const lim = opts.limit != null ? { value: s.num(opts.limit), from: 'the assembly\'s frame.rack.limit' } : s.task?.accuracy != null ? { value: s.task.accuracy, from: 'the task\'s accuracy' } : { value: H / FRAME_CHECK.sway.value, from: `its height, ${n3(H, 1)} mm, over ${FRAME_CHECK.sway.value} (frame.sway)` };
-  const loadFrom = opts.load != null ? 'frame.rack.load' : `frame.push, an estimate`;
+  return { F, loadFrom: opts.load != null ? 'frame.rack.load' : `frame.push, an estimate`, top, H, lim };
+}
+
+/** How a frame moves where nothing holds it, in words (see howFree): for the sizing's racking limit. @param {object} fm @param {object[]} ways frame().mechanisms */
+export const freeSaid = (fm, ways) => howSaid(howFree(fm, ways));
+
+function rackCheck(s, fm, f, { restsJoins, restsOn }) {
+  const rk = rackOf(s, fm);
+  if (!rk) return;
+  const { F, top, H, lim, loadFrom } = rk, down = fm.down;
   const swayOf = (model, dir) => { const r = solveFrame(model).statics({ loads: top.map((n) => ({ node: n, force: scale(dir, F / top.length) })), gravity: [0, 0, 0] }); return top.reduce((t, n) => t + dot(r.displacements[n].slice(0, 3), dir), 0) / top.length; };
   const base = fm.model, els = base.elements;
   // the changes, each as the model's elements with it made

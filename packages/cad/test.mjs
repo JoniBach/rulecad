@@ -5448,12 +5448,19 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     assert.ok(r.ok && r.search === 'every', JSON.stringify(r));
     assert.deepEqual(Object.keys(g), ['z1, z2, z3, z4', 'x1, x2', 'y1, y2'], 'beams grouped by themselves: one profile, one direction, one length');
     const legs = g['z1, z2, z3, z4'], rails = g['x1, x2'], short = g['y1, y2'];
-    // the long rails' profile is heavier than the legs': 2040 standing on edge (0.88 kg/m) against 1515 (0.297 kg/m)
-    assert.deepEqual([legs.choice, rails.choice, short.choice, rails.profile, rails.roll], ['1515-openbeam', '2040-misumi-hfs5 turned', '1515-openbeam', '2040-misumi-hfs5', 90]);
+    // the long rails' profile is heavier than the legs': 2040 standing on edge (0.88 kg/m) against 2020 (0.5 kg/m)
+    assert.deepEqual([legs.choice, rails.choice, short.choice, rails.profile, rails.roll], ['2020-misumi-hfs5', '2040-misumi-hfs5 turned', '2020-misumi-hfs5', '2040-misumi-hfs5', 90]);
     assert.ok(rails.kg / rails.length > legs.kg / legs.length);
-    // each choice names the limit that set it: the next lighter profile breaks it, and as chosen it is met
-    assert.deepEqual([legs.governs.limit, legs.governs.where, legs.governs.lighter, rails.governs.limit, rails.governs.lighter, short.governs.limit, short.governs.lighter], ['buckling', 'frame', '1010-makerbeam', 'deflection', '2020-misumi-hfs5', 'deflection', '1010-makerbeam']);
-    for (const x of [legs, rails, short]) assert.ok(x.governs.broken > 1 && x.margin >= 1, `${x.group}: ${JSON.stringify(x.governs)} margin ${x.margin}`);
+    // each choice names what set it: the long rails a limit their next lighter profile breaks; the legs and short rails
+    // a join their next lighter profile cannot make (issue 303). Without that, they came out 1515 OpenBeam (0.297 kg/m),
+    // whose joins do not go together: a 2040 rail's end takes an M5 screw (its bore, M5 by HFS5's set), and M5's 5 mm
+    // does not pass OpenBeam's 3.2 mm slot opening; a 1515 short rail's end takes an M3 button head 5.7 mm across
+    // (ISO 7380), which pulls through a 2020 leg's 6 mm slot opening
+    assert.deepEqual([legs.governs.limit, legs.governs.where, legs.governs.lighter, rails.governs.limit, rails.governs.lighter, short.governs.limit, short.governs.lighter], ['fit', 'blind join of x1.a to z1.back@710', '1515-openbeam', 'deflection', '2020-misumi-hfs5', 'fit', '1515-openbeam']);
+    assert.match(legs.governs.why, /an M5 screw \(2040-misumi-hfs5's bore\) does not pass 1515-openbeam's 3\.2 mm slot opening/);
+    assert.match(short.governs.why, /an M3 button head, 5\.7 mm across, pulls through 2020-misumi-hfs5's 6 mm slot opening/);
+    assert.ok(rails.governs.broken > 1 && rails.margin >= 1, JSON.stringify(rails));
+    for (const x of [legs, short]) assert.ok(x.margin >= 1, `${x.group}: margin ${x.margin}`);
     // Hand, for the long rails' sag under their own 30 kg (294.2 N) at the middle of 800 mm: simply supported it is
     // P L³ / 48 E I and with both ends fixed a quarter of that (Roark's, table 8.1, cases 1e and 1d); the blind joins'
     // springs hold the ends part way. 2040 on edge (I 51 300 mm⁴, E 69 972 MPa): 294.2 x 800³ / (48 x 69 972 x 51 300)
@@ -5471,9 +5478,9 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     // beams named in groups take one profile together; the check says the sizing as a finding
     write('grouped', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'x2', 'y1', 'y2'] } } }, loads });
     const gr = sized('grouped');
-    assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '1515-openbeam']]);
+    assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '2020-misumi-hfs5']]);
     const check = cad('check', 'frame/table');
-    assert.match(check, /sized: z1, z2, z3, z4: 1515-openbeam, 0\.855 kg, set by buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit [\d.]+ times over[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
+    assert.match(check, /sized: z1, z2, z3, z4: 2020-misumi-hfs5, 1\.44 kg, set by a join: with 1515-openbeam, blind join of x1\.a to z1\.back@710 does not go together \(an M5 screw[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
     // refused by name
     write('bad', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'q9'] } } }, loads });
     assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.groups\.rails: q9 is not a beam of the frame \(its beams: z1, z2/);
@@ -6372,5 +6379,45 @@ test('frame checks: a force on a slide and a torque on a hinge are carried into 
     s = probe().find((x) => x.code === 'frame.solve');
     assert.equal(s.level, 'fail');
     assert.match(s.text, /frame\.supports names no support: give at least one place the frame is held, as \{ "z1\.a": "pinned" \}, or leave supports out/);
+  } finally { done(); }
+});
+
+test('frame sizing: racking is a limit where the frame asks it, set by a hand figure on a post fixed at its foot; a way nothing holds the frame is said and left out', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const sized = (n) => { const out = cad('frame', `frame/${n}`, '--size', '--json'); try { return JSON.parse(out); } catch { assert.fail(out); } };
+    const P = '2020-misumi-hfs5', profiles = ['2020-misumi-hfs5', '3030-misumi-hfs6', '4040-misumi-hfs8'];
+    // A post 700 mm tall fixed at its foot, pushed 20 N at its top, allowed 1 mm of sway there (frame.rack). Hand, a
+    // cantilever: sway = F H^3 / 3 E I (Roark's, table 8.1, case 1a), E = 69972 MPa (A6N01), I from each set:
+    //   2020 (I 7420):   20 x 700^3 / (3 x 69972 x 7420)   = 4.404 mm, 4.40 times over
+    //   3030 (I 28300):  20 x 700^3 / (3 x 69972 x 28300)  = 1.155 mm, 1.15 times over
+    //   4040 (I 104000): 20 x 700^3 / (3 x 69972 x 104000) = 0.314 mm, 3.18 times inside
+    // so the post is 4040, set by racking, its next lighter 3030 breaking it 1.155 times over
+    const sway = (I) => (20 * 700 ** 3) / (3 * 69972 * I);
+    write('post', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, rack: { load: 20, limit: 1 }, size: { profiles } } });
+    const r = sized('post'), g = r.groups[0];
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.deepEqual([g.choice, g.governs.limit, g.governs.lighter, g.governs.where, g.governs.case], ['4040-misumi-hfs8', 'deflection', '3030-misumi-hfs6', 'z1.b', 'racked along x']);
+    assert.ok(Math.abs(g.governs.broken / sway(28300) - 1) < 0.01, `3030 sways ${g.governs.broken} mm per mm allowed, ${sway(28300)} by hand`);
+    assert.ok(Math.abs(g.margin / (1 / sway(104000)) - 1) < 0.01, `4040: ${g.margin} times inside, ${1 / sway(104000)} by hand`);
+    assert.deepEqual(r.limits.filter((l) => /racked/.test(l.what ?? '')).map((l) => [l.where, l.value, l.from]), [['z1.b', 1, 'the assembly\'s frame.rack.limit'], ['z1.b', 1, 'the assembly\'s frame.rack.limit']]);
+    assert.match(cad('frame', 'frame/post', '--size'), /4040-misumi-hfs8 \(drawn 2020-misumi-hfs5\) \| [\d.]+ \| racking: with 3030-misumi-hfs6, the sway at z1\.b along x breaks its limit 1\.1[56] times over/);
+    // limits.rack in its place: 2 mm lets 3030 through
+    write('post2', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, size: { profiles, limits: { rack: 2 } } } });
+    assert.equal(sized('post2').groups[0].choice, '3030-misumi-hfs6');
+    // with no frame.rack and no limits.rack, racking is not a limit: the post stays 2020
+    write('post3', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, size: { profiles } } });
+    assert.equal(sized('post3').groups[0].choice, '2020-misumi-hfs5');
+    // A portal in one plane (x-z) on pinned feet: nothing holds it along y, so no profile can; that way is said and
+    // left out, and along x it is sized
+    write('portal', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 400] }, { id: 'z2', beam: { profile: P }, from: [620, 0, 0], to: [620, 0, 400] }, { id: 'x1', beam: { profile: P }, from: [10, 0, 390], to: [610, 0, 390] }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned' }, rack: { limit: 5 }, size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5'] } } });
+    const pr = sized('portal'), free = pr.limits.find((l) => l.limit === 'rack');
+    assert.match(free.what, /^not sized: nothing holds the frame along y, the frame tips over along y \(free at z2\.b: rx\); a brace or fixed feet, not a profile, holds it/);
+    assert.ok(pr.limits.some((l) => l.limit === 'deflection' && /racked along x/.test(l.what)));
   } finally { done(); }
 });

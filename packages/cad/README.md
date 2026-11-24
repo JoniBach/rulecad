@@ -815,7 +815,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   load, a named point or a support meets it), where it is held, the poses solved, and each join's spring with what
   it rests on. A join puts the end of `a` on a node at `b`'s axis through a rigid link (the end stands half `b`'s
   width off that axis) and its spring (`join.stiffness`) at that end. It is held where `"frame": { "supports": {
-  "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
+  "z1.a": "pinned", "z2.a": "fixed" } }` says (an empty `"supports": {}` is refused by name: it names nowhere the
+  frame is held); else at the beam ends a foot, levelling foot, castor plate or
   stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
   from moving and free to turn, as a foot stands on a floor. Where lowest ends pinned would leave the frame free to
   move (two posts and a rail leaning over out of their plane, a beam on the floor rolling with a post on it), a beam
@@ -824,14 +825,18 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   feet would leave it free (the portal tipping over out of its plane, below), so `frame.solve` warns: it names the
   freedoms pinned feet would leave (`refs.free`) and the ends held in their place (`refs.guessed`), says that every
   sag, rack, buckling and frequency figure rests on them, and asks for feet or `"frame": { "supports" }`.
-  `frame.rack`, `frame.buckling` and `frame.frequency` each say they rest on the guess (`refs.guessed`). Beams no support holds through joins are left out by
+  `frame.rack`, `frame.buckling` and `frame.frequency` each say they rest on the guess (`refs.guessed`). Lowest ends
+  guessed and left pinned (a frame they hold) are a guess too: `frame.solve` warns that nothing says where the frame
+  stands, names the ends (`refs.guessed`) and asks for feet or supports. Beams no support holds through joins are left out by
   name, and so is what is mounted only on them, as not weighed (`refs.off`). A beam that rides a moving joint (a
   gantry's cross beam on its carriages) is a load on the frame, named as riding (`refs.riding`), not part of it;
   lying across two parallel beams at one level (a gantry's beam on its two side beams), its weight is shared between
   them by the lever rule, though its joint is on one, and `refs.riding` gives each share. Where part of the frame can
   move with nothing resisting it (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both
   ends spins on its own axis) and its loads do not move it that way, it is held there for the sag and the stresses,
-  and `frame.solve` names each such freedom (`refs.held`); `frame.rack` then warns that a push that way finds it
+  and `frame.solve` says how it moves there (`refs.how`: "the frame tips over along y" where its top moves across
+  and its feet stay, "x1 spins on its own axis" where a beam only turns) with the freedoms that show it
+  (`refs.held`); `frame.rack` then warns that a push that way finds it
   free. The modes and buckling count it free: `frame.frequency` gives a lowest mode of 0 Hz and warns, and where
   the frame's squeezed beams lean it that way (a portal on pinned feet), `frame.buckling` fails it as tipping over
   before anything buckles, at a factor of 0 (`refs.tipped`).
@@ -840,7 +845,16 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight
   at its middle the same way) and each `mass` in `"loads"`.
   A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel
-  (a slide in its middle too), at every named pose and as drawn; the worst is named.
+  and at its quarters between (`frame.sweep`, 4 steps), at every named pose and as drawn; the worst is named. A
+  carriage's worst place for the sag at a point off a span's middle lies between the point and the middle, which
+  the ends alone miss.
+  Each `"loads"` entry on a joint (a force on a slide, a torque on a hinge) and a belt guide's push at its
+  carriage's acceleration is carried through the joint, held by its motor, into the beam the joint's chain is
+  mounted on: a slide's force along its axis through the joint's place, as a force and its moment at that node, a
+  hinge's torque as a moment. Nothing says which way such a load acts, so each pose is solved with them one way and
+  then the other (`as drawn, joint loads +`, `... joint loads -`), and `frame.solve` names them (`refs.onJoints`).
+  A belt's share of its carriage's own weight along the travel is that weight, already on the frame, and is not
+  counted again.
 - `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
   along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
   rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
@@ -1123,29 +1137,44 @@ joins' springs, the loads and mounted items):
 - `"groups"`: `{ "rails": ["x1", "x2", "y1", "y2"] }`, beams that take one profile together. The rest group by
   themselves: beams of one profile lying the same way whose lengths agree within 0.5 mm (`FRAME_SIZING.match`), so a
   table's four legs are one group and each pair of rails another.
+- Joins that fit: a design is only solved where every join of a grouped beam still goes together with the profiles
+  chosen. A blind join needs a bore in a's end and a slot in b's face whose opening passes the bore's screw and holds
+  its button head under the lips, the head no wider than the slot is under them; an end-tap join a bore in a's end,
+  and a cap head wider than the opening of a slot on b's far face; a bought fitting must fit both profiles (its set's
+  `fitting.fit`). A printed fitting is drawn for the profiles it joins. A group whose next lighter profile breaks a
+  join says so as what set it ("set by a join": with 1515-openbeam, an M5 screw from a 2040's bore does not pass
+  OpenBeam's 3.2 mm slot opening).
+- Racking: where the assembly gives `"frame": { "rack" }` or `"limits": { "rack": mm }`, each way across the side
+  push `frame.rack` uses, alone and with no weight, is a case of its own, and the sway at each top node is held to
+  the limit `frame.rack` uses (or `limits.rack`). A way nothing holds the frame (one plane on pinned feet) is said and
+  left out: a brace or fixed feet hold it, not a profile. The joins' springs are as drawn and do not grow with the
+  profile, so a frame that racks on its joins' bending may meet the limit with no profile in the list: the sizing then
+  gives the nearest and says racking is what it misses.
 - `"limits"`: in place of the checks' own. Left out, each is the check's: the sag at each load, named point and guide
   as `frame.deflection` holds it (a guide's rail parallelism, `frame.limit`, the task's accuracy, else the span over
   360; a load that moves with a joint anywhere along its beam), each beam's stress with the joins' springs and with
   them rigid against its alloy's strength `frame.margin` (2) times over, the frame's first buckling factor and each
   grouped beam's Euler load (K 1) the same, and the lowest mode at twice the task's moves where it has a task.
-  `"deflection"` (mm, at every load, point and guide), `"stress"` and `"buckling"` (margins) and `"frequency"` (Hz)
-  replace them.
+  `"deflection"` (mm, at every load, point and guide), `"stress"` and `"buckling"` (margins), `"frequency"` (Hz) and
+  `"rack"` (the sway allowed at the top, mm) replace them.
 - `"by"`: `mass`. No profile set in the kit gives a price per metre yet, so `cost` is refused by name.
 
 `cad check` gives `frame.size`: each group's profile, its mass, the limit that set it and how many times inside that
 limit it stands. `cad frame <project>/<assembly> --size` prints the table:
 
 ```
-sized: 2.56 kg of grouped beams (drawn 2.74 kg), 66 designs solved (every design ranked by mass)
+sized: 3.348 kg of grouped beams (drawn 2.74 kg), 14 designs solved (every design ranked by mass)
 group | profile | kg | set by | margin
-z1, z2, z3, z4 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.855 | buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit 2.68 times over | 1.28x
-x1, x2 | 2040-misumi-hfs5 turned (drawn 2020-misumi-hfs5) | 1.408 | deflection: with 2020-misumi-hfs5, the sag at x2@400 breaks its limit 2.31 times over | 2.41x
-y1, y2 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.297 | deflection: with 1010-makerbeam, the sag at y2@250 breaks its limit 2.39 times over | 1.17x
+z1, z2, z3, z4 | 2020-misumi-hfs5 | 1.44 | a join: with 1515-openbeam, blind join of x1.a to z1.back@710 does not go together (an M5 screw (2040-misumi-hfs5's bore) does not pass 1515-openbeam's 3.2 mm slot opening) | 7.29x
+x1, x2 | 2040-misumi-hfs5 turned (drawn 2020-misumi-hfs5) | 1.408 | deflection: with 2020-misumi-hfs5, the sag at x1@400 breaks its limit 1.96 times over | 2.56x
+y1, y2 | 2020-misumi-hfs5 | 0.5 | a join: with 1515-openbeam, blind join of y1.a to z1.top@710 does not go together (an M3 button head, 5.7 mm across, pulls through 2020-misumi-hfs5's 6 mm slot opening) | 3.33x
 ```
 
 "Set by" is the limit the group's next lighter profile breaks, the other groups as chosen: what stops it being any
-lighter. A group already at the lightest in the list says so. With `"limits": { "deflection": 6 }` the long rails
-drop to 2020 and the grouped beams to 1.95 kg.
+lighter, or the join it would not make. A group already at the lightest in the list says so. With `"limits": {
+"deflection": 6 }` the long rails drop to 2020 and the grouped beams to 2.74 kg. Without the joins held to fit, the
+legs and short rails came out 1515 OpenBeam, whose M3 ends and 3.2 mm slots take neither the 2040 rails' M5 screws
+nor a 2020 leg's slot.
 
 `--write` writes the profiles into the assembly: each grouped beam's profile, a quarter `roll` where it was turned,
 and its printed end fittings drawn for it. A generated frame is written out expanded, as `--expand` does, since a
@@ -1155,8 +1184,8 @@ join at an end that now has two bores (a 2040) becomes a join a bore. A drawn be
 the end of the beam it meets (a rail flush with its legs' tops, now a 2060) moves along that beam by as much, so its
 face there stays where it was, if the move fits at its other end too; where it does not, nothing is written and the
 refusal names the join and the beam. Otherwise beams keep their lines. Check the
-written frame: its join checks say where a profile's screws do not fit another's slots, so choose the list from one
-family whose joins fit each other (MISUMI HFS5's 2020 to 2080 share one slot and one end thread).
+written frame: its join checks hold every screw, nut and length, where the sizing held each join's screw and head to
+its slot.
 
 What it rests on: the joins' springs are as drawn (an estimate until the joint rig measures them) and do not change
 with the profile; the sizing solves the drawn layout, with each beam's line where it is drawn, so a figure on the
