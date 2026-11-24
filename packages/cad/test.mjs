@@ -6534,6 +6534,57 @@ test('problems that read each other through designs built from them are refused 
   } finally { done(); }
 });
 
+test('the leg\'s gait as a step file: cad machine and cad plot on the stand, the sender\'s dry run, and the shield\'s wiring held to the streamer\'s axes', async () => {
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/leg']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    // the machine: an axis for each motor's shaft, the hip's on the shield's X and the knee's on Y, as stand.json wires them.
+    // A 17HS4401 (1.8°) at 1/8: 200 x 8 / 360 = 4.444444 steps a degree; at its item's 200 rpm, 200 x 1600 / 60 = 5333 steps/s
+    const m = JSON.parse(cad('machine', 'leg/stand', '--json'));
+    assert.equal(m.kinematics, 'legged');
+    assert.deepEqual(m.axes.map((a) => [a.name, a.motor, a.slot, a.stepsPerUnit, a.maxRate, a.homing]), [['hd', 'm1', 'X', 4.444444, 5333, null], ['kd', 'm2', 'Y', 4.444444, 5333, null]]);
+    assert.deepEqual([m.gait.legs, m.gait.period, m.gait.frames], [['shin'], 2, 48]);
+    // the step file: three cycles from the pose "standing" (hd -5587.7°, kd -2236° of the motors' shafts) and back to it.
+    // Start in steps: -5587.7 x 4.444444 = -24834.2, so -24834; -2236 x 4.444444 = -9937.8, so -9938
+    const p = JSON.parse(cad('plot', 'leg/stand', '--json'));
+    assert.equal(p.ok, true, JSON.stringify(p.findings));
+    const f = JSON.parse(fs.readFileSync(path.join(ws, 'exports/leg/stand-gait.steps.json'), 'utf8'));
+    assert.deepEqual([f.format, f.kind, f.pose, f.cycles, f.frames, f.start], ['rulecad.steps/1', 'gait', 'standing', 3, 48, [-24834, -9938]]);
+    assert.ok(fs.existsSync(path.join(ws, '.preview/leg/stand-gait.svg')), 'the picture of each axis through the run');
+    assert.deepEqual([f.blocks[0].kind, f.blocks.at(-1).kind], ['approach', 'return']);
+    assert.deepEqual([0, 1].map((k) => f.blocks.reduce((t, b) => t + b.steps[k], 0)), [0, 0], 'it ends where it started');
+    // the knee is the axis the gait's period asks too much of: past its 5333 steps/s at a 2 s cycle, so the cycle is
+    // stretched and the file says so
+    const rate = p.findings.find((x) => x.code === 'steps.rate'), period = p.findings.find((x) => x.code === 'gait.period');
+    assert.equal(rate.values.axis, 'kd'); assert.ok(rate.values.asked > 5333, `${rate.values.asked} steps/s asked`);
+    assert.equal(period.level, 'warn'); assert.ok(period.values.cycleTime > 2.1 && period.values.cycleTime < 4, `${period.values.cycleTime} s a cycle`);
+    assert.ok(Math.abs(f.time - f.blocks.reduce((t, b) => t + b.time, 0)) < 1e-9);
+    // no axis faster than its maxRate, and no axis's speed changes by more than maxRate / 8 = 666.6 steps/s between blocks
+    const speed = (b, k, end) => (b.rate[end] * b.steps[k]) / b.major;
+    for (const b of f.blocks) assert.ok(b.rate.peak <= 5333 + 1e-6, `a block at ${b.rate.peak}`);
+    for (let j = 1; j < f.blocks.length; j++) for (const k of [0, 1]) assert.ok(Math.abs(speed(f.blocks[j - 1], k, 'exit') - speed(f.blocks[j], k, 'entry')) <= 5333 / 8 + 1e-6, `junction ${j}, axis ${k}`);
+    // the arm's sender takes it as it is: every line answered "ok" in its dry run, held to the streamer's MAX_RATE and the
+    // machine's rates, and at the end the streamer would report the axes back at 0, where it started
+    const send = await import(pathToFileURL(path.join(bench, 'projects/arm/send.mjs')).href);
+    const lines = ['e', ...send.homeLines(m), ...send.linesOf(f), '?', 'd'], r = send.dryRun(lines, { machine: m });
+    assert.deepEqual([r.m, r.p, r.h, r.position], [f.blocks.length, 0, 0, [0, 0, 0]]);
+    assert.equal(r.said.at(-2), '?  q 0 0 0 0');
+    assert.ok(r.axisPeaks[0] <= 5333 && r.axisPeaks[1] <= 5333);
+    // the wiring: swapped slots put the knee first; a gap (the knee on Z, nothing on X) is refused by name
+    const file = path.join(ws, 'projects/leg/assemblies/stand.json'), a = JSON.parse(fs.readFileSync(file, 'utf8')), wire = (id) => a.wires.find((w) => w.id === id);
+    wire('hip_wire').to = 'shield.Y'; wire('knee_wire').to = 'shield.X'; fs.writeFileSync(file, JSON.stringify(a));
+    assert.deepEqual(JSON.parse(cad('machine', 'leg/stand', '--json')).axes.map((x) => `${x.name} ${x.slot}`), ['kd X', 'hd Y']);
+    wire('knee_wire').to = 'shield.Z'; fs.writeFileSync(file, JSON.stringify(a));
+    const bad = spawnSync(process.execPath, [BIN, 'plot', 'leg/stand', '--json'], { cwd: ws, encoding: 'utf8' }), out = JSON.parse(bad.stdout);
+    assert.equal(bad.status, 1);
+    assert.equal(out.findings.find((x) => x.code === 'stream.wiring').text, "hd's motor m1 is wired to the shield's Y, and the streamer steps axis 0 on X");
+    // refused by name
+    assert.match(cad('plot', 'leg/stand', '--cycles', '0'), /--cycles is a whole number, 1 or more \(got 0\)/);
+    assert.match(cad('plot', 'leg/stand', '--pose', 'sitting'), /--pose sitting: no such pose \(poses: standing\)/);
+  } finally { done(); }
+});
+
 test('a problem milled, cast or printed in a powder bed: cad optimise says how it is made, counts undercuts, and refuses enclosed voids by name', () => {
   const { ws, cad, done } = workspace();
   try {
