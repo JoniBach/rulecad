@@ -91,7 +91,8 @@ shaft passes through. A servo goes through the part instead: its body down a slo
 `bore(model, { depth, fit?, printer? }, ops?)` is the hole a gear or hub takes, with the shaft's flat in it. The shaft
 goes in from z = 0 with its tip at `depth`: the flat is cut only where the flat is, so a bore deeper than the flat is
 round at its mouth and the shaft's round root can pass. `boreModel` warns of a bore that grips too little of the shaft
-or misses its flat. A servo's spline is finer than a printer draws: drive it through its horn. A brushless motor drives
+or misses its flat. Its fit, `slide` (the default, measured on the fit bar) or `press`, is `@rulecad/shapes`'
+`shaftBore`'s, the one place every shaft bore in the kit reads it, so a pulley on the same shaft gets the same bore. A servo's spline is finer than a printer draws: drive it through its horn. A brushless motor drives
 through its bell.
 
 Anchors for placing a motor in an assembly are on the model: `face`, `shaft` (where the shaft leaves the motor), `tip`,

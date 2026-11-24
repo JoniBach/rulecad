@@ -63,7 +63,7 @@ The printed side of a bearing or a shaft. Each one prints without supports in th
 its sizes from rules: the bearing's from its rule set, the fit from the printer's (`hole_comp`, `fit`, `press`, `slip`).
 
 ```js
-import { bearingSeat, seatSize, plainBearing, shaftShoulder, clipGroove } from '@rulecad/shapes'
+import { bearingSeat, seatSize, shaftBore, plainBearing, pulleyBore, shaftShoulder, clipGroove } from '@rulecad/shapes'
 
 const seat = bearingSeat(v['608'], { fit: 'press', printer: v.x1c, at: [0, 0, 12], into: '-z', through: true, relief: 5 })
 seat.seat.pocket                                     // 22.05: the diameter as drawn; clearance -0.05 once printed
@@ -77,7 +77,20 @@ clipGroove(8, { width: 1, depth: 0.5, at: [0, 0, 30] })                         
 |---|---|
 | Pocket, as drawn | outer + `hole_comp` - `press` (or + `slip`, or + a clearance you give, in mm across) |
 | Ledge (`lip`) | a quarter of the races' radial depth by default, so it carries the outer race only; at most half |
-| Plain bore, as drawn | shaft + 2 × clearance + `hole_comp`, the clearance being the printer's `fit` each side by default |
+| Shaft bore, as drawn | shaft + 2 × the fit each side + `hole_comp` (`shaftBore`): `slide` 0.05 mm (measured), `press` -0.02 mm (estimate), `run` the printer's `fit`, or a gap in mm |
+| Plain bore, as drawn | a shaft bore at `run` by default: the printer's `fit` each side |
+
+Every bore for a bought shaft reads its fit from one place, `shaftBore` and its table `SHAFT_FITS`: `plainBearing`,
+`pulleyBore` and the motor's bore in `@rulecad/motors`. So a new measurement of the slide fit moves them all at once.
+The slide fit was measured on the fit bar's D-bores (examples/bench/projects/benchmarks/MEASURE.md row 3, PLA on the
+X1C, 2026-11-10): a 5 mm shaft slides comfortably in a bore drawn 5.2 mm, is tight in 5.1 mm and will not go in 5.0 mm.
+
+```js
+shaftBore(5, { printer: v.x1c })                        // { diameter: 5.2, each: 0.05, kind: 'measured', ... }: a hub that slides on
+shaftBore(5, { fit: 'press', across: 4.5, printer: v.x1c })    // 5.06 across, 4.56 across a D flat
+pulleyBore({ bore: 5 }, { length: 12, printer: v.x1c })          // 5.2: a pulley's grub screw bears on the shaft
+plainBearing(8, { length: 10, printer: v.x1c })                  // 8.5: a bore that turns on its shaft, at run
+```
 
 `lm8uuPocket`, `nutTrap`, `pulleyBore` and `beltClamp` are the same idea for a linear bearing, a lead-screw nut's
 flange and body, a pulley on its shaft and a GT2 belt's grip. Of these only `nutTrap` has screws, the ones that hold

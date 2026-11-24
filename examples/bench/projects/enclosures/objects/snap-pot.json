@@ -8,7 +8,7 @@
   ],
   "engine": "manifold",
   "orientation": "The pot standing on its floor, the lid beside it on its top with its skirt up: each starts on one plain disc",
-  "description": "A round pot 60 mm across and 40 mm tall for screws and small parts, and its lid, which clicks on over a bead round the pot's rim and comes off at a tilt by its tab. The bead's height, the forces to push the lid on and pull it off, and the hoop strain in the pot's wall and the lid's skirt come from @rulecad/fixings' annularSnapModel (the Bayer snap-fit guide's annular joint), sized from the pull the lid must stay on against, twice over. Print both in one go.",
+  "description": "A round pot 60 mm across and 40 mm tall for screws and small parts, and its lid, which clicks on over a bead round the pot's rim and comes off at a tilt by its tab. The bead's height, the forces to push the lid on and pull it off, and the hoop strain in the pot's wall and the lid's skirt come from @rulecad/fixings' annularSnapModel (the Bayer snap-fit guide's annular joint), sized from the pull the lid must stay on against, twice over. Print both in one go. The slotted variant cuts the skirt into 16 fingers and sets the bead 14 mm under the rim, so the push to put the lid on falls from about 350 N to about 32 N.",
   "variables": {
     "diameter": { "value": 60, "unit": "mm", "rule": "The pot's outside at the bead: a handful of M3 screws, small enough to print in under an hour", "interface": true },
     "height": { "value": 40, "unit": "mm", "rule": "The pot's height to its rim, where the lid's top sits", "interface": true },
@@ -18,13 +18,18 @@
     "lid": { "value": "x1c.layer * 8", "unit": "mm", "rule": "The lid's top: eight layers, so it stays flat as the skirt spreads" },
     "fillet": { "value": 1, "unit": "mm", "rule": "Each inside corner's round: the pot's floor into its wall and the lid's top into its skirt" },
     "rim": { "value": 1.2, "unit": "mm", "rule": "The pot's rim chamfered outside, more than the lid's inside round, so the two clear as the lid seats" },
-    "below_rim": { "value": 6, "unit": "mm", "rule": "The bead's top under the rim, and so the groove's under the lid's top: the top holds the skirt round within about 5 mm of it (1/β), so nearer, the skirt is too stiff to give and the pot's wall takes the snap; 6 mm keeps every strain under 0.45%, against PLA's 0.61%" },
+    "below_rim": { "value": 6, "unit": "mm", "rule": "The bead's top under the rim, and so the groove's under the lid's top: the top holds the skirt round within about 5 mm of it (1/β), so nearer, the skirt is too stiff to give and the pot's wall takes the snap; 6 mm keeps every strain under 0.45%, against PLA's 0.61%. The slotted variant sets 14 mm, for fingers long enough to bend", "tweak": { "min": 6, "max": 20, "step": 0.5 } },
     "below_bead": { "value": 1.5, "unit": "mm", "rule": "The skirt past the groove to its mouth: room for the lead-in, and near the skirt's free end" },
     "pull": { "value": 10, "unit": "N", "rule": "The pull the lid stays on against: a pot of 300 g of screws lifted by its lid is 3 N, and a jerk three times that, an estimate. The bead is sized to hold twice this" },
     "tab": { "value": 4, "unit": "mm", "rule": "The tab to lift the lid by: half its width and how far it stands out" },
     "gap": { "value": 5, "unit": "mm", "rule": "Between the pot and the lid on the bed" },
     "corner_facets": { "value": 8, "rule": "Facets on each quarter round: an inside corner's round and the tab's corners" },
     "segments": { "value": 96, "rule": "Facets round: the bead and the groove are drawn with the same count, so they follow the wall face for face" },
+    "fingers": { "value": 0, "rule": "0 for a whole skirt; above 0, the skirt slotted into this many fingers, each a cantilever, so the lid goes on with a far smaller push (the slotted variant)", "tweak": { "min": 0, "max": 24, "step": 1 } },
+    "slot_reach": { "value": "below_rim - x1c.fit - fillet - 1", "unit": "mm", "rule": "With fingers: from the groove's top up to the slots' round ends, stopping a millimetre short of the round where the skirt meets the lid's top. The bead bears on each finger further down, at the groove's bottom edge, so each finger bends over this and the groove's height" },
     "piece": { "value": 0, "rule": "0 the whole print, 1 the pot, 2 the lid as printed: the assembly puts the lid on the pot", "tweak": { "min": 0, "max": 2, "step": 1 } }
+  },
+  "variants": {
+    "slotted": { "below_rim": 14, "fingers": 16 }
   }
 }

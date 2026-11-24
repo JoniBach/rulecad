@@ -6332,3 +6332,105 @@ test('a folding sheet in an assembly: the bench tray checked flat and folded, a 
     assert.equal(a.find((x) => x.code === 'overlap' && x.refs.pose === 'folded').level, 'fail', 'folded, the tray and the block overlap');
   } finally { done(); }
 });
+
+test('a printed bolt into a slot nut (#305): its length is any whole millimetre that fits, worded as printed, and a torque given for it is a hand\'s turn held to what the bolt breaks at', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/plate.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    const t = (value, rule, min, max) => ({ value, unit: 'mm', rule, tweak: { min, max } });
+    object(ws, 'frame/plate', { uses: ['x1c'], variables: { pitch: t(20, 'Between the holes', 5, 60), thick: t(10, 'The plate', 2, 12) } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [40, 40, v.thick], center: [0, 0, v.thick / 2] })
+  return v.ops.subtract(plate, ...[-1, 1].map((s) => v.fixings.hole('M6', { depth: v.thick, at: [s * v.pitch / 2, 0, v.thick] })))
+}
+`);
+    const pj = JSON.parse(fs.readFileSync(at('project.json'), 'utf8')); fs.writeFileSync(at('project.json'), JSON.stringify({ ...pj, material: 'PLA' }));
+    const write = (extra = {}, screw = 'M6 hex printed') => fs.writeFileSync(file, JSON.stringify({ title: 'A plate on a 3030', kind: 'fit', items: [{ id: 'x1', beam: { profile: '3030-misumi-hfs6' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'plate', object: 'plate', at: [150, 0, 15] }],
+      fasten: [{ screw, through: ['plate'], into: 'x1.top', holes: 'plate.body', nut: 'drop-in', ...extra }] }));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/plate'), { orderOf, fastenerText } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/order.mjs')).href)});
+      console.log(JSON.stringify({ hardware: s.hardware.map((h) => [h.kind, h.name, h.printed ?? false]), findings: checkAssembly(s).filter((f) => /^fasten/.test(f.code)).map(({ level, code, text, values }) => ({ level, code, text, values })), order: orderOf(s).steps.flatMap((st) => st.fasteners.map(fastenerText)) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 10 mm plate on slot-8-misumi's 2 mm lip: 12 mm under the head. The drop-in nut's thread starts 1.2 mm under the
+    //   face and m6.nut_height asks 5.2 mm of it, so the bolt is at least 10 + 1.2 + 5.2 = 16.4 mm; the slot's floor is
+    //   9 mm under the face and 0.3 mm is kept off it, so at most 10 + 9 - 0.3 = 18.7 mm. No M6 is sold between (16, 20):
+    //   a bought screw fails, and the printed bolt is the 17 mm that fits, its tip 17 - 10 = 7 mm into the slot, 2 mm off its floor.
+    write({}, 'M6 hex');
+    const bought = probe().findings.filter((x) => x.code === 'fasten.length');
+    assert.equal(bought[0].level, 'fail'); assert.match(bought[0].text, /no M6 hex screw is sold from 16\.4 to 18\.7 mm long/);
+    write();
+    let r = probe();
+    const said = (code) => r.findings.filter((x) => x.code === code);
+    assert.deepEqual(r.hardware.filter((h) => h[0] === 'screw').map((h) => [h[1], h[2]]), [['M6x17 hex printed', true], ['M6x17 hex printed', true]]);
+    assert.deepEqual(said('fasten.length').map((x) => x.level), ['pass']);
+    assert.match(said('fasten.length')[0].text, /M6x17 hex printed chosen, the shortest that fits \(a printed bolt is printed to any whole millimetre\): 12 mm under its head \(plate and the slot's 2 mm lip\), 5\.8 mm into its nut, its tip 7 mm into the slot and 2 mm short of its floor/);
+    assert.ok(!/sold/.test(said('fasten.length')[0].text));
+    assert.ok(!('torque' in said('fasten.seat')[0].values), 'no tightening torque in its values'); assert.ok(!said('fasten.torque').length, 'no torque given: none judged');
+    // A torque given: 1 N m by T = K d F with K 0.2 is 1 / (0.2 × 0.006) = 833.3 N of clamp. The M6 printed bolt in PLA
+    //   into a steel nut breaks at its root: 6 - 2 (5/8)(√3/2)(1) = 4.9175 mm less the whole 0.2 mm x1c.thread_gap each
+    //   side, 4.518 mm; (π/4) 4.518² = 16.03 mm² × 39 MPa = 625.2 N. 833.3 N breaks it. Twice over, 312.6 N, is
+    //   0.2 × 6 × 312.6 / 1000 = 0.37512 N m, said as 0.37: rounded down, since at 0.38 the clamp is 0.38 / (0.2 × 0.006)
+    //   = 316.7 N, and twice that, 633.3 N, is past the 625.2 N it breaks at
+    write({ torque: 1 }); r = probe();
+    const turn = said('fasten.torque');
+    assert.deepEqual(turn.map((x) => x.level), ['fail'], 'one finding for both bolts');
+    assert.match(turn[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N \(T = K d F, fixings\.nut_factor 0\.2 for steel threads: an estimate for a printed one\): more than the 625\.2 N it breaks at \(tension\): turning it that far breaks it\. Turn it to 0\.37 N m at most, or snug by hand with no torque given/); assert.equal(turn[0].values.most, 0.37);
+    assert.match(said('fasten.seat')[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N/); assert.ok(!/the screw clamps/.test(said('fasten.seat')[0].text));
+    assert.ok(r.order.some((l) => /M6x17 hex printed\) with a 10 mm socket or spanner turned by hand, to 1 N m and no further \(a printed bolt, turned by hand, not tightened\)/.test(l)), JSON.stringify(r.order));
+    // Turned to the most it names, 0.37 N m: 0.37 / (0.2 × 0.006) = 308.3 N, 2.03 times under 625.2 N, so it passes
+    write({ torque: turn[0].values.most }); r = probe();
+    assert.deepEqual(said('fasten.torque').map((x) => [x.level, x.values.margin]), [['pass', 2.03]], 'the most it names passes its own check');
+    // 0.3 N m: 250 N, 2.5 times under 625.2 N, so it passes
+    write({ torque: 0.3 }); r = probe();
+    assert.deepEqual(said('fasten.torque').map((x) => [x.level, x.values.margin]), [['pass', 2.5]]);
+    assert.match(said('fasten.torque')[0].text, /turned by hand to 0\.3 N m, it clamps with about 250 N .*: 2\.5 times under the 625\.2 N it breaks at \(tension\)/);
+  } finally { done(); }
+});
+
+test('pins lying on their side (#306): a dowel and a snap pin in teardrop holes across two blocks are found and checked as round ones are', () => {
+  const { ws, done } = workspace();
+  try {
+    // A block 6 mm along x, 20 wide and 10 high, its two holes along x drawn with v.fixings.pinHole lying on their side
+    // (into -x): each a teardrop, its roof up, 5 mm high; deep: how far in (through where it is the block); or typed by
+    // hand as a plain round (bore)
+    object(ws, 'pins/block', { uses: ['x1c'], variables: {
+      bore: { value: 0, unit: 'mm', rule: 'A hole typed by hand (0: the pin\'s own)', tweak: { min: 0, max: 8 } },
+      deep: { value: 6, unit: 'mm', rule: 'How deep the holes go (6: through)', tweak: { min: 1, max: 6 } },
+      pin: { value: 'dowel 3x12', choice: ['dowel 3x12', 'dowel 3x10', 'snap pin 4x12'], rule: 'The pin its holes are drawn for' },
+      fit: { value: 'press', choice: ['press', 'slip', 'none'], rule: 'The fit its holes are drawn for' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+const { rotateY } = jscad.transforms
+export function main (v) {
+  const block = cuboid({ size: [6, 20, 10], center: [3, 0, 5] })
+  const cut = (y) => (v.bore ? rotateY(Math.PI / 2, cylinder({ radius: v.bore / 2, height: 20, center: [-5, y, 3], segments: 48 }))
+    : v.fixings.pinHole(v.pin, { at: [6, y, 5], into: '-x', depth: v.deep, through: v.deep >= 6, ...(v.fit === 'none' ? {} : { fit: v.fit }) }))
+  return v.ops.subtract(block, cut(-5), cut(5))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/pins/project.json'), JSON.stringify({ name: 'pins', material: 'PLA', objects: ['block'] }));
+    const file = path.join(ws, 'projects/pins/assemblies/pair.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (fastener, a = {}, b = {}, turn = 0) => fs.writeFileSync(file, JSON.stringify({ title: 'Two blocks pinned side by side', kind: 'fit',
+      items: [{ id: 'left', object: 'block', set: b, rotate: [0, 0, turn] }, { id: 'right', object: 'block', at: turn ? [0, 6, 0] : [6, 0, 0], rotate: [0, 0, turn], set: a }],
+      fits: [{ a: 'right', b: 'left', min: 0, note: 'The right block, pinned to the left', fastener }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pins/pair', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings.filter((x) => x.code === 'fit.pin'); };
+    const said = (f, a, b, turn) => { write(f, a, b, turn); return check().map((x) => [x.level, x.text]); };
+    // Two dowels 3x12 pressed across 6 + 6 mm: each teardrop's round is 3 + 0.1 (x1c.hole_comp) - 0.05 (x1c.pin_press)
+    //   = 3.05 mm, its 45° roof left out of the circle the check fits, so it is found and held as a round hole is
+    assert.deepEqual(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }), [['pass', 'The right block, pinned to the left: 2 × dowel 3x12 in holes drawn to press 3.05 mm, each the right length for right and left']]);
+    // slip, 3 + 0.1 + 0.2 (x1c.pin_slip) = 3.3 mm; and the pair turned a quarter on the bench (the holes along y)
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'slip' }, { fit: 'slip' }, { fit: 'slip' })[0][1], /2 × dowel 3x12 in holes drawn to slip 3\.3 mm/);
+    assert.equal(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, {}, {}, 90)[0][0], 'pass');
+    // a snap pin's socket lying on its side, 4 + 2 × 0.2 (x1c.snap_clearance) = 4.4 mm, through both
+    assert.deepEqual(said({ pin: 'snap pin 4x12', count: 2 }, { pin: 'snap pin 4x12', fit: 'none' }, { pin: 'snap pin 4x12', fit: 'none' }), [['pass', 'The right block, pinned to the left: 2 × snap pin 4x12 in sockets drawn 4.4 mm (x1c.snap_clearance), each the right length for right and left']]);
+    // blind in the left block: a dowel 3x10 in 6 + 4.5 mm of room
+    assert.equal(said({ pin: 'dowel 3x10', count: 2, fit: 'press' }, { pin: 'dowel 3x10' }, { pin: 'dowel 3x10', deep: 4.5 })[0][0], 'pass');
+    // and held to the pin as a round one is: too short for 3 mm of blind room, a round 3.5 mm hole too big, a third pin with no hole
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, {}, { deep: 3 })[0][1], /dowel 3x12.*too long for its part/);
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, { bore: 3.5 })[0][1], /right's hole is drawn 3\.5 mm, and dowel 3x12 wants 3\.05 mm for a press fit \(x1c\.hole_comp, x1c\.pin_press\): too big, it will be loose/);
+    assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
+  } finally { done(); }
+});
