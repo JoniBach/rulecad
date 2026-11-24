@@ -515,7 +515,7 @@ draws its hole or pocket from the printer's rules:
 ```
 
 - **Pins** (`fit.pin`): a snap pin, a steel dowel, a length of filament or a printed pin. `cad check` finds round holes
-  in part a whose axis goes on into part b, holds each to the hole fixings draws for that pin (a snap pin's socket, a
+  in part a, standing or lying on their side as teardrops (the roof is left out of the round), whose axis goes on into part b, holds each to the hole fixings draws for that pin (a snap pin's socket, a
   plain pin's press or slip hole), and measures the parts along the axis: a pin too long or too short for its parts
   fails by name, and so do fewer holes than `count`. `load` (across the joint) and `pull` (along the pins) are held
   to about twice the margin.

@@ -20,6 +20,11 @@ and head, the parts it passes through and the part it ends in.
   PLA breaks at 625.2 N, so 1 N m fails and names 0.38 N m as the most. The seat's values no longer carry a
   tightening torque for a printed bolt.
 
+- **Pins lying on their side** (issue 306): a pin in teardrop holes, as `v.fixings.pinHole` draws one lying on its
+  side, is found and checked as a round one is. It already was: `holesIn` leaves a teardrop's roof out of the round
+  it fits. A test now holds it (press, slip and snap sockets, along x and along y, blind, and the failures by name),
+  and the README says so.
+
 ### Added
 
 - The bench project `enclosures` has a `slotted` variant of `snap-pot`, its lid's skirt in 16 fingers (issue 309), and

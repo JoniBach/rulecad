@@ -6362,3 +6362,48 @@ export function main (v) {
     assert.match(said('fasten.torque')[0].text, /turned by hand to 0\.3 N m, it clamps with about 250 N .*: 2\.5 times under the 625\.2 N it breaks at \(tension\)/);
   } finally { done(); }
 });
+
+test('pins lying on their side (#306): a dowel and a snap pin in teardrop holes across two blocks are found and checked as round ones are', () => {
+  const { ws, done } = workspace();
+  try {
+    // A block 6 mm along x, 20 wide and 10 high, its two holes along x drawn with v.fixings.pinHole lying on their side
+    // (into -x): each a teardrop, its roof up, 5 mm high; deep: how far in (through where it is the block); or typed by
+    // hand as a plain round (bore)
+    object(ws, 'pins/block', { uses: ['x1c'], variables: {
+      bore: { value: 0, unit: 'mm', rule: 'A hole typed by hand (0: the pin\'s own)', tweak: { min: 0, max: 8 } },
+      deep: { value: 6, unit: 'mm', rule: 'How deep the holes go (6: through)', tweak: { min: 1, max: 6 } },
+      pin: { value: 'dowel 3x12', choice: ['dowel 3x12', 'dowel 3x10', 'snap pin 4x12'], rule: 'The pin its holes are drawn for' },
+      fit: { value: 'press', choice: ['press', 'slip', 'none'], rule: 'The fit its holes are drawn for' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+const { rotateY } = jscad.transforms
+export function main (v) {
+  const block = cuboid({ size: [6, 20, 10], center: [3, 0, 5] })
+  const cut = (y) => (v.bore ? rotateY(Math.PI / 2, cylinder({ radius: v.bore / 2, height: 20, center: [-5, y, 3], segments: 48 }))
+    : v.fixings.pinHole(v.pin, { at: [6, y, 5], into: '-x', depth: v.deep, through: v.deep >= 6, ...(v.fit === 'none' ? {} : { fit: v.fit }) }))
+  return v.ops.subtract(block, cut(-5), cut(5))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/pins/project.json'), JSON.stringify({ name: 'pins', material: 'PLA', objects: ['block'] }));
+    const file = path.join(ws, 'projects/pins/assemblies/pair.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (fastener, a = {}, b = {}, turn = 0) => fs.writeFileSync(file, JSON.stringify({ title: 'Two blocks pinned side by side', kind: 'fit',
+      items: [{ id: 'left', object: 'block', set: b, rotate: [0, 0, turn] }, { id: 'right', object: 'block', at: turn ? [0, 6, 0] : [6, 0, 0], rotate: [0, 0, turn], set: a }],
+      fits: [{ a: 'right', b: 'left', min: 0, note: 'The right block, pinned to the left', fastener }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pins/pair', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings.filter((x) => x.code === 'fit.pin'); };
+    const said = (f, a, b, turn) => { write(f, a, b, turn); return check().map((x) => [x.level, x.text]); };
+    // Two dowels 3x12 pressed across 6 + 6 mm: each teardrop's round is 3 + 0.1 (x1c.hole_comp) - 0.05 (x1c.pin_press)
+    //   = 3.05 mm, its 45° roof left out of the circle the check fits, so it is found and held as a round hole is
+    assert.deepEqual(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }), [['pass', 'The right block, pinned to the left: 2 × dowel 3x12 in holes drawn to press 3.05 mm, each the right length for right and left']]);
+    // slip, 3 + 0.1 + 0.2 (x1c.pin_slip) = 3.3 mm; and the pair turned a quarter on the bench (the holes along y)
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'slip' }, { fit: 'slip' }, { fit: 'slip' })[0][1], /2 × dowel 3x12 in holes drawn to slip 3\.3 mm/);
+    assert.equal(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, {}, {}, 90)[0][0], 'pass');
+    // a snap pin's socket lying on its side, 4 + 2 × 0.2 (x1c.snap_clearance) = 4.4 mm, through both
+    assert.deepEqual(said({ pin: 'snap pin 4x12', count: 2 }, { pin: 'snap pin 4x12', fit: 'none' }, { pin: 'snap pin 4x12', fit: 'none' }), [['pass', 'The right block, pinned to the left: 2 × snap pin 4x12 in sockets drawn 4.4 mm (x1c.snap_clearance), each the right length for right and left']]);
+    // blind in the left block: a dowel 3x10 in 6 + 4.5 mm of room
+    assert.equal(said({ pin: 'dowel 3x10', count: 2, fit: 'press' }, { pin: 'dowel 3x10' }, { pin: 'dowel 3x10', deep: 4.5 })[0][0], 'pass');
+    // and held to the pin as a round one is: too short for 3 mm of blind room, a round 3.5 mm hole too big, a third pin with no hole
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, {}, { deep: 3 })[0][1], /dowel 3x12.*too long for its part/);
+    assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, { bore: 3.5 })[0][1], /right's hole is drawn 3\.5 mm, and dowel 3x12 wants 3\.05 mm for a press fit \(x1c\.hole_comp, x1c\.pin_press\): too big, it will be loose/);
+    assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
+  } finally { done(); }
+});
