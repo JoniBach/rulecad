@@ -50,6 +50,14 @@ export { jsBackend };
  * @property {number} [bridge] with overhang, the widest gap the printer bridges (mm): material may also be held up by a run
  *   of solid cells along its own layer, half that long, ending on a held cell
  * @property {number} [steps] at most this many steps (default 300)
+ * @property {{ mirror?: string, turns?: 2 | 4, axis?: 'x' | 'y' | 'z' }} [symmetry] the same either side of the grid's
+ *   middle planes across each axis in mirror ('x', 'xz', …), and the same each half or quarter turn about its middle
+ *   (about axis in 3D, z by default); keep and avoid regions stay as given
+ * @property {'x' | 'y' | 'z'} [extrude] one section all along this axis: cut from a bar or plate of the profile
+ * @property {string} [mill] milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is
+ *   as solid as every cell between it and that side
+ * @property {string | { draw: 'x' | 'y' | 'z', parting?: number }} [cast] cast in a mould drawn off this way ('+z'),
+ *   or in two halves drawn off both ways along draw from a parting plane (mm along it, default the space's middle)
  */
 
 /**
@@ -81,6 +89,10 @@ export function resultant(loads) {
 export function discretise(p) {
   const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
+  // One process at a time: printed (overhang), milled or cast
+  const made = ['overhang', 'mill', 'cast'].filter((k) => p[k]);
+  if (made.length > 1) throw new Error(`a part is printed (overhang), milled (mill) or cast (cast), one of them: this problem gives ${made.join(' and ')}`);
+  if (p.overhang && p.symmetry?.mirror?.includes(p.overhang.at(-1))) throw new Error(`symmetry: printed ${p.overhang}, a part can't be the same mirrored across ${p.overhang.at(-1)} (the build direction): mirror across the other axes`);
   for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
   const all = [...space, ...keep].map(bounds), lo = [], hi = [], n = [];
   for (let a = 0; a < dim; a++) {
@@ -159,8 +171,19 @@ export function discretise(p) {
     // still improving at 300: the bin's compliance fell 388 → 265 → 195 over steps 100, 200 and 300)
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : dim === 3 ? 500 : 300),
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(p.stress ? { stress: p.stress } : {}),
+    ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
     regions: { keep, avoid },
   };
+}
+
+// A casting's draw on the grid: one way ('+z'), or two halves from a parting plane, its mm as a layer
+function castOn(c, lo, n, h, space) {
+  if (typeof c === 'string') return c;
+  const ax = 'xyz'.indexOf(c.draw), b = space.map(bounds), dim = n.length;
+  if (ax < 0 || ax >= dim || c.draw.length !== 1) throw new Error(`cast: the draw axis is ${'xyz'.slice(0, dim).split('').join(', ')} (got ${c.draw})`);
+  const at = c.parting ?? (Math.min(...b.map((x) => x[ax])) + Math.max(...b.map((x) => x[dim + ax]))) / 2, layer = Math.round((at - lo[ax]) / h);
+  if (!(layer >= 0 && layer <= n[ax])) throw new Error(`cast: the parting plane at ${fmt(at)} mm is off the grid along ${c.draw} (${fmt(lo[ax])} to ${fmt(lo[ax] + n[ax] * h)} mm)`);
+  return { draw: c.draw, parting: layer, at: lo[ax] + layer * h };
 }
 
 /**
@@ -324,6 +347,108 @@ export function overhangFilter({ nx, ny, nz = 1 }, up, reach = 0) {
 }
 
 /**
+ * Ties cells that must be alike: mirror images across the grid's middle planes (mirror: 'x', 'xy', …), the copies of
+ * a turn about its middle (turns 2 or 4, about axis: z by default, the 2D grid's own), and every cell along an axis
+ * (extrude: 'x', 'y' or 'z', a constant section along it). Each design density is replaced by the average over its
+ * group's free cells (passive marks the cells that are not free: nonzero), so the design is the same in every copy.
+ * The average is its own adjoint (the matrix is symmetric), so adjoint is apply. Null when nothing is tied.
+ * @param {{ nx: number, ny: number, nz?: number }} size
+ * @param {{ mirror?: string, turns?: number, axis?: string, extrude?: string }} o @param {Int8Array} [passive]
+ */
+export function tieFilter({ nx, ny, nz = 1 }, { mirror = '', turns = 1, axis, extrude } = {}, passive) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, cells = n.reduce((p, c) => p * c, 1), names = 'xyz'.slice(0, dim);
+  const bad = [...mirror].find((a) => !names.includes(a));
+  if (bad) throw new Error(`symmetry: mirror across ${names.split('').join(', ')} (got "${mirror}")`);
+  if (![1, 2, 4].includes(turns)) throw new Error(`symmetry: turns is 2 or 4, the turns a grid of cubes maps onto itself by (got ${turns})`);
+  if (extrude != null && !names.includes(extrude)) throw new Error(`extrude: along ${names.split('').join(', ')} (got "${extrude}")`);
+  const about = dim === 2 ? 'z' : axis || 'z';
+  if (!'xyz'.includes(about) || about.length !== 1) throw new Error(`symmetry: turns about x, y or z (got "${axis}")`);
+  // The plane a turn is in, and a quarter turn needs it square
+  const [p, q] = [0, 1, 2].filter((a) => a < dim && a !== 'xyz'.indexOf(about));
+  if (turns === 4 && n[p] !== n[q]) throw new Error(`symmetry: a quarter turn about ${about} needs a square grid across it (${n[p]} by ${n[q]} cells): make the space as wide both ways`);
+  if (!mirror && turns === 1 && extrude == null) return null;
+  const parent = Int32Array.from({ length: cells }, (_, e) => e), find = (e) => { while (parent[e] !== e) e = parent[e] = parent[parent[e]]; return e; };
+  const join = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb); };
+  const stride = [1, nx, nx * ny], ix = (c) => c.reduce((s, v, a) => s + v * stride[a], 0);
+  for (let e = 0; e < cells; e++) {
+    const c = n.map((_, a) => Math.floor(e / stride[a]) % n[a]);
+    for (const a of mirror) { const m = [...c]; m[names.indexOf(a)] = n[names.indexOf(a)] - 1 - c[names.indexOf(a)]; join(e, ix(m)); }
+    if (turns === 2) { const m = [...c]; m[p] = n[p] - 1 - c[p]; m[q] = n[q] - 1 - c[q]; join(e, ix(m)); }
+    if (turns === 4) { const m = [...c]; m[p] = n[q] - 1 - c[q]; m[q] = c[p]; join(e, ix(m)); }
+    if (extrude != null) { const a = names.indexOf(extrude); if (c[a] > 0) { const m = [...c]; m[a] = 0; join(e, ix(m)); } }
+  }
+  // Each group's free cells, as flat arrays (group g's are at start[g] to start[g + 1])
+  const groups = new Map();
+  for (let e = 0; e < cells; e++) if (!passive || !passive[e]) { const r = find(e); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(e); }
+  const lists = [...groups.values()], start = new Int32Array(lists.length + 1), members = Int32Array.from(lists.flat());
+  lists.forEach((l, g) => { start[g + 1] = start[g] + l.length; });
+  const apply = (x, out) => {
+    if (out !== x) out.set(x);
+    for (let g = 0; g < lists.length; g++) {
+      let s = 0;
+      for (let k = start[g]; k < start[g + 1]; k++) s += x[members[k]];
+      s /= start[g + 1] - start[g];
+      for (let k = start[g]; k < start[g + 1]; k++) out[members[k]] = s;
+    }
+    return out;
+  };
+  return { apply, adjoint: apply, groups: lists.length };
+}
+
+/**
+ * No undercuts from a direction: a tool coming in from one side (milling, from up: '+z' cuts down from above) or a
+ * mould drawn off that way (casting) reaches a cell only through the cells between it and that side, so a cell is
+ * at least as solid as every cell on its way out. Each cell's density is the smooth maximum of its own and the one
+ * before it on that way (a chain along each line, smooth so it has a gradient: Gersborg and Andreassen 2011 ask the
+ * same of a casting by a sum along the line). With parting, a mould in two halves: the cells from the parting layer
+ * on (towards +) are drawn off one way, those before it the other. apply gives the densities the process can make;
+ * adjoint carries sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the side the tool comes from, or (with
+ * parting) the draw axis, 'z' @param {number} [parting] with a two-part mould, the first layer of the + half (0 to n)
+ */
+export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
+  const two = parting != null, sign = from[0] === '-' ? -1 : 1;
+  if (ax < 0 || ax >= dim || (!two && !/^[+-]/.test(from))) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'}${two ? ', or with a parting plane the draw axis, x, y or z' : ''} (got ${from})`);
+  if (two && !(Number.isInteger(parting) && parting >= 0 && parting <= n[ax])) throw new Error(`the parting plane is a layer from 0 to ${n[ax]} (got ${parting})`);
+  const stride = [1, nx, nx * ny][ax], eps = 1e-6, half = 0.5 * Math.sqrt(eps);
+  // Each line along the axis as a list of chains, each from the side its tool or mould half comes from inwards
+  const chains = [];
+  for (let e = 0; e < cells; e++) {
+    if (Math.floor(e / stride) % n[ax]) continue;
+    const line = Array.from({ length: n[ax] }, (_, k) => e + k * stride);
+    if (two) { chains.push(Int32Array.from(line.slice(parting).reverse()), Int32Array.from(line.slice(0, parting))); }
+    else chains.push(Int32Array.from(sign > 0 ? [...line].reverse() : line));
+  }
+  const slopeIn = new Float64Array(cells), slopePrev = new Float64Array(cells);
+  return {
+    apply(x, out) {
+      for (const c of chains) {
+        let v = 0;
+        for (let k = 0; k < c.length; k++) {
+          const e = c[k], t = x[e];
+          if (k === 0) { v = t; slopeIn[e] = 1; slopePrev[e] = 0; out[e] = v; continue; }
+          const d = v - t, root = Math.sqrt(d * d + eps);
+          slopePrev[e] = 0.5 * (1 + d / root); slopeIn[e] = 0.5 * (1 - d / root);
+          v = 0.5 * (v + t + root) - half; out[e] = v;
+        }
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      for (const c of chains) {
+        let carry = 0; // what the cells further in ask of this one's output
+        for (let k = c.length - 1; k >= 0; k--) {
+          const e = c[k], total = g[e] + carry;
+          out[e] = total * slopeIn[e]; carry = total * slopePrev[e];
+        }
+      }
+      return out;
+    },
+  };
+}
+
+/**
  * The problem as a function of the design densities x (one per cell, 0 to 1), at projection sharpness beta:
  * physical(x, beta) gives the densities the part is made of (filtered, printable, projected, kept and avoided cells
  * set); evaluate(x, beta) analyses it and gives the compliance (summed over the load cases by weight, N·mm) and its
@@ -340,6 +465,9 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, ETA = 0.5, size = dim === 3 ? g.h : spec.thickness;
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
   const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
+  // Milled or cast: no undercuts from the tool's side or the mould's draw; symmetric or extruded: cells tied together
+  const draw = spec.mill ? drawFilter(spec.grid, spec.mill) : spec.cast ? (typeof spec.cast === 'string' ? drawFilter(spec.grid, spec.cast) : drawFilter(spec.grid, spec.cast.draw, spec.cast.parting)) : null;
+  const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
   // Heaviside projection about eta: steeper as beta grows, so densities are pushed to 0 or 1 (Wang, Lazarov, Sigmund 2011)
@@ -351,9 +479,9 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   // it, an avoided cell holds up nothing, and a kept cell is printed (made) only as far as what's below holds it up,
   // which is what the kept regions' support cost (below) is measured on. The part is analysed with every kept cell solid.
   const physical = (x, beta, eta = ETA) => {
-    filter.apply(x, tilde);
+    filter.apply(tie ? tie.apply(x, tied) : x, tilde);
     for (let e = 0; e < cells; e++) if (passive[e]) tilde[e] = fixedValue(passive[e]);
-    if (print) print.apply(tilde, made); else made.set(tilde);
+    if (print) print.apply(tilde, made); else if (draw) draw.apply(tilde, made); else made.set(tilde);
     for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta, eta);
     return phys;
   };
@@ -374,9 +502,10 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   // Back through the overhang filter and the density filter to the design densities (kept and avoided cells don't
   // change: their own densities are fixed). Right after the physical() it belongs to.
   const toDesign = (d) => {
-    if (print) { print.adjoint(d, back); d.set(back); }
+    if (print) { print.adjoint(d, back); d.set(back); } else if (draw) { draw.adjoint(d, back); d.set(back); }
     for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
     filter.adjoint(d, back); d.set(back);
+    if (tie) { tie.adjoint(d, back); d.set(back); }
   };
   let last = null;
   // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
@@ -848,6 +977,55 @@ export function bounds(r) {
 }
 
 // ---------- shapes from results ----------
+
+/**
+ * Where a result has undercuts: empty cells (below iso) with a solid one between them and the tool's side, along the
+ * line to it (or, with parting, to their half's side). What drawFilter prevents, measured on densities as made.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
+ * @param {{ from: string, parting?: number, iso?: number }} o
+ * @returns {{ count: number, cells: number[] }} the hidden cells (indices)
+ */
+export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5 }) {
+  const f = drawFilter({ nx, ny, nz }, from, parting), solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
+  const cells = [];
+  for (let e = 0; e < solid.length; e++) if (!solid[e] && made[e] >= 0.5) cells.push(e);
+  return { count: cells.length, cells };
+}
+
+/**
+ * Enclosed voids: empty cells (below iso) that no path of empty cells, face to face, joins to the grid's edge. Powder
+ * left in them can't be got out of a powder bed print, nor a core out of a casting. Each void's cells, its volume
+ * (mm³, or mm² in 2D) and its centre (mm, from origin).
+ * @param {{ nx: number, ny: number, nz?: number, h: number }} size @param {ArrayLike<number>} density
+ * @param {{ iso?: number, origin?: number[] }} [o]
+ * @returns {{ cells: number[], volume: number, at: number[] }[]}
+ */
+export function voids({ nx, ny, nz = 1, h }, density, { iso = 0.5, origin } = {}) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, cells = density.length, stride = [1, nx, nx * ny];
+  const seen = new Uint8Array(cells), coord = (e, a) => Math.floor(e / stride[a]) % n[a], empty = (e) => density[e] < iso;
+  const flood = (seed) => {
+    const list = [seed]; seen[seed] = 1;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      for (let a = 0; a < dim; a++) for (const s of [-1, 1]) {
+        const c = coord(e, a) + s;
+        if (c < 0 || c >= n[a]) continue;
+        const f = e + s * stride[a];
+        if (!seen[f] && empty(f)) { seen[f] = 1; list.push(f); }
+      }
+    }
+    return list;
+  };
+  // Everything empty that reaches the edge first; what's left empty is enclosed
+  for (let e = 0; e < cells; e++) if (!seen[e] && empty(e) && n.some((m, a) => coord(e, a) === 0 || coord(e, a) === m - 1)) flood(e);
+  const out = [], o = origin || new Array(dim).fill(0);
+  for (let e = 0; e < cells; e++) if (!seen[e] && empty(e)) {
+    const list = flood(e), at = n.map((_, a) => o[a] + h * (list.reduce((s, c) => s + coord(c, a), 0) / list.length + 0.5));
+    out.push({ cells: list, volume: list.length * h ** dim, at });
+  }
+  return out;
+}
+
 // (Everything above decides the densities; everything below only draws them, so results can be kept by the code above)
 
 /**

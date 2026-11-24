@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable, refine, despike } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable, refine, despike, undercuts } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -448,4 +448,129 @@ test('discretise: a space a sliver of a cell over a whole number of cells keeps 
   assert.deepEqual([over.nx, over.ny, over.nz], [exact.nx, exact.ny, exact.nz], 'a surface 0.05 µm out of its space: the same grid');
   const wider = discretise(box(12.1, 24)).grid;
   assert.ok(wider.nx > exact.nx, 'a tenth of a cell over is a cell more');
+});
+
+test('the draw filter: no cell emptier than the cells between it and the tool, two halves from a parting plane, and its gradient matches finite differences', async () => {
+  const { drawFilter, undercuts } = await import('@rulecad/topopt');
+  const size = { nx: 3, ny: 2, nz: 5 }, n = 30, at = (i, j, k) => (k * 2 + j) * 3 + i;
+  // Milled from above (+z): one solid cell part way down a column fills everything under it; the column beside, empty, stays empty
+  const x = new Float64Array(n); x[at(1, 0, 3)] = 1;
+  const top = drawFilter(size, '+z').apply(x, new Float64Array(n));
+  for (let k = 0; k < 5; k++) assert.ok(k <= 3 ? top[at(1, 0, k)] > 0.99 : top[at(1, 0, k)] < 1e-9, `layer ${k}: ${top[at(1, 0, k)]}`);
+  assert.ok(Math.max(...[0, 1, 2, 3, 4].map((k) => top[at(0, 0, k)])) < 1e-9, 'an empty column stays empty');
+  // From below (-z), the same cell fills the layer above it to the top instead
+  const bottom = drawFilter(size, '-z').apply(x, new Float64Array(n));
+  assert.ok(bottom[at(1, 0, 4)] > 0.99 && bottom[at(1, 0, 2)] < 1e-9);
+  // Two halves parted at layer 2: a cell at layer 3 fills layer 2 (its half's side is +z) but not layers 0 and 1
+  const two = drawFilter(size, 'z', 2).apply(x, new Float64Array(n));
+  assert.ok(two[at(1, 0, 2)] > 0.99 && two[at(1, 0, 1)] < 1e-9 && two[at(1, 0, 0)] < 1e-9 && two[at(1, 0, 4)] < 1e-9);
+  // undercuts on a column with a hole under a solid cell, as seen from above; none from below the hole's own side
+  const holed = new Float64Array(n); [0, 2, 3].forEach((k) => (holed[at(2, 1, k)] = 1));
+  assert.deepEqual(undercuts(size, holed, { from: '+z' }).cells, [at(2, 1, 1)]);
+  assert.equal(undercuts(size, holed, { from: '-z' }).count, 2, 'from below, the hole at layer 1 and the empty layer 4 above it are both behind solid cells');
+  assert.equal(undercuts(size, holed, { from: 'z', parting: 2 }).count, 1, 'two halves parted at 2: only the hole is behind a solid cell (the lower half drawn down)');
+  assert.throws(() => drawFilter(size, 'z'), /the tool's side is \+x, -x, \+y, -y, \+z or -z/);
+  assert.throws(() => drawFilter(size, 'z', 6), /the parting plane is a layer from 0 to 5/);
+  // The gradient of a weighted sum of the filtered densities, against finite differences (both ways, and two halves)
+  const y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+  for (const f of [drawFilter(size, '+z'), drawFilter(size, '-x'), drawFilter(size, 'z', 3)]) {
+    const value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = f.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-7; down[e] -= 1e-7;
+      const fd = (value(up) - value(down)) / 2e-7;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-5 * Math.max(1, Math.abs(fd)), `cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('the tie filter: mirror images, half and quarter turns and an extrusion share one density, refused by name when the grid cannot', async () => {
+  const { tieFilter } = await import('@rulecad/topopt');
+  const x = Float64Array.from({ length: 4 * 4 * 3 }, (_, e) => (e * 7) % 5), size = { nx: 4, ny: 4, nz: 3 }, at = (i, j, k) => (k * 4 + j) * 4 + i;
+  const m = tieFilter(size, { mirror: 'x' }).apply(x, new Float64Array(48));
+  for (let k = 0; k < 3; k++) for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+    assert.equal(m[at(i, j, k)], m[at(3 - i, j, k)]);
+    assert.equal(m[at(i, j, k)], (x[at(i, j, k)] + x[at(3 - i, j, k)]) / 2, 'the average of the pair');
+  }
+  const q = tieFilter(size, { turns: 4 }).apply(x, new Float64Array(48));
+  for (let k = 0; k < 3; k++) for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) assert.equal(q[at(i, j, k)], q[at(3 - j, i, k)], 'a quarter turn about z maps (i, j) to (3 - j, i)');
+  const ex = tieFilter(size, { extrude: 'z' }).apply(x, new Float64Array(48));
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) assert.ok(ex[at(i, j, 0)] === ex[at(i, j, 1)] && ex[at(i, j, 1)] === ex[at(i, j, 2)], 'one section along z');
+  // A passive cell keeps its own density and is left out of its group's average
+  const passive = new Int8Array(48); passive[at(0, 0, 0)] = 1;
+  const p = tieFilter(size, { mirror: 'x' }, passive).apply(x, new Float64Array(48));
+  assert.equal(p[at(0, 0, 0)], x[at(0, 0, 0)]); assert.equal(p[at(3, 0, 0)], x[at(3, 0, 0)]);
+  // The average is symmetric, so its adjoint is itself: <A x, y> = <x, A y>
+  const t = tieFilter(size, { mirror: 'xy', extrude: 'z' }), y = Float64Array.from({ length: 48 }, (_, e) => Math.cos(e));
+  const dot = (a, b) => a.reduce((s, v, e) => s + v * b[e], 0);
+  assert.ok(Math.abs(dot(t.apply(x, new Float64Array(48)), y) - dot(x, t.adjoint(y, new Float64Array(48)))) < 1e-12);
+  assert.equal(tieFilter(size, {}), null, 'nothing tied: no filter');
+  assert.throws(() => tieFilter({ nx: 4, ny: 3, nz: 2 }, { turns: 4 }), /a quarter turn about z needs a square grid across it \(4 by 3 cells\)/);
+  assert.throws(() => tieFilter(size, { turns: 3 }), /turns is 2 or 4/);
+  assert.throws(() => tieFilter({ nx: 4, ny: 4 }, { mirror: 'z' }), /mirror across x, y \(got "z"\)/);
+  assert.throws(() => tieFilter(size, { extrude: 'w' }), /extrude: along x, y, z/);
+});
+
+test('voids: a hollow block has one enclosed void of its size; a cup open to the grid edge has none', async () => {
+  const { voids } = await import('@rulecad/topopt');
+  const n = 5, d = new Float64Array(n ** 3).fill(1), at = (i, j, k) => (k * n + j) * n + i;
+  d[at(2, 2, 2)] = 0; d[at(2, 2, 3)] = 0; // a two-cell pocket inside
+  const v = voids({ nx: n, ny: n, nz: n, h: 2 }, d, { origin: [10, 0, 0] });
+  assert.equal(v.length, 1);
+  assert.equal(v[0].volume, 2 * 2 ** 3, 'two cells of 2 mm: 16 mm³');
+  assert.deepEqual(v[0].at, [10 + 2 * 2.5, 2 * 2.5, 2 * 3], 'centred on the pocket: cells 2 and 3 up, so 2 × (2.5 + 0.5) = 6 mm');
+  d[at(2, 2, 4)] = 0; // open the pocket up through the top face
+  assert.deepEqual(voids({ nx: n, ny: n, nz: n, h: 2 }, d), []);
+});
+
+test('a problem milled, cast, symmetric or extruded: refused by name with another process or a mirror across the build direction, and the parting plane found on the grid', () => {
+  const p = { space: { at: [0, 0, 5], size: [10, 10, 10] }, supports: [{ at: [0, 0, 0.5], size: [10, 10, 1] }], loads: [{ at: [0, 0, 9.5], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.3 };
+  assert.throws(() => discretise({ ...p, overhang: '+z', mill: '+z' }), /printed \(overhang\), milled \(mill\) or cast \(cast\), one of them: this problem gives overhang and mill/);
+  assert.throws(() => discretise({ ...p, overhang: '+z', symmetry: { mirror: 'xz' } }), /printed \+z, a part can't be the same mirrored across z/);
+  // (the 10 mm space on 1 mm cells is padded to 12 cells, centred: along z from -1 to 11 mm, so its middle at 5 mm is
+  // layer (5 + 1) / 1 = 6, and a parting plane asked at 2 mm is layer 3)
+  const s = discretise({ ...p, cast: { draw: 'z' } });
+  assert.deepEqual(s.cast, { draw: 'z', parting: 6, at: 5 });
+  assert.deepEqual(discretise({ ...p, cast: { draw: 'z', parting: 2 } }).cast, { draw: 'z', parting: 3, at: 2 });
+  assert.throws(() => discretise({ ...p, cast: { draw: 'z', parting: 40 } }), /cast: the parting plane at 40 mm is off the grid along z \(-1 to 11 mm\)/);
+  assert.throws(() => discretise({ ...p, cast: { draw: 'q' } }), /cast: the draw axis is x, y, z/);
+  assert.equal(discretise({ ...p, mill: '+z', symmetry: { mirror: 'x' }, extrude: 'y' }).mill, '+z');
+});
+
+test('symmetry: a short cantilever loaded at one corner, mirrored across its middle, comes out the same both sides', () => {
+  const s = spec(32, 16, 0.4, 1.5, (g, fixed) => { for (let j = 0; j <= 16; j++) fixed[2 * g.node(0, j)] = fixed[2 * g.node(0, j) + 1] = 1; }, (g, f) => { f[2 * g.node(32, 0) + 1] = -1; });
+  const free = optimise({ ...s, steps: 60 }), mirrored = optimise({ ...s, steps: 60, symmetry: { mirror: 'y' } });
+  let worst = 0, odd = 0;
+  for (let j = 0; j < 16; j++) for (let i = 0; i < 32; i++) { worst = Math.max(worst, Math.abs(mirrored.density[j * 32 + i] - mirrored.density[(15 - j) * 32 + i])); odd = Math.max(odd, Math.abs(free.density[j * 32 + i] - free.density[(15 - j) * 32 + i])); }
+  assert.ok(worst < 1e-12, `mirrored: the two halves differ by ${worst}`);
+  assert.ok(odd > 0.3, `free, loaded at one corner, it is lopsided (${odd})`);
+  assert.ok(mirrored.compliance >= free.compliance * 0.999, 'tied cells can only cost stiffness');
+});
+
+test('the 3D cantilever milled from above: no undercuts from the tool\'s side, where the free design has hundreds', () => {
+  const [nx, ny, nz] = [24, 8, 8], g = grid({ nx, ny, nz, h: 1 }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
+  for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1;
+  for (let k = 0; k <= nz; k++) f[3 * g.node(nx, 0, k) + 1] = -1;
+  const s = { grid: { nx, ny, nz, h: 1 }, passive: new Int8Array(g.cells), fixed, loads: [{ name: 'load', force: f, weight: 1, size: nz + 1 }], material: { E: 1, nu: 0.3 }, volume: 0.3, filter: 1.5, penal: 3, projection: true };
+  const milled = optimise({ ...s, mill: '+z', steps: 200 }), free = optimise({ ...s, steps: 60 });
+  assert.equal(undercuts({ nx, ny, nz }, milled.density, { from: '+z' }).count, 0);
+  assert.ok(undercuts({ nx, ny, nz }, free.density, { from: '+z' }).count > 100, 'the free design hides material under itself');
+  // (200 steps from above: compliance 3227 against the free design's 2989 at the same steps, 8% less stiff, its volume 31%)
+  assert.ok(milled.compliance < free.compliance * 1.3 && Math.abs(milled.volume - 0.3) < 0.02, `compliance ${milled.compliance}, volume ${milled.volume}`);
+});
+
+test('the gradient matches finite differences through a mirror, an extrusion and the tool\'s side', () => {
+  for (const extra of [{ mill: '+y', symmetry: { mirror: 'x' } }, { cast: { draw: 'y', parting: 5 } }, { extrude: 'x' }]) {
+    const s = { ...lever(), ...extra }, m = model(s), beta = 4, x = Float64Array.from(s.passive, (p, e) => (p ? (p === 1 ? 1 : 0) : 0.3 + 0.4 * ((e * 7) % 11) / 11));
+    const { dc } = m.evaluate(x, beta), c = (y) => m.evaluate(y, beta).compliance;
+    // (cells the tool's side fills from elsewhere have next to no gradient of their own, lost in the differences'
+    // rounding: three cells spread over those with a gradient worth a hundredth of the largest)
+    const free = [...s.passive.keys()].filter((e) => s.passive[e] === 0), big = Math.max(...free.map((e) => Math.abs(dc[e]))), live = free.filter((e) => Math.abs(dc[e]) > big / 100);
+    for (const e of [live[3], live[Math.floor(live.length / 2)], live.at(-5)]) {
+      const h = 1e-6, up = Float64Array.from(x), down = Float64Array.from(x);
+      up[e] += h; down[e] -= h;
+      const fd = (c(up) - c(down)) / (2 * h);
+      assert.ok(Math.abs(fd - dc[e]) <= 1e-4 * Math.abs(fd) + 1e-12, `${JSON.stringify(extra)}, cell ${e}: ${dc[e]} against ${fd}`);
+    }
+  }
 });
