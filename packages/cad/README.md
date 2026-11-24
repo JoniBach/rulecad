@@ -1541,6 +1541,11 @@ regions exactly. The surface is a big mesh, so set the object's `"engine": "mani
 surface is also kept within the printer's overhang limit: faces smoothing tipped past it are tipped back. An
 `analysis` of a solid part voxelises it on the problem's grid.
 
+The surface comes out with many small triangles. `"outline": { "reduce": 0.1 }` thins them: the surface stays within
+0.1 mm of where it was drawn (a quarter of an X1C's print line), closed, with no more overhang and no new tips, and
+`cad optimise` says how many triangles it had and has. On the bracket bench's printable result that took 75,592
+triangles to 21,124 and 27.808 cm³ to 27.806 cm³, a quarter of the size in a file or a link. It is off unless given.
+
 A part prints in one orientation and is loaded in another. Draw it as it prints, and turn it back for its analysis:
 `"rotate"` (degrees about x, then y, then z, as JSCAD's `rotate`) then `"move"` (mm) put it in the problem's frame.
 Both take expressions, so a variant can lie the part down:

@@ -25,6 +25,11 @@ and head, the parts it passes through and the part it ends in.
   title and material, its rule sets and values, the parts and anchors of other designs it reads, where its filter
   came from, and the file its densities are kept in (made, or not yet).
 
+- `"outline": { "reduce": 0.1 }` on a solid problem draws its surface with fewer triangles: within that many mm of
+  the surface as drawn, closed, with no more area past the printer's overhang limit and no new tips (topopt's
+  `reduce`). `cad optimise` says how many triangles it had and has. Off unless given: no existing result changes.
+  On the bracket bench's printable result, 0.1 mm took 75,592 triangles to 21,124 (27.808 to 27.806 cm³).
+
 ### Changed
 
 - A problem with no `filter` is never filtered under two of the printer's lines (the thinnest wall it lays solid).

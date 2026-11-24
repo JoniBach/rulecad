@@ -83,6 +83,26 @@ gaps. Then it's smoothed. With `overhang`, the smoothed surface is made printabl
 are tipped back to it, and tips left hanging in mid-air (the lowest point of a dip under an edge, which a printer has
 nothing to lay down on) are lifted level with their neighbours, in turn until neither finds any.
 
+`reduce` gives a closed surface fewer triangles. It collapses edges one at a time, cheapest first, by the quadric
+error of Garland and Heckbert (1997): each corner keeps the planes of the faces it came from, and the sum of its squared
+distances to them must stay under the tolerance squared, so no corner moves further than the tolerance from any of
+those planes. A collapse is refused if it would open or pinch the surface (the two ends must share exactly the two
+corners across their edge: the link condition of Dey and others, 1999), fold a face over, or leave a sliver with no
+area. Corners on the grid's faces stay on them. Given the build direction and the printer's limit, it also refuses a
+collapse that adds to the area hanging past the limit or leaves a corner lower than all its neighbours (a tip, which
+slices as an island). On the bracket bench's printable result, 0.1 mm (a quarter of a print line) took 75,592
+triangles to 21,124, the volume from 27.808 to 27.806 cm³, with no islands before or after.
+
+```js
+const fewer = reduce({ vertices, faces }, { tolerance: 0.1, lo, hi, overhang: { up: '+z', angle: 45 } }); // lo, hi: the grid's corners
+```
+
+| Figure | Formula | Source |
+|---|---|---|
+| A corner's error at p | Σ over its faces' planes (n · p + d)², n the unit normal | Garland and Heckbert (1997) |
+| Collapse allowed | error ≤ tolerance², ends share exactly two corners, no face turned over 70° | Garland and Heckbert (1997); Dey and others (1999) |
+| A face hangs | its normal points down more than sin(limit) from level, and it isn't on the bed | the printer's overhang limit, degrees from vertical |
+
 `printable` makes a result printable before it's drawn, the hard way: built up layer by layer from the bed, a cell
 stays only if something holds it up (a cell in the layer below, straight under it or diagonally next to that; or,
 within `reach` cells along its own layer, one that is: a short bridge); kept regions always stay. Whatever's left
@@ -167,6 +187,8 @@ With projection off, it matches a line-by-line port of the 88-line MATLAB code (
 - **The MBB beam** (60 × 20, volume 0.5): 127 steps to a compliance of 218.80.
 - **A short cantilever** (48 × 24, volume 0.4): 100 steps to 99.49.
 
+The docs site runs the same MBB beam live in the browser, in a worker, to the same 127 steps and 218.80.
+
 In 3D it matches a port of Liu and Tovar's top3d (`reference/top3d.py`) step for step: a cantilever of 24 × 8 × 8
 cubes, 145 steps to 4906.73. The overhang filter's gradient agrees with finite differences.
 
@@ -195,6 +217,9 @@ Its gradients agree with finite differences through the filter and the projectio
 - Langelaar (2017). An additive manufacturing filter for topology optimization of print-ready designs. *Structural and
   Multidisciplinary Optimization* 55, 871–883.
 - Taubin (1995). A signal processing approach to fair surface design. *SIGGRAPH '95*, 351–358.
+- Garland, Heckbert (1997). Surface simplification using quadric error metrics. *SIGGRAPH '97*, 209–216.
+- Dey, Edelsbrunner, Guha, Nekhayev (1999). Topology preserving edge contraction. *Publications de l'Institut
+  Mathématique (Beograd)* 66 (80), 23–45.
 - Senhora, Giraldo-Londoño, Menezes, Paulino (2020). Topology optimization with local stress constraints: a stress
   aggregation-free approach. *Structural and Multidisciplinary Optimization* 62, 1639–1668.
 - Svanberg (1987). The method of moving asymptotes: a new method for structural optimization. *International Journal

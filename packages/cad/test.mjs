@@ -6411,3 +6411,35 @@ test('cad preview of a problem file: its run kept step by step as a page to watc
     assert.equal(runOf().frames.length, steps);
   } finally { done(); }
 });
+
+test('a solid result with fewer triangles: outline.reduce keeps the surface within its tolerance, closed, and as printable as it was drawn', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'post');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'post', objects: [] }));
+    const post = { title: 'A post', material: 'pla', cell: 2, volume: 0.3, filter: 3, steps: 20, overhang: '+z',
+      space: { at: [0, 0, 12], size: [12, 12, 24] }, keep: [{ at: [0, 0, 22], r: 4, length: 4, axis: 'z' }],
+      supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }] };
+    fs.writeFileSync(path.join(project, 'problems', 'post.json'), JSON.stringify(post));
+    fs.writeFileSync(path.join(project, 'problems', 'lean.json'), JSON.stringify({ ...post, outline: { reduce: 0.1 } }));
+    const full = JSON.parse(cad('optimise', 'post/post', '--json')), out = cad('optimise', 'post/lean'), lean = JSON.parse(cad('optimise', 'post/lean', '--json'));
+    const mesh = (r) => JSON.parse(fs.readFileSync(path.join(ws, '.cache', 'optimise', `${r.hash}.json`), 'utf8')).mesh;
+    const a = mesh(full), b = mesh(lean);
+    // the same densities (the outline only draws them), drawn with under half the triangles
+    assert.equal(full.reduced, undefined, 'off unless asked');
+    assert.deepEqual(lean.reduced, { before: a.faces.length, after: b.faces.length, tolerance: 0.1 });
+    assert.ok(b.faces.length < a.faces.length / 2, `${a.faces.length} to ${b.faces.length} triangles`);
+    assert.match(out, new RegExp(`${a.faces.length} triangles reduced to ${b.faces.length} \\([\\d.]+%\\), the surface kept within 0\\.1 mm`));
+    assert.ok(Math.abs(lean.solid / full.solid - 1) < 0.005, `${full.solid} to ${lean.solid} mm³`);
+    // closed: every edge once each way round
+    const e = new Map(); for (const f of b.faces) for (let i = 0; i < 3; i++) e.set(`${f[i]},${f[(i + 1) % 3]}`, (e.get(`${f[i]},${f[(i + 1) % 3]}`) || 0) + 1);
+    assert.ok([...e].every(([k, c]) => c === 1 && e.get(k.split(',').reverse().join(',')) === 1));
+    // sliced as the printer will: no more islands than as drawn
+    const { islands } = await import('@rulecad/printcheck'), sliced = (m) => islands(m.faces.map((f) => f.map((i) => m.vertices[i])), { layer: 0.2, overhang: 45, line: 0.42 }).islands.length;
+    assert.ok(sliced(b) <= sliced(a), `${sliced(a)} to ${sliced(b)} islands`);
+    // A tolerance that isn't a distance is refused by name
+    fs.writeFileSync(path.join(project, 'problems', 'bad.json'), JSON.stringify({ ...post, outline: { reduce: 0 } }));
+    assert.match(cad('optimise', 'post/bad'), /reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/);
+  } finally { done(); }
+});
