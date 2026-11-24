@@ -211,7 +211,8 @@ test('seats for a Z axis: a linear bearing, a lead-screw nut, a pulley bore and 
   assert.equal(polys(nutTrap({ ...bare, flange_width: 3.5, mount_hole_diameter: 3.5 }, { printer: x1c, at: [0, 0, 20] })), polys(trap), 'the rule set\'s own names (t8-nut) read the same');
   assert.throws(() => nutTrap(bare, { printer: x1c }), /nutTrap: give the screws' hole as drawn .*there is no screw size here/);
   assert.throws(() => nutTrap(bare, { hole: 0, printer: x1c }), /nutTrap: hole is a size above 0 mm/);
-  assert.equal(pulleyBore({ bore: 5 }, { length: 12, printer: x1c, at: [0, 0, 12], through: true }).bore, 5.3);
+  // shaftBore's measured slide: 5 + 2 × 0.05 + hole_comp 0.1 = 5.2 mm, as the fit bar's D-bore (it read the printer's slip as each side, 5.3)
+  assert.equal(pulleyBore({ bore: 5 }, { length: 12, printer: x1c, at: [0, 0, 12], through: true }).bore, 5.2);
   ok(beltClamp({ pitch: 2, width: 6 }, { length: 20, height: 5, wall: 2 }), 'a belt grip, teeth up');
   assert.throws(() => beltClamp({ pitch: 0, width: 6 }, { length: 20, height: 5, wall: 2 }), /beltClamp: pitch is a size/);
 });
@@ -226,4 +227,37 @@ test('shapes takes plain figures: it imports no @rulecad/fixings (fixings calls 
   // and the other way round, fixings does call shapes (its seats are shapes' cutters)
   const fixings = JSON.parse(fs.readFileSync(path.join(here, '../fixings/package.json'), 'utf8'));
   assert.ok('@rulecad/shapes' in fixings.dependencies, 'fixings depends on shapes');
+});
+
+test('shaft bores in one place: shaftBore holds the fits, and plainBearing and pulleyBore read them', async () => {
+  const { shaftBore, SHAFT_FITS, plainBearing, pulleyBore } = await import('@rulecad/shapes');
+  const x1c = { hole_comp: 0.1, fit: 0.2 };
+  // The fits each have a rule, a kind and a source; slide is the fit bar's measured D-bore
+  for (const [name, f] of Object.entries(SHAFT_FITS)) for (const k of ['value', 'unit', 'rule', 'kind', 'source', 'checked']) assert.ok(f[k] != null, `${name}.${k}`);
+  assert.equal(SHAFT_FITS.slide.kind, 'measured');
+  // Hand sums for a 5 mm shaft, hole_comp 0.1: slide 5 + 2 × 0.05 + 0.1 = 5.2; press 5 - 2 × 0.02 + 0.1 = 5.06;
+  // run 5 + 2 × 0.2 + 0.1 = 5.5; a NEMA 17's flat, 4.5 across: 4.5 + 0.1 + 0.1 = 4.7
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} against ${b}`);
+  near(shaftBore(5, { printer: x1c }).diameter, 5.2, 'slide by default'); near(shaftBore(5, { fit: 'press', printer: x1c }).diameter, 5.06, 'press');
+  near(shaftBore(5, { fit: 'run', printer: x1c }).diameter, 5.5, 'run'); near(shaftBore(5, { fit: 0.1, printer: x1c }).diameter, 5.3, 'a gap in mm');
+  near(shaftBore(5, { across: 4.5, printer: x1c }).across, 4.7, 'the flat');
+  assert.deepEqual([shaftBore(5, { printer: x1c }).kind, shaftBore(5, { fit: 'press', printer: x1c }).kind, shaftBore(5, { fit: 'run', printer: x1c }).kind, shaftBore(5, { fit: 0.1, printer: x1c }).kind], ['measured', 'estimate', 'derived', 'given']);
+  // Both read the same table: a change to the slide fit moves them together (a motor's bore: in @rulecad/motors' tests)
+  const was = SHAFT_FITS.slide.value;
+  try {
+    SHAFT_FITS.slide.value = 0.1;
+    near(pulleyBore({ bore: 5 }, { length: 10, printer: x1c }).bore, 5.3, 'the pulley\'s follows');
+    near(plainBearing(5, { length: 10, fit: 'slide', printer: x1c }).bore, 5.3, 'a plain bearing at slide follows');
+  } finally { SHAFT_FITS.slide.value = was; }
+  // A plain bearing runs by default (unchanged, 8.5 for 8 mm); an idler on its axle can run too
+  assert.equal(plainBearing(8, { length: 10, printer: x1c }).bore, 8.5); assert.equal(plainBearing(8, { length: 10, clearance: 0.1, printer: x1c }).bore, 8.3);
+  assert.equal(pulleyBore({ bore: 5 }, { length: 10, fit: 'run', printer: x1c }).bore, 5.5);
+  // Refusals by name
+  assert.throws(() => shaftBore(5, {}), /shaftBore: give the printer's rules/);
+  assert.throws(() => shaftBore(5, { fit: 'tight', printer: x1c }), /shaftBore: fit is slide, press, run, or a gap each side in mm \(got tight\)/);
+  assert.throws(() => shaftBore(5, { fit: -3, printer: x1c }), /shaftBore: a fit of -3 mm each side leaves no bore for a 5 mm shaft/);
+  assert.throws(() => shaftBore(5, { across: 6, printer: x1c }), /shaftBore: across the flat \(6\) is at most the shaft's diameter, 5 mm/);
+  assert.throws(() => shaftBore(0, { printer: x1c }), /shaftBore: shaft is a size above 0 mm/);
+  assert.throws(() => pulleyBore({ bore: 5 }, { length: 10, fit: 'tight', printer: x1c }), /pulleyBore: fit is slide, press, run/);
+  assert.throws(() => plainBearing(8, { length: 10, fit: 'run', clearance: 0.1, printer: x1c }), /plainBearing: give fit or clearance, not both/);
 });

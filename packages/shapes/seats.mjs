@@ -4,7 +4,8 @@
 // the material along a direction (into): '+x', '-x', '+y', '-y', '+z' (up from the bed) or '-z' (down from a top face).
 //   seatSize(bearing, { fit, lip, printer })        the numbers: the pocket as drawn, its depth, the relief, the fit
 //   bearingSeat(bearing, { fit, lip, relief, through, lead, printer, at, into })   a pocket to subtract, for the outer race
-//   plainBearing(shaft, { clearance, length, wall, through, printer, at, into })   a bore to subtract, or with wall a bush to add
+//   shaftBore(shaft, { fit, across, printer })      the numbers: a bore for a bought shaft, at one of SHAFT_FITS, as drawn
+//   plainBearing(shaft, { fit, clearance, length, wall, through, printer, at, into })   a bore to subtract, or with wall a bush to add
 //   shaftShoulder(shaft, { shoulder, height, at })  a collar to add to a printed shaft, stood up: flat on top, 45° below
 //   clipGroove(shaft, { width, depth, at })         a ring to subtract from a printed shaft, stood up: flat below, sloped above
 import jscad from '@jscad/modeling';
@@ -92,24 +93,68 @@ export function bearingSeat(bearing, { fit = 'press', lip, relief = 1, through =
 }
 
 /**
- * A plain bearing for a shaft, where a ball bearing is more than the load needs. Its bore is the shaft plus the running
- * clearance each side, plus the printer's hole compensation. As a bore to subtract; given a wall, a bush standing up
- * from z = 0 to add (a tube lying down wouldn't print round).
+ * The fits a printed bore takes on a bought shaft (a motor's D-shaft, a pulley's, an axle), each side of the shaft, as
+ * drawn before the printer's hole compensation is added. `run`, for a part that turns on the shaft, is the printer's own
+ * `fit` each side, so it has no figure here.
+ * @type {Record<'slide' | 'press', { value: number, unit: string, rule: string, kind: string, source: string, checked: string }>}
+ */
+export const SHAFT_FITS = {
+  slide: { value: 0.05, unit: 'mm', rule: 'Gap each side of a shaft in its bore, with the printed hole\'s shrinkage allowed for, so it slides on and no more: a 5 mm D-shaft slides comfortably in a bore drawn 5.2 mm (0.05 each side and hole_comp 0.1), is tight in 5.1 mm and will not go in 5.0 mm', kind: 'measured', source: 'fit bar row 2, examples/bench/projects/benchmarks/MEASURE.md row 3, PLA on the X1C', checked: '2026-11-10' },
+  press: { value: -0.02, unit: 'mm', rule: 'Each side of a shaft in a press-fit bore as printed: a hair tight, 0.8% strain on a 5 mm shaft, well inside what PLA stretches to before it cracks. A D flat does the driving. A bore drawn 5.06 mm for a 5 mm shaft falls between the fit bar\'s 5.1 mm (tight) and 5.0 mm (too tight)', kind: 'estimate', source: 'A reasoned guess, between the fit bar\'s tight and too tight bores (examples/bench/projects/benchmarks/MEASURE.md row 3); not yet pressed and turned under load', checked: '2026-11-10' }
+};
+const SHAFT_FIT_NAMES = ['slide', 'press', 'run'];
+
+/**
+ * The bore a printed part takes for a bought shaft, in numbers: the one place every shaft bore in the kit reads its fit
+ * from (a motor's bore in @rulecad/motors, pulleyBore, plainBearing). The bore as drawn is the shaft, plus the fit each
+ * side, plus the printer's hole compensation (printed holes come out that much small across).
  * @param {number} shaft diameter
- * @param {{ clearance?: number, length: number, wall?: number, through?: boolean, printer: object, at?: number[], into?: string }} o
- *   clearance: each side (default the printer's fit)
+ * @param {{ fit?: 'slide' | 'press' | 'run' | number, across?: number, printer: { hole_comp: number, fit?: number } }} o
+ *   fit: one of SHAFT_FITS, run (the printer's fit each side, for a part that turns on the shaft), or a gap each side
+ *   in mm (below 0, a press); across: a D-shaft's width across its flat, to have the flat's line as drawn as well
+ * @returns {{ diameter: number, across?: number, each: number, comp: number, fit: string | number, kind: string }}
+ *   each: the gap each side as drawn, before hole_comp; kind: how far that gap is trusted (measured, estimate, the
+ *   derived for run, from the printer's rule; given for a number)
+ */
+export function shaftBore(shaft, { fit = 'slide', across, printer, what = 'shaftBore' } = {}) {
+  const p = printerOf(what, printer);
+  size(what, 'shaft', shaft);
+  const comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true });
+  let each, kind;
+  if (typeof fit === 'number') { if (!Number.isFinite(fit) || 2 * fit <= -shaft) throw new Error(`${what}: a fit of ${fit} mm each side leaves no bore for a ${shaft} mm shaft`); each = fit; kind = 'given'; }
+  else if (fit === 'run') { each = size(what, 'printer.fit', p.fit); kind = 'derived'; }
+  else if (SHAFT_FITS[fit]) { each = SHAFT_FITS[fit].value; kind = SHAFT_FITS[fit].kind; }
+  else throw new Error(`${what}: fit is ${SHAFT_FIT_NAMES.join(', ')}, or a gap each side in mm (got ${fit})`);
+  const out = { diameter: +(shaft + 2 * each + comp).toFixed(4), each, comp, fit, kind };
+  if (across != null) {
+    if (size(what, 'across', across) > shaft) throw new Error(`${what}: across the flat (${across}) is at most the shaft's diameter, ${shaft} mm`);
+    out.across = +(across + 2 * each + comp).toFixed(4);
+  }
+  return out;
+}
+
+/**
+ * A plain bearing for a shaft, where a ball bearing is more than the load needs. Its bore is shaftBore's: the shaft plus
+ * the fit each side, plus the printer's hole compensation. As a bore to subtract; given a wall, a bush standing up from
+ * z = 0 to add (a tube lying down wouldn't print round).
+ * @param {number} shaft diameter
+ * @param {{ fit?: 'run' | 'slide' | 'press' | number, clearance?: number, length: number, wall?: number, through?: boolean, printer: object, at?: number[], into?: string }} o
+ *   fit: as shaftBore (default run, the printer's fit each side, as a bearing turns on its shaft); clearance: a gap each
+ *   side in mm, the same as a number for fit
  * @returns {object} a JSCAD geom3, with .bore the diameter as drawn and .clearance each side
  */
-export function plainBearing(shaft, { clearance, length, wall, through = false, printer, at = [0, 0, 0], into = '-z' } = {}) {
-  const what = 'plainBearing', p = printerOf(what, printer);
+export function plainBearing(shaft, { fit, clearance, length, wall, through = false, printer, at = [0, 0, 0], into = '-z', what = 'plainBearing' } = {}) {
+  printerOf(what, printer);
   size(what, 'shaft', shaft); size(what, 'length', length);
-  const gap = clearance ?? size(what, 'printer.fit', p.fit), comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true }), bore = +(shaft + 2 * size(what, 'clearance', gap) + comp).toFixed(4);
-  if (wall == null) return Object.assign(along(tear(bore / 2, bore / 2, OUT, -length - (through ? OUT : 0), UP[into] ?? null), into, at), { bore, clearance: gap });
+  if (clearance != null && fit != null) throw new Error(`${what}: give fit or clearance, not both: a clearance is a fit in mm each side`);
+  if (clearance != null) size(what, 'clearance', clearance);
+  const b = shaftBore(shaft, { fit: clearance ?? fit ?? 'run', printer, what }), bore = b.diameter, gap = b.each;
+  if (wall == null) return Object.assign(along(tear(bore / 2, bore / 2, OUT, -length - (through ? OUT : 0), UP[into] ?? null), into, at), { bore, clearance: gap, fit: b.fit, kind: b.kind });
   size(what, 'wall', wall);
   if (UP[into]) throw new Error(`${what}: a bush with a wall prints standing up (into +z or -z): a tube on its side wouldn't print round. Bore across a part with no wall instead`);
   const outer = bore / 2 + wall, inner = bore / 2, chamfer = Math.min(0.4, wall / 2);
   const g = extrudeRotate({ segments: SEGMENTS }, polygon({ points: [[inner + chamfer, 0], [outer - chamfer, 0], [outer, chamfer], [outer, length], [inner, length], [inner, chamfer]] }));
-  return Object.assign(translate(at, g), { bore, clearance: gap });
+  return Object.assign(translate(at, g), { bore, clearance: gap, fit: b.fit, kind: b.kind });
 }
 
 /**
@@ -193,11 +238,14 @@ export function nutTrap(nut, { fit, hole: hole_, printer, at = [0, 0, 0], depth 
 
 /**
  * A bore for a pulley on a stepper's round shaft (no flat: a pulley's grub screw bears on the shaft), or a plain idler's
- * axle, to subtract. A pass-through with a chamfered mouth.
- * @param {{ bore: number }} pulley @param {{ length: number, printer: object, at?: number[], into?: string, through?: boolean }} o
+ * axle, to subtract. A pass-through with a chamfered mouth. Its fit is shaftBore's slide, measured on a 5 mm shaft, the
+ * same as a motor's bore: a 5 mm bore is drawn 5.2 mm on the X1C.
+ * @param {{ bore: number }} pulley @param {{ length: number, fit?: 'slide' | 'run' | 'press' | number, printer: object, at?: number[], into?: string, through?: boolean }} o
+ *   fit: as shaftBore (default slide); run, for an idler that turns on its axle
+ * @returns {object} a JSCAD geom3 to subtract, with .bore the diameter as drawn and .clearance each side
  */
-export function pulleyBore(pulley, { length, printer, at = [0, 0, 0], into = '-z', through = false } = {}) {
-  return plainBearing(size('pulleyBore', 'bore', pulley?.bore), { length, printer, at, into, through, clearance: printerOf('pulleyBore', printer).slip ?? printer.fit / 2 });
+export function pulleyBore(pulley, { length, fit = 'slide', printer, at = [0, 0, 0], into = '-z', through = false } = {}) {
+  return plainBearing(size('pulleyBore', 'bore', pulley?.bore), { length, fit, printer, at, into, through, what: 'pulleyBore' });
 }
 
 /**

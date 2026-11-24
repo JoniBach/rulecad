@@ -4,6 +4,18 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## Unreleased
+
+### Changed
+
+- `boreModel` and `bore` read their fit from `@rulecad/shapes`' `shaftBore` (#307), the one place every shaft bore in
+  the kit reads it. `DEFAULTS.fit` and `DEFAULTS.press` are now the same objects as `SHAFT_FITS.slide` and
+  `SHAFT_FITS.press`, with a source and a date. The package depends on `@rulecad/shapes`, which fixings already did.
+
+### Printed sizes
+
+- None moved: a NEMA 17's bore is still 5.2 mm (4.7 across its flat) at slide and 5.06 mm (4.56) at press.
+
 ## 0.1.6: motors mount through fixings (Fixings 3)
 
 ### What reads fixings now
