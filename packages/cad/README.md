@@ -1519,6 +1519,20 @@ A problem whose regions have a z is solid. It has no thickness, and takes more k
 Supports and loads can be any region; a force has x, y and z. `"overhang": "+z"` keeps only material that prints
 without supports standing that way up (a variable holding `"+z"` or `"none"` works too, so a variant can switch it).
 
+A part made another way says so in place of `overhang` (one process to a problem; two are refused by name):
+- **Milled:** `"mill": "+z"` (the tool cuts down from above). No undercuts: a cell is as solid as every cell
+  between it and the tool. `cad optimise` says `milled from +z: no undercuts`, or counts the cells an avoid region
+  hides behind material. The `mill-3axis` rule set holds the walls, corners and pockets a 3-axis machine manages.
+- **Cast or moulded:** `"cast": "+z"` for a mould drawn off one way, or `"cast": { "draw": "z", "parting": 6 }` for
+  two halves drawn off both ways from a parting plane (mm along the axis; the space's middle when left out). Draft
+  (`mould-injection`: a degree or so) is less than a cell, so it is left to the drawing.
+- **Printed in a metal powder bed:** `"overhang": "+z"` with `"voids": "refused"`. Powder left in an enclosed void
+  can't be got out, so `cad optimise` fails with each void's volume and centre: open it with an avoid region (an
+  escape hole, `dmls.escape_hole` wide) or allow voids. The `dmls` rule set holds the process's limits.
+
+Any of them can also be `"symmetry": { "mirror": "y" }` (mirrored across the grid's middle planes; `"turns": 2` or
+`4` about `"axis"` for half or quarter turns) or `"extrude": "x"` (one section all along x, a part cut from a bar).
+
 `cad optimise` draws the result's four views in `.preview/`. A design builds the result with
 `v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops })`, which adds the keep regions and cuts the avoid
 regions exactly. The surface is a big mesh, so set the object's `"engine": "manifold"`. With `"overhang"` set, the
