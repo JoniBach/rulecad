@@ -23,6 +23,10 @@ leaf, with the same sums.
 - `xyStage` and `xyStageModel` (#75): two parallel guides in series at right angles, each axis's stiffness, the
   stiffness along the leaves and each axis's stray.
 - `ports` and `models` know the spiral spring, the pinned leaf and the two new hinges, so `report` and `lamina` take them.
+- A spiral spring takes 1.25 turns or more (with fewer, its thickened ends lie side by side and the coils overlap at
+  a pitch the 1.5 × thickness rule allows), and its model's `gap` is measured on the outline as drawn.
+- In a `lamina`, a spiral spring's hub turns in place: the finite-element peak says so (info) instead of failing on a
+  push with no direction, and a `lamina.coils` warning says the coils' closing as it winds is not checked.
 - Bad input refused by name: `along`, `across` and `slot` are now checked as sizes (an elliptical hinge or LET joint
   given 0 there is refused instead of drawing nothing).
 

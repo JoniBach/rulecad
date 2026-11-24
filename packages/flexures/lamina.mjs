@@ -450,7 +450,11 @@ export async function lamina(spec) {
     }).filter((c) => c.turn < -rad(SHARP_TURN)).map((c) => c.p));
     function feCheck(n, j, most, beam) {
       const t = Math.min(...[j.params?.thickness ?? j.params?.neck ?? gap * 4].flat()), to = parts[j.to].shape, from = parts[j.from].shape, c = centroid(to);
-      const m = j.motion, dir = m.axis ? m.axis : (() => { const r = [c[0] - m.pivot[0], c[1] - m.pivot[1]], l = Math.hypot(...r); return [-r[1] / l, r[0] / l]; })();
+      const m = j.motion;
+      // The finite elements push the moved body along a line, the tangent at its middle. A spiral spring's hub turns in
+      // place, and a body centred on its pivot has no tangent there: neither is a push along a line
+      if (j.kind === 'spiralSpring' || (!m.axis && Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1]) < t)) { f('info', `${n}: its peak strain isn't worked out by finite elements: they push the body along a line, and ${j.kind === 'spiralSpring' ? 'a spiral spring\'s hub turns in place' : `${what(j.to)} turns about its own middle`}. Its strain is the model's${j.kind === 'spiralSpring' ? ', with the strip\'s ends thickened to twice it so the joins stay under the strip\'s strain' : ''}`, 'lamina.peak', { joint: n }); return null; }
+      const dir = m.axis ? m.axis : (() => { const r = [c[0] - m.pivot[0], c[1] - m.pivot[1]], l = Math.hypot(...r); return [-r[1] / l, r[0] / l]; })();
       const travel = m.axis ? most : j.leafy ? (most * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1])) / m.leaf : rad(most) * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1]);
       const r = fePeak({ flexure: parts[n].shape, held: from, moved: to, direction: dir, travel, E: material.E, cell: t / FE_CELLS, band: Math.max(2 * t, gap * 4) });
       if (!r) { f('info', `${n}: its peak strain couldn't be worked out by finite elements (nothing held, or nothing to push)`, 'lamina.peak', { joint: n }); return null; }
@@ -481,6 +485,9 @@ export async function lamina(spec) {
       f(e <= material.strainLimit ? 'pass' : 'fail', `${n}: ${u?.most ? `at its most (${+most.toFixed(2)}${unit}) it sees ${(e * 100).toFixed(2)}% strain, ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}% (${+limit.toFixed(2)}${unit})` : 'nothing moves it'}`, 'lamina.strain', { joint: n, strain: e, limit });
       if (j.model.least != null && printer && j.model.least < (printer.wall_min ?? 2 * printer.line) - 1e-6) f('fail', `${n}: tapered to ${j.model.least.toFixed(2)} mm, under the thinnest wall that prints (${printer.wall_min ?? 2 * printer.line} mm)`, 'flexure.thin', { joint: n });
       const fe = u?.most && spec.check?.fe !== false ? feCheck(n, j, most, e) : null;
+      // A spiral spring's coils close up as it winds, on one side when its hub is held: the stop below sweeps the bodies,
+      // not the coils, so where they touch is left to the beam solver
+      if (j.kind === 'spiralSpring' && u?.most) f('warn', `${n}: its coils close up as it winds (${+m.gap.toFixed(2)} mm apart at rest), and where they touch isn't checked here: stop it before they do, and check a wide turn with the beam solver`, 'lamina.coils', { joint: n, gap: m.gap });
       // Where the real peak is over beam theory's, the travel it may go is that much less
       const reachOf = (sg) => (fe && !fe.sharp && fe.ratio > 1 ? travelAt(j, material.strainLimit / fe.ratio, sg) : limitOf(n, sg)); // (a sharp corner fails on its own; the model asked, not scaled, since a large deflection isn't linear)
       // A stop: swept from rest to the limit (less a margin), its body, or what it carries, runs into something

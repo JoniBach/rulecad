@@ -288,7 +288,8 @@ The findings, each pass or fail with its code:
 | `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
 | `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go. A catch that bites presses into what it holds as it's moved: what it holds is cammed back out of it first |
 | `lamina.strain` | Each flexure's strain at the most it is moved, against the limit, by beam theory |
-| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
+| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields. A spiral spring's hub, or a body turning about its own middle, is not a push along a line: it says so (info), and its strain is the model's |
+| `lamina.coils` | A spiral spring's coils close up as it winds: a warning with their gap at rest, since the stop sweeps the bodies and not the coils. Stop it before they touch, and check a wide turn with the beam solver |
 | `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
 | `lamina.energy` | What each state stores, and the forces |
 | `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
@@ -435,7 +436,8 @@ push-push latch is built from a plunger module and a track module placed at the 
   `spiralSpring` is the flat alternative: a strip wound round a hub, bending within its layers. With the hub on a shaft
   (its centre held) the strip bends a little more on one side than the other; the model works that out (Castigliano
   on the strip as drawn) and agrees with the beam solver within 1%. Its coils need a gap of at least the printer's at
-  rest (`gap`, at the thickened ends); as it winds they crowd to one side, so check a wide turn with the solver. In
+  rest (`gap`, measured on the outline, about pitch less 1.5 × thickness by the thickened ends). Each end is
+  thickened over a quarter turn, so it takes 1.25 turns or more: with fewer, the two thickened ends lie side by side; as it winds they crowd to one side, so check a wide turn with the solver. In
   the beam solver, 3 turns of 0.84 mm at a 2.5 mm pitch closed their narrowest gap from 1.24 mm to 0.83 mm at 1.2 rad.
 - **Hinges by their notch.** The circular notch (`notchHinge`) bends at one thin point. The corner-filleted hinge
   (`filletHinge`) bends along a flat, so with a 4 mm flat it turns four times as far at the same strain as a circular

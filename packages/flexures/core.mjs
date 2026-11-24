@@ -693,7 +693,7 @@ const smoothStep = (u) => { const v = Math.min(1, Math.max(0, u)); return v * v 
 function refuseSpiral(what, p, m) {
   need(what, p, m);
   const { hub: r0, turns: n, pitch: pt, thickness: t } = p;
-  if (!(n >= 1)) throw new Error(`${what}: turns is 1 or more (got ${n}): under a turn, the thickened ends run into each other`);
+  if (!(n >= 1.25)) throw new Error(`${what}: turns is 1.25 or more (got ${n}): each end is thickened over a quarter turn, and with fewer turns the two thickened ends lie side by side, a coil apart, and need more pitch than the 1.5 × thickness allowed for`);
   if (!(r0 > t)) throw new Error(`${what}: the hub's radius ${r0} mm must be more than the thickness ${t} mm, so the strip's thickened root can wrap it`);
   if (!(pt > 1.5 * t)) throw new Error(`${what}: the pitch ${pt} mm must be more than 1.5 × the thickness (${+(1.5 * t).toFixed(3)} mm): the coils, with their ends thickened to twice the strip, need room between them`);
 }
@@ -724,7 +724,7 @@ export function spiralPath(p) {
  * works out the hub's centre held, which bends the strip a little more near one side.
  * Drawn with the hub at the origin, the spiral running anticlockwise out from +x, the boss outside its last coil.
  * @param {{ hub: number, turns: number, pitch: number, thickness: number, width: number, anchor?: number }} p hub: the
- *   hub's radius, where the strip starts; turns: how many (1 or more); pitch: coil to coil, radially (more than 1.5 ×
+ *   hub's radius, where the strip starts; turns: how many (1.25 or more); pitch: coil to coil, radially (more than 1.5 ×
  *   thickness); thickness: the strip's; width: up z; anchor: the boss's radius (default 2 × thickness, at least 2)
  */
 export function spiralSpring(p) {
@@ -749,7 +749,8 @@ export function spiralSpring(p) {
  * @param {Material} m
  * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, travel: (strain: number) => number,
  *   stress: (angle: number) => number, length: number, gap: number }} stiffness in N·mm a radian; length: the strip's,
- *   mm; gap: the least gap between coils at rest (pitch − 1.5 × thickness, at the thickened ends), mm
+ *   mm; gap: the least gap between coils at rest, measured on the outline as drawn (about pitch − 1.5 × thickness, by
+ *   the thickened ends; a little less, as the coils cross a radius on the slant), mm
  */
 export function spiralSpringModel(p, m) {
   refuseSpiral('spiralSpringModel', p, m);
@@ -761,7 +762,15 @@ export function spiralSpringModel(p, m) {
   if (p.floating) T = 1 / S[0];
   else [T, a, b] = solve3([[S[0], S[1], S[2]], [S[1], S[3], S[4]], [S[2], S[4], S[5]]], [1, 0, 0]);
   const per = Math.max(...seg.map((g) => (Math.abs(T + a * g.x + b * g.y) * g.h) / (2 * g.EI))), strain = (th) => per * Math.abs(th), angle = (e) => e / per;
-  return { stiffness: T, strain, angle, travel: angle, stress: (th) => E * strain(th), length, gap: pt - 1.5 * t };
+  return { stiffness: T, strain, angle, travel: angle, stress: (th) => E * strain(th), length, gap: spiralGap(path, thickness, p.turns) };
+}
+// The least gap between neighbouring coils as drawn: each point of the centreline against those 0.75 to 1.25 turns on,
+// their distance less half of each one's thickness
+function spiralGap(path, thickness, turns) {
+  const per = (path.length - 1) / turns;
+  let least = Infinity;
+  for (let i = 0; i < path.length; i++) for (let j = i + Math.ceil(per * 0.75); j <= Math.min(path.length - 1, i + Math.floor(per * 1.25)); j++) least = Math.min(least, Math.hypot(path[i][0] - path[j][0], path[i][1] - path[j][1]) - (thickness[i] + thickness[j]) / 2);
+  return least;
 }
 function solve3(A, v) { // Cramer's rule, for a small symmetric system
   const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);

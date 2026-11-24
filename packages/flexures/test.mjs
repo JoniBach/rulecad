@@ -1187,8 +1187,9 @@ test('a spiral spring: the model is the beam solver\'s within 1% held at its hub
   // Its strain is the even moment's t θ / 2L where the strip is thinnest: 0.84 / (2 × 146.28) = 0.002871 a radian, times
   // the moment's share there: T / (EI / L) = 1.108
   near(f.strain(1), (1.108 * 0.84) / (2 * 146.28), 2e-5, 'the floating strain a radian');
-  // The coils' least gap at rest is at the thickened ends: 2.5 - 1.5 × 0.84 = 1.24 mm
-  const m = spiralSpringModel(p, pla); near(m.gap, 1.24, 1e-9, 'the gap');
+  // The coils' least gap at rest is by the thickened ends: radially 2.5 - 1.5 × 0.84 = 1.24 mm, and across the coils,
+  // which cross a radius on the slant, a little less: 1.2326 mm measured on the outline
+  const m = spiralSpringModel(p, pla); near(m.gap, 1.2326, 1e-4, 'the gap');
   const shape = spiralSpring(p), box = measureBoundingBox(shape);
   assert.ok(onePiece(shape), 'hub, strip and boss as one piece');
   near(box[1][2] - box[0][2], 6, 1e-6, 'as tall as its width');
@@ -1196,7 +1197,7 @@ test('a spiral spring: the model is the beam solver\'s within 1% held at its hub
   // in to its inner face, so out to 11.5 - 0.84 + 2 × 2 = 14.66
   near(box[1][0], 14.66, 0.01, 'the boss outside the last coil');
   assert.throws(() => spiralSpring({ ...p, pitch: 1.2 }), /pitch 1\.2 mm must be more than 1\.5 × the thickness \(1\.26 mm\)/);
-  assert.throws(() => spiralSpringModel({ ...p, turns: 0.5 }, pla), /turns is 1 or more/);
+  assert.throws(() => spiralSpringModel({ ...p, turns: 0.5 }, pla), /turns is 1\.25 or more/);
   assert.throws(() => spiralSpring({ ...p, hub: 0.5 }), /hub's radius 0\.5 mm must be more than the thickness/);
 });
 
@@ -1274,4 +1275,35 @@ test('the new flexures have ports and models by name, so a report checks them an
   const made = await lamina({ height: 8, gap: 0.3, material: { E: 2680, strainLimit: 0.02 }, physics: false, ground: rect(-20, -5, 3, 5), bodies: { arm: rect(16, -3, 40, 3) },
     joints: { h: { kind: 'filletHinge', params: { flex: 4, radius: 1.5, neck: 0.84, arms: 6 }, from: 'ground', to: 'arm' } }, states: { bent: { h: 20 } }, sequence: ['rest', 'bent'] }); // degrees: past the 11.9° that 2% allows
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'fail'), made.findings.filter((x) => x.code === 'lamina.strain').map((x) => x.text).join('; '));
+});
+
+test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened ends lie side by side and it is refused; the model\'s gap is the outline\'s; a lamina turns its hub in place', async () => {
+  const { spiralSpring, spiralSpringModel, spiralPath, lamina } = await import('@rulecad/flexures');
+  // Each end is 2t thick, thinning to t over a quarter turn. At 1 to 1.25 turns the two thickened ends lie a coil apart
+  // side by side, so the coils there need the pitch to be over 2t, not 1.5t: 1 turn of 1 mm at a 1.6 mm pitch overlaps
+  // by 1.6 - 2 × 1 = -0.4 mm, and 1.2 turns by 0.046 mm. Both pass a pitch over 1.5t, so the turns are refused
+  for (const turns of [1, 1.2]) {
+    assert.throws(() => spiralSpring({ hub: 4, turns, pitch: 1.6, thickness: 1, width: 6 }), /spiralSpring: turns is 1\.25 or more/);
+    assert.throws(() => spiralSpringModel({ hub: 4, turns, pitch: 1.6, thickness: 1, width: 6 }, pla), /spiralSpringModel: turns is 1\.25 or more/);
+  }
+  // From 1.25 turns the thickened ends no longer lie side by side. At exactly 1.25, a point u of the way along the inner
+  // end's quarter turn (thickness t(2 - s(u))) sits a coil inside a point with t(2 - s(1 - u)), and the smooth step has
+  // s(u) + s(1 - u) = 1, so the two add to 3t: half each is 1.5t, and the gap radially is pitch - 1.5t = 1.6 - 1.5 =
+  // 0.1 mm. The model's gap is checked against every pair of points on the
+  // outline, so it is never more than the drawn least gap, and the drawn gap is over 0
+  const least = (p) => { const { path, thickness } = spiralPath(p); let g = Infinity; for (let i = 0; i < path.length; i++) for (let j = i + 1; j < path.length; j++) { if (j - i < (path.length - 1) / p.turns / 2) continue; g = Math.min(g, Math.hypot(path[i][0] - path[j][0], path[i][1] - path[j][1]) - (thickness[i] + thickness[j]) / 2); } return g; };
+  for (const p of [{ hub: 4, turns: 1.25, pitch: 1.6, thickness: 1, width: 6 }, { hub: 4, turns: 1.5, pitch: 1.6, thickness: 1, width: 6 }, { hub: 4, turns: 3, pitch: 2.5, thickness: 0.84, width: 6 }]) {
+    const g = least(p), m = spiralSpringModel(p, pla);
+    near(m.gap, g, 1e-6, `${p.turns} turns: the model's gap is the outline's`); assert.ok(g > 0, `${p.turns} turns: the coils are apart (${g})`);
+  }
+  near(spiralSpringModel({ hub: 4, turns: 1.25, pitch: 1.6, thickness: 1, width: 6 }, pla).gap, 0.1, 1e-3, '1.6 - 1.5 × 1');
+  // In a lamina, its hub (a disc on the pivot) turns in place: the finite elements, which push a body along a line,
+  // say so instead of failing on a push with no direction, and the coils' closing is a warning for the beam solver
+  const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  const made = await lamina({ height: 6, gap: 0.3, material: { E: 2680, strainLimit: 0.02 }, physics: false, ground: rect(12.5, -3, 30, 3), bodies: { hub: jscad.primitives.circle({ radius: 4 }) },
+    joints: { s: { kind: 'spiralSpring', params: { hub: 4, turns: 3, pitch: 2.5, thickness: 0.84 }, from: 'ground', to: 'hub' } }, states: { wound: { s: 30 } }, sequence: ['rest', 'wound'] });
+  const peak = made.findings.find((x) => x.code === 'lamina.peak'), coils = made.findings.find((x) => x.code === 'lamina.coils');
+  assert.ok(peak && peak.level === 'info' && /hub turns in place/.test(peak.text), peak?.text);
+  assert.ok(coils && coils.level === 'warn' && /1\.23 mm apart at rest/.test(coils.text), coils?.text);
+  assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
