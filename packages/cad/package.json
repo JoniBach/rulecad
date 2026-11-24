@@ -58,14 +58,14 @@
     "url": "https://github.com/JoniBach/rulecad/issues"
   },
   "dependencies": {
-    "@rulecad/variables": "^0.3.5",
+    "@rulecad/variables": "^0.3.6",
     "@rulecad/keyboard-layout": "^0.1.2",
     "@rulecad/printcheck": "^0.3.3",
     "@rulecad/fit": "^0.4.0",
     "@rulecad/model-link": "^0.3.2",
     "@rulecad/versions": "^0.1.6",
     "@rulecad/shapes": "^0.4.8",
-    "@rulecad/rules": "^0.3.22",
+    "@rulecad/rules": "^0.3.23",
     "@jscad/modeling": "^2.12.0",
     "three": "^0.186.1",
     "@rulecad/fea": "^0.2.14",

@@ -27,6 +27,8 @@
         "properties": {
           "value": { "type": ["number", "string", "array"], "minItems": 1, "items": { "type": ["number", "string"] }, "description": "A number, an expression, text, or a list of numbers or expressions in the rule's one unit (the lengths a screw is sold in)" },
           "unit": { "type": "string" },
+          "low": { "type": "number", "description": "The lowest it is found at, in the rule's unit (a printed plastic's, which varies with the printer and the spool): at most the value" },
+          "high": { "type": "number", "description": "The highest it is found at, in the rule's unit: at least the value" },
           "rule": { "type": "string" },
           "kind": { "type": "string", "description": "How far to trust it, most to least: measured, spec, community, default, derived, estimate" },
           "source": { "type": "string" },

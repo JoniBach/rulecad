@@ -1,0 +1,13 @@
+{
+  "_doc": "Bambu Lab PAHT-CF (carbon-filled nylon), printed, annealed and dry, for analysis: stiffness and strength along the layers (x-y) and across them (z). Nylon takes up water and softens: the sheet's specimens were dried and annealed at 80 °C for 12 hours, so a part kept in damp air is weaker. Low and high are the data sheet's own spread either side; measure your own (the lever bench does) and record it as kind measured.",
+  "name": "pa_cf",
+  "rules": {
+    "modulus": {"value": 3860, "low": 3630, "high": 4090, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), ± 230, dry and annealed", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 527, GB/T 1040), https://cdn.shopify.com/s/files/1/0380/5149/files/Bambu_PAHT-CF_Technical_Data_Sheet.pdf", "checked": "2026-11-24"},
+    "modulus_z": {"value": 2180, "low": 2050, "high": 2310, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 130, dry and annealed", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength": {"value": 88, "low": 81, "high": 95, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 7, dry and annealed", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "strength_z": {"value": 64, "low": 61, "high": 67, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 3, dry and annealed", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 527, GB/T 1040)", "checked": "2026-11-24"},
+    "poisson": {"value": 0.35, "rule": "Poisson's ratio (Bambu publish none): an estimate; a fibre-filled print differs along and across its fibres", "kind": "estimate", "source": "An estimate of @rulecad/rules: no maker's data sheet gives one", "checked": "2026-11-24"},
+    "density": {"value": 1.06, "unit": "g/cm³", "rule": "Density of the filament", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 1183)", "checked": "2026-11-24"},
+    "softening": {"value": 194, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa, annealed", "kind": "spec", "source": "Bambu Lab PAHT-CF technical data sheet V2.0 (ISO 75)", "checked": "2026-11-24"}
+  }
+}

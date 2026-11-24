@@ -130,7 +130,7 @@ async function readOne(project, ref, link) {
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
     loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
-    material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), ...(p.volume != null ? { volume: ev(p.volume) } : {}), ...(p.stress != null ? { stress: ev(p.stress) } : {}),
+    material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), ...(p.volume != null ? { volume: ev(p.volume) } : {}), ...(p.stress != null ? { stress: ev(p.stress) } : {}), ...(p.strain != null ? { strain: ev(p.strain) } : {}),
     ...(p.filter != null ? { filter: ev(p.filter) } : lines > ev(p.cell) * 1.5 ? { filter: lines } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),

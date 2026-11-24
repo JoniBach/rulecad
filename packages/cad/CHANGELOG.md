@@ -41,6 +41,23 @@ and head, the parts it passes through and the part it ends in.
   0.56 mm or more. No existing problem's result moves: the kit's problems all give their filter or use cells of 1 mm
   or more.
 
+## 0.7.79: strength in optimisation
+### Added
+
+- A problem takes `strain`, a strain limit (a share: `"pla.strength / pla.modulus / 2"`), in place of `stress`: the
+  stress limit is it times the material's modulus. A mechanism given either is optimised as before and then checked:
+  `cad optimise` gives its peak stress at its push and the push and output travel that take it to the limit.
+- The rule set schema takes `low` and `high` on a rule: the range it is found in.
+
+### Changed
+
+- A project whose material has no rule set is refused with every plastic the workspace and the kit have a set for
+  (abs, asa, pa_cf, petg and pla in the kit), where it named only pla and petg. A plastic is a set that gives
+  strength, modulus, density and modulus_z. `plastics()` in `lib/fittings.mjs` lists them. A project of ABS, ASA or
+  PA-CF has its printed fittings sized from the kit's set.
+
+No printed size moved.
+
 ## 0.7.78: frames solved under their joints' loads, sized with joins that fit (#302, #303, #304)
 
 ### Added
