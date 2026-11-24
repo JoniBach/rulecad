@@ -2,6 +2,18 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## 0.2.14: motor reactions, racking and joins in frame sizing
+### Added
+
+- `frame().mechanisms`: for each freedom a held frame (`loose: 'hold'`) holds, the way the frame moves there with
+  nothing resisting, as each node's six, so a caller can say how it moves (a portal tipping over out of its plane)
+  rather than name a freedom at a node.
+- `sizing({ fits })`: a function of each group's choice that lists what does not go together (a join one profile
+  cannot make with another). Designs that do not fit are never solved; a group whose next lighter choice does not fit
+  says so (`governs.limit: 'fit'`, with where and why); none fitting is refused (`fea.frame.fit`).
+- `sizing` cases take their own `gravity` (a side push alone) and `limits` (the limits they are held to), and a
+  deflection limit takes `cases`, the load cases it holds in: a racking sway held under a push alone.
+
 ## 0.2.13: frame layout optimisation
 ### Added
 
