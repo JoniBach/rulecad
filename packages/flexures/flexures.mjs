@@ -20,3 +20,4 @@ export { gripperJaws, gripperJawsModel } from './gripper.mjs';
 export { fourBar, fourBarModel, sliderCrank, sliderCrankModel } from './linkages.mjs';
 export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifierModel, leverAmplifier, leverAmplifierModel } from './amplifiers.mjs';
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve } from './bistables.mjs';
+export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';

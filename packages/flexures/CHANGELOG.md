@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## 0.5.8: pivots, linkages, amplifiers and bistables
+## 0.5.11: pivots, linkages, amplifiers and bistables
 ### Added
 
 - Compliant linkages (issue #77): `fourBar` and `fourBarModel` (crank-rocker, parallelogram and the other Grashof
@@ -24,6 +24,24 @@ why. Releases before this file was started are described in their pull requests 
   reports the same figures on a rigid frame beside them, and warns (`bistable.frame`) when the bar takes over half
   of the pull back; its bar is 20 mm deep by default, because a 6 mm bar lets the roots spread and the part springs back.
 - `pivots.mjs`: the drawing, clearances and beam-solver set-up the linkages and amplifiers share.
+
+## 0.5.10: lattice spring blocks (#79)
+### Added
+
+- `latticeCell` (issue #79): a honeycomb's or a re-entrant (auxetic) honeycomb's in-plane properties from its walls'
+  bending (Gibson and Ashby 1997): Young's moduli along x and y, Poisson's ratios (negative when re-entrant), the shear
+  modulus, density, a wall's peak strain for a strain of the whole, and the uprights' buckling stress.
+- `latticeBlock` and `latticeBlockModel`: a spring block of those cells between two solid plates, drawn flat with every
+  inside corner rounded, and solved as a frame of beams in `@rulecad/fea` for its stiffness, its walls' strain at a
+  travel, the force at which they buckle, how its sides move, and its grams. `ends: 'sliding'` lets the walls' ends
+  slide on the plates; a wide block of thin walls then comes to Gibson and Ashby's figures, which the tests check.
+- `latticeFindings`: walls in whole lines, openings at least two lines (an ordinary cell's narrowest opening measured
+  straight across between its parallel slanted walls, cos θ (h + 2 l sin θ) - t, not up y), depth in whole layers, the cells in the bed's
+  plane, the strain at a travel against the material's limit and the travel against buckling, as findings in the
+  kit's one shape. Bad cells are refused by name (`lattice.angle`, `lattice.cross`, `lattice.thick`, `lattice.size`,
+  `lattice.count`, `lattice.ends`, `lattice.material`, `lattice.printer`).
+- The bench's `flexures/lattice`: a re-entrant block in PETG, 5.09 N/mm, sized for 5 N with 2.06 times the margin on
+  its walls' strain, 3.72 g.
 
 ### Printed sizes that moved
 
