@@ -151,10 +151,9 @@ function roundCorners(pts, r, x0, x1) {
     if (turn <= 1e-12 * la * lb || q[0] < x0 || q[0] > x1 || inner > Math.PI - 1e-6) { out.push(q); return; }
     const rr = Math.min(r, 0.5 * Math.min(la, lb) * Math.tan(inner / 2)), d = rr / Math.tan(inner / 2), bis = Math.hypot(ux / la + vx / lb, uy / la + vy / lb);
     const cx = q[0] + ((ux / la + vx / lb) / bis) * (rr / Math.sin(inner / 2)), cy = q[1] + ((uy / la + vy / lb) / bis) * (rr / Math.sin(inner / 2));
-    const p1 = [q[0] + (ux / la) * d, q[1] + (uy / la) * d], p2 = [q[0] + (vx / lb) * d, q[1] + (vy / lb) * d];
-    const t1 = Math.atan2(p1[1] - cy, p1[0] - cx), sweep = Math.PI - inner, steps = Math.max(2, Math.ceil(sweep / (Math.PI / 12)));
+    const p1 = [q[0] + (ux / la) * d, q[1] + (uy / la) * d]; // the arc runs from here, on the edge in, to as far along the edge out
+    const t1 = Math.atan2(p1[1] - cy, p1[0] - cx), sweep = Math.PI - inner, steps = Math.max(2, Math.ceil(sweep / (Math.PI / 12) - 1e-6)); // a chord at most every 15 degrees
     for (let k = 0; k <= steps; k++) { const ang = t1 + (sweep * k) / steps; out.push([cx + rr * Math.cos(ang), cy + rr * Math.sin(ang)]); }
-    void p2;
   });
   return out;
 }
@@ -254,9 +253,9 @@ export function latticeFindings(p, printer, material, model) {
   f('pass', 'the cells lie in the bed\'s plane: every wall bends within its layers, and the block prints on its face with no overhangs', 'lattice.direction');
   if (p.travel != null && model) {
     const e = model.strain(p.travel), limit = material?.strainLimit;
-    if (limit != null) f(e <= limit ? 'pass' : 'fail', `pressed ${p.travel} mm, the walls see ${(e * 100).toFixed(2)}% strain${e <= limit ? ', within' : ', over'} ${material.name ?? 'its'} limit of ${(limit * 100).toFixed(2)}%${e > limit ? `: at most ${model.travel(limit).toFixed(2)} mm` : ` (${(limit / e).toFixed(2)} times)`}`, 'lattice.strain', { travel: p.travel, strain: e, limit });
+    if (limit != null) f(e <= limit ? 'pass' : 'fail', `pressed ${+p.travel.toFixed(2)} mm, the walls see ${(e * 100).toFixed(2)}% strain${e <= limit ? ', within' : ', over'} ${material.name ?? 'its'} limit of ${(limit * 100).toFixed(2)}%${e > limit ? `: at most ${model.travel(limit).toFixed(2)} mm` : ` (${(limit / e).toFixed(2)} times)`}`, 'lattice.strain', { travel: p.travel, strain: e, limit });
     const bk = model.buckling.travel;
-    f(p.travel < bk ? 'pass' : 'warn', `the walls buckle at ${bk.toFixed(2)} mm (${model.buckling.force.toFixed(1)} N)${p.travel < bk ? `, past the travel of ${p.travel} mm` : `: pressed ${p.travel} mm the block softens sharply and its force is no longer ${model.stiffness.toFixed(2)} N/mm times the travel`}`, 'lattice.buckle', { travel: p.travel, buckles: bk, force: model.buckling.force });
+    f(p.travel < bk ? 'pass' : 'warn', `the walls buckle at ${bk.toFixed(2)} mm (${model.buckling.force.toFixed(1)} N)${p.travel < bk ? `, past the travel of ${+p.travel.toFixed(2)} mm` : `: pressed ${+p.travel.toFixed(2)} mm the block softens sharply and its force is no longer ${model.stiffness.toFixed(2)} N/mm times the travel`}`, 'lattice.buckle', { travel: p.travel, buckles: bk, force: model.buckling.force });
   }
   return out;
 }
