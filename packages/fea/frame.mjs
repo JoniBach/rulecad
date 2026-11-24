@@ -941,8 +941,9 @@ export function sizing(model, o = {}) {
     // each member against Euler's load
     if (L.buckling?.euler) {
       const per = new Map();
-      const grouped = new Set(groups.flatMap((g) => g.idx));
-      stats.forEach((s, ci) => holds(cases[ci], 'buckling') && s.elements.forEach((r, i) => { if (!grouped.has(i)) return; const id = memberOf(m.elements[i], i), p = per.get(id) ?? { N: 0, L: 0, I: Infinity, E: 0, ci }; if (ci === 0) p.L += r.length; const sec = named(m.elements[i].section, m.sections), mat = named(m.elements[i].material, m.materials); p.I = Math.min(p.I, sec.Iy, sec.Iz); p.E = mat.E; if (-r.axial > p.N) { p.N = -r.axial; p.ci = ci; } per.set(id, p); }));
+      const grouped = new Set(groups.flatMap((g) => g.idx)), counted = new Set();
+      // a member's length is the sum of its elements' lengths, each counted once, whichever cases hold buckling
+      stats.forEach((s, ci) => holds(cases[ci], 'buckling') && s.elements.forEach((r, i) => { if (!grouped.has(i)) return; const id = memberOf(m.elements[i], i), p = per.get(id) ?? { N: 0, L: 0, I: Infinity, E: 0, ci }; if (!counted.has(i)) { counted.add(i); p.L += r.length; } const sec = named(m.elements[i].section, m.sections), mat = named(m.elements[i].material, m.materials); p.I = Math.min(p.I, sec.Iy, sec.Iz); p.E = mat.E; if (-r.axial > p.N) { p.N = -r.axial; p.ci = ci; } per.set(id, p); }));
       for (const [id, p] of per) if (p.N > 0) { const Pcr = (Math.PI ** 2 * p.E * p.I) / (L.buckling.euler * p.L) ** 2; worse({ limit: 'buckling', where: `${id} (Euler)`, value: Pcr / p.N, allowed: L.buckling.factor, ratio: (L.buckling.factor * p.N) / Pcr, case: cases[p.ci].label }); }
     }
     const broke = () => checks.some((c) => c.ratio > 1);

@@ -671,3 +671,18 @@ test('frame: a held frame names the way it moves; sizing keeps to designs that f
   bad({ cases: [{ label: 'x', limits: ['sag'] }] }, /case "x"'s limits is a list of the limits it is held to/);
   bad({ limits: { deflection: [{ node: 't', limit: 1, cases: ['y'] }] } }, /limits.deflection 1 names case "y", and there is no such case/);
 });
+
+test('frame sizing: a member is as long as its elements in the Euler check, whichever case comes first', () => {
+  // A 1000 mm column of bar 20 (I = 20^4 / 12 = 13 333 mm^4, E = 70 000 MPa) pushed down by 2000 N at its top, with
+  // a second case held to deflection alone. Euler's load with K = 1: pi^2 E I / L^2 = pi^2 x 70 000 x 13 333 /
+  // 1000^2 = 9211 N, so at a factor of 2 the ratio is 2 x 2000 / 9211 = 0.434. The order of the cases must not change
+  // it: with the deflection-only case first, the column's length was once left at 0 and its Euler load infinite.
+  const column = { nodes: { a: [0, 0, 0], b: [0, 0, 1000] }, elements: [{ id: 'c', a: 'a', b: 'b', section: square(20).section, material: strong }], supports: { a: 'fixed', b: { x: 0, y: 0 } }, gravity: [0, 0, 0] };
+  const push = { label: 'push', loads: [{ node: 'b', force: [0, 0, -2000] }] }, side = { label: 'side', loads: [{ node: 'b', force: [0, 0, 0] }], limits: ['deflection'] };
+  for (const cases of [[push, side], [side, push]]) {
+    const r = sizing(column, { groups: { c: ['c'] }, choices: [square(20)], cases, limits: { buckling: { factor: 2, euler: 1 } } });
+    const euler = r.checks.find((c) => c.where === 'c (Euler)');
+    assert.equal(euler.case, 'push');
+    close(`the Euler ratio with ${cases.map((c) => c.label).join(' then ')}`, euler.ratio, (2 * 2000 * 1000 ** 2) / (Math.PI ** 2 * 70000 * 20 ** 4 / 12), 1e-3);
+  }
+});
