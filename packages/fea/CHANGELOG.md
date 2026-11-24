@@ -2,6 +2,24 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## Unreleased: frame layout optimisation
+
+### Added
+
+- `@rulecad/fea/layout`, a new entry: `layout(problem)` finds the least-volume pin-jointed frame that carries the
+  loads to the supports, choosing members from every pair of candidate nodes (a ground structure) and giving each its
+  area. It solves the plastic layout programme by an interior point method and adds members a few at a time where
+  the solution's virtual strains say they would help (Gilbert and Tyas 2003), so it proves the least volume over
+  every candidate while holding a small share of them. Several load cases share one set of areas; strengths may
+  differ in tension and compression; a joint can be given a cost as a length of member (fewer, longer members);
+  balls can be kept clear of nodes and members, or of nodes only (`through`, a wheel the stays straddle). Flat
+  layouts (every node and load at z = 0) and layouts in space.
+- `groundStructure(nodes)` (the candidates, less members through a third node) and `nodeGrid({ from, to, pitch })`.
+- `layoutFrame(result, { material })`: the layout as a frame of beams with its load cases, for `sizing` to pick each
+  member from tubes that can be bought. `layoutJoints(result, { material })`: each joint as a problem file for the
+  voxel optimiser, the members as stubs carrying their forces in each case (the layout's, or the sized frame's).
+- Refused by name (`fea.layout.input`, `node`, `support`, `load`, `strength`, `unstable`) before any maths.
+
 ## 0.2.11: frames held, sized and their modes said (Frames 3)
 
 ### Added

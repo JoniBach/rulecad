@@ -5,6 +5,8 @@ in their own plane (2D, plane stress, square cells) and solid parts (3D, cubes).
 and Node alike. Units are millimetres and newtons, so Young's modulus is in MPa and movement in mm.
 
 Frames of beams joined at nodes have their own solver, `@rulecad/fea/frame`: see [Frames of beams](#frames-of-beams).
+Which members such a frame should have, and how thick, is found by `@rulecad/fea/layout`: see
+[Frame layout](#frame-layout-which-members-and-how-thick).
 
 ```js
 import { grid, analyse } from '@rulecad/fea';
@@ -277,6 +279,105 @@ false and the result is the design that came nearest, with `worst` saying which 
 member's face by its width keep their drawn offsets. The search is over the list given; it does not invent a section.
 
 
+## Frame layout: which members, and how thick
+
+`@rulecad/fea/layout` designs a frame of tubes or bars from nothing but its loads and supports: given a cloud of
+candidate nodes, it chooses which members to put between them, and how thick each must be, so the frame carries
+every load case to its supports with the least material. A bike frame, a roll cage or a space frame is mostly empty,
+so it is better designed as members joined at nodes than as millions of voxels. The members are pin-jointed and each
+is as thick as its worst case's force over the strength (fully stressed); the frame that comes out is then sized
+from tubes that can be bought (`layoutFrame` and `sizing`), and its joints shaped by the voxel optimiser
+(`layoutJoints`).
+
+```js
+import { layout, layoutFrame, layoutJoints } from '@rulecad/fea/layout';
+import { sizing } from '@rulecad/fea/frame';
+
+const r = layout({
+  nodes: { A: [0, 300], B: [0, -300], C: [400, 0] },  // mm; or a grid: { from, to, pitch }, or both
+  supports: { A: 'pinned', B: 'pinned' },              // or { x: true, y: true, z: false }
+  loads: [{ node: 'C', force: [0, -1000] }],           // N; or cases: [{ label, loads }, ...]
+  strength: 100,                                       // MPa; or { tension, compression }
+});
+r.volume;      // 8333.3 mm³: two bars of 8.33 mm², 833 N each
+r.members[0];  // { id: 'B-C', a: 'B', b: 'C', length: 500, area: 8.333, forces: [-833.3], kind: 'compression' }
+const f = layoutFrame(r, { material: { E: 200000, nu: 0.3, density: 7.85, strength: 275 } });
+const sized = sizing(f.model, { groups: { bars: f.members }, choices: tubes, cases: f.cases, limits: { stress: { margin: 2 }, buckling: { factor: 2, euler: 1 } } });
+const joints = layoutJoints(r, { material: 's275' });  // [{ node: 'C', members, problem }]: a problem file for each joint
+```
+
+| Part of the problem | Shape | Notes |
+|---|---|---|
+| `nodes` | `{ name: [x, y] or [x, y, z] }` | Candidate nodes, mm (a list is named by place) |
+| `grid` | `{ from, to, pitch }` | More candidates, every `pitch` mm across a box, named `"i,j"` or `"i,j,k"` by place; one within a hundredth of the pitch of a named node gives way to it |
+| `supports` | `{ node: 'pinned' or { x, y, z } }` | Which movements are held at each |
+| `loads` or `cases` | `[{ node, force }]` or `[{ label, loads }]` | One load case, or several, each carried alone with the same areas |
+| `strength` | MPa, or `{ tension, compression }` | Each member's force over its area stays within it: give the material's strength over your margin |
+| `density` | g/cm³ | For the mass, kg |
+| `joint` | mm | A joint's cost as a length of member (0): above 0, fewer and longer members |
+| `reach` | mm | The longest candidate member |
+| `avoid` | `[{ at, r, through }]` | Balls (circles, flat) no node or member enters; with `through: true` members may pass and only nodes are kept out |
+| `plane` | `true` or `false` | A flat layout in x and y; left out, flat when every node and load is at z = 0 |
+
+Options: `keep` (members thinner than this share of the thickest are left out of `members`, 1e-4; the volume counts
+them), `start` (each node's nearest candidates in the first programme: 8 flat, 18 in space), `add` (most members
+added a round), `adding: false` (every candidate in one programme), `tolerance` (1e-5).
+
+**What comes back.** `volume` (mm³), `mass` (kg, with a density), `members` (thickest first: area, each case's force,
+tension positive, and `kind`), `nodes` (those the members meet at, with the loaded and supported ones), `candidates`
+(the ground structure's members), `programme` (how many the last programme held), `rounds`, `strain` (the largest
+virtual strain of any candidate over its limit: 1 at most, which proves no left-out member would lower the volume),
+`left` (the volume share under `keep`) and `virtual` (each case's virtual displacements by node, the programme's
+dual). With several cases the areas are unique but the forces in a case may not be (a member thicker than one case
+needs can carry more or less in it): `members[].forces` is one set the strengths allow. For the forces the built frame
+will carry, solve it (`layoutFrame`, then `frame().statics`) and give them to `layoutJoints`.
+
+**Handing it on.** `layoutFrame(result, { material, section, ends })` is the layout as a frame model, each member a
+solid round bar of its area (or `section`), joints `'rigid'` (welded, the default) or `'pinned'`, a flat layout held
+out of its plane at its supports, and `cases` as `sizing` takes them. `layoutJoints(result, { material, diameters,
+forces, stub, cell, volume, nodes })` gives each joint (every node where two members or more meet, or those named) as
+a problem file in the form `cad optimise` reads: a space round the node, each member a stub `stub` mm long (twice the
+widest diameter), the stub carrying the most held (the frame beyond it) and the others loaded with their forces in
+each case, plus any outside load at the node. A flat layout's joints are flat problems as thick as the widest tube.
+
+**How it works.** Every pair of candidate nodes is a member unless it passes through a third node (two shorter ones
+do the same), is longer than `reach` or enters an avoided ball. The least volume is a linear programme in the areas
+and the forces; it is solved by a primal-dual interior point method, the normal equations' members' rows eliminated
+first so the dense matrix is only the equilibrium rows (free freedoms times cases). The first programme holds each
+node's nearest candidates. Its dual is a virtual displacement field; any left-out member it would strain past its
+limit would lower the volume, so the most strained are added and the programme solved again, until none is. The
+answer is then the least over every candidate (the `strain` figure is the proof), while the programme holds a few
+percent of them.
+
+| What | Formula | Source |
+|---|---|---|
+| The least volume | Least `Σ (l_i + s) a_i` such that `B q_k = f_k` and `−σc a_i ≤ q_ik ≤ σt a_i` in every case k | Dorn, Gomory and Greenberg; Hemp (several cases); Parkes (the joint cost s) |
+| Equilibrium | Member i from node a to b, unit direction e: column `−e` at a and `+e` at b, so `B q = f` with tension positive | Statics |
+| Standard form | `q = p − n` with p and n ≥ 0, and a slack per member and case: `a_i σt = p_ik + (σt / σc) n_ik + s_ik` (forces scaled by the largest load, lengths by the longest candidate) | Linear programming |
+| The solver | Primal-dual interior point, Mehrotra's predictor and corrector; a pivot that is nothing beside the largest is made huge, so its direction solves as 0 | Mehrotra; Nocedal and Wright, chapter 14; Zhang (LIPSOL) |
+| Adding members | A left-out member would lower the volume if `Σ_k max(0, σt b_i·u_k, −σc b_i·u_k) > l_i + s`, u_k the dual of case k's equilibrium | Gilbert and Tyas |
+| Members through a node | From each node, only the nearest node in each direction | Gilbert and Tyas |
+
+**Tested** against hand calculations, each to rounding: two bars to two pins (8333.3 mm³, 833.3 N each), the same
+weaker in compression (12500 mm³), a tripod in space (5625 mm³, 375 N a leg), two load cases sharing areas (3000 mm³,
+not the 4000 of each alone); and against Michell's closed form for a couple carried between two circles (Michell
+1904: `V = 2 M ln(R / r) / σ`): never under it, 2.6% over with 16 nodes to a ring and 0.65% with 32, the excess
+falling fourfold as the step halves (straight members where his spirals curve). Member adding gives the same volume
+as every candidate in one programme, alone and with two cases. The 32-to-a-ring wheel (224 nodes, 23728
+candidates) takes about half a second on a laptop; the bicycle frame example (`examples/bicycle-frame`, 61 nodes and 1242 candidates,
+three cases) about 4 seconds.
+
+**Limits.**
+
+- Pin-jointed and plastic: each member is as thick as its force needs, with nothing for buckling or bending. Size the
+  result (`layoutFrame` and `sizing`), which checks both.
+- The node positions are fixed: a finer grid gives a better layout, slowly (the dense matrix grows with the free
+  freedoms times the cases: a few thousand rows is the practical most).
+- With several cases, the forces within a case may not be unique (above), and members of equal merit may share a
+  load: a joint cost (`joint`) settles on fewer.
+- The joints' problems carry the members' forces as point loads at the stubs' ends, held at one stub: the joint's own
+  stiffness against the frame's is not modelled.
+
 ## Sources
 
 - Amir, Aage, Lazarov (2014). On multigrid-CG for efficient topology optimization. *Structural and Multidisciplinary
@@ -288,10 +389,21 @@ member's face by its width keep their drawn offsets. The search is over the list
 - Cook, Malkus, Plesha, Witt (2002). *Concepts and Applications of Finite Element Analysis*, 4th ed. Wiley.
 - Cuthill, McKee (1969). Reducing the bandwidth of sparse symmetric matrices. *Proceedings of the 24th National
   Conference of the ACM*, 157–172.
+- Dorn, Gomory, Greenberg (1964). Automatic design of optimal structures. *Journal de Mécanique* 3, 25–52.
 - Friedman, Kosmatka (1993). An improved two-node Timoshenko beam finite element. *Computers and Structures* 47,
   473–481.
+- Gilbert, Tyas (2003). Layout optimization of large-scale pin-jointed frames. *Engineering Computations* 20,
+  1044–1064.
 - Guyan (1965). Reduction of stiffness and mass matrices. *AIAA Journal* 3, 380.
+- Hemp (1973). *Optimum Structures*. Clarendon Press, Oxford.
 - McGuire, Gallagher, Ziemian (2000). *Matrix Structural Analysis*, 2nd ed. Wiley.
+- Mehrotra (1992). On the implementation of a primal-dual interior point method. *SIAM Journal on Optimization* 2,
+  575–601.
+- Michell (1904). The limits of economy of material in frame-structures. *Philosophical Magazine* 8, 589–597.
+- Nocedal, Wright (2006). *Numerical Optimization*, 2nd ed. Springer.
+- Parkes (1975). Joints in optimum frameworks. *International Journal of Solids and Structures* 11, 1017–1022.
 - Przemieniecki (1968). *Theory of Matrix Structural Analysis*. McGraw-Hill.
 - Timoshenko, Gere (1961). *Theory of Elastic Stability*, 2nd ed. McGraw-Hill.
 - Young, Budynas (2002). *Roark's Formulas for Stress and Strain*, 7th ed. McGraw-Hill.
+- Zhang (1998). Solving large-scale linear programs by interior-point methods under the MATLAB environment.
+  *Optimization Methods and Software* 10, 1–31.
