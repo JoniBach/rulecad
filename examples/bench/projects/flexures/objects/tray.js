@@ -25,5 +25,5 @@ export async function main (v) {
   }
   const all = (a) => ({ east: a, north: a, west: a, south: a })
   const checked = await f.foldCheck(sheet, material, { poses: { folded: all(v.folded) }, clearance: v.clearance })
-  return { parts: { tray: f.foldSheet(sheet, all(v.fold)) }, findings: checked.findings, mechanism: { kind: 'fold', poses: checked.poses, limit: material.strainLimit } }
+  return { parts: { tray: await f.foldSheet(sheet, all(v.fold)) }, findings: checked.findings, mechanism: { kind: 'fold', poses: checked.poses, limit: material.strainLimit } }
 }

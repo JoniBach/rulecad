@@ -1137,3 +1137,77 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   assert.ok(readme.includes(`stop: { open: ${v.stop_open}, close: ${v.stop_close}, tongue: ${v.stop_tongue} }`), 'the README\'s example has the arm\'s stops');
   for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
+
+const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
+
+test('LET arrays: joints in series share the fold, in parallel the moment; the pinch and the folded gap are the hand sums', async () => {
+  const { letArray, letArrayModel, letJointModel } = await import('@rulecad/flexures');
+  const j = { width: 12, thickness: 1.2, bar: 1, slot: 1, bridge: 1.5 }, petg = { E: 1810, nu: 0.38 };
+  const one = letJointModel(j, petg), m = letArrayModel({ ...j, series: 3, parallel: 2 }, petg);
+  near(m.stiffness, (2 * one.stiffness) / 3, 1e-9, 'm k / n'); near(m.strain(0.9), one.strain(0.3), 1e-12, 'each joint turns a third');
+  near(m.angle(0.01), 3 * one.angle(0.01), 1e-9, 'three times the fold for a strain'); assert.equal(m.joints, 6);
+  // c = slot / 2 + bar + slot = 2.5 from a joint's centre to its outer slot's far side; the land max(2 bar, 2) = 2, so
+  // the pitch is 2c + 2 = 7, three joints span 3 × 5 + 2 × 2 = 19 across, two bands 2 × 12 + 1 = 25 along
+  near(m.pitch, 7, 1e-12, 'pitch'); near(m.across, 19, 1e-12, 'across'); near(m.along, 25, 1e-12, 'along');
+  // one joint: the bodies end 2.5 from the pin, their corners 0.6 above it, so they meet at 180 - 2 atan(0.6 / 2.5) = 153.009°
+  near(deg(letArrayModel(j, petg).pinch), 180 - 2 * deg(Math.atan(0.6 / 2.5)), 1e-9, 'pinch'); near(deg(letArrayModel(j, petg).pinch), 153.009, 1e-3, 'pinch, by hand');
+  // folded flat (180°): one joint lays the panels on each other (0 - 1.2 = -1.2), two hold them a pitch apart
+  // (7 sin 90° - 1.2 = 5.8), three 7 (sin 60° + sin 120°) - 1.2 = 10.924
+  near(letArrayModel(j, petg).gap(Math.PI), -1.2, 1e-9, 'one joint'); near(letArrayModel({ ...j, series: 2 }, petg).gap(Math.PI), 5.8, 1e-9, 'two'); near(letArrayModel({ ...j, series: 3 }, petg).gap(Math.PI), 10.924, 1e-3, 'three');
+  // drawn: between two 10 mm panels, one piece, on the bed
+  const g = letArray({ ...j, series: 3, parallel: 2, panel: 10 }), box = measureBoundingBox(g);
+  assert.deepEqual(box.map((v) => v.map((x) => +x.toFixed(6))), [[-19.5, -12.5, 0], [19.5, 12.5, 1.2]]); assert.ok(onePiece(g), 'one piece');
+  assert.ok(measureVolume(g) < 39 * 25 * 1.2 - 2 * 19 * 1, 'the slot between the two bands is cut');
+});
+
+test('a folding sheet: drawn flat in one piece and folded where its pins put it; the fold check finds the pinch and the clash by the hand sums', async () => {
+  const { foldSheet, foldSheetModel, foldCheck } = await import('@rulecad/flexures');
+  const j = { width: 12, bar: 1, slot: 1, bridge: 1.5 }, h = 1.2, petg = { E: 1810, nu: 0.38 };
+  const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  // two panels on one LET joint: at a fold φ the nearest corners (2.5 along, 0.6 above the pin: r = 2.5709, 13.496° off
+  // the mid-plane) are 2 r cos(13.496° + φ / 2) apart: at 140°, 5.1419 cos 83.496° = 0.5824 mm; past 153.009° they overlap
+  const two = (let_) => ({ thickness: h, panels: { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6) }, hinges: [{ name: 'fold', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] });
+  const r = Math.hypot(2.5, 0.6), at = (phi) => 2 * r * Math.cos(Math.atan(0.6 / 2.5) + rad(phi) / 2);
+  let c = await foldCheck(two(j), petg, { poses: { up: { fold: 140 } } });
+  near(c.poses.up.gap, at(140), 1e-3, 'at 140°'); near(c.poses.up.gap, 0.5824, 1e-3, 'by hand'); assert.ok(c.ok, 'clear'); assert.deepEqual(c.poses.up.between, ['a', 'b']);
+  c = await foldCheck(two(j), petg, { poses: { up: { fold: 156 } } });
+  assert.ok(!c.ok); assert.deepEqual(c.findings.map((f) => f.code).sort(), ['fold.clash', 'fold.pinch'], 'past the pinch: the panels overlap');
+  // the fold lifts the `to` panel off the bed: its far end's middle (20, 0, 0.6) turns 140° about the pin (0, 0.6):
+  // to (20 cos 140°, 0.6 + 20 sin 140°) = (-15.321, 13.456)
+  const B = foldSheetModel(two(j), petg).bodies({ fold: 140 }).b, end = [B.R[0] * 20 + B.R[2] * 0.6 + B.t[0], B.R[6] * 20 + B.R[8] * 0.6 + B.t[2]];
+  near(end[0], 20 * Math.cos(rad(140)), 1e-9, 'over'); near(end[1], 0.6 + 20 * Math.sin(rad(140)), 1e-9, 'up off the bed'); near(end[1], 13.456, 1e-3, 'by hand');
+  // two joints at 180°: each land stands upright, its corners 2r cos(13.496° + 45°) = 2.6866 from a panel's; the panels
+  // themselves lie 7 - 1.2 = 5.8 apart, so the nearest pair is a panel and the land
+  c = await foldCheck(two({ ...j, series: 2 }), petg, { poses: { flat: { fold: 180 } }, clearance: 5 });
+  near(c.poses.flat.gap, 2 * r * Math.cos(Math.atan(0.6 / 2.5) + rad(45)), 1e-3, 'panel to land'); near(c.poses.flat.gap, 2.6866, 1e-3, 'by hand');
+  assert.ok(c.poses.flat.between.includes('fold.land1'));
+  // a box's two walls on one joint each, standing at 90°: each wall stands 1.2 thick on its edge (19.4 to 20.6), from
+  // 0.6 + 2.5 = 3.1 to 0.6 + 15 = 15.6 up. Walls the base's 40 overlap at the corner, 0.6 × 0.6 × 12.5 = 4.5 mm³;
+  // walls of 38 clear it by √2 (19.4 - 19) = 0.5657 (corner to corner)
+  const box = (bw) => ({ thickness: h, panels: { base: rect(-20, -20, 20, 20), east: rect(20, -bw / 2, 35, bw / 2), north: rect(-bw / 2, 20, bw / 2, 35) },
+    hinges: [{ name: 'e', from: 'base', to: 'east', at: [[20, -bw / 2], [20, bw / 2]], let: j }, { name: 'n', from: 'base', to: 'north', at: [[-bw / 2, 20], [bw / 2, 20]], let: j }] });
+  c = await foldCheck(box(40), petg, { poses: { standing: { e: 90, n: 90 } } });
+  near(-c.poses.standing.gap, 4.5, 1e-3, 'the corner overlap'); assert.deepEqual(c.poses.standing.between, ['east', 'north']);
+  assert.equal(c.findings.find((f) => f.code === 'fold.clash').values.at, 1, 'in the pose, not on the way');
+  c = await foldCheck(box(38), petg, { poses: { standing: { e: 90, n: 90 } } });
+  near(c.poses.standing.gap, Math.SQRT2 * 0.4, 1e-3, 'walls of 38'); assert.ok(c.ok);
+  // drawn: flat, one piece on the bed; standing, the walls where the sums put them
+  const flatBox = await foldSheet(box(38)), up = measureBoundingBox(await foldSheet(box(38), { e: 90, n: 90 }));
+  // walls of 38 leave the base a corner 20 - 19.001 square past both bands' ends, which no hinge holds: left out, and said
+  assert.ok(onePiece(flatBox), 'one print, no loose corner'); const loose = c.findings.find((f) => f.code === 'fold.loose');
+  assert.equal(loose.values.panel, 'base'); near(loose.values.area, 0.999 ** 2, 1e-6, 'the corner left out'); near(measureBoundingBox(flatBox)[1][2], 1.2, 1e-5, 'flat');
+  near(up[1][0], 20.6, 1e-5, 'the east wall\'s outer face'); near(up[1][2], 15.6, 1e-5, 'its top');
+  // a living hinge (web 0.4 on the bed, 2 wide, panels 1.6 sloped back 45°): strain t θ / 2l, and its pinch from the
+  // steeper of the web's edge (atan(0.2 / 1) = 11.31°) and the panel's top (atan(1.4 / 2.2) = 32.47°): 115.06°
+  const liv = { thickness: 1.6, panels: { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6) }, hinges: [{ name: 'fold', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 0.4 } }] };
+  const lm = foldSheetModel(liv, petg).hinges.fold;
+  near(lm.strain(1), 0.4 / 4, 1e-12, 'strain'); near(deg(lm.pinch), 180 - 2 * deg(Math.atan(1.4 / 2.2)), 1e-9, 'pinch'); near(deg(lm.pinch), 115.06, 0.01, 'pinch, by hand');
+  assert.ok((await foldCheck(liv, petg, { poses: { up: { fold: 113 } }, clearance: 0 })).ok, 'just short of the pinch: clear');
+  assert.ok(!(await foldCheck(liv, petg, { poses: { up: { fold: 117 } }, clearance: 0 })).ok, 'just past it: the panels meet');
+  assert.ok(onePiece(await foldSheet(liv)), 'the web joins the panels');
+  // with a strain limit, a hinge that folds too far for it fails by name and says how far it may go: the strain is
+  // linear in the fold, 9.365% at 90°, so PETG's 34 / 1810 / 1.5 = 1.2523% allows 90 × 1.2523 / 9.365 = 12.03°
+  c = await foldCheck(two(j), { ...petg, strainLimit: 34 / 1810 / 1.5 }, { poses: { up: { fold: 90 } } });
+  const st = c.findings.find((f) => f.code === 'fold.strain');
+  assert.equal(st.level, 'fail'); assert.match(st.text, /sees 9\.37% strain, over the limit of 1\.25%: it folds 12° at most/); near(st.values.strain, 0.09365, 1e-5, 'the strain at 90°');
+});

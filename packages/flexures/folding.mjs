@@ -10,7 +10,7 @@
 // strain(θ) take radians, as the package's other hinges do. Units: mm, N, MPa.
 import jscad from '@jscad/modeling';
 import { letJointModel, need } from './core.mjs';
-import { ready } from './plane.mjs';
+import { ready, subtract as cut2, union as union2, apart, area, solidOf } from './plane.mjs';
 
 const { cuboid, cylinder, polygon, polyhedron } = jscad.primitives;
 const { union, subtract } = jscad.booleans;
@@ -188,15 +188,35 @@ function bodiesAt(Lo, folds, what) {
 
 // A body's outline in the sheet, flat: a panel less the bands its hinges take; a land as its rectangle
 const quad = (g, x0, x1, y0, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [g.mid[0] + g.nrm[0] * x + g.u[0] * y, g.mid[1] + g.nrm[1] * x + g.u[1] * y]);
-const bandOf = (g) => quad(g, -g.across / 2, g.across / 2, -g.len / 2 - 1e-3, g.len / 2 + 1e-3);
 const landOf = (g, k) => quad(g, g.pins[k] + g.c, g.pins[k + 1] - g.c, -g.along / 2, g.along / 2);
 
-// A living hinge's cut above its web, in the sheet: the band from the web's top, its sides sloping out at 45°
-function webCut(g, top) {
-  const t = g.living.thickness, half = g.across / 2, rise = top - t, len = g.len + 2e-3;
-  const sect = polygon({ points: [[-half, t], [half, t], [half + rise + 1, top + 1], [-half - rise - 1, top + 1]] });
-  const prism = translate([0, len / 2, 0], jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: len }, sect))); // x across, y along, z up
-  return translate([g.mid[0], g.mid[1], 0], rotateZ(Math.atan2(g.u[1], g.u[0]) - Math.PI / 2, prism));
+// A hinge's band as a cut, in its own frame (x across, z up): its section, which runs the length of the line. An LET
+// array's is the band through the sheet; a living hinge's rises from its web's top with its sides sloping out at 45°,
+// and with `web` it takes the web too (for the rigid bodies, whose webs bend)
+function sectionOf(g, h, web) {
+  const half = g.across / 2;
+  if (g.kind === 'let') return [[-half, -1], [half, -1], [half, h + 1], [-half, h + 1]];
+  const t = g.living.thickness, up = h + 1 - t;
+  return [...(web ? [[-half, -1], [half, -1]] : []), [half, t], [half + up, h + 1], [-half - up, h + 1], [-half, t]];
+}
+const ANGLE = (g) => Math.atan2(g.u[1], g.u[0]) - Math.PI / 2;
+function cutOf(g, h, web) { // a JSCAD prism along the hinge's line
+  const len = g.len + 2e-3, prism = translate([0, len / 2, 0], jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: len }, polygon({ points: sectionOf(g, h, web) }))));
+  return translate([g.mid[0], g.mid[1], 0], rotateZ(ANGLE(g), prism));
+}
+const cutPoints = (g, h, web) => { const L = g.len / 2 + 1e-3; return [-L, L].flatMap((y) => sectionOf(g, h, web).map(([x, z]) => [g.mid[0] + g.nrm[0] * x + g.u[0] * y, g.mid[1] + g.nrm[1] * x + g.u[1] * y, z])); };
+// Each panel's footprint: its outline less its LET arrays' bands. Where two bands meet near a corner they can cut a
+// bit off a panel that no hinge holds: it would print loose, so it is left out (the largest piece is the panel), and
+// how much was left out is said
+function footprints(Lo, S) {
+  const out = {};
+  for (const n of Lo.names) {
+    const bands = Lo.hinges.filter((g) => g.kind === 'let' && (g.from === n || g.to === n)).map((g) => quad(g, -g.across / 2, g.across / 2, -g.len / 2 - 1e-3, g.len / 2 + 1e-3));
+    const left = bands.length ? cut2([orient(S.panels[n])], union2(bands)) : [orient(S.panels[n])], bits = apart(left);
+    const keep = bits.reduce((a, b) => (area(b) > area(a) ? b : a), bits[0] || []);
+    out[n] = { loops: keep, loose: bits.length - 1, lost: area(left) - area(keep) };
+  }
+  return out;
 }
 const toMat4 = (T) => [T.R[0], T.R[3], T.R[6], 0, T.R[1], T.R[4], T.R[7], 0, T.R[2], T.R[5], T.R[8], 0, T.t[0], T.t[1], T.t[2], 1];
 
@@ -205,16 +225,16 @@ const toMat4 = (T) => [T.R[0], T.R[3], T.R[6], 0, T.R[1], T.R[4], T.R[7], 0, T.R
  * piece, the panels joined by their hinges. Folded, it is the panels and lands where the folds put them, the hinges'
  * bars and webs left out (they bend; the check below says how far); for a picture and a fit check in an assembly.
  * @param {Sheet} S @param {Record<string, number>} [folds] each hinge's fold in degrees (positive lifts its `to` panel)
- * @returns {object} the shape, a JSCAD geom3
+ * @returns {Promise<object>} the shape, a JSCAD geom3 (async: its outlines are manifold-3d's, an optional peer dependency)
  */
-export function foldSheet(S, folds = {}) {
+export async function foldSheet(S, folds = {}) {
   const Lo = layout(S, 'foldSheet'), h = Lo.h, flat = Object.values(folds).every((a) => !a);
   const { T, lands } = bodiesAt(Lo, folds, 'foldSheet');
-  const slab = (pts) => extrudeLinear({ height: h }, polygon({ points: pts }));
-  const cutOf = (g) => (g.kind === 'living' ? (flat ? webCut(g, h) : extrudeLinear({ height: h + 2 }, polygon({ points: bandOf(g) }))) : translate([0, 0, -1], extrudeLinear({ height: h + 2 }, polygon({ points: bandOf(g) }))));
-  const panel = (n) => { const own = Lo.hinges.filter((g) => g.from === n || g.to === n); return own.length ? subtract(slab(orient(S.panels[n])), ...own.map(cutOf)) : slab(orient(S.panels[n])); };
+  await ready();
+  const feet = footprints(Lo, S), slab = (pts) => extrudeLinear({ height: h }, polygon({ points: pts }));
+  const panel = (n) => { const own = Lo.hinges.filter((g) => g.kind === 'living' && (g.from === n || g.to === n)), body = solidOf(feet[n].loops, h); return own.length ? subtract(body, ...own.map((g) => cutOf(g, h, !flat))) : body; };
   if (flat) {
-    const strips = Lo.hinges.filter((g) => g.kind === 'let').map((g) => { const p = { ...g.let, thickness: h }, L = letLayout(p); return translate([g.mid[0], g.mid[1], 0], rotateZ(Math.atan2(g.u[1], g.u[0]) - Math.PI / 2, subtract(block(0, 0, h / 2, [L.across + 2 * OVERLAP, L.along, h]), ...letCuts(p, L)))); });
+    const strips = Lo.hinges.filter((g) => g.kind === 'let').map((g) => { const p = { ...g.let, thickness: h }, L = letLayout(p); return translate([g.mid[0], g.mid[1], 0], rotateZ(ANGLE(g), subtract(block(0, 0, h / 2, [L.across + 2 * OVERLAP, L.along, h]), ...letCuts(p, L)))); });
     return union(...Lo.names.map(panel), ...strips);
   }
   return union(...Lo.names.map((n) => transform(toMat4(T[n]), panel(n))), ...Object.values(lands).map(({ T: t, hinge: g, k }) => transform(toMat4(t), slab(orient(landOf(g, k))))));
@@ -246,8 +266,8 @@ export function foldSheetModel(S, m) {
 /**
  * A folding sheet checked in its poses: at each, and on the way there from flat (`steps` stages), every hinge's strain
  * against the material's limit, and every two rigid bodies (panels and lands) apart by the clearance. The bodies are
- * the panels less their hinges' bands (the bars and webs bend, so they are left out), each a slab of the sheet's
- * thickness; geometry is manifold-3d's (an optional peer dependency).
+ * the panels less their hinges' bands (the bars and webs bend, so they are left out; a living hinge's panels sloped
+ * back as printed), each the sheet's thickness; geometry is manifold-3d's (an optional peer dependency).
  * @param {Sheet} S @param {import('./core.mjs').Material & { nu?: number }} m
  * @param {{ poses: Record<string, Record<string, number>>, clearance?: number, steps?: number }} o poses: name to
  *   { hinge: degrees }; clearance: the least gap between bodies (default 0.2 mm); steps: stages from flat (default 6)
@@ -262,15 +282,17 @@ export async function foldCheck(S, m, { poses, clearance = 0.2, steps = 6 } = {}
   const model = foldSheetModel(S, m), W = await ready(), h = Lo.h, made = [];
   const keep = (x) => (made.push(x), x);
   try {
-    // each body flat, once: a panel less its bands (a living hinge's band all the way down: its web bends), a land
-    const cs = (pts) => keep(new W.CrossSection([orient(pts)], 'NonZero'));
+    // each body flat, once: a panel less its bands (a living hinge's web too: it bends), sloped as printed; a land
+    const slab = (pts) => keep(W.Manifold.extrude(keep(new W.CrossSection([orient(pts)], 'NonZero')), h));
     const flat = {};
-    for (const n of Lo.names) { let c = cs(S.panels[n]); for (const g of Lo.hinges.filter((x) => x.from === n || x.to === n)) c = keep(c.subtract(cs(bandOf(g)))); flat[n] = c; }
+    const feet = footprints(Lo, S);
+    for (const n of Lo.names) { let b = keep(W.Manifold.extrude(keep(new W.CrossSection(feet[n].loops, 'NonZero')), h)); for (const g of Lo.hinges.filter((x) => x.kind === 'living' && (x.from === n || x.to === n))) b = keep(b.subtract(keep(W.Manifold.hull(cutPoints(g, h, true))))); flat[n] = b; }
     const landNames = [];
-    for (const g of Lo.hinges) for (let k = 0; k < g.pins.length - 1; k++) { const nm = `${g.name}.land${k + 1}`; flat[nm] = cs(landOf(g, k)); landNames.push(nm); }
+    for (const g of Lo.hinges) for (let k = 0; k < g.pins.length - 1; k++) { const nm = `${g.name}.land${k + 1}`; flat[nm] = slab(landOf(g, k)); landNames.push(nm); }
     const all = [...Lo.names, ...landNames];
-    const solid = (n, T) => { const e = W.Manifold.extrude(flat[n], h); try { return e.warp((v) => { const q = place(T, v); v[0] = q[0]; v[1] = q[1]; v[2] = q[2]; }); } finally { e.delete(); } };
+    const solid = (n, T) => flat[n].warp((v) => { const q = place(T, v); v[0] = q[0]; v[1] = q[1]; v[2] = q[2]; });
     const findings = [], out = {};
+    for (const n of Lo.names) if (feet[n].loose) findings.push({ level: 'info', text: `panel ${n}: its hinges' bands cut ${feet[n].loose} bit${feet[n].loose > 1 ? 's' : ''} off it (${+feet[n].lost.toFixed(2)} mm²) that no hinge holds, left out of the print so ${feet[n].loose > 1 ? 'they do' : 'it does'} not print loose: make the hinges' lines meet at the corner to keep the panel square`, code: 'fold.loose', values: { panel: n, bits: feet[n].loose, area: feet[n].lost } });
     for (const [pose, folds] of Object.entries(poses)) {
       let worst = { gap: Infinity, between: null, at: 0 };
       for (let s = 1; s <= steps; s++) {
