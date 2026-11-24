@@ -238,7 +238,7 @@ export function assemblyOrder(s) {
 }
 
 /** One fastening of a step as the order and the build page say it: the fit, its screws by count and name, the key and how tight. */
-export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
+export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.hand ? `to ${f.tighten.torque} N m and no further (a printed bolt, turned by hand, not tightened)` : f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
 
 // Cached by what the parts are and where they are, with everything else that changes the answer (a motor's screw
 // names the tool its step gives)
