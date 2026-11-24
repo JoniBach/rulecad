@@ -1,0 +1,24 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "lattice",
+  "title": "A lattice spring block: re-entrant cells between two plates",
+  "version": "0.1.0",
+  "uses": ["x1c", "petg"],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "Flat on the bed on its face, one piece, no supports: the cells lie in the bed's plane, so every wall bends within its layers. Press it between its plates, along y.",
+  "parts": {
+    "block": { "label": "The block: two plates and the cells between them" }
+  },
+  "variables": {
+    "load": { "value": 5, "unit": "N", "rule": "The design load the block springs under: 5 N takes it 0.98 mm, and its walls may go 2.03 mm before PETG's strain limit (2.06 times the margin)" },
+    "slant": { "value": 10, "unit": "mm", "rule": "Each slanted wall's length, centreline to centreline: longer walls bend further for a strain" },
+    "upright": { "value": 15, "unit": "mm", "rule": "Each upright wall's length: over 2 × 10 × sin 20° = 6.84 mm, so a cell's top and bottom points stay apart" },
+    "angle": { "value": -20, "unit": "degrees", "rule": "The slanted walls lean 20 degrees inwards (re-entrant): the sides draw in when pressed, and the walls see less strain for a press than a plain honeycomb's" },
+    "thickness": { "value": "x1c.line * 2", "unit": "mm", "rule": "Every wall: two lines, the thinnest that prints solid" },
+    "depth": { "value": 6, "unit": "mm", "rule": "The block's height off the bed: 30 layers. Stiffness and buckling force grow with it, the strain for a travel does not" },
+    "across": { "value": 2, "rule": "Whole cells along x, with half cells at the sides of the rows between" },
+    "rows": { "value": 4, "rule": "Cell rows from plate to plate: four rows carry the travel, so each wall's share is a quarter" },
+    "plate": { "value": 3, "unit": "mm", "rule": "Each solid plate's thickness: far stiffer than the walls, and flat to press on" }
+  }
+}
