@@ -2,10 +2,11 @@
 // The kit's Arduino sketches, compiled for an Uno, and the arm's streamer run on a simulated one.
 //   node scripts/firmware.mjs                      compile every sketch for arduino:avr:uno with arduino-cli; a compile error fails
 //   node scripts/firmware.mjs --list               the sketches it finds, compiling nothing
-//   node scripts/firmware.mjs --simulate <file.steps.json> --machine <file.machine.json>
-//                                                  also run the arm's streamer on a simulated Uno (avr8js): home it, stream the
-//                                                  step file through send.mjs's lines, and measure its steps against the file
-//                                                  and its fastest step rate against the rates the machine asks for
+//   node scripts/firmware.mjs --simulate <file.steps.json> --machine <file.machine.json> [--simulate <file> --machine <file> ...]
+//                                                  also run the arm's streamer on a simulated Uno (avr8js): home it, stream each
+//                                                  step file through send.mjs's lines (the arm's drawing, the leg's gait), and
+//                                                  measure its steps against the file and its fastest step rate against the
+//                                                  rates the machine asks for; the loop's own ceilings are measured once
 // arduino-cli needs the arduino:avr core and the Servo library installed. The simulation needs avr8js (npm install --prefix
 // .cache/avr8js avr8js@0.21.1, and AVR8JS=.cache/avr8js/node_modules/avr8js); it is not a dependency of the kit.
 import fs from 'node:fs';
@@ -211,14 +212,14 @@ export function stream(flash, avr, { n, line }, rate, blocks) {
  * @param {{ hex: string, fastHex: string, steps: string, machine: string, sender?: string, maxRate: number }} o the build, the same
  * built with its rate limit raised (for its loop's own ceiling), the step file, cad machine's description, send.mjs, MAX_RATE
  * @returns {object} what it measured */
-export async function simulate({ hex, fastHex, steps: stepsFile, machine: machineFile, sender = path.join(ROOT, 'examples/bench/projects/arm/send.mjs'), maxRate }) {
+export async function simulate({ hex, fastHex, steps: stepsFile, machine: machineFile, sender = path.join(ROOT, 'examples/bench/projects/arm/send.mjs'), maxRate, measure = true }) {
   const avr = loadAvr(), flash = hexBytes(fs.readFileSync(hex, 'utf8')), fast = hexBytes(fs.readFileSync(fastHex, 'utf8'));
   const file = JSON.parse(fs.readFileSync(stepsFile, 'utf8')), machine = JSON.parse(fs.readFileSync(machineFile, 'utf8'));
   const send = await import(pathToFileURL(sender).href);
   // the shortest blocks the sender passes, at MAX_RATE on three axes, at the cruise and changing speed on every step;
   // the simulation has no USB link, so no turnaround: the line and its answer on the wire are the whole wait
   const least = (l) => send.leastBlockTime(l, { turnaround: 0 });
-  const short = Object.fromEntries(['cruise', 'down'].map((p) => { const b = shortBlock(3, p, maxRate, least); return [p, { block: b, ...stream(flash, avr, b, maxRate, Math.ceil(2000 / b.n)) }]; }));
+  const short = !measure ? {} : Object.fromEntries(['cruise', 'down'].map((p) => { const b = shortBlock(3, p, maxRate, least); return [p, { block: b, ...stream(flash, avr, b, maxRate, Math.ceil(2000 / b.n)) }]; }));
   const homes = send.homeLines(machine), body = send.linesOf(file, machine.pen ? { pen: machine.pen } : {});
   // every homed axis's switch 300 steps from where it starts, in its homing direction
   const limits = machine.axes.map((a) => (a.homing ? { dir: a.homing.direction, at: 300 } : null));
@@ -257,7 +258,7 @@ export async function simulate({ hex, fastHex, steps: stepsFile, machine: machin
   const shortest = u.edges.map((e) => { let g = Infinity; for (let i = 1; i < e.length - 100; i++) g = Math.min(g, e[i] - e[i - 1]); return e.length > 101 ? CLOCK / g : 0; });
   return { lines: homes.length + body.length + 2, problems, homed, want, total, counted, position, report, over, at,
     seconds, planned: typeof file.time === 'number' ? file.time : null, peakAsked: Math.max(0, ...file.blocks.filter((b) => b.type === 'move').map((b) => b.rate.peak)), shortest,
-    highUs: (u.highMin / CLOCK) * 1e6, short, ceilings: Object.fromEntries(PHASES.map((p) => [p, [1, 2, 3].map((a) => ceiling(fast, avr, a, p))])), maxRates: machine.axes.map((a) => a.maxRate) };
+    highUs: (u.highMin / CLOCK) * 1e6, short, ceilings: measure ? Object.fromEntries(PHASES.map((p) => [p, [1, 2, 3].map((a) => ceiling(fast, avr, a, p))])) : null, maxRates: machine.axes.map((a) => a.maxRate) };
 }
 
 function loadAvr() {
@@ -265,6 +266,20 @@ function loadAvr() {
   try { return createRequire(import.meta.url)(where); } catch {
     throw new Error(`avr8js is not installed: npm install --prefix .cache/avr8js avr8js@0.21.1, then AVR8JS=.cache/avr8js/node_modules/avr8js (looked for ${where})`);
   }
+}
+
+/** The step files to stream and the machine each runs on, from the command line: each --simulate <file> with the
+ * --machine <file> that follows it, before the next --simulate. @param {string[]} args @returns {{ steps: string, machine: string }[]} */
+export function simulations(args) {
+  const out = [];
+  for (const [i, a] of args.entries()) {
+    if (a !== '--simulate') continue;
+    const next = args.indexOf('--simulate', i + 1), m = args.indexOf('--machine', i + 1);
+    if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('--simulate needs a step file (cad plot writes it)');
+    if (m < 0 || (next >= 0 && m > next) || !args[m + 1]) throw new Error(`--simulate ${args[i + 1]} needs --machine <file.machine.json> after it (cad machine writes it)`);
+    out.push({ steps: args[i + 1], machine: args[m + 1] });
+  }
+  return out;
 }
 
 /** The streamer's own ceiling on a block's rate, steps/s: MAX_RATE in arm.ino, from its default RATE_LIMIT.
@@ -276,7 +291,7 @@ export function sketchMaxRate(source) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = process.argv.slice(2), opt = (k) => { const i = args.indexOf(`--${k}`); return i < 0 ? undefined : args[i + 1]; };
+  const args = process.argv.slice(2);
   const list = sketches();
   if (args.includes('--list')) { for (const s of list) console.log(s.file); process.exit(0); }
   let failed = 0;
@@ -287,35 +302,38 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (!r.ok) { failed++; console.log(`FAIL ${s.file}: it does not compile for ${FQBN}\n${r.output}`); continue; }
     console.log(`ok   ${s.file}: ${r.flash} of ${r.flashMax} bytes of flash, ${r.ram} of ${r.ramMax} bytes of RAM`);
   }
-  const stepsFile = opt('simulate');
-  if (stepsFile && !failed) {
+  const runs = simulations(args);
+  if (runs.length && !failed) {
     const arm = list.find((s) => s.dir === 'examples/bench/projects/arm/firmware/arm');
     if (!arm) throw new Error('no arm streamer at examples/bench/projects/arm/firmware/arm');
-    if (!opt('machine')) throw new Error('--simulate needs --machine <file.machine.json> (cad machine arm/arm writes it)');
     const fast = compile(path.join(ROOT, arm.dir), path.join(ROOT, '.cache/firmware/arm-unlimited'), ['RATE_LIMIT=1000000']);
     if (!fast.ok) throw new Error(`arm.ino with RATE_LIMIT raised does not compile:\n${fast.output}`);
     const max = sketchMaxRate(fs.readFileSync(path.join(ROOT, arm.file), 'utf8'));
-    const r = await simulate({ hex: built[arm.dir].hex, fastHex: fast.hex, steps: stepsFile, machine: opt('machine'), maxRate: max });
-    const fail = (t) => { failed++; console.log(`FAIL ${t}`); }, round = (a) => a.map((x) => Math.round(x)).join(', ');
-    console.log(`simulated Uno: ${r.lines} lines sent, ${r.homed.length} axes homed, ${r.seconds.toFixed(2)} s from the first step to the last (planned ${r.planned?.toFixed(2)} s)`);
-    console.log(`  steps counted ${r.counted.join(', ')}, in the file ${r.total.join(', ')}; net ${r.position.join(', ')}, in the file ${r.want.join(', ')}; the streamer's own report "${r.report}"`);
-    console.log(`  the file asks up to ${Math.round(r.peakAsked)} steps/s; the shortest gap between steps ${round(r.shortest)} steps/s (a late step caught up); STEP pulses at least ${r.highUs.toFixed(2)} µs high`);
-    const held = ceilingCheck(r.ceilings, max);
-    console.log(`  the loop's ceiling with 1, 2, 3 axes stepping: ${round(r.ceilings.cruise)} steps/s at its cruise, ${round(r.ceilings.up)} speeding up, ${round(r.ceilings.down)} slowing down; the slowest ${Math.round(held.slowest.rate)} (${held.slowest.axes} axes, ${held.slowest.phase}), ${held.margin.toFixed(2)} times MAX_RATE ${max} (a block past it: "${r.over}", at it: "${r.at}"); the machine's axes ask up to ${r.maxRates.join(', ')}`);
-    for (const p of r.problems) fail(`the streamer answered ${p}`);
-    for (const h of r.homed) if (h.closedAt !== 300) fail(`axis ${h.axis} homed ${h.closedAt} steps to its switch, and it was 300 away`);
-    for (const k of [0, 1, 2]) if (r.counted[k] !== r.total[k] || r.position[k] !== r.want[k]) fail(`axis ${k}: ${r.counted[k]} steps (net ${r.position[k]}), and the file has ${r.total[k]} (net ${r.want[k]})`);
-    if (r.report !== `q ${r.want.join(' ')} 0`) fail(`the streamer reports "${r.report}", and the file ends at "q ${r.want.join(' ')} 0"`);
-    if (r.highUs < STEP_HIGH_US) fail(`a STEP pulse ${r.highUs.toFixed(2)} µs high, under the DRV8825's ${STEP_HIGH_US} µs`);
-    if (r.planned && r.seconds > r.planned * 1.05) fail(`the moves took ${r.seconds.toFixed(2)} s, over the planned ${r.planned.toFixed(2)} s by more than 5%: the streamer falls behind`);
-    if (r.over !== 'error: rate') fail(`a block at ${max + 1} steps/s was answered "${r.over}", and the streamer refuses past its MAX_RATE of ${max}`);
-    if (r.at !== 'ok') fail(`a block at MAX_RATE was answered "${r.at}"`);
-    for (const p of held.problems) fail(p);
-    for (const [phase, b] of Object.entries(r.short)) {
-      console.log(`  the shortest block the sender passes, three axes at ${max} steps/s ${phase === 'cruise' ? 'at the cruise' : 'slowing down every step'}: ${b.block.n} steps (${(b.block.seconds * 1000).toFixed(2)} ms, "${b.block.line}"); ${b.blocks} streamed in ${b.seconds.toFixed(4)} s of ${b.planned.toFixed(4)} s planned, ${Math.round(b.rate)} steps/s, gaps ${b.longestUs.toFixed(0)} µs at most and ${b.shortestUs.toFixed(0)} µs at least`);
-      if (b.seconds > b.planned * 1.01) fail(`streamed blocks of ${b.block.n} steps (${phase}) took ${b.seconds.toFixed(4)} s, over the planned ${b.planned.toFixed(4)} s by more than 1%: the streamer falls behind on the shortest blocks the sender passes`);
+    for (const [n, run] of runs.entries()) {
+      const r = await simulate({ hex: built[arm.dir].hex, fastHex: fast.hex, steps: run.steps, machine: run.machine, maxRate: max, measure: n === 0 });
+      const fail = (t) => { failed++; console.log(`FAIL ${run.steps}: ${t}`); }, round = (a) => a.map((x) => Math.round(x)).join(', ');
+      console.log(`simulated Uno, ${run.steps}: ${r.lines} lines sent, ${r.homed.length} axes homed, ${r.seconds.toFixed(2)} s from the first step to the last (planned ${r.planned?.toFixed(2)} s)`);
+      console.log(`  steps counted ${r.counted.join(', ')}, in the file ${r.total.join(', ')}; net ${r.position.join(', ')}, in the file ${r.want.join(', ')}; the streamer's own report "${r.report}"`);
+      console.log(`  the file asks up to ${Math.round(r.peakAsked)} steps/s; the shortest gap between steps ${round(r.shortest)} steps/s (a late step caught up); STEP pulses at least ${r.highUs.toFixed(2)} µs high`);
+      for (const p of r.problems) fail(`the streamer answered ${p}`);
+      for (const h of r.homed) if (h.closedAt !== 300) fail(`axis ${h.axis} homed ${h.closedAt} steps to its switch, and it was 300 away`);
+      for (const k of [0, 1, 2]) if (r.counted[k] !== r.total[k] || r.position[k] !== r.want[k]) fail(`axis ${k}: ${r.counted[k]} steps (net ${r.position[k]}), and the file has ${r.total[k]} (net ${r.want[k]})`);
+      if (r.report !== `q ${r.want.join(' ')} 0`) fail(`the streamer reports "${r.report}", and the file ends at "q ${r.want.join(' ')} 0"`);
+      if (r.highUs < STEP_HIGH_US) fail(`a STEP pulse ${r.highUs.toFixed(2)} µs high, under the DRV8825's ${STEP_HIGH_US} µs`);
+      if (r.planned && r.seconds > r.planned * 1.05) fail(`the moves took ${r.seconds.toFixed(2)} s, over the planned ${r.planned.toFixed(2)} s by more than 5%: the streamer falls behind`);
+      if (r.over !== 'error: rate') fail(`a block at ${max + 1} steps/s was answered "${r.over}", and the streamer refuses past its MAX_RATE of ${max}`);
+      if (r.at !== 'ok') fail(`a block at MAX_RATE was answered "${r.at}"`);
+      if (r.ceilings) {
+        const held = ceilingCheck(r.ceilings, max);
+        console.log(`  the loop's ceiling with 1, 2, 3 axes stepping: ${round(r.ceilings.cruise)} steps/s at its cruise, ${round(r.ceilings.up)} speeding up, ${round(r.ceilings.down)} slowing down; the slowest ${Math.round(held.slowest.rate)} (${held.slowest.axes} axes, ${held.slowest.phase}), ${held.margin.toFixed(2)} times MAX_RATE ${max} (a block past it: "${r.over}", at it: "${r.at}"); the machine's axes ask up to ${r.maxRates.join(', ')}`);
+        for (const p of held.problems) fail(p);
+      }
+      for (const [phase, b] of Object.entries(r.short)) {
+        console.log(`  the shortest block the sender passes, three axes at ${max} steps/s ${phase === 'cruise' ? 'at the cruise' : 'slowing down every step'}: ${b.block.n} steps (${(b.block.seconds * 1000).toFixed(2)} ms, "${b.block.line}"); ${b.blocks} streamed in ${b.seconds.toFixed(4)} s of ${b.planned.toFixed(4)} s planned, ${Math.round(b.rate)} steps/s, gaps ${b.longestUs.toFixed(0)} µs at most and ${b.shortestUs.toFixed(0)} µs at least`);
+        if (b.seconds > b.planned * 1.01) fail(`streamed blocks of ${b.block.n} steps (${phase}) took ${b.seconds.toFixed(4)} s, over the planned ${b.planned.toFixed(4)} s by more than 1%: the streamer falls behind on the shortest blocks the sender passes`);
+      }
+      for (const [k, m] of r.maxRates.entries()) if (m > max) fail(`axis ${k} of the machine asks ${m} steps/s, past the streamer's MAX_RATE of ${max}`);
     }
-    for (const [k, m] of r.maxRates.entries()) if (m > max) fail(`axis ${k} of the machine asks ${m} steps/s, past the streamer's MAX_RATE of ${max}`);
   }
   process.exit(failed ? 1 : 0);
 }

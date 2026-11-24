@@ -17,6 +17,18 @@ and head, the parts it passes through and the part it ends in.
 
 - None.
 
+## 0.7.77: a leg's gait for the streamer (#199)
+### Added
+
+- `cad machine <project>/<assembly>` on an assembly with a `gait` and no `task`: a legged machine, an axis for each
+  motor's shaft the gait turns, ordered by the CNC shield slot (X, Y, Z) its motor is wired to, each with its `slot`.
+- `cad plot <project>/<assembly>` with no drawing, on an assembly with a gait: the gait as a step file for the streamer,
+  `exports/<project>/<assembly>-gait.steps.json`, from the pose shown (`--pose` for another) through `--cycles` (3) and
+  back, at the gait's period or `--period`, and a picture of each axis through the run in `.preview/`. A motor wired to
+  a slot out of the streamer's order fails (`stream.wiring`); more than three axes is a warning (`stream.axes`). The
+  bench stand's gait plays at 2.89 s a cycle against its 2 s period: its knee would need 11712 steps/s, past the 5333
+  of a 17HS4401 at 200 rpm and 1/8 steps.
+
 ## 0.7.75: parts milled, cast or printed in a powder bed
 ### Added
 
