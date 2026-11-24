@@ -212,8 +212,8 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 |---|---|---|
 | `fourBar`, links 15, 40, 30 on 40 | each joint 159.9 N·mm a radian; swung ±9.0° (0.8 of the limit) the rocker turns 3.4° | 5.2 |
 | `bridgeAmplifier`, links 20 at 10° | cot 10° = 5.67; over 0.1 mm the rigid links give 5.93 and the drawn flexures 5.76; the links lie flat at 0.608 mm of input | 5.7 |
-| `tiltedBistable`, leaves 30 at 8° | rises 4.18 mm; 8.04 N switches it, 0.67 mm in; it rests again 6.14 mm down, and 1.82 N brings it back; 1.76% on the way | 5.2 |
-| `buckledSwitch`, strip 50 squeezed 0.4 | the frame gives 0.082 mm; the strip pushes its pockets with 15.8 N and bows 2.19 mm; 7.00 N switches it either way; 1.62% | 10.7 (strip and frame) |
+| `tiltedBistable`, leaves 30 at 8° | rises 4.18 mm; 8.04 N switches it, 0.67 mm in; it rests again 6.14 mm down, and 1.82 N brings it back; 1.76% on the way | 5.4 |
+| `buckledSwitch`, strip 50 squeezed 0.4 | the frame gives 0.082 mm; the strip pushes its pockets with 15.8 N and bows 2.19 mm; 7.00 N switches it either way; 1.62% | 10.6 (strip and frame) |
 
 - **The slider-crank** pushes its slider with (T - dU/dθ) / |dx/dθ| for a torque T at the crank (virtual work). The
   push grows as the crank and coupler come into line, the press's toggle. The slider rides a parallel guide, so it

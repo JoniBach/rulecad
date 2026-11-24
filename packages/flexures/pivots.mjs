@@ -14,11 +14,22 @@ const { union } = jscad.booleans;
 const { hull } = jscad.hulls;
 const { extrudeLinear } = jscad.extrusions;
 
+export const KNUCKLE = 96; // sides to a knuckle's disc: fine, so a flexure's rounds meet it smoothly
 export const n2 = (x, d = 2) => String(Number(Number(x).toFixed(d)));
 export const rad = Math.PI / 180;
 export const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], add = (a, b) => [a[0] + b[0], a[1] + b[1]], mul = (a, k) => [a[0] * k, a[1] * k];
 export const len = (a) => Math.hypot(a[0], a[1]), unit = (a) => mul(a, 1 / len(a));
 export const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+/**
+ * A round for an inside corner at (x, y): the r × r square in the empty quarter (sx, sy) less a circle, as one outline.
+ * @param {number} x @param {number} y @param {1 | -1} sx @param {1 | -1} sy @param {number} r
+ */
+export function cornerRound(x, y, sx, sy, r) {
+  const e = 0.01, cx = x + sx * r, cy = y + sy * r, pts = [[x - sx * e, y - sy * e], [cx, y - sy * e]]; // into the material a little, so no edge lies along another
+  for (let i = 0; i <= 24; i++) { const a = (Math.PI / 2) * (i / 24); pts.push([cx - sx * r * Math.sin(a), cy - sy * r * Math.cos(a)]); }
+  pts.push([x - sx * e, cy]);
+  return polygon({ points: sx * sy > 0 ? pts : pts.reverse() });
+}
 const rot = (a, phi) => [a[0] * Math.cos(phi) - a[1] * Math.sin(phi), a[0] * Math.sin(phi) + a[1] * Math.cos(phi)];
 
 /**
@@ -44,7 +55,8 @@ export function flexOf(what, flex, knuckle) {
   if (!(typeof r === 'number' && r >= 0)) throw new Error(`${what}: flex.fillet is the round where a joint's flexure meets its knuckle, 0 or more (got ${JSON.stringify(flex.fillet)})`);
   if (2 * r >= l) throw new Error(`${what}: flex.fillet ${r} leaves no flexure between the rounds of a ${l} mm flex.length: a fillet under ${n2(l / 2)}`);
   if (t / 2 + r >= knuckle) throw new Error(`${what}: the knuckle (${knuckle} mm radius) is narrower than the flexure's rounded end (${n2(t / 2 + r)}): a wider bar, or a smaller flex.fillet`);
-  const sink = knuckle - Math.sqrt(knuckle * knuckle - (t / 2 + r) ** 2), reach = l / 2 + knuckle - sink; // from the pivot to each knuckle's middle
+  const inner = knuckle * Math.cos(Math.PI / KNUCKLE); // the drawn knuckle's sides lie this far from its middle
+  const sink = knuckle - Math.sqrt(inner * inner - (t / 2 + r) ** 2), reach = l / 2 + knuckle - sink; // from the pivot to each knuckle's middle
   return { l, t, r, rk: knuckle, sink, reach, half: beamProfile({ length: l, thickness: t, fillet: r }, 'guided') };
 }
 
@@ -78,7 +90,7 @@ export function axisOf(what, name, P, prev, next) {
 // along each bar, so the corner between two bars opens to more than 90°
 function web(c, dirs, rb) {
   if (dirs.length < 2) return null;
-  return hull(circle({ radius: rb, center: c, segments: 32 }), ...dirs.map((d) => circle({ radius: rb, center: add(c, mul(d, 2 * rb)), segments: 32 })));
+  return hull(circle({ radius: rb, center: c, segments: KNUCKLE }), ...dirs.map((d) => circle({ radius: rb, center: add(c, mul(d, 2 * rb)), segments: KNUCKLE })));
 }
 
 /**
@@ -93,10 +105,10 @@ export function draw(k) {
   const parts = [];
   for (const b of Object.values(k.bodies)) {
     const rb = (b.bar ?? k.bw) / 2, out = b.knuckles.map(() => []);
-    for (const c of b.knuckles) parts.push(circle({ radius: Math.max(rb, k.fx.rk), center: c, segments: 48 }));
+    for (const c of b.knuckles) parts.push(circle({ radius: Math.max(rb, k.fx.rk), center: c, segments: KNUCKLE }));
     for (const [i, j] of b.bars) {
       const A = b.knuckles[i], B = b.knuckles[j];
-      parts.push(hull(circle({ radius: rb, center: A, segments: 32 }), circle({ radius: rb, center: B, segments: 32 })));
+      parts.push(hull(circle({ radius: rb, center: A, segments: KNUCKLE }), circle({ radius: rb, center: B, segments: KNUCKLE })));
       out[i].push(unit(sub(B, A))); out[j].push(unit(sub(A, B)));
     }
     b.knuckles.forEach((c, i) => { const g = web(c, out[i], rb); if (g) parts.push(g); });
@@ -110,7 +122,8 @@ export function draw(k) {
 function strip(fx, P, w) {
   const n = [-w[1], w[0]], m = 80, into = fx.rk - fx.sink, end = fx.t / 2 + fx.r, top = [], bottom = [];
   const at = (s, h) => add(P, add(mul(w, s - fx.l / 2), mul(n, h)));
-  const ss = [-into, ...Array.from({ length: m + 1 }, (_, i) => (fx.l * i) / m), fx.l + into];
+  const fine = fx.r ? Array.from({ length: 33 }, (_, i) => (fx.r * i) / 32) : []; // the rounds, finely, so they meet the knuckle smoothly
+  const ss = [-into, ...[...new Set([...Array.from({ length: m + 1 }, (_, i) => (fx.l * i) / m), ...fine, ...fine.map((x) => fx.l - x)])].sort((a, b) => a - b), fx.l + into];
   for (const s of ss) { const h = s < 0 || s > fx.l ? end : fx.half(s); top.push(at(s, h)); bottom.push(at(s, -h)); }
   return polygon({ points: [...bottom, ...top.reverse()] });
 }

@@ -21,11 +21,12 @@ const { hull } = jscad.hulls;
 const { extrudeLinear } = jscad.extrusions;
 const { measureVolume } = jscad.measurements;
 
+const STEM = 2; // mm: the knob's stem, across
 const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [(x0 + x1) / 2, (y0 + y1) / 2] });
 // A beam's outline from a to b, its profile's half-thickness along it, running on `into` past both ends
-function beamOutline(a, b, half, L, t, into) {
-  const u = unit(sub(b, a)), n = [-u[1], u[0]], m = 120, top = [], bottom = [];
-  const ss = [-into, ...Array.from({ length: m + 1 }, (_, i) => (L * i) / m), L + into];
+function beamOutline(a, b, half, L, t, into, r = 0) {
+  const u = unit(sub(b, a)), n = [-u[1], u[0]], m = 120, top = [], bottom = [], fine = r ? Array.from({ length: 33 }, (_, i) => (r * i) / 32) : []; // the rounds, finely
+  const ss = [-into, ...[...new Set([...Array.from({ length: m + 1 }, (_, i) => (L * i) / m), ...fine, ...fine.map((x) => L - x)])].sort((x, y) => x - y), L + into];
   for (const s of ss) { const h = s < 0 || s > L ? t / 2 : half(s); const c = add(a, mul(u, s)); top.push(add(c, mul(n, h))); bottom.push(sub(c, mul(n, h))); }
   return polygon({ points: [...bottom, ...top.reverse()] });
 }
@@ -106,14 +107,18 @@ export function tiltedBistable(p, { part = 'all' } = {}) {
   const shuttle = [rect(-k.s / 2, k.s / 2, k.h - k.sh / 2, k.h + k.sh / 2)], frame = [], leaves = [];
   for (const lf of k.leaves) {
     const u = unit(sub(lf.b, lf.a));
-    leaves.push(beamOutline(lf.a, lf.b, k.half, k.L, k.t, 0.5));
+    leaves.push(beamOutline(lf.a, lf.b, k.half, k.L, k.t, 0.5, k.r));
     shuttle.push(pad(lf.a, mul(u, -1), 2, k.pw)); // the shuttle's face square to the leaf
-    // the root block: a pad square to the leaf, hulled down to the frame's bar
-    const outer = lf.sx * (k.s / 2 + k.run + k.blk);
-    frame.push(hull(pad(lf.b, u, 2, k.pw), rect(Math.min(lf.b[0], outer), Math.max(lf.b[0], outer), k.yLow - k.hb, k.yLow - k.hb + 0.01), rect(Math.min(lf.b[0] + lf.sx * 2, outer), Math.max(lf.b[0] + lf.sx * 2, outer), -k.pw / 2, k.pw / 2)));
+    // the root block: the face the leaf leaves square to it, then from that face's lower end down at 45° to the bar,
+    // so its corners there open to 135°, under the leaf (which leaves its root rising at the tilt, or falling at it
+    // when over); outward to the frame's end
+    const n = [-u[1], u[0]], e1 = add(lf.b, mul(n, k.pw / 2)), e2 = sub(lf.b, mul(n, k.pw / 2)), lo = e1[1] < e2[1] ? e1 : e2, hi = e1[1] < e2[1] ? e2 : e1;
+    const foot = [lo[0] - lf.sx * (lo[1] - k.yLow), k.yLow], outer = lf.sx * (k.s / 2 + k.run + k.blk), pts = [hi, lo, foot, [outer, k.yLow], [outer, hi[1]]];
+    const area = pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0);
+    frame.push(polygon({ points: area > 0 ? pts : pts.slice().reverse() })); // anticlockwise, as JSCAD's outlines run
   }
   const x1 = k.s / 2 + k.run + k.blk;
-  frame.push(roundedRectangle({ size: [2 * x1, k.hb], center: [0, k.yLow - k.hb / 2], roundRadius: Math.min(1.5, k.hb / 2 - 0.01), segments: 16 }));
+  frame.push(rect(-x1, x1, k.yLow - k.hb, k.yLow)); // (its corners are outside ones: square is fine)
   const flat = { shuttle: hull(...shuttle), frame: union(...frame) };
   return extrudeLinear({ height: k.W }, part === 'all' ? union(flat.shuttle, flat.frame, ...leaves) : flat[part]);
 }
@@ -172,7 +177,7 @@ export function tiltedBistableModel(p, m, o = {}) {
  *   tab?: number[], knob?: number, fit?: number, wall?: number, base?: number, gap?: number }} BuckledSwitch
  *   length: the strip between its end tabs as printed (mm); thickness, width: the strip's; squeeze: how much shorter
  *   the frame holds it (mm); fillet: the strip's rounds into its tabs and middle pad (default 1); pad: the middle
- *   pad's length along x (default 4); tab: each end tab [along x, across y] (default [5, 6]); knob: the stem from the
+ *   pad's length along x (default 4, the least: the knob's 2 mm stem stands on it on 45° shoulders); tab: each end tab [along x, across y] (default [5, 6]); knob: the stem from the
  *   pad up out of the frame, its length past the frame's top to the knob's middle (default 1.25 rises, the knob's 2.5 mm radius and 1), with a round end to push and pull; fit: the
  *   tab in its pocket, per side (default 0.05, a press fit: an estimate); wall: the frame round the pockets (default
  *   4); base: the frame's bar under the strip (default 10, stiff enough that the strip's push opens it little); gap:
@@ -189,6 +194,7 @@ function switchLayout(p, what) {
   if (!(Array.isArray(tab) && tab.length === 2 && tab.every((x) => typeof x === 'number' && x > 0))) throw new Error(`${what}: tab is [along x, across y] in mm, both above 0 (got ${JSON.stringify(p.tab)})`);
   if (!(typeof fit === 'number' && fit >= 0)) throw new Error(`${what}: fit is the tab's play in its pocket per side, 0 or more (got ${JSON.stringify(p.fit)})`);
   if (!(typeof r === 'number' && r >= 0)) throw new Error(`${what}: fillet is the strip's rounds, 0 or more (got ${JSON.stringify(p.fillet)})`);
+  if (pl < STEM + 2) throw new Error(`${what}: pad ${pl} is narrower than the knob's stem and its shoulders: ${STEM + 2} mm or more`);
   const lb = (L - pl) / 2; // each half beam, tab to pad
   if (lb <= 2 * r + t) throw new Error(`${what}: length ${L} leaves the half beams ${n2(lb)} mm between tab and pad: over ${n2(2 * r + t + pl)} for a ${pl} mm pad`);
   if (sq >= 0.1 * L) throw new Error(`${what}: squeeze ${sq} is a tenth of the length or more: the strip would bow far past what a flat strip bends to without yielding (under ${n2(0.1 * L)})`);
@@ -219,17 +225,17 @@ export function buckledSwitch(p, { part = 'all' } = {}) {
 function geometry(k) {
   const x0 = -k.L / 2, x1 = k.L / 2, [ta, tc] = k.tab, room = riseOf(k.L - k.sq, k.t, k.sq) * 1.25 + k.ph / 2 + k.gap + 1; // how far the pad goes either way, and air
   // the strip: tabs, half beams, the pad, a stem up past the frame's top and a round knob
-  const beams = [beamOutline([x0, 0], [x0 + k.lb, 0], k.half, k.lb, k.t, 0.5), beamOutline([k.pl / 2, 0], [x1, 0], k.half, k.lb, k.t, 0.5)];
-  const top = room + k.wall, stemW = Math.max(3, k.ph / 2), knobR = k.knobR;
-  const stem = roundedRectangle({ size: [stemW, top + k.knob - 0.0], center: [0, (top + k.knob) / 2], roundRadius: Math.min(1, stemW / 2 - 0.01), segments: 16 });
+  const beams = [beamOutline([x0, 0], [x0 + k.lb, 0], k.half, k.lb, k.t, 0.5, k.r), beamOutline([k.pl / 2, 0], [x1, 0], k.half, k.lb, k.t, 0.5, k.r)];
+  const top = room + k.wall, stemW = STEM, knobR = k.knobR;
+  const stem = union(rect(-stemW / 2, stemW / 2, 0, top + k.knob), hull(rect(-stemW / 2 - 1, stemW / 2 + 1, k.ph / 2 - 0.01, k.ph / 2), rect(-stemW / 2, stemW / 2, k.ph / 2 + 1, k.ph / 2 + 1.01))); // on 45° shoulders, from the pad's top corners
   const tabAt = (xa, xb) => roundedRectangle({ size: [xb - xa, tc], center: [(xa + xb) / 2, 0], roundRadius: 0.8, segments: 16 }); // round corners, seated in the pockets' rounds
-  const strip = union(tabAt(x0 - ta, x0 + 1), tabAt(x1 - 1, x1 + ta), roundedRectangle({ size: [k.pl, k.ph], center: [0, 0], roundRadius: Math.min(1, k.pl / 2 - 0.01, k.ph / 2 - 0.01), segments: 16 }), ...beams, stem, circle({ radius: knobR, center: [0, top + k.knob], segments: 32 }));
+  const strip = union(tabAt(x0 - ta, x0), tabAt(x1, x1 + ta), rect(-k.pl / 2, k.pl / 2, -k.ph / 2, k.ph / 2), ...beams, stem, hull(circle({ radius: knobR, center: [0, top + k.knob], segments: 64 }), rect(-stemW / 2, stemW / 2, top + k.knob - knobR - 1.5, top + k.knob - knobR - 1.49)));
   // the frame: a C open at the top, its pockets' far faces squeeze nearer than the tabs' (the tabs fitted, the strip
   // between them is length - squeeze); the window between the pockets lets the pad go its rise either way
   const f0 = x0 + k.sq / 2, f1 = x1 - k.sq / 2, outer = f1 + ta + k.wall, yb = -room - k.hb;
   const body = roundedRectangle({ size: [2 * outer, top - yb], center: [0, (top + yb) / 2], roundRadius: 2, segments: 16 });
-  const pocketL = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f0 - ta / 2 + 0.5, 0], roundRadius: 0.5, segments: 8 });
-  const pocketR = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f1 + ta / 2 - 0.5, 0], roundRadius: 0.5, segments: 8 });
+  const pocketL = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f0 - ta / 2 + 0.5, 0], roundRadius: 0.5, segments: 32 });
+  const pocketR = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f1 + ta / 2 - 0.5, 0], roundRadius: 0.5, segments: 32 });
   // (each pocket's far corners round, its near side open into the window: the tab is held on three sides and its end)
   const window = roundedRectangle({ size: [f1 - f0, 2 * room], center: [0, 0], roundRadius: 1.5, segments: 16 });
   const slot = rect(-(stemW / 2 + k.gap), stemW / 2 + k.gap, 0, top + 1); // the stem's way out at the top, a sliding fit that keeps the pad square

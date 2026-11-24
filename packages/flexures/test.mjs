@@ -1239,11 +1239,12 @@ test('a tilted-leaf bistable: stiff as two fixed-guided leaves at rest, snapping
 
 test('a buckled-beam switch: squeezed into its frame it bows as the buckled strip does, and switches the same either way', async () => {
   const { buckledSwitch, buckledSwitchModel } = await import('@rulecad/flexures');
-  // a strip 50 long, 0.84 × 6, squeezed 0.4, a 1 mm pad and no rounds, so it is near the uniform strip: clamped, it
-  // buckles at 4π²EI / L² = 4π² × 2680 × 0.29635 / 49.6² = 12.745 N; its rise is (2/π) √(L s - π²t²/3) for the squeeze
-  // left once the frame has given (the model's formula), within 2%
-  const p = { length: 50, thickness: 0.84, width: 6, squeeze: 0.4, pad: 1, fillet: 0, base: 12 }, m = buckledSwitchModel(p, plaG, { steps: 40 });
-  near(m.euler, 12.745, 1e-3, 'Euler'); near(m.rise / m.formula, 1, 0.02, 'the rise'); near(m.load / m.euler, 1, 0.05, 'it pushes about its buckling load');
+  // a strip 50 long, 0.84 × 6, squeezed 0.4, with no rounds: clamped, it buckles at 4π²EI / L² = 4π² × 2680 ×
+  // 0.29635 / 49.6² = 12.745 N; its rise is (2/π) √(L s - π²t²/3) for the squeeze left once the frame has given (the
+  // model's formula) for a uniform strip. Its rigid 4 mm pad sits where the strip bends most, so it rises a little
+  // less (within 5%) and pushes about as the strip less its pad buckles: 12.745 × (49.6 / 45.6)² = 15.08 N (within 3%)
+  const p = { length: 50, thickness: 0.84, width: 6, squeeze: 0.4, fillet: 0, base: 12 }, m = buckledSwitchModel(p, plaG, { steps: 40 });
+  near(m.euler, 12.745, 1e-3, 'Euler'); near(m.rise / m.formula, 0.975, 0.025, 'the rise'); near(m.load / (m.euler * (49.6 / 45.6) ** 2), 1, 0.03, 'it pushes about its buckling load');
   assert.ok(m.give > 0 && m.give < 0.25 * 0.4, `the frame gives ${m.give}`);
   // its two states are mirrors: it rests again at twice the rise, and the push over equals the pull back within 5%
   assert.ok(m.bistable); near(m.second / (2 * m.rise), 1, 0.01, 'the mirror'); near(-m.back.force / m.snap.force, 1, 0.05, 'the same either way');

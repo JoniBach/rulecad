@@ -7,7 +7,7 @@
 // from z = 0 up to the width. Units: mm, N, MPa, degrees in parameters, radians in sums.
 import jscad from '@jscad/modeling';
 import { printable, parallelGuideModel, beamProfile, need } from './core.mjs';
-import { flexOf, pivotModel, axisOf, draw, clearance, moveOf, beamsOf, stepTo, size, n2, rad, sub, add, mul, len, unit, wrap } from './pivots.mjs';
+import { KNUCKLE, flexOf, pivotModel, axisOf, cornerRound, draw, clearance, moveOf, beamsOf, stepTo, size, n2, rad, sub, add, mul, len, unit, wrap } from './pivots.mjs';
 
 const { measureVolume } = jscad.measurements;
 const { rectangle, circle, polygon } = jscad.primitives;
@@ -221,7 +221,7 @@ function gramsOf(shape, m, f) {
  *   0); angle: the crank's angle from +x at rest (degrees); width: the print's height; flex: each joint's flexure as
  *   the four-bar's; guide: the slider's parallel guide, two leaves standing along y under it (their length,
  *   thickness, how far apart their middles are, default 3 bars, and their rounds, default 1); slider: the slider
- *   block's height under its knuckle (default a bar); bar: the links' width (default 6); knuckle: default half the
+ *   block's height under its knuckle (default: down its neck and 45° shoulders to the block, and half a bar); bar: the links' width (default 6); knuckle: default half the
  *   bar; base: the ground bar's height (default a bar); gap: the least air between parts (default 0.3)
  */
 function sliderLayout(p, what) {
@@ -230,33 +230,39 @@ function sliderLayout(p, what) {
   if (!p.guide || typeof p.guide !== 'object') throw new Error(`${what}: guide is an object { length, thickness, apart? }: the slider's parallel guide`);
   const Lg = size(what, p.guide, 'length', 'guide.length'), tg = size(what, p.guide, 'thickness', 'guide.thickness'), apart = size(what, p.guide, 'apart', 'guide.apart', 3 * c.bw), gf = p.guide.fillet ?? 1;
   if (!(gf >= 0) || 2 * gf >= Lg) throw new Error(`${what}: guide.fillet is 0 or more and under half the guide's length (got ${JSON.stringify(p.guide.fillet)})`);
-  const sh = size(what, p, 'slider', 'slider', c.bw), hb = size(what, p, 'base', 'base', c.bw);
+  const hb = size(what, p, 'base', 'base', c.bw);
   const xAt = (th) => { const s = r * Math.sin(th) - e; return Math.abs(s) >= l ? null : r * Math.cos(th) + Math.sqrt(l * l - s * s); };
   if (xAt(th0) == null) throw new Error(`${what}: the coupler (${l}) can't reach the slider's line from the crank at ${p.angle}°`);
   const A = [0, 0], B = [r * Math.cos(th0), r * Math.sin(th0)], C = [xAt(th0), e], u = unit(sub(C, B));
   const joints = [
     { name: 'A', P: A, prev: 'ground', next: 'crank', w: axisOf(what, 'A', A, [0, -1], B) }, // the ground reaches A from below
     { name: 'B', P: B, prev: 'crank', next: 'coupler', w: axisOf(what, 'B', B, A, C) },
-    { name: 'C', P: C, prev: 'coupler', next: 'slider', w: u }, // in line with the coupler: the slider sits past it
+    { name: 'C', P: C, prev: 'coupler', next: 'slider', w: axisOf(what, 'C', C, B, add(C, [0, -1])) }, // the slider below: its knuckle down and away, the flexure entering it from above
   ];
   const kn = (j, side) => add(j.P, mul(j.w, side * c.fx.reach)), [jA, jB, jC] = joints;
   const KA = kn(jA, -1), KC = kn(jC, 1);
-  // the slider: its knuckle hulled with a block under it; the guide's leaves stand under the block, on the base
-  const sw = apart + tg + 2 * gf + 2 * 1.5, yTop = KC[1] - sh, y1 = yTop, y0 = y1 - Lg, yb = y0 - hb / 2;
+  // the slider: its knuckle on a neck straight down (its sides tangent to the knuckle, clear of where the flexure
+  // enters from above), the neck on the block by 45° shoulders; the guide's leaves stand under the block, on the base
+  const sw = apart + tg + 2 * gf + 2 * 1.5, ym = KC[1] - c.fx.rk - 1, shoulder = sw / 2 - c.fx.rk, yTopBlock = ym - shoulder;
+  const sh = size(what, p, 'slider', 'slider', KC[1] - yTopBlock + c.bw / 2), y1 = KC[1] - sh, y0 = y1 - Lg, yb = y0 - hb / 2;
+  if (y1 > yTopBlock - 1) throw new Error(`${what}: slider ${sh} is too short for the block under the knuckle and its shoulders: ${n2(KC[1] - yTopBlock + 1)} or more`);
   const rect = (x0, x1, ya, yb2) => rectangle({ size: [x1 - x0, yb2 - ya], center: [(x0 + x1) / 2, (ya + yb2) / 2] });
-  const block = hull(circle({ radius: c.fx.rk, center: KC, segments: 48 }), rect(KC[0] - sw / 2, KC[0] + sw / 2, y1, y1 + 0.01));
+  const neck = rect(KC[0] - c.fx.rk, KC[0] + c.fx.rk, ym, ym + 0.01);
+  const block = union(hull(circle({ radius: c.fx.rk, center: KC, segments: KNUCKLE }), neck), hull(neck, rect(KC[0] - sw / 2, KC[0] + sw / 2, y1, yTopBlock)));
   const foot = Math.min(KA[0] - c.fx.rk - hb, KC[0] - sw / 2), right = KC[0] + sw / 2 + hb;
-  const post = hull(circle({ radius: c.fx.rk, center: KA, segments: 48 }), rect(KA[0] - c.fx.rk - hb, KA[0] + c.fx.rk + hb, yb - hb / 2, yb + hb / 2));
+  // the post: straight down from the crank's ground knuckle to the base, as wide as the knuckle, rounded into the base
+  const post = union(hull(circle({ radius: c.fx.rk, center: KA, segments: KNUCKLE }), rect(KA[0] - c.fx.rk, KA[0] + c.fx.rk, yb, yb + 0.01)), cornerRound(KA[0] - c.fx.rk, yb + hb / 2, -1, 1, 2), cornerRound(KA[0] + c.fx.rk, yb + hb / 2, 1, 1, 2));
   const baseBar = rect(foot, right, yb - hb / 2, yb + hb / 2);
   if (KA[1] - c.fx.rk < yb + hb / 2) throw new Error(`${what}: the crank's ground knuckle (y ${n2(KA[1])}) is down in the base (top ${n2(yb + hb / 2)}): a longer guide sits the base lower, or move the slider's line (offset) down`);
   const gl = { length: Lg, thickness: tg, width: c.W, fillet: gf }, half = beamProfile(gl, 'guided');
-  const leaf = (x) => { const ys = Array.from({ length: 81 }, (_, i) => (Lg * i) / 80), into = 0.5; return polygon({ points: [[x - tg / 2, y1 + into], ...ys.map((s) => [x - half(s), y1 - s]), [x - tg / 2, y0 - into], [x + tg / 2, y0 - into], ...ys.slice().reverse().map((s) => [x + half(s), y1 - s]), [x + tg / 2, y1 + into]] }); };
+  const fine = Array.from({ length: 33 }, (_, i) => (gf * i) / 32); // the rounds, finely
+  const leaf = (x) => { const ys = [...new Set([...Array.from({ length: 81 }, (_, i) => (Lg * i) / 80), ...fine, ...fine.map((v) => Lg - v)])].sort((a, b) => a - b), into = 0.5; return polygon({ points: [[x - tg / 2, y1 + into], ...ys.map((s) => [x - half(s), y1 - s]), [x - tg / 2, y0 - into], [x + tg / 2, y0 - into], ...ys.slice().reverse().map((s) => [x + half(s), y1 - s]), [x + tg / 2, y1 + into]] }); };
   const leaves = [leaf(KC[0] - apart / 2), leaf(KC[0] + apart / 2)];
   const bodies = {
     ground: { knuckles: [KA], bars: [], extra: [post, baseBar, ...leaves], capsules: [{ a: [foot, yb], b: [right, yb], r: hb / 2 }, { a: [KA[0], yb], b: KA, r: c.fx.rk }] },
     crank: { knuckles: [kn(jA, 1), kn(jB, -1)], bars: [[0, 1]] },
     coupler: { knuckles: [kn(jB, 1), kn(jC, -1)], bars: [[0, 1]] },
-    slider: { knuckles: [KC], bars: [], extra: [block], capsules: [{ a: [KC[0] - sw / 2 + 1, y1 + 1], b: [KC[0] + sw / 2 - 1, y1 + 1], r: 1 }, { a: [KC[0], y1 + 1], b: KC, r: c.fx.rk }] },
+    slider: { knuckles: [KC], bars: [], extra: [block], capsules: [{ a: [KC[0] - sw / 2 + 1, y1 + 1], b: [KC[0] + sw / 2 - 1, y1 + 1], r: 1 }, { a: [KC[0], y1 + 1], b: KC, r: c.fx.rk }, { a: [KC[0] - sw / 2 + 1, yTopBlock - 1], b: [KC[0] + sw / 2 - 1, yTopBlock - 1], r: 1 }] },
   };
   return { ...c, r, l, e, th0, Lg, tg, apart, gf, sh, hb, xAt, A, B, C, joints, bodies, gl, sw, y0, y1, yb };
 }
