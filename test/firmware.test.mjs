@@ -184,3 +184,14 @@ test('firmware: CI streams the leg\'s gait through the streamer as well as the a
   const last = job.slice(job.lastIndexOf('      - '));
   assert.match(last, /--simulate examples\/bench\/exports\/arm\/arm-test\.steps\.json --machine examples\/bench\/exports\/arm\/arm\.machine\.json\n\s+--simulate examples\/bench\/exports\/leg\/stand-gait\.steps\.json --machine examples\/bench\/exports\/leg\/stand\.machine\.json/);
 });
+
+test('firmware: the sender names a gait file\'s cycles, time and start pose, and says the leg must stand in that pose', async () => {
+  const send = await import(pathToFileURL(`${ROOT}${ARM}/send.mjs`).href);
+  assert.equal(send.gait({ kind: 'gait', cycles: 3, time: 13.66, pose: 'standing' }), ', 3 cycles of a gait, 13.7 s from the pose "standing" and back');
+  assert.equal(send.gait({ kind: 'gait', cycles: 1, time: 2 }), ', 1 cycle of a gait, 2.0 s');
+  assert.equal(send.gait({ format: 'rulecad.steps/1', blocks: [] }), '', 'a drawing says nothing more');
+  assert.match(read(`${ARM}/send.mjs`), /if \(file\.kind === 'gait'\) console\.log\(`a gait\$\{gait\(file\)\}: the streamer counts from where the motors stand now/);
+  // a file with more axes than the streamer's three is refused before anything is sent: the quadruped's eight
+  assert.throws(() => send.linesOf({ format: 'rulecad.steps/1', axes: new Array(8).fill({}), blocks: [] }), /8 axes in the file, and the streamer has 3/);
+  assert.match(read(`${ARM}/STREAMER.md`), /## A leg on the same streamer/);
+});

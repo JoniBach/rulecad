@@ -24,6 +24,33 @@ hardware is your test: the arm's measured milestone.
 3. Dry run, with no board: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --dry-run`. It prints each line it would send with the answer the streamer would give, then a summary. `--quiet` prints the summary only. A dry run has no clock, so it takes each block as finished before the next line: its answer to `?` is the positions summed from the blocks so far, with 0 blocks queued.
 4. Draw: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --port <port>`. It turns the drivers on, homes each axis, sends the file, reports every hundredth line, and turns the drivers off. `--no-home` skips homing.
 
+## A leg on the same streamer
+
+The streamer knows only axes and steps, so a leg runs on it as the arm does. The leg's stand (`projects/leg`, with the
+hip's motor on the shield's X slot and the knee's on Y) takes the same sketch, the same drivers and the same sender:
+
+1. Flash `firmware/arm/arm.ino` to the stand's Uno, as in step 1 above.
+2. Write the machine and the gait's step file: `npx cad machine leg/stand` writes `exports/leg/stand.machine.json`, and
+   `npx cad plot leg/stand` writes `exports/leg/stand-gait.steps.json`: three cycles of the gait, from the pose the
+   assembly shows (`standing`) and back to it. `--cycles 5` plays five, `--pose <name>` starts and ends at another pose,
+   and `--period 4` plays a cycle in 4 s. `.preview/leg/stand-gait.svg` draws each axis through the run.
+3. Dry run: `node projects/arm/send.mjs exports/leg/stand-gait.steps.json --machine exports/leg/stand.machine.json --dry-run`.
+4. Stand the leg in its pose, then send the file with `--port <port>`. The stand has no home switches, so the streamer
+   counts from where the motors are when it starts: the file's first block takes the leg from its pose to the cycle, and
+   its last brings it back. At the end the drivers go off and the carriage settles on its stop collars.
+
+How the gait becomes blocks:
+
+| | |
+|---|---|
+| **A block** | The move from one frame of the gait (48 a cycle) to the next, every axis in it, at the rate that keeps to the gait's period |
+| **Too fast for a motor** | A block that would step an axis past its `maxRate` (the motor's working speed, from `cad machine`) is slowed to it, and the cycle takes longer. `cad plot` says by how much, with a warning when a cycle takes over 5% longer than the gait's period. The stand's gait asks the knee for 11712 steps/s at its 2 s period, past the 5333 of a 17HS4401 at 200 rpm and 1/8 steps, so a cycle takes 2.89 s on the motors |
+| **A joint turning back** | Where a foot lifts off or sets down, a joint reverses. The run slows there so that no axis changes speed by more than its jump at once: an eighth of its `maxRate`, the rate `cad machine` homes it at from rest. It speeds up and slows down at no more than 4 × `maxRate` steps/s², full speed in 0.25 s. Both are estimates: no motor's start-stop rate under load has been measured yet |
+| **From the pose and back** | A move from rest to rest at half the axes' fastest |
+
+The streamer has three axes, and the sender refuses a file with more before anything moves: the quadruped's eight
+motors need more than one Uno under one shield. `cad plot` still writes its step file, and says so.
+
 ## The line protocol
 
 115200 baud, 8 data bits, no parity, 1 stop bit. One command a line, ended by a newline. The streamer answers every
@@ -94,7 +121,8 @@ board has not yet been timed: your bench test does that, and the USB turnaround 
 
 `node scripts/firmware.mjs` (in the kit's repository) compiles every sketch for `arduino:avr:uno` and fails on a compile
 error. With `--simulate <steps file> --machine <machine file>` it also runs this streamer on a simulated Uno, and fails
-when any of these does not hold:
+when any of these does not hold. The two flags can be given again for another step file: the kit's tests stream the arm's
+drawing and then the leg's gait, each with its own machine, and measure the loop's own ceilings once.
 
 | Check | Held to |
 |---|---|
