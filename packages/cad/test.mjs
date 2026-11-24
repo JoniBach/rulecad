@@ -5310,7 +5310,8 @@ test('generated frames: a box asked for by its inside size expands into beams on
     write('box', { frame: { ...ask, profile: '3030-item-6', feet: undefined } });
     r = probe('box');
     assert.deepEqual(Object.values(r.lengths), [410, 410, 410, 410, 300, 300, 300, 300, 300, 300, 300, 300]);
-    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad, []);
+    // (with no feet, it stands on its lowest ends, a guess the frame's solve warns of: issue 304)
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad.map((x) => x.replace(/:.*Its supports are guessed: nothing says where it is held.*$/, ': guessed')), ['frame.solve: guessed']);
     // asked by its outside, 340 x 340 x 390, the uprights are that height in either profile and each butting beam is
     // 340 - 2 x 30 = 280 mm in 3030 where it was 300 in 2020
     write('box', { frame: { ...ask, inside: undefined, outside: [340, 340, 390], profile: '3030-item-6', feet: undefined } });
@@ -5344,13 +5345,16 @@ test('generated frames: a box asked for by its inside size expands into beams on
     assert.deepEqual([r.z.y3, r.z.g, r.z.z1], [[238.5, 258.5], [258.5, 278.5], [0, 278.5]]);
     // 5. Joined by printed corner brackets: their slot nuts drop in through the opening (every butting beam is shut at
     // both ends by its brackets, so a slide-in nut could not reach its place), and nothing fails. It warns only that
-    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault
+    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault; and,
+    // with no feet, that it stands on its lowest ends, a guess (issue 304)
+    const guessed = (x) => /^frame\.solve: .*Its supports are guessed: nothing says where it is held/.test(x);
     write('bracket', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } } });
     r = probe('bracket');
-    assert.deepEqual([...new Set(r.bad.map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
+    assert.ok(r.bad.some(guessed), r.bad.join('\n'));
+    assert.deepEqual([...new Set(r.bad.filter((x) => !guessed(x)).map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
     write('braced', { frame: { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } } });
     r = probe('braced');
-    assert.deepEqual(r.bad, []);
+    assert.deepEqual(r.bad.filter((x) => !guessed(x)), []);
     assert.ok(['y1-z1-bracket', 'y3-z3-bracket', 'panel-back'].every((id) => r.items.includes(id)), r.items.join(', '));
     // 6. Across the series and makers, with blind joins: MISUMI's and Bosch's 3030 (M8 in an 8 mm slot, the access hole
     // 6.3 mm, inside the opening) and item's 4040 (M8, 8 mm) check clean with nothing warned. (MISUMI's and Bosch's 4040
