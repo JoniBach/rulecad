@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
-
+## 0.2.12: motor reactions, racking and joins in frame sizing
 ### Added
 
 - `frame().mechanisms`: for each freedom a held frame (`loose: 'hold'`) holds, the way the frame moves there with
