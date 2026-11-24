@@ -6315,3 +6315,62 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('frame checks: a force on a slide and a torque on a hinge are carried into the beam the joint is mounted on, each way, as hand formulas say; a frame stood on guessed lowest ends warns, and empty supports are refused by name', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/arm.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/arm');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 600 mm 2020 beam x1 held fixed at its end a, level, its end b free. At b, on x1's top: a press, a slide
+    // straight up and down (its axis x1's top, world z) carrying a 100 mm 2020 stub p, and a hinge turning about x1's
+    // side (world y) carrying a stub h lying along that axis, so neither stub's weight moves as its joint does.
+    const P = '2020-misumi-hfs5', base = { title: 'Arm', kind: 'fit',
+      items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'p', beam: { profile: P, length: 100 } }, { id: 'h', beam: { profile: P, length: 100 } }],
+      joints: [{ id: 'press', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 600], axis: [0, 1, 0] }, child: { item: 'p', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 40 },
+        { id: 'hinge', type: 'revolute', parent: { item: 'x1', at: [0, 10, 600], axis: [1, 0, 0] }, child: { item: 'h', at: [0, 0, 50], axis: [0, 0, 1] }, min: 0, max: 90 }],
+      frame: { supports: { 'x1.a': 'fixed' }, points: ['x1.top@600'] } };
+    const tip = (loads) => { write({ ...base, loads }); const r = probe(); return { r, solve: r.find((x) => x.code === 'frame.solve'), sag: r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'x1.top@600') }; };
+    // Hand, a cantilever L = 600 mm, E = 69972 MPa, I = 7420 mm^4 (2020 HFS5's figures), so E I = 5.192e8 N mm^2:
+    //   100 N along the slide at the tip:   F L^3 / 3 E I = 100 x 600^3 / (3 x 5.192e8) = 13.868 mm
+    //   10 N m about the hinge at the tip:  T L^2 / 2 E I = 10 000 x 600^2 / (2 x 5.192e8) = 3.467 mm
+    // Each is solved one way and then the other, and the worse (down, with the weight) is the figure: the sag with the
+    // load less the sag without it is the load's own share. A torque on a hinge about the beam's own axis would twist
+    // it and move no node on its axis, so the hinge turns about the side.
+    const EI = 69972 * 7420, none = tip([]), force = tip([{ joint: 'press', force: 100 }]), torque = tip([{ joint: 'hinge', torque: 10 }]);
+    assert.doesNotMatch(none.solve.text, /carried into/);
+    assert.ok(Math.abs((force.sag.values.sag - none.sag.values.sag) / ((100 * 600 ** 3) / (3 * EI)) - 1) < 0.01, `force: ${force.sag.values.sag} less ${none.sag.values.sag} mm against ${(100 * 600 ** 3) / (3 * EI)}`);
+    assert.ok(Math.abs((torque.sag.values.sag - none.sag.values.sag) / ((10000 * 600 ** 2) / (2 * EI)) - 1) < 0.01, `torque: ${torque.sag.values.sag} less ${none.sag.values.sag} mm against ${(10000 * 600 ** 2) / (2 * EI)}`);
+    // Each joint is swept in quarters (frame.sweep): as drawn, then the press at 0 and 40 and the three steps between,
+    // and the hinge at 0 and 90 and the three between: 11 poses, each one way and the other
+    assert.match(force.solve.text, /with 100 N on press carried into x1 through its joint, one way and then the other, in 11 poses \(22 cases\)/);
+    assert.match(torque.solve.text, /with 10 N m on hinge carried into x1 through its joint, one way and then the other/);
+    assert.deepEqual(force.solve.refs.onJoints, [{ joint: 'press', value: 100, unit: 'N', beam: 'x1', note: null }]);
+    assert.match(force.sag.refs.pose, /joint loads -$/);
+    // 2. A frame stood on its lowest ends, guessed and left pinned (four legs and a ring of rails, which pinned feet
+    // hold), warns that nothing says where it stands; given supports, nothing of the guess is said
+    const leg = (id, x, y) => ({ id, beam: { profile: P }, from: [x, y, 0], to: [x, y, 400] }), rail = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const table = { title: 'Table', kind: 'fit', items: [leg('z1', 0, 0), leg('z2', 620, 0), leg('z3', 0, 320), leg('z4', 620, 320), rail('x1', [10, 0, 390], [610, 0, 390]), rail('x2', [10, 320, 390], [610, 320, 390]), rail('y1', [0, 10, 390], [0, 310, 390]), rail('y2', [620, 10, 390], [620, 310, 390])],
+      joins: [['x1.a', 'z1.back'], ['x1.b', 'z2.front'], ['x2.a', 'z3.back'], ['x2.b', 'z4.front'], ['y1.a', 'z1.top'], ['y1.b', 'z3.bottom'], ['y2.a', 'z2.top'], ['y2.b', 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@390` })) };
+    write(table);
+    let s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'warn', s.text);
+    assert.match(s.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), so it stands on its lowest ends, z1\.a, z2\.a, z3\.a and z4\.a, pinned, as feet stand on a floor, and every figure rests on that/);
+    assert.deepEqual(s.refs.guessed, ['z1.a', 'z2.a', 'z3.a', 'z4.a']);
+    write({ ...table, frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned', 'z3.a': 'pinned', 'z4.a': 'pinned' } } });
+    s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'info', s.text);
+    assert.ok(s.refs.guessed == null && !/guessed/.test(s.text));
+    // 3. "supports": {} names nowhere the frame is held: refused by name, not stood on nothing
+    write({ ...table, frame: { supports: {} } });
+    s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'fail');
+    assert.match(s.text, /frame\.supports names no support: give at least one place the frame is held, as \{ "z1\.a": "pinned" \}, or leave supports out/);
+  } finally { done(); }
+});
