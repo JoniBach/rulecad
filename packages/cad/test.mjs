@@ -6309,3 +6309,56 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('a printed bolt into a slot nut (#305): its length is any whole millimetre that fits, worded as printed, and a torque given for it is a hand\'s turn held to what the bolt breaks at', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/plate.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    const t = (value, rule, min, max) => ({ value, unit: 'mm', rule, tweak: { min, max } });
+    object(ws, 'frame/plate', { uses: ['x1c'], variables: { pitch: t(20, 'Between the holes', 5, 60), thick: t(10, 'The plate', 2, 12) } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [40, 40, v.thick], center: [0, 0, v.thick / 2] })
+  return v.ops.subtract(plate, ...[-1, 1].map((s) => v.fixings.hole('M6', { depth: v.thick, at: [s * v.pitch / 2, 0, v.thick] })))
+}
+`);
+    const pj = JSON.parse(fs.readFileSync(at('project.json'), 'utf8')); fs.writeFileSync(at('project.json'), JSON.stringify({ ...pj, material: 'PLA' }));
+    const write = (extra = {}, screw = 'M6 hex printed') => fs.writeFileSync(file, JSON.stringify({ title: 'A plate on a 3030', kind: 'fit', items: [{ id: 'x1', beam: { profile: '3030-misumi-hfs6' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'plate', object: 'plate', at: [150, 0, 15] }],
+      fasten: [{ screw, through: ['plate'], into: 'x1.top', holes: 'plate.body', nut: 'drop-in', ...extra }] }));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/plate'), { orderOf, fastenerText } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/order.mjs')).href)});
+      console.log(JSON.stringify({ hardware: s.hardware.map((h) => [h.kind, h.name, h.printed ?? false]), findings: checkAssembly(s).filter((f) => /^fasten/.test(f.code)).map(({ level, code, text, values }) => ({ level, code, text, values })), order: orderOf(s).steps.flatMap((st) => st.fasteners.map(fastenerText)) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 10 mm plate on slot-8-misumi's 2 mm lip: 12 mm under the head. The drop-in nut's thread starts 1.2 mm under the
+    //   face and m6.nut_height asks 5.2 mm of it, so the bolt is at least 10 + 1.2 + 5.2 = 16.4 mm; the slot's floor is
+    //   9 mm under the face and 0.3 mm is kept off it, so at most 10 + 9 - 0.3 = 18.7 mm. No M6 is sold between (16, 20):
+    //   a bought screw fails, and the printed bolt is the 17 mm that fits, its tip 17 - 10 = 7 mm into the slot, 2 mm off its floor.
+    write({}, 'M6 hex');
+    const bought = probe().findings.filter((x) => x.code === 'fasten.length');
+    assert.equal(bought[0].level, 'fail'); assert.match(bought[0].text, /no M6 hex screw is sold from 16\.4 to 18\.7 mm long/);
+    write();
+    let r = probe();
+    const said = (code) => r.findings.filter((x) => x.code === code);
+    assert.deepEqual(r.hardware.filter((h) => h[0] === 'screw').map((h) => [h[1], h[2]]), [['M6x17 hex printed', true], ['M6x17 hex printed', true]]);
+    assert.deepEqual(said('fasten.length').map((x) => x.level), ['pass']);
+    assert.match(said('fasten.length')[0].text, /M6x17 hex printed chosen, the shortest that fits \(a printed bolt is printed to any whole millimetre\): 12 mm under its head \(plate and the slot's 2 mm lip\), 5\.8 mm into its nut, its tip 7 mm into the slot and 2 mm short of its floor/);
+    assert.ok(!/sold/.test(said('fasten.length')[0].text));
+    assert.ok(!('torque' in said('fasten.seat')[0].values), 'no tightening torque in its values'); assert.ok(!said('fasten.torque').length, 'no torque given: none judged');
+    // A torque given: 1 N m by T = K d F with K 0.2 is 1 / (0.2 × 0.006) = 833.3 N of clamp. The M6 printed bolt in PLA
+    //   into a steel nut breaks at its root: 6 - 2 (5/8)(√3/2)(1) = 4.9175 mm less the whole 0.2 mm x1c.thread_gap each
+    //   side, 4.518 mm; (π/4) 4.518² = 16.03 mm² × 39 MPa = 625.2 N. 833.3 N breaks it. Twice over, 312.6 N, is
+    //   0.2 × 6 × 312.6 / 1000 = 0.375 N m, said as 0.38
+    write({ torque: 1 }); r = probe();
+    const turn = said('fasten.torque');
+    assert.deepEqual(turn.map((x) => x.level), ['fail'], 'one finding for both bolts');
+    assert.match(turn[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N \(T = K d F, fixings\.nut_factor 0\.2 for steel threads: an estimate for a printed one\): more than the 625\.2 N it breaks at \(tension\): turning it that far breaks it\. Turn it to 0\.38 N m at most, or snug by hand with no torque given/);
+    assert.match(said('fasten.seat')[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N/); assert.ok(!/the screw clamps/.test(said('fasten.seat')[0].text));
+    assert.ok(r.order.some((l) => /M6x17 hex printed\) with a 10 mm socket or spanner turned by hand, to 1 N m and no further \(a printed bolt, turned by hand, not tightened\)/.test(l)), JSON.stringify(r.order));
+    // 0.3 N m: 250 N, 2.5 times under 625.2 N, so it passes
+    write({ torque: 0.3 }); r = probe();
+    assert.deepEqual(said('fasten.torque').map((x) => [x.level, x.values.margin]), [['pass', 2.5]]);
+    assert.match(said('fasten.torque')[0].text, /turned by hand to 0\.3 N m, it clamps with about 250 N .*: 2\.5 times under the 625\.2 N it breaks at \(tension\)/);
+  } finally { done(); }
+});
