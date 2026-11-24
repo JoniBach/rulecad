@@ -25,6 +25,7 @@
     "outofplane.mjs",
     "synth.mjs",
     "gripper.mjs",
+    "lattices.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -42,6 +43,7 @@
     "outofplane.d.mts",
     "synth.d.mts",
     "gripper.d.mts",
+    "lattices.d.mts",
     "README.md",
     "LICENSE"
   ],
