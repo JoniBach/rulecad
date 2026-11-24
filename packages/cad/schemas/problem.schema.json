@@ -66,7 +66,7 @@
     },
     "filter": {
       "$ref": "#/$defs/expr",
-      "description": "Filter radius, mm: about the thinnest member (default 1.5 cells)"
+      "description": "Filter radius, mm: about the thinnest member (default a cell and a half, and never under two of the printer's lines)"
     },
     "penal": {
       "$ref": "#/$defs/expr",
@@ -148,6 +148,10 @@
         "tip": {
           "type": "boolean",
           "description": "3D with an overhang direction: faces the smoothing left steeper than the printer's limit are tipped back to it as well (off by default: tipped corners can leave dips that slice as islands, and the sliced overhang is no smaller for it; the bracket example's 160 mm² of lean is the same either way)"
+        },
+        "reduce": {
+          "$ref": "#/$defs/expr",
+          "description": "3D: fewer triangles, the surface kept within this many mm of where it was drawn (0.1 is a quarter of a print line), closed, and no more overhang or tips than it had. Off unless given"
         }
       }
     },
@@ -201,7 +205,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "at",
         "direction"
       ],
       "description": "A mechanism's output: where it should move, along one axis, against a spring. The first load is then the input.",
@@ -209,6 +212,11 @@
         "at": {
           "$ref": "#/$defs/point",
           "description": "The centre, mm"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
         "r": {
           "$ref": "#/$defs/expr"
@@ -247,7 +255,19 @@
         "label": {
           "type": "string"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "at"
+          ]
+        },
+        {
+          "required": [
+            "anchor"
+          ]
+        }
+      ]
     },
     "input_spring": {
       "$ref": "#/$defs/expr",
@@ -277,6 +297,11 @@
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
         },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
         "r": {
           "$ref": "#/$defs/expr",
           "description": "A circle's or ball's radius, or a cylinder's"
@@ -312,7 +337,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"
@@ -341,6 +366,11 @@
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
         },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
         "r": {
           "$ref": "#/$defs/expr",
           "description": "A circle's or ball's radius, or a cylinder's"
@@ -376,7 +406,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"
@@ -412,6 +442,11 @@
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
         },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
         "r": {
           "$ref": "#/$defs/expr",
           "description": "A circle's or ball's radius, or a cylinder's"
@@ -447,7 +482,7 @@
         },
         "part": {
           "type": "string",
-          "description": "3D: a named part of another design in the project, as it's built: object.part"
+          "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
         "label": {
           "type": "string"

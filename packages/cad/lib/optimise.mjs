@@ -7,12 +7,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, undercuts, voids, grey } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce, undercuts, voids, grey } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
+import { turn } from '@rulecad/model-link';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
@@ -25,6 +27,18 @@ export const hasProblem = (project, ref) => host.exists(problemFile(project, Str
  * @param {string} project @param {string} ref name, or name:variant
  */
 export async function readProblem(project, ref) {
+  // The problems being read above this one, each with the design it reads that is built from the next: a problem met
+  // again on that chain is refused by name, since each would need the other's result before its own could be made
+  const name = String(ref).split(':')[0], chain = reading.getStore() || [], key = `${project}/${name}`;
+  if (chain.some((c) => c.key === key)) {
+    const from = chain.slice(chain.findIndex((c) => c.key === key)), steps = from.map((c, i) => `${c.name} reads ${c.object}, built from ${(from[i + 1] || { name })?.name}`);
+    throw new Error(`${name}.json: problems read each other through designs built from them: ${steps.join(', then ')}. Fix one of them to a part or anchor of a design that is not made from the others`);
+  }
+  const link = { key, name, object: null };
+  return reading.run([...chain, link], () => readOne(project, ref, link));
+}
+const reading = new AsyncLocalStorage();
+async function readOne(project, ref, link) {
   const [name, variant] = String(ref).split(':'), file = problemFile(project, name);
   if (!host.exists(file)) throw new Error(`no problem "${name}" (projects/${project}/problems/${name}.json)`);
   const p = readJson(file);
@@ -37,27 +51,67 @@ export async function readProblem(project, ref) {
     if (typeof v !== 'number') throw new Error(`${path.basename(file)}: "${n}" isn't a number here (variables: ${Object.keys(p.variables || {}).join(', ')})`);
     return v;
   };
-  const ev = (x) => evaluate(x, lookup), pt = (a) => a.map(ev);
+  const ev = (x) => evaluate(x, lookup), pt = (a) => a.map(ev), flat = p.thickness != null;
+  // Another design in the project, built once with its defaults, for its parts and anchors. One whose default is built
+  // from this very problem is refused: it would need the result before the result could be made.
+  const designs = new Map();
+  const design = (object, what) => { // (the build kept as it starts: regions are read side by side)
+    if (!designs.has(object)) designs.set(object, (async () => {
+      const { build, locate, readObject } = await import('./design.mjs'), d = locate(`${project}/${object}`);
+      const own = Object.entries(readObject(d).variables || {}).find(([, v]) => v.type === 'problem' && String(v.value).split(':')[0] === name);
+      if (own) throw new Error(`${path.basename(file)}: ${what} is on ${object}, which is built from this problem (its variable ${own[0]}): name a part or anchor of what it is fixed to instead`);
+      const chain = reading.getStore(); // this problem's place on the chain names the design it reads
+      return reading.run([...chain.slice(0, -1), { ...link, object }], () => build(d));
+    })());
+    return designs.get(object);
+  };
   // A named part of another design in the project, as triangles (built with its defaults)
   const parts = new Map();
   const part = async (ref) => {
     if (!parts.has(ref)) {
-      const [object, partName] = ref.split('.'), { build, locate } = await import('./design.mjs');
-      const b = await build(locate(`${project}/${object}`)), found = partName ? b.parts.find((q) => q.name === partName) : b.parts.find((q) => q.role !== 'support');
+      const [object, partName] = ref.split('.'), b = await design(object, `the part "${ref}"`);
+      const found = partName ? b.parts.find((q) => q.name === partName) : b.parts.find((q) => q.role !== 'support');
       if (!found) throw new Error(`${path.basename(file)}: ${object} has no part "${partName}" (parts: ${b.parts.map((q) => q.name).join(', ')})`);
       parts.set(ref, found.triangles);
     }
     return parts.get(ref);
+  };
+  // An anchor of another design (object.anchor): where it is and its axis, in that design's frame, worked out from its
+  // values as built. A region at an anchor follows the design: move the anchor, and the problem (and its result) moves.
+  const anchors = new Map();
+  const anchor = async (ref) => {
+    if (!anchors.has(ref)) {
+      const [object, a, ...more] = String(ref).split('.');
+      if (!object || !a || more.length) throw new Error(`${path.basename(file)}: name an anchor as <object>.<anchor> (got "${ref}")`);
+      const b = await design(object, `the anchor "${ref}"`), spec = b.object.anchors?.[a];
+      if (!spec) throw new Error(`${path.basename(file)}: ${object} has no anchor "${a}" (anchors: ${Object.keys(b.object.anchors || {}).join(', ') || 'none'})`);
+      const num = (x) => evaluate(x, (n) => {
+        const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values);
+        if (typeof v !== 'number') throw new Error(`${path.basename(file)}: the anchor "${ref}" reads "${n}", which isn't one of ${object}'s numbers`);
+        return v;
+      });
+      // Its axis is its z, as an assembly reads it: turned by its rotate (degrees about x, then y, then z) where it has one
+      const m = spec.rotate && turn(spec.rotate.map(num)), axis = m ? [m[2], m[6], m[10]].map((c) => (Math.abs(c) < 1e-12 ? 0 : c)) : (spec.axis || [0, 0, 1]).map(num);
+      anchors.set(ref, { anchor: ref, at: (spec.at || [0, 0, 0]).map(num), axis });
+    }
+    return anchors.get(ref);
   };
   // The build direction: a direction ('+z'), or a variable holding one
   const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
+    if (r.anchor) { // at an anchor: its place (x and y in a flat problem), and a cylinder along the anchor's axis unless it names one
+      if (r.at) throw new Error(`${path.basename(file)}: a region at an anchor ("${r.anchor}") takes no at: the anchor places it`);
+      const a = await anchor(r.anchor), along = a.axis.map((c) => Math.abs(c) > 1e-9);
+      if (r.length != null && !r.axis && along.filter(Boolean).length !== 1) throw new Error(`${path.basename(file)}: the anchor "${r.anchor}" points along [${a.axis.map((c) => round(c, 3)).join(', ')}], not along x, y or z: give the cylinder an axis`);
+      return region({ ...r, anchor: undefined, at: flat ? a.at.slice(0, 2) : a.at, ...(r.length != null && !r.axis ? { axis: 'xyz'[along.indexOf(true)] } : {}) });
+    }
     if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
       const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
       for (const t of triangles) for (const q of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], q[a]); hi[a] = Math.max(hi[a], q[a]); }
-      return { triangles, part: r.part, at: lo.map((x, a) => (x + hi[a]) / 2) };
+      const at = lo.map((x, a) => (x + hi[a]) / 2);
+      return flat ? { triangles, part: r.part, at: at.slice(0, 2), flat: true } : { triangles, part: r.part, at }; // flat: its section halfway up
     }
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
@@ -67,14 +121,17 @@ export async function readProblem(project, ref) {
   const regions = (list) => Promise.all([list || []].flat().map(region));
   const m = values[p.material];
   if (typeof m?.modulus !== 'number' || typeof m?.poisson !== 'number') throw new Error(`material ${p.material}: its rule set needs modulus (MPa) and poisson`);
-  const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
+  // The filter's radius is about the thinnest member: a cell and a half unless the problem gives one, and never under two
+  // of the printer's lines, the thinnest wall it lays solid (so it only binds on cells under 0.56 mm on a 0.42 mm line)
+  const printer = printerOf(project), line = printer ? resolve({ uses: [printer] }).values[printer]?.line : null, lines = typeof line === 'number' ? 2 * line : 0;
+  const space = await regions(p.space), dim = flat ? 2 : space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
   const problem = {
     space, keep: await regions(p.keep), avoid: await regions(p.avoid),
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
     loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
     material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), ...(p.volume != null ? { volume: ev(p.volume) } : {}), ...(p.stress != null ? { stress: ev(p.stress) } : {}), ...(p.strain != null ? { strain: ev(p.strain) } : {}),
-    ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
+    ...(p.filter != null ? { filter: ev(p.filter) } : lines > ev(p.cell) * 1.5 ? { filter: lines } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
     // How it's made other than printed: milled from a side, cast in a mould; symmetric, extruded (topopt's filters)
@@ -85,12 +142,17 @@ export async function readProblem(project, ref) {
     ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
-  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25 }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
+  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25, ...(p.outline?.reduce != null ? { reduce: ev(p.outline.reduce) } : {}) }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
   // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
   // tipped corners leave dips that slice as islands, and the layers step out no further for it)
   if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42, ...(p.outline?.tip ? { tip: true } : {}) }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
-  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical, voids: p.voids || 'allowed' };
+  // What the result is made from, for cad why: the rule sets, the problem's own values, the parts and anchors of other
+  // designs it reads, and where its filter came from
+  const inputs = { uses, variables: Object.fromEntries(Object.keys(p.variables || {}).map((k) => [k, values[k]])), ...(variant ? { set: p.variants[variant] } : {}),
+    parts: [...parts.keys()].sort(), anchors: [...anchors.values()].sort((a, b) => (a.anchor < b.anchor ? -1 : 1)).map(({ anchor: a, at }) => ({ anchor: a, at: at.map((c) => round(c, 4)) })),
+    filter: p.filter != null ? { value: problem.filter, from: `the problem: ${p.filter}` } : problem.filter ? { value: problem.filter, from: `two of ${printer}'s lines (2 × ${line} mm), more than a cell and a half` } : { value: round(problem.cell * 1.5), from: 'a cell and a half' } };
+  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical, inputs, voids: p.voids || 'allowed' };
 }
 
 /**
@@ -220,8 +282,14 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
       }
     }
     const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
-    const { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h);
-    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}), ...(cleared ? { cleared } : {}) };
+    let { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h), reduced = null;
+    // Fewer triangles, if asked: within outline.reduce mm of the surface as drawn, closed, and no more overhang or tips
+    if (r.outline.reduce != null) {
+      const { nx, ny, nz, h } = spec.grid, lo = spec.origin, hi = [lo[0] + nx * h, lo[1] + ny * h, lo[2] + nz * h], before = faces.length;
+      ({ vertices, faces } = reduce({ vertices, faces }, { tolerance: r.outline.reduce, lo, hi, ...(ov ? { overhang: { up: ov.up, angle: ov.angle } } : {}) }));
+      reduced = { before, after: faces.length, tolerance: r.outline.reduce };
+    }
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(reduced ? { reduced } : {}), ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}), ...(cleared ? { cleared } : {}) };
   })();
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),

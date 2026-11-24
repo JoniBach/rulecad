@@ -23,11 +23,13 @@ export function fromOutlines(loops) {
 }
 
 /**
- * A region of a problem (a circle, a centred rectangle or a polygon) as a JSCAD 2D shape.
- * @param {{ at?: [number, number], r?: number, size?: [number, number], points?: [number, number][] }} r
+ * A region of a problem (a circle, a centred rectangle or a polygon) as a JSCAD 2D shape; a design's part is null (it
+ * is the design's own to add or cut, as it is in 3D).
+ * @param {{ at?: [number, number], r?: number, size?: [number, number], points?: [number, number][], part?: string }} r
  * @param {number} [segments]
  */
 export function regionShape(r, segments = 48) {
+  if (r.part || r.triangles) return null;
   if (r.points) return polygon({ points: r.points });
   if (r.size) return rectangle({ center: r.at, size: r.size });
   return circle({ center: r.at, radius: r.r, segments });
@@ -40,8 +42,9 @@ export function regionShape(r, segments = 48) {
  */
 export function optimisedOutline(result, { segments = 48 } = {}) {
   let shape = fromOutlines(result.outlines);
-  if (result.regions.keep.length) shape = union(shape, ...result.regions.keep.map((r) => regionShape(r, segments)));
-  if (result.regions.avoid.length) shape = subtract(shape, ...result.regions.avoid.map((r) => regionShape(r, segments)));
+  const keep = result.regions.keep.map((r) => regionShape(r, segments)).filter(Boolean), avoid = result.regions.avoid.map((r) => regionShape(r, segments)).filter(Boolean);
+  if (keep.length) shape = union(shape, ...keep);
+  if (avoid.length) shape = subtract(shape, ...avoid);
   return shape;
 }
 

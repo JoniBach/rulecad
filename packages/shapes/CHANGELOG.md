@@ -4,6 +4,12 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## 0.4.8: a part as a region
+### Fixed
+
+- `optimisedOutline` leaves a design's part named as a keep or avoid region to the design, as `optimisedSolid` does:
+  `regionShape` gives null for one. Before, it was drawn as a circle with no radius, and the build failed.
+
 ## 0.4.7: shaft bores in one place
 ### Added
 

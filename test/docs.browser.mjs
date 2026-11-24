@@ -22,7 +22,9 @@ const drawn = {
   pcb: "!!document.querySelector('.figure svg')", cad: "!!document.querySelector('img[src=\"soap-tray.png\"]')", robots: "document.querySelector('#link1') && /shoulder/.test(document.getElementById('readout').textContent)",
   fixings: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /triangles/.test(document.getElementById('count').textContent) && document.querySelectorAll('#holes tbody tr').length === 7 && /x1c\\.pilot_m3/.test(document.getElementById('holes').textContent)",
   frames: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /mm² of metal/.test(document.getElementById('count').textContent) && document.querySelectorAll('#figures tbody tr').length === 5 && !!document.querySelector('#section path') && !!document.querySelector('#join-part .stage canvas') && document.querySelectorAll('#join-parts li').length >= 4 && /an estimate, until the joint rig measures it/.test(document.getElementById('join-parts').textContent)",
-  index: "document.querySelectorAll('.card').length === 19"
+  // the MBB beam run to its end in a worker, as the 88-line code does it: 127 steps to a compliance of 218.80
+  topopt: "/Settled after 127 steps in [\\d.]+ s: compliance 218\\.80, 50% of the beam filled/.test(document.getElementById('readout').textContent) && document.querySelectorAll('#chart polyline').length === 1",
+  index: "document.querySelectorAll('.card').length === 20"
 };
 
 test('every library page runs without a script error, and its demonstration draws', { skip: !CHROME && 'no Chrome here' }, async () => {
