@@ -1839,6 +1839,11 @@ test('a mechanism problem: cad optimise reports how far the output moves its way
     assert.match(out, /the output moves [\d.e-]+ mm its way for [\d.e-]+ mm of push: an advantage of [\d.e-]+/);
     assert.match(out, /% of the space filled/);
     assert.match(out, /40 × 20 cells of 1 mm/);
+    // A strain limit: the mechanism is checked against it at its push, with the push and travel that reach it
+    // (PLA: 39 MPa over 2680 MPa is 1.46%, so half of it is 0.73%, 19.5 MPa)
+    const spec = JSON.parse(fs.readFileSync(path.join(project, 'problems', 'inverter.json'), 'utf8'));
+    fs.writeFileSync(path.join(project, 'problems', 'strained.json'), JSON.stringify({ ...spec, title: 'A strained inverter', strain: 'pla.strength / pla.modulus / 2' }));
+    assert.match(cad('optimise', 'mech/strained'), /peak stress [\d.]+ MPa at its input force \(strain [\d.]+%\), the limit 19\.5 MPa \(0\.728%\): it reaches the limit at [\d.]+ N of push, its output then [\d.e-]+ mm along/);
   } finally { done(); }
 });
 
@@ -4072,16 +4077,23 @@ test('printed fittings in a project of another plastic: refused by name where no
   try {
     const at = (f) => path.join(ws, 'projects/frame', f);
     fs.mkdirSync(at('assemblies'), { recursive: true });
-    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PC', objects: [] }));
     fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
-    // once sized as PLA without a word; now refused by name, with what would do
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "ABS", and printed fittings are sized from their plastic's strength, modulus and density: the kit has pla and petg, and there is no rules\/abs\.json\. Give rules\/abs\.json with all three, or set the material to pla or petg/);
+    // once sized as PLA without a word; now refused by name, with what would do: every plastic the kit has a rule set
+    // for (one with strength, modulus, density and modulus_z, the modulus across the layers), not only pla and petg
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, pa_cf, petg, pla, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, pa_cf, petg, pla/);
     fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
     const pla = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/pla.json'), 'utf8'));
-    fs.writeFileSync(path.join(ws, 'rules/abs.json'), JSON.stringify({ name: 'abs', rules: { strength: pla.rules.strength } }));
-    assert.match(cad('check', 'frame/clip'), /rules\/abs\.json gives no modulus, density/);
-    fs.writeFileSync(path.join(ws, 'rules/abs.json'), JSON.stringify({ name: 'abs', rules: { ...pla.rules, density: { ...pla.rules.density, value: 1.04 } } }));
-    assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of abs/);
+    fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { strength: pla.rules.strength } }));
+    assert.match(cad('check', 'frame/clip'), /rules\/pc\.json gives no modulus, density/);
+    fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { ...pla.rules, density: { ...pla.rules.density, value: 1.04 } } }));
+    assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of pc/);
+    // a set the workspace gives is one of its plastics from then on: another missing plastic's refusal names it too
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'nylon', objects: [] }));
+    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, pa_cf, pc, petg, pla, and there is no rules\/nylon\.json/);
+    // and a plastic the kit gives a set for (#27's abs) is sized from it, with no set of the workspace's own
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
+    assert.match(cad('check', 'frame/clip'), /c: it weighs [\d.]+ g of abs/);
   } finally { done(); }
 });
 
@@ -6347,6 +6359,20 @@ test('a folding sheet in an assembly: the bench tray checked flat and folded, a 
     a = check('flexures/tray-fit');
     assert.deepEqual(a.filter((x) => x.code === 'fit').map((x) => [x.refs.pose, x.level]).sort(), [['flat', 'pass'], ['folded', 'warn']]);
     assert.equal(a.find((x) => x.code === 'overlap' && x.refs.pose === 'folded').level, 'fail', 'folded, the tray and the block overlap');
+  } finally { done(); }
+});
+
+test('the printed plastics ABS, ASA and PA-CF load in cad values with their units, and a strain limit reads off them', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/plastics', { uses: ['abs', 'asa', 'pa_cf'], variables: {
+      // PA-CF's strain at its strength along the layers: 88 / 3860 = 0.0228
+      give: { value: 'pa_cf.strength / pa_cf.modulus', rule: 'Strain at strength' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const all = JSON.parse(cad('values', 'demo/plastics', '--json')).values, at = (n) => all.find((v) => v.name === n);
+    assert.ok(Math.abs(at('give').value - 88 / 3860) < 1e-9, JSON.stringify(at('give')));
+    const rules = JSON.parse(cad('rules', 'demo/plastics', '--json')).variables, rule = (n) => rules.find((v) => v.name === n);
+    assert.deepEqual([rule('abs.modulus').value, rule('abs.modulus').unit, rule('asa.strength_z').value, rule('asa.strength_z').unit, rule('pa_cf.density').unit], [2246.6, 'MPa', 35, 'MPa', 'g/cm³']);
   } finally { done(); }
 });
 

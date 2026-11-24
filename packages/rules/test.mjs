@@ -406,3 +406,16 @@ test('V-wheels and eccentric spacers: OpenBuilds\' solid and mini wheels read of
     assert.deepEqual([R.wheel_modulus.kind, R.wheel_contact_stress.kind, R.wheel_poisson.kind], ['community', 'community', 'estimate']);
   }
 });
+
+test('the printed plastics: stiffness and strength each way, with the data sheet\'s range; weaker across the layers than along them', () => {
+  for (const name of ['pla', 'petg', 'abs', 'asa', 'pa_cf']) {
+    const r = sets.find((s) => s.name === name).set.rules;
+    for (const k of ['modulus', 'strength', 'poisson', 'density']) assert.ok(r[k], `${name} has ${k}`);
+    for (const k of ['modulus', 'modulus_z']) assert.ok(r[k] && r[k].low < r[k].value && r[k].high > r[k].value, `${name}.${k} has a range round its value`);
+    assert.ok(r.modulus_z.value < r.modulus.value && (!r.strength_z || r.strength_z.value < r.strength.value), `${name} is weaker across its layers`);
+  }
+  // PAHT-CF's sheet: 3860 ± 230 MPa along the layers, so 3630 to 4090
+  const cf = sets.find((s) => s.name === 'pa_cf').set.rules.modulus;
+  assert.deepEqual([cf.low, cf.value, cf.high], [3860 - 230, 3860, 3860 + 230]);
+});
+

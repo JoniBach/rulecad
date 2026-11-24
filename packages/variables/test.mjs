@@ -189,3 +189,13 @@ test('rules check holds a list rule to order, and a part to what its vocabulary 
   assert.deepEqual(checkRuleSet(board([-19.05, 24.13, -20.32]), pts).map((x) => [x.code, x.text]), [['rules.list', 'mount_holes is points of 2 numbers each, one after another: 3 numbers is not a whole number of them']]);
   assert.deepEqual(checkRuleSet(board([-19.05, 24.13, -20.32, -24.13]), { ...pts, fields: { ...pts.fields, mount_holes: { unit: 'mm', list: true } } }).map((x) => x.code), ['rules.order'], 'without points, a list is ascending');
 });
+
+test('rules check holds a range to its value: low at most it, high at least it, both numbers', async () => {
+  const { checkRuleSet } = await import('@rulecad/variables');
+  const set = (extra) => ({ name: 'abs', rules: { modulus: { value: 2246.6, unit: 'MPa', rule: 'Young\'s modulus', kind: 'spec', source: 'a data sheet', checked: '2026-11-24', ...extra } } });
+  const vocabulary = { units: ['MPa'], prefixes: [], fields: {}, parts: {} };
+  assert.deepEqual(checkRuleSet(set({ low: 2188.4, high: 2304.8 }), vocabulary), []);
+  assert.deepEqual(checkRuleSet(set({ low: 2246.6 }), vocabulary), [], 'a range may end at the value, and have one side');
+  assert.deepEqual(checkRuleSet(set({ low: 2300, high: 2200 }), vocabulary).map((x) => [x.code, x.values]), [['rules.range', { value: 2246.6, low: 2300 }], ['rules.range', { value: 2246.6, high: 2200 }]]);
+  assert.match(checkRuleSet(set({ high: '2300' }), vocabulary)[0].text, /modulus: high is a number in the rule's unit/);
+});

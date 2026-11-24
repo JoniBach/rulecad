@@ -58,7 +58,11 @@
     },
     "stress": {
       "$ref": "#/$defs/expr",
-      "description": "A limit on von Mises stress (MPa), such as \"pla.strength / 3\": the lightest layout that keeps every cell under it (Senhora et al. 2020). Give this or a volume"
+      "description": "A limit on von Mises stress (MPa), such as \"pla.strength / 3\": the lightest layout that keeps every cell under it (Senhora et al. 2020). Give this or a volume. A mechanism (with output) fills its volume as before and is checked against the limit at its input force: its peak, and the input force and output travel that reach the limit"
+    },
+    "strain": {
+      "$ref": "#/$defs/expr",
+      "description": "A strain limit in place of stress, a share of the length (0.02 is 2%), such as \"pla.strength / pla.modulus / 2\": the stress limit is it times the material's modulus. Most use for a mechanism, whose hinges bend"
     },
     "filter": {
       "$ref": "#/$defs/expr",
@@ -481,6 +485,11 @@
     {
       "required": [
         "stress"
+      ]
+    },
+    {
+      "required": [
+        "strain"
       ]
     }
   ]
