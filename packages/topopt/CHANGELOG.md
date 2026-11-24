@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading.
 
-## 0.3.3
+## 0.3.3: fewer triangles, problems in 2D from a part
 ### Added
 
 - `reduce(mesh, { tolerance, lo, hi, overhang })`: a closed surface with fewer triangles. Edges are collapsed
