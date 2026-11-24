@@ -4,8 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased
-
+## 0.5.8: pivots, linkages, amplifiers and bistables
 ### Added
 
 - Compliant linkages (issue #77): `fourBar` and `fourBarModel` (crank-rocker, parallelogram and the other Grashof
