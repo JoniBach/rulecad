@@ -26,7 +26,7 @@ const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
 
 // Sizes are sizes: a model or a sizer given a length, thickness or width of 0, below 0 or not a number says so by name,
 // where it would give an infinite or negative stiffness, or a length of infinity
-const SIZES = ['length', 'thickness', 'width', 'radius', 'neck', 'flex', 'link', 'span', 'leaf', 'pitch', 'crank', 'stop', 'apart', 'bar', 'rise', 'travel', 'force', 'stroke', 'energy'];
+const SIZES = ['length', 'thickness', 'width', 'radius', 'neck', 'along', 'across', 'flex', 'link', 'span', 'leaf', 'pitch', 'crank', 'stop', 'apart', 'bar', 'rise', 'travel', 'force', 'stroke', 'energy'];
 export function need(what, p = {}, m) {
   for (const k of SIZES) {
     if (!(k in p) || p[k] === undefined) continue;
@@ -118,7 +118,12 @@ function beam(p, ends) {
  */
 export function beamModel(p, { E }, ends = 'leaf') {
   need('beamModel', arguments[0], arguments[1]);
-  const { length: L, width: w } = p, half = beamProfile(p, ends), n = 600, ds = L / n;
+  return profiled(beamProfile(p, ends), p.length, p.width, E, ends);
+}
+// A beam L long whose half-thickness is half(s) at s from its root, integrated in 600 slices (Euler-Bernoulli): a leaf
+// (a force at the tip) or a guided beam (the tip held from turning). What beamModel and the pinned leaf share.
+function profiled(half, L, w, E, ends) {
+  const n = 600, ds = L / n;
   const s = Array.from({ length: n }, (_, i) => (i + 0.5) * ds), t = s.map((x) => 2 * half(x)), EI = t.map((x) => (E * w * x ** 3) / 12);
   const m0 = ends === 'guided' ? s.reduce((a, x, i) => a + (L - x) / EI[i], 0) / EI.reduce((a, x) => a + 1 / x, 0) : 0; // the moment that holds the end square, per unit force
   const M = s.map((x) => L - x - m0); // per unit force at the tip
@@ -601,6 +606,244 @@ export function cartwheelModel({ spoke: s, thickness: t, width: w, hub }, { E })
   const r = hub ?? Math.max(2, 2 * t), I = (w * t ** 3) / 12, carried = 1 + (1.5 * r) / s, stiffness = ((16 * E * I) / s) * (1 + (3 * r) / s + (3 * r * r) / (s * s)), strain = (th) => (2 * t * th * carried) / s;
   const angle = (e) => e / strain(1);
   return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
+}
+
+// ---------- notch hinges of any profile ----------
+// A hinge is a bar H high with two notches cut from it face to face: the neck between them is where it bends.
+// half(x) is the neck's half-height at x along the notch (0 to span), reaching H / 2 at both ends, so the notch meets
+// the arms' faces in a curve, never a square corner. Drawn like the other hinges: the arms along x, the bar's height
+// along y, its width up z.
+function notched(half, span, H, arm, width) {
+  const n = Math.max(80, Math.ceil(span / 0.05)), top = [[0, H / 2], ...Array.from({ length: n + 1 }, (_, i) => [arm + (span * i) / n, half((span * i) / n)]), [2 * arm + span, H / 2]];
+  const lower = top.map(([x, y]) => [x, -y]), upper = top.slice().reverse(); // anticlockwise: along the underside, back along the top
+  return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...lower, ...upper] }));
+}
+// Its turn: the compliance ∫ dx / EI(x) along the notch (the arms taken as rigid, as for the elliptical hinge), and
+// the strain at the thinnest neck t for the moment k θ, times the notch's concentration
+function notchModel(half, span, t, w, E, concentration) {
+  const n = 2000, dx = span / n;
+  let compliance = 0;
+  for (let i = 0; i < n; i++) { const h = 2 * half((i + 0.5) * dx); compliance += dx / ((E * w * h ** 3) / 12); }
+  const stiffness = 1 / compliance, Imin = (w * t ** 3) / 12, strain = (th) => (concentration * stiffness * th * (t / 2)) / (E * Imin);
+  const angle = (e) => e / strain(1);
+  return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
+}
+// The corner-filleted neck: flat for l, rising to the arms in quarter circles of radius r
+const filletHalf = (l, r, t) => (x) => { const d = x < r ? r - x : x > r + l ? x - r - l : 0; return t / 2 + r - Math.sqrt(Math.max(0, r * r - d * d)); };
+function refuseHinge(what, p, m) {
+  need(what, p, m);
+  if (p.concentration !== undefined && !(p.concentration >= 1)) throw new Error(`${what}: concentration is a factor of 1 or more (got ${p.concentration})`);
+}
+
+/**
+ * A corner-filleted hinge: a flat neck l long between two notches with rounded corners of radius r, so it bends along
+ * the whole flat, not at one thin point: a longer, softer hinge with less stress at the same angle than a circular
+ * notch as deep (Lobontiu 2003; Smith 2000). With no flat (l small beside r) it tends to the circular notch; with
+ * small rounds it is a strip of length l, stiffness EI / l and strain tθ / 2l, like a living hinge.
+ * @param {{ flex: number, radius: number, neck: number, width: number, arms?: number }} p flex: the flat's length
+ *   (l); radius: the corners' (r, the notch's depth too: the bar is t + 2r high); neck: the flat's thickness (t);
+ *   width: up z; arms: the blocks either side, along x (default 4 × radius, at least 3)
+ */
+export function filletHinge(p) {
+  refuseHinge('filletHinge', p);
+  const { flex: l, radius: r, neck: t, width, arms } = p, arm = arms ?? Math.max(3, 4 * r);
+  return notched(filletHalf(l, r, t), l + 2 * r, t + 2 * r, arm, width);
+}
+/**
+ * @param {{ flex: number, radius: number, neck: number, width: number }} p
+ * @param {Material & { concentration?: number }} m concentration: at the corners' start (default 1.2, as the notch
+ *   hinge's: an estimate, which a finite-element check measures)
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number }}
+ *   stiffness in N·mm a radian; angles in radians
+ */
+export function filletHingeModel(p, m) {
+  refuseHinge('filletHingeModel', { ...p, concentration: m?.concentration }, m);
+  const { flex: l, radius: r, neck: t, width: w } = p;
+  return notchModel(filletHalf(l, r, t), l + 2 * r, t, w, m.E, m.concentration ?? 1.2);
+}
+
+/**
+ * A hyperbolic hinge: notches whose neck thickens as a hyperbola, t √(1 + (x / c)²) from its middle, reaching the
+ * bar's height t + 2b at x = ±a. The other end of the family from the corner-filleted hinge: its neck thickens fast,
+ * so it bends close to its middle and turns about a well-kept axis, stiffer and with more stress at an angle than an
+ * elliptical notch of the same length and depth (Lobontiu 2003). The one to pick for precision, not for travel.
+ * @param {{ along: number, across: number, neck: number, width: number, arms?: number }} p along: half the notch's
+ *   length (a); across: its depth (b); neck: the thinnest part (t); width: up z; arms: the blocks either side, along x
+ *   (default 4 × along)
+ */
+export function hyperbolicHinge(p) {
+  refuseHinge('hyperbolicHinge', p);
+  const { along: a, across: b, neck: t, width, arms } = p;
+  return notched(hyperbolicHalf(a, b, t), 2 * a, t + 2 * b, arms ?? 4 * a, width);
+}
+const hyperbolicHalf = (a, b, t) => { const c = a / Math.sqrt(((t + 2 * b) / t) ** 2 - 1); return (x) => (t / 2) * Math.sqrt(1 + ((x - a) / c) ** 2); };
+/**
+ * @param {{ along: number, across: number, neck: number, width: number }} p
+ * @param {Material & { concentration?: number }} m concentration: at the neck (default 1.2, an estimate as above)
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number }}
+ */
+export function hyperbolicHingeModel(p, m) {
+  refuseHinge('hyperbolicHingeModel', { ...p, concentration: m?.concentration }, m);
+  const { along: a, across: b, neck: t, width: w } = p;
+  return notchModel(hyperbolicHalf(a, b, t), 2 * a, t, w, m.E, m.concentration ?? 1.2);
+}
+
+// ---------- the spiral (clock) spring ----------
+const smoothStep = (u) => { const v = Math.min(1, Math.max(0, u)); return v * v * (3 - 2 * v); };
+function refuseSpiral(what, p, m) {
+  need(what, p, m);
+  const { hub: r0, turns: n, pitch: pt, thickness: t } = p;
+  if (!(n >= 1)) throw new Error(`${what}: turns is 1 or more (got ${n}): under a turn, the thickened ends run into each other`);
+  if (!(r0 > t)) throw new Error(`${what}: the hub's radius ${r0} mm must be more than the thickness ${t} mm, so the strip's thickened root can wrap it`);
+  if (!(pt > 1.5 * t)) throw new Error(`${what}: the pitch ${pt} mm must be more than 1.5 × the thickness (${+(1.5 * t).toFixed(3)} mm): the coils, with their ends thickened to twice the strip, need room between them`);
+}
+/**
+ * A spiral spring's centreline and thickness: an Archimedean spiral r = hub + pitch × φ / 2π from the hub (φ = 0, on
+ * +x) out through `turns` turns, anticlockwise. The strip is twice its thickness at each end, thinning smoothly to it
+ * over a quarter turn, so where it joins the hub and its anchor the strain under the same moment is a quarter of the
+ * strip's: the joins' corners, which concentrate it two or three times over, stay below the strip's own strain.
+ * @param {{ hub: number, turns: number, pitch: number, thickness: number }} p
+ * @returns {{ path: number[][], thickness: number[], length: number }}
+ */
+export function spiralPath(p) {
+  const { hub: r0, turns: n, pitch: pt, thickness: t } = p, N = Math.max(96, Math.ceil(n * 144)), end = 2 * Math.PI * n, path = [], thickness = [];
+  for (let i = 0; i <= N; i++) {
+    const f = (end * i) / N, r = r0 + (pt * f) / (2 * Math.PI);
+    path.push([r * Math.cos(f), r * Math.sin(f)]); thickness.push(t * (2 - smoothStep(Math.min(f, end - f) / (Math.PI / 2))));
+  }
+  let length = 0;
+  for (let i = 1; i <= N; i++) length += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+  return { path, thickness, length };
+}
+/**
+ * A spiral (clock) spring in the plane: a strip wound round a hub, its outer end held in a boss. Turning the hub winds
+ * it: a torsion return that prints flat, bending within its layers. The helical torsion spring is the wrong answer on
+ * a filament printer (on its side it needs support under every coil; standing, its coils bend across the layers'
+ * bonds); this is the flat alternative. Stiffness about EI / L, L the strip's length (Wahl, Mechanical Springs, 1963:
+ * a spiral spring with its outer end clamped), and the strain tθ / 2L where the moment is even along it; the model
+ * works out the hub's centre held, which bends the strip a little more near one side.
+ * Drawn with the hub at the origin, the spiral running anticlockwise out from +x, the boss outside its last coil.
+ * @param {{ hub: number, turns: number, pitch: number, thickness: number, width: number, anchor?: number }} p hub: the
+ *   hub's radius, where the strip starts; turns: how many (1 or more); pitch: coil to coil, radially (more than 1.5 ×
+ *   thickness); thickness: the strip's; width: up z; anchor: the boss's radius (default 2 × thickness, at least 2)
+ */
+export function spiralSpring(p) {
+  refuseSpiral('spiralSpring', p);
+  const { path, thickness } = spiralPath(p), w = p.width, t = p.thickness, Rb = p.anchor ?? Math.max(2, 2 * t);
+  const side = (k) => path.map((pt, i) => { // offset k = ±1 by half the strip there: -1 outward, +1 inward
+    const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, h = thickness[i] / 2;
+    return [pt[0] - (k * dy * h) / l, pt[1] + (k * dx * h) / l];
+  });
+  const strip = jscad.extrusions.extrudeLinear({ height: w }, jscad.primitives.polygon({ points: [...side(-1), ...side(1).reverse()] }));
+  const last = path.at(-1), ro = Math.hypot(...last), out = ro + Rb - t; // the boss reaches in only to the strip's inner face, so it keeps the coils' gap
+  return union(strip, cylinder({ radius: p.hub, height: w, center: [0, 0, w / 2], segments: 64 }), cylinder({ radius: Rb, height: w, center: [(last[0] / ro) * out, (last[1] / ro) * out, w / 2], segments: 48 }));
+}
+/**
+ * The hub turned θ about its centre, which a shaft holds where it is, the outer end clamped: Castigliano on the
+ * strip as drawn. The moment along it is M(s) = T + a x(s) + b y(s), the torque T and the hub's reaction (a, b)
+ * chosen so the hub's centre stays put and it turns θ = ∫ M / EI ds. With `floating`, the hub is free to move (no
+ * reaction): the moment is even, T = EI θ / L. How the coils' gap closes as they wind is left to the beam solver: with
+ * the hub's centre held the coils crowd to one side, so the narrowest gap closes far faster than an even share of
+ * the room would say.
+ * @param {{ hub: number, turns: number, pitch: number, thickness: number, width: number, floating?: boolean }} p
+ * @param {Material} m
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, travel: (strain: number) => number,
+ *   stress: (angle: number) => number, length: number, gap: number }} stiffness in N·mm a radian; length: the strip's,
+ *   mm; gap: the least gap between coils at rest (pitch − 1.5 × thickness, at the thickened ends), mm
+ */
+export function spiralSpringModel(p, m) {
+  refuseSpiral('spiralSpringModel', p, m);
+  const { path, thickness, length } = spiralPath(p), { E } = m, w = p.width, t = p.thickness, pt = p.pitch;
+  const seg = path.slice(1).map((b, i) => { const a = path[i], h = (thickness[i] + thickness[i + 1]) / 2; return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, ds: Math.hypot(b[0] - a[0], b[1] - a[1]), h, EI: (E * w * h ** 3) / 12 }; });
+  let S = [0, 0, 0, 0, 0, 0]; // ∫ 1, x, y, xx, xy, yy over EI
+  for (const g of seg) { const k = g.ds / g.EI; S = [S[0] + k, S[1] + k * g.x, S[2] + k * g.y, S[3] + k * g.x * g.x, S[4] + k * g.x * g.y, S[5] + k * g.y * g.y]; }
+  let T, a = 0, b = 0;
+  if (p.floating) T = 1 / S[0];
+  else [T, a, b] = solve3([[S[0], S[1], S[2]], [S[1], S[3], S[4]], [S[2], S[4], S[5]]], [1, 0, 0]);
+  const per = Math.max(...seg.map((g) => (Math.abs(T + a * g.x + b * g.y) * g.h) / (2 * g.EI))), strain = (th) => per * Math.abs(th), angle = (e) => e / per;
+  return { stiffness: T, strain, angle, travel: angle, stress: (th) => E * strain(th), length, gap: pt - 1.5 * t };
+}
+function solve3(A, v) { // Cramer's rule, for a small symmetric system
+  const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+  const D = det(A);
+  return [0, 1, 2].map((j) => det(A.map((row, i) => row.map((x, k) => (k === j ? v[i] : x)))) / D);
+}
+
+// ---------- the pinned-pinned leaf ----------
+/**
+ * A pinned-pinned leaf: a stiff link with a short flexural pivot at each end (two corner-filleted necks), so it moves
+ * as a rigid link on two pins (Howell's small-length flexural pivots: each a torsion spring K = EI / l at its middle).
+ * Stiff along itself, where a plain leaf would buckle; soft sideways. Drawn along x: a block (the root), a pivot, the
+ * link, a pivot, a block (the end), all as high as the link, the pivots' necks rising to it in quarter circles.
+ * @param {{ length: number, flex: number, thickness: number, width: number, link?: number, ends?: number }} p length:
+ *   the link between the pivots; flex: each pivot's flat neck (l); thickness: the necks' (t); width: up z; link: the
+ *   link's thickness (default 3 × thickness, at least 2; the necks' rounds are (link − t) / 2); ends: the blocks along
+ *   x (default 2 × thickness, at least 3)
+ */
+export function pinnedLeaf(p) {
+  const q = pinned('pinnedLeaf', p);
+  return notched(q.half, q.span, q.T, q.e, p.width);
+}
+function pinned(what, p, m) {
+  need(what, p, m);
+  const { length: L, flex: l, thickness: t } = p, T = p.link ?? Math.max(2, 3 * t), e = p.ends ?? Math.max(3, 2 * t);
+  if (!(T >= 1.5 * t)) throw new Error(`${what}: the link (${T} mm) must be at least 1.5 × the necks' thickness (${t} mm), or it bends as much as they do`);
+  const r = (T - t) / 2, pivot = l + 2 * r, span = 2 * pivot + L, neck = filletHalf(l, r, t);
+  const half = (s) => (s < pivot ? neck(s) : s <= pivot + L ? T / 2 : neck(s - pivot - L));
+  return { T, e, r, pivot, span, half, neck };
+}
+/**
+ * The far block moved across (along y) and held from turning, as a link between two parts that stay parallel: the
+ * whole profile integrated as a guided beam (beam theory, the pivots' rounds and the link's own give included). Near
+ * 2K / Lp² for pivots K a link Lp apart, centre to centre (the pseudo-rigid-body model). Also each pivot's K, and the
+ * stiffness along it.
+ * @param {{ length: number, flex: number, thickness: number, width: number, link?: number }} p @param {Material} m
+ * @returns {Model & { pivot: number, apart: number, along: number }} pivot: each pivot's K, N·mm a radian; apart: Lp,
+ *   mm; along: N/mm
+ */
+export function pinnedLeafModel(p, m) {
+  const q = pinned('pinnedLeafModel', p, m), { E } = m, w = p.width;
+  const g = profiled(q.half, q.span, w, E, 'guided'), K = notchModel(q.neck, q.pivot, p.thickness, w, E, 1).stiffness;
+  const n = 2000, ds = q.span / n;
+  let c = 0;
+  for (let i = 0; i < n; i++) c += ds / (E * w * 2 * q.half((i + 0.5) * ds));
+  return { ...g, pivot: K, apart: q.span - q.pivot, along: 1 / c };
+}
+
+// ---------- the XY stage ----------
+/**
+ * An XY stage from two parallel guides in series: the first, from the ground, moves its shuttle along y; the second
+ * stands on that shuttle at right angles, its leaves along y, and moves the stage along x. Each axis is one guide's
+ * stiffness (2 E w t³ / L³); pushed the other way, a guide's leaves are loaded along their length, far stiffer. Each
+ * guide's drop (3δ² / 5L) is the other axis's parasitic motion. Drawn with the first guide's base at x < 0, its
+ * leaves along x, and the second's leaves rising along +y from its shuttle to the stage.
+ * @param {ShapedLeaf & { gap: number, base?: number, stage?: number }} p the leaves (both guides alike, rounds and
+ *   taper as a parallel guide takes them); gap: between each guide's two leaves; base: the ground block along x
+ *   (default 2 × thickness, at least 3); stage: the stage block along y (the same)
+ */
+export function xyStage(p) {
+  need('xyStage', p);
+  if (!(p.gap > 0)) throw new Error(`xyStage: gap is a size above 0 (got ${JSON.stringify(p.gap)})`);
+  const end = Math.max(3, 2 * p.thickness), across = p.gap + 2 * p.thickness + 2 * (p.fillet || 0);
+  const first = parallelGuide({ ...p, base: p.base ?? end, shuttle: across });
+  const second = parallelGuide({ ...p, base: across, shuttle: p.stage ?? end }); // its base the first's shuttle, once turned
+  return union(first, translate([p.length + across / 2, across / 2, 0], jscad.transforms.rotateZ(Math.PI / 2, second)));
+}
+/**
+ * @param {ShapedLeaf & { gap: number }} p @param {Material} m
+ * @returns {{ x: Model, y: Model, stiffness: number[], across: number, strain: (travel: number[]) => number,
+ *   travel: (strain: number) => number, parasitic: (travel: number[]) => number[] }} stiffness: [x, y], N/mm; across:
+ *   a guide pushed along its leaves (straight leaves; rounds only stiffen it); strain at [dx, dy]; travel: each axis's at
+ *   a strain; parasitic: where the stage strays at [dx, dy], mm
+ */
+export function xyStageModel(p, m) {
+  need('xyStageModel', p, m);
+  const g = parallelGuideModel(p, m), across = (2 * m.E * p.width * p.thickness) / p.length;
+  return {
+    x: g, y: g, stiffness: [g.stiffness, g.stiffness], across,
+    strain: ([dx, dy]) => Math.max(Math.abs(g.strain(dx)), Math.abs(g.strain(dy))), travel: (e) => g.travel(e),
+    parasitic: ([dx, dy]) => [-g.drop(dy), -g.drop(dx)], // the first guide's drop pulls the stage back along x, the second's along y
+  };
 }
 
 /**
