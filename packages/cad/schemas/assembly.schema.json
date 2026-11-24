@@ -174,7 +174,7 @@
         "nut": { "anyOf": [{ "type": "boolean" }, { "type": "string" }], "description": "What holds the screw where the part it ends in does not: true or hex, square, lock. It sits on that part's far face, or in a nut's seat drawn there. Into a beam's slot, the slot nut's kind: slide-in, drop-in, roll-in, hammer, square or t-bolt (left out, the strongest made for the slot). A slide-in or square nut enters only from an open end of the slot (frame.nut, frame.preload)" },
         "washer": { "type": "boolean", "description": "A plain washer under the head" },
         "length": { "$ref": "#/$defs/expr", "description": "The screw's length in mm, where the name gives none: checked for reaching, bottoming out and standing proud" },
-        "torque": { "$ref": "#/$defs/expr", "description": "The tightening torque, N m: the pressure under the head is then held against the material it sits on (fasten.seat)" },
+        "torque": { "$ref": "#/$defs/expr", "description": "The tightening torque, N m: the pressure under the head is then held against the material it sits on (fasten.seat); for a printed bolt, the turn by hand, held against what the bolt breaks at (fasten.torque)" },
         "note": { "type": "string" }
       }
     },
