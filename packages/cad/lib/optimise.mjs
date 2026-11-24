@@ -11,7 +11,7 @@ import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
@@ -121,7 +121,7 @@ export async function readProblem(project, ref) {
     ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
-  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25 }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
+  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25, ...(p.outline?.reduce != null ? { reduce: ev(p.outline.reduce) } : {}) }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
   // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
   // tipped corners leave dips that slice as islands, and the layers step out no further for it)
@@ -244,8 +244,14 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
       }
     }
     const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
-    const { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h);
-    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}), ...(cleared ? { cleared } : {}) };
+    let { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h), reduced = null;
+    // Fewer triangles, if asked: within outline.reduce mm of the surface as drawn, closed, and no more overhang or tips
+    if (r.outline.reduce != null) {
+      const { nx, ny, nz, h } = spec.grid, lo = spec.origin, hi = [lo[0] + nx * h, lo[1] + ny * h, lo[2] + nz * h], before = faces.length;
+      ({ vertices, faces } = reduce({ vertices, faces }, { tolerance: r.outline.reduce, lo, hi, ...(ov ? { overhang: { up: ov.up, angle: ov.angle } } : {}) }));
+      reduced = { before, after: faces.length, tolerance: r.outline.reduce };
+    }
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(reduced ? { reduced } : {}), ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}), ...(cleared ? { cleared } : {}) };
   })();
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
