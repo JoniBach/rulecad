@@ -4,6 +4,26 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## 0.1.7: a slotted snap skirt and printed bolts into slot nuts
+### Added
+
+- **A slotted skirt for the annular snap** (issue 309): `annularSnapModel` takes `slots: { count, reach, width }`, the
+  lid's skirt cut into fingers, each a cantilever clamped at the slots' closed end (`skirtFinger`: the exact second
+  moment of a ring's sector, k = 3 E I / L³, root strain 3 c y / L²). The fingers' root strain is held to the same
+  limit as a hoop strain, and the finding `snap.fingers` says what a whole skirt would take for the same bead.
+  `snapSlots` cuts the slots, each ending in a full round. New rule `fixings.snap_slot` (1 mm, an estimate), and the
+  printer's `print_gap` is borrowed from the X1C where a printer lacks it. Refused by name: under 3 fingers, a slot
+  narrower than `print_gap`, a reach under twice the skirt or past the lid's top, fingers narrower than the skirt.
+  The bead bears on each finger at the groove's bottom edge, so the finger's arm is the reach plus the groove's
+  height (`slots.arm`), and a sized bead is worked at its own arm. So is `most.undercut`, the most undercut a failing
+  bead's findings name: a smaller bead has a shorter, stiffer arm, so the limit at the given bead's arm would fail.
+  For the 60 mm pot with its bead 14 mm under the rim, 16 fingers bring the push on from 329.9 N (a whole skirt
+  there) to 31.8 N. The bench's `snap-pot` gains a `slotted` variant and the assembly `snap-pot-slotted-closed`.
+
+### Printed sizes
+
+- None moved: without `slots` every figure and solid is as before (checked against the pot's model before the change).
+
 ## 0.1.6: the annular snap: lids that click on (#76)
 
 ### Added

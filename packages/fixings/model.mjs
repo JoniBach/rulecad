@@ -62,7 +62,8 @@ export const DEFAULTS = {
   snap_often: { value: 0.6, unit: '× brief strain', rule: 'A snap opened and closed often, as a lid is, is held to this share of the brief-snap strain', kind: 'community', source: 'Bayer MaterialScience, Snap-Fit Joints for Plastics: A Design Guide, copy at https://fab.cba.mit.edu/classes/S62.12/people/vernelle.noel/Plastic_Snap_fit_design.pdf, page 12, Table 2: for frequent separation and rejoining, use about 60% of these values', checked: '2026-11-23' },
   snap_remote: { value: 3, unit: '× near-end force', rule: 'An annular snap at least 1.8 √(d t) in from its tube\'s free end is about this many times as stiff as one at the end: four times in theory, and tests rarely give more than three. Between the two the kit takes a straight line, an estimate', kind: 'community', source: 'Bayer MaterialScience, Snap-Fit Joints for Plastics: A Design Guide, copy at https://fab.cba.mit.edu/classes/S62.12/people/vernelle.noel/Plastic_Snap_fit_design.pdf, page 22', checked: '2026-11-23' },
   snap_friction: { value: 0.5, unit: 'μ', rule: 'Friction between two printed parts of one plastic sliding over each other as a snap goes home: an estimate. The guide lists no PLA or PETG; for the glassy plastics nearest them it gives 0.40 to 0.60 on steel (PS, SAN, PC, PMMA), and 1.2 times that for a plastic on itself', kind: 'estimate', source: 'Bayer MaterialScience, Snap-Fit Joints for Plastics: A Design Guide, copy at https://fab.cba.mit.edu/classes/S62.12/people/vernelle.noel/Plastic_Snap_fit_design.pdf, page 15, Table 3', checked: '2026-11-23' },
-  snap_least: { value: 0.2, unit: 'mm', rule: 'The least radial undercut an annular snap is drawn with: twice x1c.hole_comp, the error a printed round comes out with, so the print\'s own error cannot take the whole of it', kind: 'estimate', source: 'A working figure of this package, from x1c.hole_comp (0.1 mm); the fixings coupon has no snap ring yet to measure it', checked: '2026-11-23' }
+  snap_least: { value: 0.2, unit: 'mm', rule: 'The least radial undercut an annular snap is drawn with: twice x1c.hole_comp, the error a printed round comes out with, so the print\'s own error cannot take the whole of it', kind: 'estimate', source: 'A working figure of this package, from x1c.hole_comp (0.1 mm); the fixings coupon has no snap ring yet to measure it', checked: '2026-11-23' },
+  snap_slot: { value: 1, unit: 'mm', rule: 'The width a slotted snap skirt\'s slots are drawn: wide enough to print apart with room to spare (x1c.print_gap, 0.3 mm, is the narrowest gap that does) and to keep clean, and narrow enough to leave the fingers most of the skirt. An estimate', kind: 'estimate', source: 'A working figure of this package, over x1c.print_gap (0.3 mm); the fixings coupon has no slotted skirt yet to measure it', checked: '2026-11-23' }
 };
 
 // ---------- small things every module here uses ----------
@@ -353,7 +354,7 @@ export function fixingOf(what, m, o = {}) {
 }
 
 // ---------- the printer ----------
-const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap', 'snap_clearance', 'pin_press', 'pin_slip', 'magnet_press', 'magnet_glue', 'magnet_crush'];
+const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap', 'snap_clearance', 'pin_press', 'pin_slip', 'magnet_press', 'magnet_glue', 'magnet_crush', 'print_gap'];
 /**
  * @typedef {{ name: string, figure: (k: string) => (Figure & { name: string, borrowed?: boolean }) | null, n: (k: string) => number, cite: (k: string) => string, rest: (k: string) => object }} Printer
  *   figure: a rule of the printer's own (never borrowed); n: a basic clearance as a number, the printer's own or, where it
@@ -362,7 +363,7 @@ const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overh
 /**
  * The printer's rules as fixings reads them. Handed nothing, the kit's X1C. Handed a rule set ({ name, rules }), its
  * figures with their kinds and sources. Handed plain numbers (a design's v.x1c), those, marked as given. A basic
- * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap, snap_clearance, pin_press, pin_slip, magnet_press, magnet_glue, magnet_crush) is borrowed from the X1C
+ * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap, snap_clearance, pin_press, pin_slip, magnet_press, magnet_glue, magnet_crush, print_gap) is borrowed from the X1C
  * and cited as the X1C's; a measured figure (pilot_m3) is never borrowed, since it was measured on that machine.
  * @param {string} what @param {object} [p] @returns {Printer}
  */
