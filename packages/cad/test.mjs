@@ -4921,8 +4921,8 @@ test('frame checks: a figure on estimated joins says so even where the springs c
 
     // 2. a 2 m beam g rides a slide along x1 (from 100 to 400 mm along it), its middle on the slide: g is not part of
     // the frame, and its whole weight hangs on x1 where the slide is. The hand check is superposition: x1 is linear,
-    // so x1's sag 400 mm along with g at the slide's far end equals its sag with g's mass set down as a load on
-    // x1.top@400 (its centre straight above the node: no moment, the force alone), within 1%
+    // so x1's sag 400 mm along with g where it sags it most equals its sag with g's mass set down as a load there
+    // (its centre straight above the node: no moment, the force alone), within 1%
     const ride = { ...portal, items: [...portal.items, { id: 'g', beam: { profile: P, length: 2000 } }],
       joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 1000], axis: [0, 0, 1] }, min: 0, max: 300 }],
       frame: { ...portal.frame, points: ['x1.top@400'] } };
@@ -4933,9 +4933,13 @@ test('frame checks: a figure on estimated joins says so even where the springs c
     assert.match(solve.text, /g rides on slide, its [\d.]+ kg weighed on the frame/);
     // 2020 HFS5 weighs about 0.5 kg/m (its sheet's mass per metre): 2 m of it about 1 kg
     assert.ok(g.kg > 0.8 && g.kg < 1.3, JSON.stringify(g));
+    // The slide is swept through its travel in quarters (frame.sweep, issue 302), and the worst place for the sag at
+    // 400 mm is not its far end: on a simple span L the sag at x from a load at a < x goes as a (2 L x - x^2 - a^2),
+    // greatest at a = sqrt((2 L x - x^2) / 3) = sqrt((2 x 600 x 400 - 400^2) / 3) = 327 mm along it. The slide's
+    // quarter at 225 puts g's middle at 325 mm, the sweep's step nearest that
     const riding = point('x1.top@400');
-    assert.equal(riding.refs.pose, 'slide at 300');
-    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@400' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
+    assert.equal(riding.refs.pose, 'slide at 225');
+    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@325' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
     r = probe();
     const set = point('x1.top@400');
     assert.ok(Math.abs(riding.values.sag - set.values.sag) / set.values.sag < 0.01, `riding ${riding.values.sag} mm, set down ${set.values.sag} mm`);
@@ -4980,7 +4984,9 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     let r = probe();
     const solve = r.find((x) => x.code === 'frame.solve'), sag = r.find((x) => x.code === 'frame.deflection');
     assert.equal(solve.level, 'info', solve.text);
-    assert.match(solve.text, /Nothing holds it at z2\.b \(rx\): it can move there with nothing resisting \(a frame in one plane on pinned feet sways out of that plane/);
+    // said as how it moves, not as a freedom at a node (issue 304): the posts lean about their feet, the top along y
+    assert.match(solve.text, /Nothing holds it one way: the frame tips over along y \(free at z2\.b: rx\), with nothing resisting\. Its loads do not move it that way/);
+    assert.deepEqual(solve.refs.how, ['the frame tips over along y']);
     assert.deepEqual(solve.refs.held, [{ node: 'z2.b', freedom: 'rx' }]);
     assert.ok(sag, 'the sag is solved, not left to estimates');
     assert.ok(Math.abs(sag.values.aloneRigid / 0.2166 - 1) < 0.01, `rigid ${sag.values.aloneRigid} mm against 0.2166 by hand`);
@@ -4988,7 +4994,7 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     const rack = r.filter((x) => x.code === 'frame.rack'), across = rack.find((x) => x.refs.direction === 'along y');
     assert.ok(rack.find((x) => x.refs.direction === 'along x').values.stiffness > 0, 'racked in its plane, it has a stiffness');
     assert.equal(across.level, 'warn');
-    assert.match(across.text, /racked along y: nothing holds the frame that way, so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
+    assert.match(across.text, /racked along y: nothing holds the frame that way, the frame tips over along y \(free at z2\.b: rx\), so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
     // Out of its plane the frame turns about the line through its feet, and its posts are squeezed (each carries half
     // the rail and the 5 kg): turned by θ, each post's compression N does N θ² h of work leaning it further, so
     // nothing in the frame stops it at any share of its load. It tips over: factor 0 (held at the post's top it read
@@ -4996,12 +5002,12 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     const whole = r.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text));
     assert.equal(whole.level, 'fail', whole.text);
     assert.equal(whole.values.factor, 0);
-    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it at z2\.b \(rx\)/);
+    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it one way, the frame tips over along y \(free at z2\.b: rx\)/);
     assert.deepEqual(whole.refs.tipped, [{ node: 'z2.b', freedom: 'rx' }]);
     const mode = r.find((x) => x.code === 'frame.frequency');
     assert.equal(mode.level, 'warn', mode.text);
     assert.equal(mode.values.Hz, 0); assert.equal(mode.values.free, 1);
-    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame at z2\.b \(rx\), so it moves that way with nothing resisting/);
+    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame one way, the frame tips over along y \(free at z2\.b: rx\), so it moves that way with nothing resisting/);
     assert.ok(mode.values.modes[1] > 1, JSON.stringify(mode.values.modes));
     assert.match(solve.text, /its modes and buckling count it free \(frame\.frequency, frame\.buckling\)/);
     // with no supports said, its lowest ends are guessed: pinned would leave it free, so each post stands on its end
@@ -5016,12 +5022,12 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     // tip-over above), so the solve warns and every figure that rests on them says so. Racked along x it sways 0.259 mm
     // here where pinned feet gave 1.669 mm and a warning, and along y it passes at 0.411 mm though pinned feet leave it free
     assert.equal(gs.level, 'warn', gs.text);
-    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, it would be free at z2\.b \(rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
+    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, nothing would hold it: the frame tips over along y \(free at z2\.b: rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
     assert.deepEqual([gs.refs.guessed, gs.refs.free], [['z1.a', 'z2.a'], [{ node: 'z2.b', freedom: 'rx' }]]);
     const onGuess = guessed.filter((x) => ['frame.rack', 'frame.buckling', 'frame.frequency'].includes(x.code));
     assert.deepEqual([...new Set(onGuess.map((x) => x.code))].sort(), ['frame.buckling', 'frame.frequency', 'frame.rack']);
     for (const x of onGuess) {
-      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where pinned feet would leave the frame free at z2\.b \(rx\)$/, x.text);
+      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where on pinned feet nothing would hold it: the frame tips over along y \(free at z2\.b: rx\)$/, x.text);
       assert.deepEqual(x.refs.guessed, ['z1.a', 'z2.a'], x.code);
     }
     assert.deepEqual(guessed.filter((x) => x.code === 'frame.rack').map((x) => [x.refs.direction, x.values.sway]), [['along x', 0.259], ['along y', 0.411]]);
@@ -5030,7 +5036,7 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
     write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
     r = probe();
-    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it at x1\.b \(rx\)/);
+    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it one way: x1 spins on its own axis \(free at x1\.b: rx\)/);
     // the 3 kg alone: P l³ / 48 E I = 29.42 × 600³ / (48 × 69972 × 7420) = 0.2550 mm
     assert.ok(Math.abs(r.find((x) => x.code === 'frame.deflection').values.alone / 0.2550 - 1) < 0.01);
   } finally { done(); }

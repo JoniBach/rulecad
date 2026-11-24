@@ -111,7 +111,7 @@ export function frameSizing(s, helpers, given) {
   const limits = { ...(deflection.length ? { deflection } : {}), stress: { margin: stress }, buckling: { factor, euler: FRAME_CHECK.euler.value }, ...(Hz != null ? { frequency: { Hz } } : {}) };
   // every beam's alloy carries its strength, so the beams outside the groups are held to it too
   const withStrength = (model) => ({ ...model, materials: Object.fromEntries(Object.entries(model.materials).map(([k, v]) => [k, fm.beams.get(k)?.strength ? { ...v, strength: fm.beams.get(k).strength } : v])) });
-  const cases = fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values), inertia: fm.nodeMasses(c.values) }));
+  const cases = fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values, null, c.push), inertia: fm.nodeMasses(c.values) }));
   const sized = sizing([withStrength(fm.model), withStrength(fm.rigid)], { groups, choices, limits, cases, by: opt.by });
   const byName = new Map(choices.map((c) => [c.name, c]));
   const rows = sized.groups.map((g) => {
