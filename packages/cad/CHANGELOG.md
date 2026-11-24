@@ -15,7 +15,9 @@ and head, the parts it passes through and the part it ends in.
   `"voids": "refused"` for a metal powder bed print. The problem schema has each field.
 - `cad optimise` says how a milled or cast part is made and counts its undercuts (none unless an avoid region sits
   behind material), says what is mirrored or extruded, and fails on a problem that refuses voids with each enclosed
-  void's volume and centre. `--json` gives `process`, `undercuts`, `symmetry`, `extrude` and `voids`.
+  void's volume and centre. `--json` gives `process`, `undercuts`, `symmetry`, `extrude`, `grey` and `voids`.
+- `cad optimise` warns when more than a tenth of a milled, cast, symmetric or extruded result is grey (neither empty
+  nor solid), and refuses a symmetry that swaps the side the part is made from for its opposite.
 - Rule sets `mill-3axis`, `mould-injection` and `dmls` (from @rulecad/rules) to read the processes' limits from.
 
 ### Changed

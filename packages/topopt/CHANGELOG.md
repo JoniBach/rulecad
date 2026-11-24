@@ -15,6 +15,9 @@ What changed in each release, for someone upgrading.
 - `tieFilter`, `drawFilter`: the filters themselves. `undercuts(grid, density, { from, parting })`: the empty cells a
   tool or mould half could not reach. `voids(grid, density)`: enclosed empty pockets (powder a powder bed print can't
   lose, a casting's trapped core), each with its volume and centre.
-- A problem with two of overhang, mill and cast is refused, as is a mirror across the build direction.
+- `grey(density, passive)`: the share of the design cells neither empty nor solid (between a tenth and nine tenths).
+- A problem with two of overhang, mill and cast is refused, as is a mirror or turn that swaps the tool's side, the
+  draw or the build direction for its opposite, or a quarter turn that moves it onto another axis (a mould in two
+  halves parted at the grid's middle may be mirrored or half turned across its draw).
 
 No existing result changes: a problem with none of the new fields is optimised exactly as before.

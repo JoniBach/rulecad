@@ -158,7 +158,7 @@
     "symmetry": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The same either side of the grid's middle planes, and each half or quarter turn about its middle. The grid is centred on the space and keep regions (in 3D, except along an overhang's build direction, which can't be mirrored across). Keep and avoid regions stay as given.",
+      "description": "The same either side of the grid's middle planes, and each half or quarter turn about its middle. The grid is centred on the space and keep regions (in 3D, except along an overhang's build direction). Keep and avoid regions stay as given. A mirror or turn that would swap the side a part is milled from, the way a mould is drawn off or the build direction for its opposite (or a quarter turn that moves it onto another axis) is refused by name; a mould in two halves parted at the grid's middle can be mirrored or half turned across its draw.",
       "properties": {
         "mirror": { "type": "string", "pattern": "^[xyz]{1,3}$", "description": "The axes mirrored across: 'x', 'xy', 'xyz' (2D: x and y)" },
         "turns": { "enum": [2, 4], "description": "The same each half turn (2) or quarter turn (4) about the middle; a quarter turn needs the grid as wide both ways across its axis" },

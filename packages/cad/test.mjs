@@ -6345,5 +6345,16 @@ test('a problem milled, cast or printed in a powder bed: cad optimise says how i
     // Two processes at once are refused before any maths
     write('both', { overhang: '+z', mill: '+z' });
     assert.match(cad('optimise', 'made/both'), /printed \(overhang\), milled \(mill\) or cast \(cast\), one of them: this problem gives overhang and mill/);
+    // So is a mirror that swaps the tool's side for its opposite
+    write('clash', { mill: '+z', symmetry: { mirror: 'z' } });
+    assert.match(cad('optimise', 'made/clash'), /symmetry: milled from \+z, a part can't be the same mirrored across z \(the tool's side\)/);
+    // A 2D section milled from its top edge comes out grey, and cad optimise says its outline is a guess: a 30 × 20 mm
+    // cantilever on 1 mm cells, held at its left side and loaded down at its right side's middle
+    fs.writeFileSync(path.join(project, 'problems', 'section.json'), JSON.stringify({ title: 'section', material: 'al6061', thickness: 3, cell: 1, volume: 0.4, steps: 200, mill: '+y',
+      space: { at: [15, 10], size: [30, 20] }, supports: [{ at: [0.5, 10], size: [1, 20] }], loads: [{ at: [29.5, 10], size: [1, 2], force: [0, -100] }] }));
+    const section = cad('optimise', 'made/section');
+    assert.match(section, /milled from \+y: no undercuts/);
+    assert.match(section, /warning: [\d.]+% of the design is grey \(neither empty nor solid\): the outline drawn at half density is a guess, not a part/);
+    assert.ok(JSON.parse(cad('optimise', 'made/section', '--json')).grey > 0.1);
   } finally { done(); }
 });

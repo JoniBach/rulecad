@@ -11,7 +11,7 @@ import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, undercuts, voids } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, undercuts, voids, grey } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
@@ -109,7 +109,7 @@ function holdEmpty(spec) {
   return spec;
 }
 // How a result is made, and what that process can't make in it: for a milled or cast part, the cells a tool or mould
-// half could not reach (undercuts, none by construction unless an avoid region makes them); where enclosed voids are
+// half could not reach (undercuts, none by construction unless an avoid region or the space's own shape leaves material between a cell and its side), how grey it is; where enclosed voids are
 // refused (a powder bed print, a trapped core), each void with its volume (mm³, or mm² in 2D) and where it is
 function made(r, spec, density) {
   const p = r.problem, out = {};
@@ -120,6 +120,8 @@ function made(r, spec, density) {
   }
   if (p.symmetry) out.symmetry = p.symmetry;
   if (p.extrude) out.extrude = p.extrude;
+  // How grey it came out: a process or a tie can leave no clear part (a 2D section milled from its side)
+  if (p.mill || p.cast || p.symmetry || p.extrude) out.grey = round(grey(density, spec.passive), 3);
   if (r.voids === 'refused') out.voids = voids(spec.grid, density, { origin: spec.origin }).map((v) => ({ volume: round(v.volume, 3), at: v.at.map((x) => round(x, 3)) }));
   return out;
 }
