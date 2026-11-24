@@ -1,0 +1,17 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The folding tray round its block: flat as printed, and folded",
+  "kind": "fit",
+  "description": "The tray as printed and with its walls folded up, a 24 mm block on its base. The tray's own check (the flexures kit's foldCheck) covers its joints' strain and its parts clearing each other on the way up; this checks the block: clear of the walls and the joints' lands once they stand.",
+  "items": [
+    { "id": "tray", "object": "tray" },
+    { "id": "block", "object": "block", "at": [0, 0, "tray.thickness + 0.5"] }
+  ],
+  "fits": [
+    { "a": "block", "b": "tray", "min": 0.3, "note": "The walls and their lands clear the block, flat and standing (the block is drawn 0.5 mm above the base it rests on, so the closest gap is to the walls once they are nearer)" }
+  ],
+  "poses": {
+    "flat": { "tray.fold": 0 },
+    "folded": { "tray.fold": 90 }
+  }
+}

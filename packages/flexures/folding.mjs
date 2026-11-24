@@ -109,7 +109,7 @@ const IDENT = { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] };
 const mulR = (A, B) => { const C = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C.push(A[3 * i] * B[j] + A[3 * i + 1] * B[3 + j] + A[3 * i + 2] * B[6 + j]); return C; };
 const applyR = (R, v) => [R[0] * v[0] + R[1] * v[1] + R[2] * v[2], R[3] * v[0] + R[4] * v[1] + R[5] * v[2], R[6] * v[0] + R[7] * v[1] + R[8] * v[2]];
 const compose = (A, B) => ({ R: mulR(A.R, B.R), t: applyR(A.R, B.t).map((x, i) => x + A.t[i]) }); // A after B
-export const place = (T, v) => applyR(T.R, v).map((x, i) => x + T.t[i]);
+const place = (T, v) => applyR(T.R, v).map((x, i) => x + T.t[i]);
 // A turn of a about the line through q along the unit u (Rodrigues)
 const about = (q, u, a) => {
   const c = Math.cos(a), s = Math.sin(a), k = 1 - c, [x, y, z] = u;
@@ -292,7 +292,7 @@ export async function foldCheck(S, m, { poses, clearance = 0.2, steps = 6 } = {}
         if (Math.abs(rad(a)) > md.pinch) findings.push({ level: 'fail', text: `${pose}: hinge ${g.name} folds ${+a.toFixed(2)}°, past its pinch of ${+deg(md.pinch).toFixed(1)}°, where the bodies either side of a pin meet: more joints in series, or a longer web`, code: 'fold.pinch', values: { pose, hinge: g.name, angle: a, pinch: deg(md.pinch) } });
       }
       const clear = worst.gap >= clearance - 1e-6;
-      findings.push({ level: clear ? 'pass' : 'fail', text: clear ? `${pose}: every two bodies stay ${+Math.min(worst.gap, clearance + 1).toFixed(3)} mm or more apart on the way from flat${worst.gap > clearance + 1 ? ' (over a millimetre past the clearance)' : `, the nearest ${worst.between.join(' and ')}`}` : `${pose}: ${worst.between.join(' and ')} ${worst.gap < 0 ? `overlap (${+(-worst.gap).toFixed(3)} mm³)` : `come ${+worst.gap.toFixed(3)} mm apart, under the clearance of ${clearance} mm`} ${worst.at < 1 ? `${Math.round(worst.at * 100)}% of the way from flat` : 'in the pose'}: move or shorten them, or fold them in another order`, code: worst.gap < 0 ? 'fold.clash' : 'fold.clearance', between: worst.between, values: { pose, gap: worst.gap, clearance, at: worst.at } });
+      findings.push({ level: clear ? 'pass' : 'fail', text: clear ? `${pose}: every two bodies stay ${+Math.min(worst.gap, clearance + 1).toFixed(3)} mm or more apart on the way from flat${worst.gap >= clearance + 1 - 1e-9 ? ' (over a millimetre past the clearance)' : `, the nearest ${worst.between.join(' and ')}`}` : `${pose}: ${worst.between.join(' and ')} ${worst.gap < 0 ? `overlap (${+(-worst.gap).toFixed(3)} mm³)` : `come ${+worst.gap.toFixed(3)} mm apart, under the clearance of ${clearance} mm`} ${worst.at < 1 ? `${Math.round(worst.at * 100)}% of the way from flat` : 'in the pose'}: move or shorten them, or fold them in another order`, code: worst.gap < 0 ? 'fold.clash' : 'fold.clearance', between: worst.between, values: { pose, gap: worst.gap, clearance, at: worst.at } });
     }
     return { ok: !findings.some((f) => f.level === 'fail'), findings, poses: out };
   } finally { for (const x of made) { try { x.delete(); } catch { /* freed */ } } }

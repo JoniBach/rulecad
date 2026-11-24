@@ -17,3 +17,5 @@ export { place, combine } from './modules.mjs';
 export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';
 export { shapeCurve, meander } from './synth.mjs';
 export { gripperJaws, gripperJawsModel } from './gripper.mjs';
+export { letArray, letArrayModel, foldSheet, foldSheetModel, foldCheck } from './folding.mjs';
+export { miura, miuraModel } from './origami.mjs';

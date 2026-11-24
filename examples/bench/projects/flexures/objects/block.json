@@ -1,0 +1,11 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "block",
+  "title": "What the folding tray holds (not printed)",
+  "version": "0.1.0",
+  "role": "reference",
+  "variables": {
+    "side": { "value": 24, "unit": "mm", "rule": "Its side, a square: inside the base's flat middle, which the joints' bands leave" },
+    "height": { "value": 8, "unit": "mm", "rule": "Its height: under the walls' tops when they stand" }
+  }
+}

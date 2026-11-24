@@ -1,0 +1,26 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tray",
+  "title": "A tray printed flat that folds up: four walls on arrays of LET joints",
+  "version": "0.1.0",
+  "uses": ["x1c", "petg"],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn at fold 0, one piece, no supports. Fold each wall up by hand: its four joints share the turn.",
+  "parts": {
+    "tray": { "label": "The tray: base, four walls and their joints in one print" }
+  },
+  "variables": {
+    "base": { "value": 50, "unit": "mm", "rule": "The base's side, a square; each wall is as long as its edge" },
+    "wall": { "value": 20, "unit": "mm", "rule": "Each wall's height flat, from the base's edge: half of it goes into the joints' band, so a wall stands about 10 mm above the joints" },
+    "thickness": { "value": 1.2, "unit": "mm", "rule": "The sheet: six layers, so the torsion bars are as deep as they are wide and a half" },
+    "joint_w": { "value": 30, "unit": "mm", "rule": "Each LET joint's length along its edge: longer bars twist further for a strain" },
+    "bar": { "value": "x1c.line * 2", "unit": "mm", "rule": "A torsion bar's width: two lines, the thinnest wall that prints solid" },
+    "slot": { "value": 1, "unit": "mm", "rule": "The slots' width: over the printer's 0.3 mm gap, so the bars print free of each other" },
+    "bridge": { "value": 1.5, "unit": "mm", "rule": "The bridges' width along the edge" },
+    "series": { "value": 4, "rule": "Joints in series across each fold: four share 90 degrees at 22.5 each, half the 44.7 degrees PETG's strain limit allows one (about twice the margin)" },
+    "fold": { "value": 0, "unit": "degrees", "rule": "The walls' fold as drawn: 0 as printed; an assembly's pose sets 90 to show them standing", "tweak": { "min": 0, "max": 90 } },
+    "folded": { "value": 90, "unit": "degrees", "rule": "The fold the tray is checked to: the walls standing" },
+    "clearance": { "value": "x1c.fit", "unit": "mm", "rule": "The least gap between two rigid parts on the way from flat to standing" }
+  }
+}
