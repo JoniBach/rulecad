@@ -53,6 +53,7 @@ export const FRAME_CHECK = {
   order: { value: ['gusset', 'brace', 'panel'], unit: '', rule: 'The changes that stiffen a bay against racking, cheapest first: gussets at its corners (four printed or bought plates), one diagonal brace (a length of the bay\'s own profile and two fittings), a panel (a sheet and its clips). The first in this order that brings the sway under the limit is advised, in one bay before every bay that way', kind: 'default', source: 'A working order of @rulecad/cad, by the parts each needs; cad list prices them', checked: '2026-11-17' },
   clip: { value: 200, unit: 'N/mm', rule: 'How stiffly one panel clip holds the sheet\'s edge from sliding along the beam: the clip grips the sheet by friction and its edge sits half a millimetre off the step, so this is a guess at the friction\'s stiffness, the weak link of a panel as a shear web', kind: 'estimate', source: 'A working guess of @rulecad/cad, with no measurement behind it: a panel on the joint rig would measure it', checked: '2026-11-17' },
   band: { value: 0.2, unit: '', rule: 'A mode within this share of a frequency the machine dwells at (a stepper\'s full-step rate at its working speed) is near enough to ring', kind: 'estimate', source: 'A working figure of @rulecad/cad: a lightly damped mode amplifies a forcing within about ±20% of it several times over', checked: '2026-11-17' },
+  sweep: { value: 4, unit: 'steps', rule: 'A moving joint mounted on a beam is solved at each end of its travel and at this many equal steps of it between (its quarters), so a worst place between the ends is found: a carriage between two supports at its middle, an arm on a hinge where it lies level', kind: 'default', source: 'A working figure of @rulecad/cad: quarters hold a middle and the quarter points, each step one more solve of every check', checked: '2026-11-24' },
   ramp: { value: 500, unit: 'mm/s²', rule: 'Where the task gives no accel, the acceleration a move ramps at: a move at the task\'s speed ramps for speed over this many seconds, and shakes the frame at about one over that time', kind: 'default', source: 'The same default as cad machine\'s task.accel (lib/machine.mjs)', checked: '2026-11-17' },
 };
 
@@ -123,6 +124,36 @@ function webOf(bay, sheet, t, clips, id) {
     element: { id: `panel ${id}`, a: bay.corners[0], b: bay.corners[2], section: { A, Iy: A * (d / 10) ** 2, Iz: A * (d / 10) ** 2, J: A * (d / 10) ** 2 }, material: { E: WEB_E, G: WEB_E / 2.6, density: 0 }, ends: { a: 'ball', b: 'pinned' } } };
 }
 
+// How a frame moves where nothing holds it, in words, from each way @rulecad/fea finds it moves (frame().mechanisms,
+// each node's six, its largest movement 1): its top moving across "down" with its feet still is the frame tipping over
+// that way (named by the world axis nearest), a movement mostly along "down" a beam dropping, and a way that only
+// turns a beam spinning on its own axis (or turning about the axis nearest, where that is not its own). Each said once,
+// with the freedoms that showed it.
+const beamOfNode = (n) => String(n).split(/[.@#/]/)[0];
+function howFree(fm, ways) {
+  const out = new Map();
+  for (const w of ways ?? []) {
+    const sh = w.shape ?? {};
+    let lead = null, most = 0, spin = null, turn = 0;
+    for (const [n, v] of Object.entries(sh)) { const t = Math.hypot(v[0], v[1], v[2]), r = Math.hypot(v[3], v[4], v[5]); if (t > most) { most = t; lead = n; } if (r > turn) { turn = r; spin = n; } }
+    const nearest = (v) => 'xyz'[[0, 1, 2].reduce((p, q) => (Math.abs(v[q]) > Math.abs(v[p]) ? q : p), 0)];
+    let says;
+    if (lead && most > 1e-6) {
+      const d = sh[lead].slice(0, 3), v = dot(d, fm.down), h = sub(d, scale(fm.down, v));
+      says = Math.hypot(...h) >= Math.abs(v) ? `the frame tips over along ${nearest(h)}` : `${beamOfNode(lead)} drops at ${lead}`;
+    } else if (spin) {
+      const r = sh[spin].slice(3), b = fm.beams.get(beamOfNode(spin));
+      says = b && Math.abs(Math.abs(dot(unitv(r), b.u)) - 1) < 1e-3 ? `${b.id} spins on its own axis` : `it turns about ${nearest(r)} at ${spin}`;
+    } else says = `it moves at ${w.node} (${w.freedom})`;
+    out.set(says, [...(out.get(says) ?? []), { node: w.node, freedom: w.freedom }]);
+  }
+  return [...out].map(([says, at]) => ({ says, at }));
+}
+// the ways in one clause each, and where each is free: "the frame tips over along y (free at z2.b: rx)"
+const howSaid = (hs) => hs.map((h) => `${h.says} (free at ${[...h.at.reduce((m, l) => m.set(l.node, [...(m.get(l.node) ?? []), l.freedom]), new Map())].map(([n, fr]) => `${n}: ${fr.join(', ')}`).join('; ')})`).join(', and ');
+// the mechanisms of a solved frame that match freedoms named (a refusal's or buckling's), by node and freedom
+const waysAt = (solved, ls) => (solved?.mechanisms ?? []).filter((m) => ls.some((l) => l.node === m.node && l.freedom === m.freedom));
+
 // what a join's spring rests on, in a few words
 const restsWord = (k) => (k.measured?.bending && k.measured?.twist ? 'measured' : k.fitting ? 'a printed fitting by finite elements' : k.bought?.own ? `${k.bought.set}'s own figures, ${k.kind}` : 'an estimate');
 
@@ -152,7 +183,7 @@ export function frameModelOf(s, helpers) {
   const movesWith = (k) => { for (let i = k, n = 0; n < 99; n++) { const j = byChild.get(i); if (!j) return false; if (moving(j)) return true; i = j.parent; } return false; };
   const down = (() => { const g = motion.gravity || [0, 0, -1], l = Math.hypot(...g) || 1; return g.map((c) => c / l); })();
   // the beams: still ones only (a beam on a carriage is a load, not the frame: its weight is carried below)
-  const beams = new Map(), left = [], riding = [];
+  const beams = new Map(), left = [], riding = [], loose = [];
   for (const o of s.objects) {
     if (!o.beam || o.unplaced) continue;
     const k = ids.indexOf(o.id);
@@ -196,19 +227,31 @@ export function frameModelOf(s, helpers) {
     return [{ mount: mt, part: p1, s: s1 }, { mount: { ...mt, beam: b, sign, shift }, part: 1 - p1, s: s2 }];
   };
 
-  // the poses: as drawn, each named pose, and each moving joint mounted on a beam at either end of its travel (a slide in
-  // its middle too)
-  const cases = [{ label: 'as drawn', values: base }];
-  for (const p of Object.keys(motion.poses || {})) cases.push({ label: `pose ${p}`, values: jointValues(motion, p) });
-  const movers = motion.joints.filter((j) => moving(j) && beams.has(ids[j.parent]) && j.dofs?.length === 1);
-  // (a slide also at the middle of its travel, where a carriage between two supports bends its beam most, unless drawn there)
+  // the poses: as drawn, each named pose, and each moving joint mounted on a beam swept through its travel: each end and
+  // frame.sweep steps between (a step where it is drawn is the drawn pose)
+  const poses = [{ label: 'as drawn', values: base }];
+  for (const p of Object.keys(motion.poses || {})) poses.push({ label: `pose ${p}`, values: jointValues(motion, p) });
+  const movers = motion.joints.filter((j) => moving(j) && beams.has(ids[j.parent]) && j.dofs?.length === 1), steps = FRAME_CHECK.sweep.value;
   for (const j of movers) {
-    const [lo, hi] = j.dofs[0], mid = (lo + hi) / 2, drawn = base[j.id]?.[0];
-    for (const v of [lo, hi, ...(j.type === 'prismatic' && !(drawn != null && Math.abs(drawn - mid) < 1e-6) ? [mid] : [])]) cases.push({ label: `${j.id} at ${n3(v, 1)}`, values: { ...base, [j.id]: [v] } });
+    const [lo, hi] = j.dofs[0], drawn = base[j.id]?.[0], between = Array.from({ length: steps - 1 }, (_, k) => lo + ((hi - lo) * (k + 1)) / steps).filter((v) => !(drawn != null && Math.abs(drawn - v) < 1e-6));
+    for (const v of [lo, hi, ...between]) poses.push({ label: `${j.id} at ${n3(v, 1)}`, values: { ...base, [j.id]: [v] } });
   }
+  // what a joint must push or turn against ("loads" on joints: a force on a slide, a torque on a hinge, and a belt's
+  // push at its carriage's acceleration), carried through the joint, held by its motor, into the beam its chain is
+  // mounted on: each in every pose, one way and then the other (none says which way it acts). A belt's share of its
+  // carriage's own weight along the travel is that weight, already on the frame, so it is not counted again
+  const onJoints = [];
+  for (const l of motion.loads || []) {
+    if (l.joint == null || l.beltWeight || !(Math.abs(l.value) > 0)) continue;
+    const j = motion.joints.find((x) => x.id === l.joint), mt = j ? mountOf(j.child) : null;
+    if (!j) continue;
+    if (!mt) { loose.push(`the load on ${j.id}`); continue; }
+    onJoints.push({ joint: j, value: Math.abs(l.value), unit: j.type === 'prismatic' ? 'N' : 'N m', note: l.note ?? null, belt: l.belt ?? null, mount: mt });
+  }
+  const cases = onJoints.length ? poses.flatMap((c) => [{ ...c, label: `${c.label}, joint loads +`, push: 1 }, { ...c, label: `${c.label}, joint loads -`, push: -1 }]) : poses;
 
   // what weighs on the frame: items (beams' own weight is the elements'), and the masses of "loads"
-  const masses = massesOf(s, { placeItems, jointValues }), carried = [], loose = [], unknown = [];
+  const masses = massesOf(s, { placeItems, jointValues }), carried = [], unknown = [];
   // a panel (not a door) on a bay of frame beams is a shear web of the frame: its weight goes to its bay's corners; on
   // beams that make no bay, its weight is spread along those of the frame
   const sheets = (s.panels ?? []).filter((p) => !p.door && p.bay?.some((id) => beams.has(id))).map((p) => ({ ...p, kg: (p.model?.grams ?? 0) / 1000 }));
@@ -243,7 +286,7 @@ export function frameModelOf(s, helpers) {
     if (!mt) { loose.push(`load ${i + 1} (${where})`); return; }
     loads.push({ index: i, kg: l.mass, where, item: l.item, point, mount: mt, note: l.note });
   });
-  for (const c of [...carried, ...loads.filter((l) => l.mount)]) for (const cs of cases) snap(c.mount.beam, mountStation(c.mount, cs.values));
+  for (const c of [...carried, ...loads.filter((l) => l.mount), ...onJoints]) for (const cs of poses) snap(c.mount.beam, mountStation(c.mount, cs.values));
   // named points, and every guide's travel
   const points = (opts.points ?? []).map((p, i) => {
     const t = String(p), id = t.split('.')[0], b = beams.get(id);
@@ -261,6 +304,7 @@ export function frameModelOf(s, helpers) {
   const supports = [];
   if (opts.supports != null) {
     if (typeof opts.supports !== 'object' || Array.isArray(opts.supports)) throw new Error(`frame.supports is { "z1.a": "pinned", "z2.a": "fixed" } (got ${shown(opts.supports)})`);
+    if (!Object.keys(opts.supports).length) throw new Error('frame.supports names no support: give at least one place the frame is held, as { "z1.a": "pinned" }, or leave supports out to stand the frame on its feet or its lowest ends');
     for (const [addr, how] of Object.entries(opts.supports)) {
       const id = addr.split('.')[0], b = beams.get(id);
       if (!b) throw new Error(`frame.supports: "${addr}" is on a beam of the frame, as z1.a or x1.bottom@50% (beams: ${[...beams.keys()].join(', ')})`);
@@ -358,7 +402,7 @@ export function frameModelOf(s, helpers) {
     let free = [];
     // (in the model as solved and in the pieces modes and buckling are solved in, where a freedom can show that
     // rounding hid in the whole: either says the frame is free)
-    for (const rigid of [false, true]) for (const m of [withSprings(rigid), subdivide(withSprings(rigid), 4)]) try { free.push(...solveFrame(m).loose); } catch { /* refused: said by the solve itself */ }
+    for (const rigid of [false, true]) for (const m of [withSprings(rigid), subdivide(withSprings(rigid), 4)]) try { free.push(...solveFrame(m).mechanisms); } catch { /* refused: said by the solve itself */ }
     if (free.length) {
       for (const x of guessed) {
         const lies = supports.some((y) => y !== x && y.beam === x.beam) && axisOfBeam(x.beam) >= 0, stands = Math.abs(dot(x.beam.u, down)) > 1 - 1e-6;
@@ -367,19 +411,28 @@ export function frameModelOf(s, helpers) {
       }
       mapSupports();
       const seen = new Set();
-      guess = { free: free.filter((l) => { const k = `${l.node} ${l.freedom}`; return !seen.has(k) && seen.add(k); }).map(({ node, freedom }) => ({ node, freedom })),
+      const ways = free.filter((l) => { const k = `${l.node} ${l.freedom}`; return !seen.has(k) && seen.add(k); });
+      guess = { free: ways.map(({ node, freedom }) => ({ node, freedom })), ways,
         supports: guessed.filter((x) => x.why !== 'a lowest end').map((x) => ({ where: x.where, how: x.how, why: x.why })) };
       if (!guess.supports.length) guess = null; // (nothing changed: the guess stays pinned, and the solve says what is free)
     }
   }
   // the loads at each pose: every carried item's and load's weight as a force and a moment at its node
-  const nodeLoads = (values, only) => {
+  const nodeLoads = (values, only, push) => {
     const W = placeItems(motion, values), out = [];
     const put = (b, z, C, kg) => { const n = nodeAt(b, z); if (!n) throw new Error(`frame: no node on ${b.id} at ${n3(z)} mm for a load (a pose this check did not foresee)`); const F = scale(down, kg * G); out.push({ node: n, force: F, moment: cross(sub(C, nodes[n]), F) }); };
     for (const c of only ? [] : carried.filter(keep)) put(c.mount.beam, mountStation(c.mount, values), rowsAt(W[c.item], c.centre), c.kg);
     for (const l of loads.filter(keep)) { if (only && only !== l) continue; const C = rowsAt(W[l.item], l.point); if (l.beam) put(l.beam, l.z, C, l.kg); else put(l.mount.beam, mountStation(l.mount, values), C, l.kg); }
     for (const p of only ? [] : heldSheets) for (const n of bays[p.bay].corners) out.push({ node: n, force: scale(down, (p.kg / 4) * G), moment: [0, 0, 0] });
     for (const p of only ? [] : laid) for (const id of p.beams) { const b = beams.get(id), w = scale(down, ((p.kg / p.beams.length) * G) / b.L); for (const q of elements) if (q.of === id) out.push({ element: q.id, spread: w }); }
+    // a joint's load, one way (push 1) or the other (-1): a slide's force along its axis through the joint's place, a
+    // hinge's torque about its axis, each at the node where its chain meets the beam
+    for (const x of only || !push ? [] : onJoints.filter(keep)) {
+      const n = nodeAt(x.mount.beam, mountStation(x.mount, values));
+      if (!n) throw new Error(`frame: no node on ${x.mount.beam.id} for the load on ${x.joint.id} (a pose this check did not foresee)`);
+      const { O, Z } = axisOf(motion, W, x.joint, mul), F = x.unit === 'N' ? scale(Z, push * x.value) : [0, 0, 0];
+      out.push({ node: n, force: F, moment: x.unit === 'N' ? cross(sub(O, nodes[n]), F) : scale(Z, push * x.value * 1000) });
+    }
     return out;
   };
   // the same masses for a modal solve: each at the node it is carried at, in kg (its offset's rotary inertia left out)
@@ -396,7 +449,7 @@ export function frameModelOf(s, helpers) {
   // what is mounted only on beams left out (not held by a support through joins): not weighed, and named
   const off = [...new Map([...carried, ...loads].filter((c) => !keep(c) && !kept.has(c.id)).map((c) => [c.id ?? `load ${c.index + 1} at ${c.where}`, (c.mount?.beam ?? c.beam).id]))].map(([id, on]) => ({ id, on }));
   return { beams, left, missing, loose, unknown, off, riding: rides.filter((x) => kept.has(x.id)), carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
-    cases, down, nodes, nodeAt, guess, model: withSprings(false), rigid: withSprings(true), nodeLoads, nodeMasses, bays, webs, sheets: heldSheets, laid, elements, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
+    cases, poses, onJoints: onJoints.filter(keep), down, nodes, nodeAt, guess, model: withSprings(false), rigid: withSprings(true), nodeLoads, nodeMasses, bays, webs, sheets: heldSheets, laid, elements, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
 }
 
 // the downward movement of a node, and along a beam between two stations (the worst of the element stations there)
@@ -421,6 +474,8 @@ export function frameChecks(s, f, helpers) {
   if (solved.error) { const guessed = fm.supports.every((x) => x.why.startsWith('a lowest end')); f(guessed ? 'info' : 'warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}${guessed ? '. Say where it is held: "frame": { "supports": { "z1.a": "pinned" } }, or fit its feet' : ''}`, guessed ? null : 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
   const { results } = solved, down = fm.down, margin = FRAME_CHECK.margin.value, held = solved.loose ?? [];
   const heldList = [...held.reduce((m, l) => m.set(l.node, [...(m.get(l.node) ?? []), l.freedom]), new Map())].map(([n, fr]) => `${n} (${fr.join(', ')})`).join(', ');
+  // how it moves there, in words: the frame tipping over along y, a beam spinning on its axis
+  const heldHow = howFree(fm, solved.mechanisms), heldSaid = howSaid(heldHow);
   // what the joins rest on, counted by kind
   const kinds = new Map();
   for (const x of fm.joins) { const key = `${x.j.kind}${x.j.fitting ? ` (${x.j.fitting})` : ''}: ${restsWord(x.k)}`; kinds.set(key, (kinds.get(key) ?? 0) + 1); }
@@ -434,15 +489,17 @@ export function frameChecks(s, f, helpers) {
   const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] ?? '');
   const posts = guess ? guess.supports.filter((x) => x.how === 'fixed').map((x) => x.where) : [], lying = guess ? guess.supports.filter((x) => x.how !== 'fixed').map((x) => x.where) : [];
   const guessHeld = [posts.length ? `${and(posts)} fixed, standing on ${posts.length > 1 ? 'their end faces' : 'its end face'}` : null, lying.length ? `${and(lying)} resting, held from twisting as ${lying.length > 1 ? 'ends of beams' : 'an end of a beam'} lying on its face` : null].filter(Boolean).join(', and ');
-  const guessFree = guess ? listFree(guess.free) : '';
+  const guessFree = guess ? listFree(guess.free) : '', guessHow = guess ? howFree(fm, guess.ways) : [], guessSaid = howSaid(guessHow);
+  // supports guessed at the lowest ends and left pinned: nothing in the assembly says the frame stands there
+  const pinnedGuess = fm.supports.filter((x) => x.why === 'a lowest end').map((x) => x.where), guessedOnly = fm.supports.length > 0 && fm.supports.every((x) => x.why.startsWith('a lowest end'));
   if (guess) {
     const said = f;
     f = (level, text, card, extra = {}) => (['frame.rack', 'frame.buckling', 'frame.frequency'].includes(extra.code)
-      ? said(level, `${text}. This rests on supports guessed, not given: ${guessHeld}, where pinned feet would leave the frame free at ${guessFree}`, card, { ...extra, refs: { ...extra.refs, guessed: guess.supports.map((x) => x.where) } })
+      ? said(level, `${text}. This rests on supports guessed, not given: ${guessHeld}, where on pinned feet nothing would hold it: ${guessSaid}`, card, { ...extra, refs: { ...extra.refs, guessed: guess.supports.map((x) => x.where) } })
       : said(level, text, card, extra));
   }
-  f(guess ? 'warn' : 'info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${new Set(fm.carried.map((c) => c.id)).size} item${new Set(fm.carried.map((c) => c.id)).size > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame${x.on.length > 1 ? `, shared as it lies: ${x.on.map((q) => `${n3(q.share * 100, 0)}% on ${q.beam}`).join(', ')}` : `, all of it on ${x.on[0].beam}, the beam its joint is on`}`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.laid.length ? `. ${fm.laid.map((p) => `${p.id} lies on ${p.beams.join(', ')}, which are not joined round it as a bay: its ${n3(p.kg, 3)} kg is spread along them, and it is no shear web`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for the sag and the stresses; its modes and buckling count it free (frame.frequency, frame.buckling), and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.off.length ? `. Not weighed on the frame, as the beam carrying it is left out: ${fm.off.map((x) => `${x.id} (on ${x.on})`).join(', ')}` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}${guess ? `. Its supports are guessed: nothing says where it is held (no feet, no "frame": { "supports" }), and on its lowest ends pinned, as a foot stands on a floor, it would be free at ${guessFree}. So it is solved with ${guessHeld}, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives. Give it feet, or say how it is held in "frame": { "supports" }` : ''}`, guess ? 'frame: supports guessed' : null,
-    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), ...(guess ? { guessed: guess.supports.map((x) => x.where), free: guess.free } : {}), left: fm.left, off: fm.off, held, laid: fm.laid.map((p) => ({ id: p.id, kg: r3(p.kg), beams: p.beams })), riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
+  f(guessedOnly ? 'warn' : 'info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${new Set(fm.carried.map((c) => c.id)).size} item${new Set(fm.carried.map((c) => c.id)).size > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}${fm.onJoints.length ? `, with ${fm.onJoints.map((x) => `${n3(x.value, 3)} ${x.unit} on ${x.joint.id}${x.belt ? ` (${x.note})` : ''}`).join(', ')} carried into ${[...new Set(fm.onJoints.map((x) => x.mount.beam.id))].join(', ')} through ${fm.onJoints.length > 1 ? 'their joints, each' : 'its joint,'} one way and then the other` : ''}, in ${fm.poses.length} pose${fm.poses.length > 1 ? 's' : ''}${fm.onJoints.length ? ` (${fm.cases.length} cases)` : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame${x.on.length > 1 ? `, shared as it lies: ${x.on.map((q) => `${n3(q.share * 100, 0)}% on ${q.beam}`).join(', ')}` : `, all of it on ${x.on[0].beam}, the beam its joint is on`}`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.laid.length ? `. ${fm.laid.map((p) => `${p.id} lies on ${p.beams.join(', ')}, which are not joined round it as a bay: its ${n3(p.kg, 3)} kg is spread along them, and it is no shear web`).join('; ')}` : ''}${held.length ? `. Nothing holds it one way: ${heldSaid}, with nothing resisting. Its loads do not move it that way, so it is held there for the sag and the stresses; its modes and buckling count it free (frame.frequency, frame.buckling), and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.off.length ? `. Not weighed on the frame, as the beam carrying it is left out: ${fm.off.map((x) => `${x.id} (on ${x.on})`).join(', ')}` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}${guess ? `. Its supports are guessed: nothing says where it is held (no feet, no "frame": { "supports" }), and on its lowest ends pinned, as a foot stands on a floor, nothing would hold it: ${guessSaid}. So it is solved with ${guessHeld}${pinnedGuess.length ? ` (${and(pinnedGuess)} pinned, a guess too)` : ''}, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives. Give it feet, or say how it is held in "frame": { "supports" }` : guessedOnly ? `. Its supports are guessed: nothing says where it is held (no feet, no "frame": { "supports" }), so it stands on its lowest ends, ${and(pinnedGuess)}, pinned, as feet stand on a floor, and every figure rests on that. Give it feet, or say how it is held in "frame": { "supports" }` : ''}`, guessedOnly ? 'frame: supports guessed' : null,
+    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, poses: fm.poses.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), ...(guess ? { guessed: [...guess.supports.map((x) => x.where), ...pinnedGuess], free: guess.free, how: guessHow.map((h) => h.says) } : guessedOnly ? { guessed: pinnedGuess } : {}), left: fm.left, off: fm.off, onJoints: fm.onJoints.map((x) => ({ joint: x.joint.id, value: r3(x.value), unit: x.unit, beam: x.mount.beam.id, note: x.note })), held, ...(held.length ? { how: heldHow.map((h) => h.says) } : {}), laid: fm.laid.map((p) => ({ id: p.id, kg: r3(p.kg), beams: p.beams })), riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
   const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };
@@ -545,13 +602,14 @@ export function frameChecks(s, f, helpers) {
       { code: 'frame.buckling', at: r4(add(low.b.A, scale(low.b.u, low.b.L / 2))), values: { compression: r3(low.N), euler: r3(low.Pcr), margin: r3(low.margin), beams: okSq.length }, refs: { beam: low.b.id } });
   }
   try {
-    const drawn = results[0], bk = solveFrame(subdivide(fm.model, 4)).buckling({ loads: drawn.loads, count: 1 }), factor = bk.factors[0];
+    const drawn = results[0], fine = solveFrame(subdivide(fm.model, 4)), bk = fine.buckling({ loads: drawn.loads, count: 1 }), factor = bk.factors[0];
     const shape = bk.modes[0].shape, lead = Object.entries(shape).reduce((p, q) => (Math.hypot(...q[1].slice(0, 3)) > Math.hypot(...p[1].slice(0, 3)) ? q : p)), beam = lead[0].split(/[.@#/]/)[0];
     const listed = (ls) => [...ls.reduce((m, l) => m.set(l.node, [...(m.get(l.node) ?? []), l.freedom]), new Map())].map(([n, fr]) => `${n} (${fr.join(', ')})`).join(', ');
     if (bk.tipped) {
       // nothing holds the frame where it is free, and its loads as drawn lean it further that way: it tips over before anything buckles
-      f('fail', `the whole frame tips over under its load as drawn before anything buckles: nothing holds it at ${listed(bk.tipped)}, and its squeezed beams lean it further that way (a frame in one plane on pinned feet leans over out of that plane), ${beam} moving most. Its buckling factor is 0. Hold it with "frame": { "supports" } fixed, brace it out of its plane, or join it into a box`, 'frame tips over',
-        { code: 'frame.buckling', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]), values: { factor: 0 }, refs: { beam, restsOn, tipped: bk.tipped } });
+      const how = howFree(fm, waysAt(fine, bk.tipped));
+      f('fail', `the whole frame tips over under its load as drawn before anything buckles: nothing holds it one way, ${how.length ? howSaid(how) : `free at ${listed(bk.tipped)}`}, and its squeezed beams lean it further that way, ${beam} moving most. Its buckling factor is 0. Hold it with "frame": { "supports" } fixed, brace it out of its plane, or join it into a box`, 'frame tips over',
+        { code: 'frame.buckling', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]), values: { factor: 0 }, refs: { beam, restsOn, tipped: bk.tipped, how: how.map((h) => h.says) } });
     } else {
       const level = factor < 1 ? 'fail' : factor < margin ? 'warn' : 'pass', rests = bk.rests ?? [];
       f(level, `the whole frame, with the joins' springs, buckles first at ${rests.length ? 'no more than ' : ''}${n3(factor, 1)} times its load as drawn, ${beam} moving most: ${level === 'pass' ? 'far from it' : 'too near it: brace it, or a stiffer profile'} (rests on ${restsJoins})${rests.length ? `. Nothing holds it at ${listed(rests)}, where its loads pull it back as a hanging frame's do: the figure is with it held there, so the true one may be lower` : ''}`, level === 'pass' ? null : `frame buckles at ${n3(factor, 1)}×`,
@@ -559,7 +617,7 @@ export function frameChecks(s, f, helpers) {
     }
   } catch (e) { if (e.code !== 'fea.frame.compression') f('info', `the frame's own buckling factor is not found: ${e.message}`, null, { code: 'frame.buckling' }); }
   try { rackCheck(s, fm, f, { restsJoins, restsOn }); } catch (e) { f('info', `the frame's racking is not found: ${e.message}`, null, { code: 'frame.rack' }); }
-  try { frequencyCheck(s, fm, f, { restsJoins, restsOn, heldList }); } catch (e) { f('info', `the frame's modes are not found: ${e.message}`, null, { code: 'frame.frequency' }); }
+  try { frequencyCheck(s, fm, f, { restsJoins, restsOn, heldSaid }); } catch (e) { f('info', `the frame's modes are not found: ${e.message}`, null, { code: 'frame.frequency' }); }
   const ctx = { results, limitFor, sagAt, sagAlong, excitesOf, restsJoins, restsOn, margin };
   try { couponChecks(s, fm, f, ctx); } catch (e) { f('info', `the beam coupon's figures are not predicted: ${e.message}`, null, { code: 'beam.coupon' }); }
   if (s.a.frame?.printed != null) try { printableCheck(s, fm, f, ctx); } catch (e) { f('info', `which beams can be printed is not found: ${e.message}`, null, { code: 'beam.printable' }); }
@@ -567,7 +625,7 @@ export function frameChecks(s, f, helpers) {
 }
 
 // the two directions across "down" a frame is racked in, each named by the world axis it is nearest
-function sideways(down) {
+export function sideways(down) {
   const flat = (v) => sub(v, scale(down, dot(v, down))), x = flat([1, 0, 0]), e1 = Math.hypot(...x) > 0.5 ? unitv(x) : unitv(flat([0, 1, 0])), e2 = unitv(cross(down, e1));
   const name = (v) => { const k = [0, 1, 2].reduce((p, q) => (Math.abs(v[q]) > Math.abs(v[p]) ? q : p), 0); return `along ${'xyz'[k]}`; };
   return [e1, e2].map((v) => ({ dir: v, name: name(v) }));
@@ -582,14 +640,30 @@ const RACK_PANEL = { sheet: 'acrylic', thickness: 3 };
  * best bay that way alone and in every open bay that way, each solved, with its gain; the cheapest that brings the sway
  * under the limit advised.
  */
-function rackCheck(s, fm, f, { restsJoins, restsOn }) {
+/**
+ * How a frame is racked: the side push (frame.rack.load, else frame.push), the nodes at its top it is shared among (its
+ * bays' top corners, else its highest nodes), its height above its supports, and the sway allowed (frame.rack.limit,
+ * the task's accuracy, else its height over frame.sway). Null where it has no height to rack. frame.rack and the
+ * sizing's racking limit both read it. @param {object} s a built assembly @param {object} fm frameModelOf's
+ * @returns {{ F: number, loadFrom: string, top: string[], H: number, lim: { value: number, from: string } } | null}
+ */
+export function rackOf(s, fm) {
   const opts = s.a.frame?.rack ?? {}, F = opts.load != null ? s.num(opts.load) : FRAME_CHECK.push.value, down = fm.down, height = (n) => -dot(fm.nodes[n], down);
   const feet = fm.supports.map((sp) => fm.nodeAt(sp.beam, sp.z)).filter(Boolean);
   const pool = fm.bays.length ? [...new Set(fm.bays.flatMap((b) => b.corners))] : Object.keys(fm.nodes), topH = Math.max(...pool.map(height)), top = pool.filter((n) => height(n) > topH - 1);
   const H = topH - Math.min(...feet.map(height));
-  if (!(H > 1) || !top.length) return;
+  if (!(H > 1) || !top.length) return null;
   const lim = opts.limit != null ? { value: s.num(opts.limit), from: 'the assembly\'s frame.rack.limit' } : s.task?.accuracy != null ? { value: s.task.accuracy, from: 'the task\'s accuracy' } : { value: H / FRAME_CHECK.sway.value, from: `its height, ${n3(H, 1)} mm, over ${FRAME_CHECK.sway.value} (frame.sway)` };
-  const loadFrom = opts.load != null ? 'frame.rack.load' : `frame.push, an estimate`;
+  return { F, loadFrom: opts.load != null ? 'frame.rack.load' : `frame.push, an estimate`, top, H, lim };
+}
+
+/** How a frame moves where nothing holds it, in words (see howFree): for the sizing's racking limit. @param {object} fm @param {object[]} ways frame().mechanisms */
+export const freeSaid = (fm, ways) => howSaid(howFree(fm, ways));
+
+function rackCheck(s, fm, f, { restsJoins, restsOn }) {
+  const rk = rackOf(s, fm);
+  if (!rk) return;
+  const { F, top, H, lim, loadFrom } = rk, down = fm.down;
   const swayOf = (model, dir) => { const r = solveFrame(model).statics({ loads: top.map((n) => ({ node: n, force: scale(dir, F / top.length) })), gravity: [0, 0, 0] }); return top.reduce((t, n) => t + dot(r.displacements[n].slice(0, 3), dir), 0) / top.length; };
   const base = fm.model, els = base.elements;
   // the changes, each as the model's elements with it made
@@ -615,9 +689,9 @@ function rackCheck(s, fm, f, { restsJoins, restsOn }) {
     try { sway = swayOf(base, dir); rigid = swayOf(fm.rigid, dir); } catch (e) {
       if (e.code !== 'fea.frame.mechanism' || !e.driven) throw e;
       // a frame free to move this way (one plane on pinned feet, pushed across it): the push finds nothing to hold it
-      const at = e.loose.map((l) => `${l.node} (${l.freedom})`).join(', ');
-      f('warn', `racked ${name}: nothing holds the frame that way, so ${n3(F, 1)} N pushed at the top (${loadFrom}) moves it with nothing resisting, free at ${at}. Fix its feet ("frame": { "supports" } fixed), or join beams across it to make a bay that way and brace it`, `racks ${name}: nothing holds it`,
-        { code: 'frame.rack', at: r4(fm.nodes[top[0]]), values: { load: r3(F), limit: r3(lim.value), height: r3(H) }, refs: { direction: name, dir: r4(dir), top, free: e.loose, limit: lim.from, load: loadFrom, restsOn, advise: null } });
+      const at = e.loose.map((l) => `${l.node} (${l.freedom})`).join(', '), how = howFree(fm, waysAt(solveFrame(base), e.loose));
+      f('warn', `racked ${name}: nothing holds the frame that way, ${how.length ? howSaid(how) : `free at ${at}`}, so ${n3(F, 1)} N pushed at the top (${loadFrom}) moves it with nothing resisting. Fix its feet ("frame": { "supports" } fixed), or join beams across it to make a bay that way and brace it`, `racks ${name}: nothing holds it`,
+        { code: 'frame.rack', at: r4(fm.nodes[top[0]]), values: { load: r3(F), limit: r3(lim.value), height: r3(H) }, refs: { direction: name, dir: r4(dir), top, free: e.loose, how: how.map((h) => h.says), limit: lim.from, load: loadFrom, restsOn, advise: null } });
       continue;
     }
     const k = F / sway, k0 = F / rigid;
@@ -662,10 +736,10 @@ export function excitesOf(s) {
  * speed (a mode near it rings while the motor runs at that speed), and the task's moves (a move ramping in t seconds
  * shakes the frame at about 1/t, and the lowest mode should stand twice that clear).
  */
-function frequencyCheck(s, fm, f, { restsJoins, restsOn, heldList }) {
+function frequencyCheck(s, fm, f, { restsJoins, restsOn, heldSaid }) {
   const solveIn = (model, values, count) => solveFrame(subdivide({ ...model, masses: fm.nodeMasses(values) }, 4)).modes({ count });
   let worst = null;
-  for (const c of fm.cases) { const r = solveIn(fm.model, c.values, 3); if (!worst || r.frequencies[0] < worst.r.frequencies[0]) worst = { c, r }; }
+  for (const c of fm.poses) { const r = solveIn(fm.model, c.values, 3); if (!worst || r.frequencies[0] < worst.r.frequencies[0]) worst = { c, r }; }
   const hz = worst.r.frequencies, low = hz[0], rigid = solveIn(fm.rigid, worst.c.values, 1).frequencies[0];
   const shape = worst.r.modes[0].shape, lead = Object.entries(shape).reduce((p, q) => (Math.hypot(...q[1].slice(0, 3)) > Math.hypot(...p[1].slice(0, 3)) ? q : p)), beam = lead[0].split(/[.@#/]/)[0];
   const carried = Object.values(fm.nodeMasses(worst.c.values)).reduce((t, x) => t + x, 0), own = [...fm.beams.values()].reduce((t, b) => t + b.grams / 1000, 0);
@@ -678,7 +752,7 @@ function frequencyCheck(s, fm, f, { restsJoins, restsOn, heldList }) {
   const level0 = !excites.length ? 'info' : (moves.length && low < need / margin) ? 'fail' : (low < need || near.length) ? 'warn' : 'pass', level = free && (level0 === 'info' || level0 === 'pass') ? 'warn' : level0;
   const target = Math.max(need, ...near.map((x) => x.Hz * (1 + band)));
   const advice = free ? `. Hold it there with "frame": { "supports" } fixed, brace it, or join it into a box: then it has a mode to lift` : level === 'warn' || level === 'fail' ? `. To lift it to ${n3(target, 1)} Hz takes about ${n3((target / low) ** 2, 2)} times the stiffness where ${beam} moves (a deeper profile, a shorter span, stiffer joins or a brace), or as many times less mass moving with it` : '';
-  const text = `the lowest mode is ${n3(low, 1)} Hz${free ? `: nothing holds the frame${heldList ? ` at ${heldList}` : ''}, so it moves that way with nothing resisting${free > 1 ? ` (${free} such modes)` : ''}` : ''}${fm.cases.length > 1 ? `, worst ${worst.c.label}` : ''}, ${beam} moving most${fm.joins.length ? `, with the joins' springs; ${n3(rigid, 1)} Hz with the joins rigid` : ''}. Its next: ${hz.slice(1).map((h) => `${n3(h, 1)} Hz`).join(', ')}. With ${n3(own, 3)} kg of beams and ${n3(carried, 3)} kg carried, each item's mass at the node it is carried at (its rotary inertia left out); it rests on ${restsJoins}. ${excites.length
+  const text = `the lowest mode is ${n3(low, 1)} Hz${free ? `: nothing holds the frame one way${heldSaid ? `, ${heldSaid}` : ''}, so it moves that way with nothing resisting${free > 1 ? ` (${free} such modes)` : ''}` : ''}${fm.poses.length > 1 ? `, worst ${worst.c.label}` : ''}, ${beam} moving most${fm.joins.length ? `, with the joins' springs; ${n3(rigid, 1)} Hz with the joins rigid` : ''}. Its next: ${hz.slice(1).map((h) => `${n3(h, 1)} Hz`).join(', ')}. With ${n3(own, 3)} kg of beams and ${n3(carried, 3)} kg carried, each item's mass at the node it is carried at (its rotary inertia left out); it rests on ${restsJoins}. ${excites.length
     ? `The machine excites: ${excites.map((x) => `${x.what}, ${n3(x.Hz, 1)} Hz`).join('; ')}. ${near.length ? `A mode within ${band * 100}% of ${near.map((x) => `${x.what} (the mode${x.modes.length > 1 ? 's' : ''} at ${x.modes.join(' and ')} Hz)`).join(', ')}: it rings while the motor runs at that speed` : ''}${near.length && moves.length ? '; ' : ''}${moves.length ? (low < need ? `under ${margin} times the moves' ${n3(need / margin, 1)} Hz` : `${n3(low / (need / margin), 1)} times over the moves' ${n3(need / margin, 1)} Hz, where ${margin} is wanted`) : ''}`
     : 'Nothing named excites it: no stepper drives a joint and the assembly has no task'}${advice}`;
   f(level, text.replace(/\. $/, ''), level === 'warn' || level === 'fail' ? `frame mode ${n3(low, 1)} Hz` : null, { code: 'frame.frequency', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]),
@@ -698,13 +772,13 @@ export function frameMode(s, helpers) {
   if (!fm || fm.empty) return null;
   try {
     let worst = null;
-    for (const c of fm.cases) { const m = subdivide({ ...fm.model, masses: fm.nodeMasses(c.values) }, 4), r = solveFrame(m).modes({ count: 1 }); if (!worst || r.frequencies[0] < worst.r.frequencies[0]) worst = { c, r, m }; }
+    for (const c of fm.poses) { const m = subdivide({ ...fm.model, masses: fm.nodeMasses(c.values) }, 4), r = solveFrame(m).modes({ count: 1 }); if (!worst || r.frequencies[0] < worst.r.frequencies[0]) worst = { c, r, m }; }
     const shape = worst.r.modes[0].shape, pts = Object.values(worst.m.nodes), size = Math.max(...[0, 1, 2].map((k) => Math.max(...pts.map((p) => p[k])) - Math.min(...pts.map((p) => p[k])))), k = size / 10;
     const move = (n) => scale((shape[n] ?? [0, 0, 0]).slice(0, 3), k);
     const lines = worst.m.elements.map((e) => ({ id: String(e.id), a: worst.m.nodes[e.a], b: worst.m.nodes[e.b], da: move(e.a), db: move(e.b) }));
     const lead = Object.entries(shape).reduce((p, q) => (Math.hypot(...q[1].slice(0, 3)) > Math.hypot(...p[1].slice(0, 3)) ? q : p)), beam = lead[0].split(/[.@#/]/)[0];
     const Hz = worst.r.frequencies[0];
-    return { Hz, pose: worst.c.label, beam, lines, scale: k, label: `lowest mode ${n3(Hz, 1)} Hz${fm.cases.length > 1 ? `, ${worst.c.label}` : ''}, ${beam} moving most; its movement drawn as a tenth of the frame's size (scaled)` };
+    return { Hz, pose: worst.c.label, beam, lines, scale: k, label: `lowest mode ${n3(Hz, 1)} Hz${fm.poses.length > 1 ? `, ${worst.c.label}` : ''}, ${beam} moving most; its movement drawn as a tenth of the frame's size (scaled)` };
   } catch { return null; }
 }
 
@@ -758,11 +832,11 @@ function solveAll(fm) {
   try { results = solveCases(fm, fs, fr); } catch (e) { if (e.code !== 'fea.frame.mechanism') throw e; return { error: e.message, code: e.code }; }
   // each element's start along its beam, for sagAlong
   for (const r of results) for (const res of [r.spring, r.rigid]) for (const e of res.elements) if (e.of != null) { const b = fm.beams.get(e.of), el = fm.model.elements.find((q) => q.id === e.id); e._from = dot(sub(fm.nodes[el.a], b.A), b.u); }
-  return { results, loose: fs.loose };
+  return { results, loose: fs.loose, mechanisms: fs.mechanisms };
 }
 function solveCases(fm, fs, fr) {
   const results = fm.cases.map((c) => {
-    const loads = fm.nodeLoads(c.values), spring = fs.statics({ loads }), rigid = fr.statics({ loads }), out = { case: c, loads, spring, rigid, values: c.values };
+    const loads = fm.nodeLoads(c.values, null, c.push), spring = fs.statics({ loads }), rigid = fr.statics({ loads }), out = { case: c, loads, spring, rigid, values: c.values };
     { out.alone = new Map(); for (const l of fm.loads) { const ll = fm.nodeLoads(c.values, l), n = ll[0]?.node; if (!n) continue; out.alone.set(l, { sag: sagAt(fs.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down), rigid: sagAt(fr.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down) }); } }
     return out;
   });

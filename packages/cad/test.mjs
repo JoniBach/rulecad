@@ -4872,11 +4872,11 @@ test('frame checks: a shelf frame with 5 kg at mid-span sags as a hand calculati
     assert.equal(x1.level, 'fail');
     assert.match(x1.text, /^x1: \d+\.\d+ MPa at worst .* against al6n01-t5's 205 MPa: 0\.\d+ times under it, where about 2 is wanted/);
     // a moving mass: a cart sliding along x2 (a bearing standing in for it, 2 kg on it), from 50 to 300 mm along: solved
-    // at each end of its travel, in its middle and as drawn, the worst named; and a named point, x2's middle
+    // at each end of its travel and its quarters between (frame.sweep) and as drawn, the worst named; and a named point, x2's middle
     write({ ...shelf, items: [...shelf.items, { id: 'cart', bought: 'bearing-608' }], joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x2', at: [0, 10, 50], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 250 }],
       loads: [...shelf.loads, { mass: 2, at: 'cart.bore' }], frame: { points: ['x2.top@50%'] } });
     r = probe();
-    assert.match(by('frame.solve')[0].text, /1 item mounted on it and 2 loads, in 4 poses/);
+    assert.match(by('frame.solve')[0].text, /1 item mounted on it and 2 loads, in 6 poses/);
     const cart = by('frame.deflection').find((x) => x.refs.where === 'cart.bore'), mid = by('frame.deflection').find((x) => x.refs.where === 'x2.top@50%');
     assert.deepEqual([cart.refs.pose, mid.refs.pose, Math.round(cart.at[0])], ['slide at 250', 'slide at 250', 310]);
     assert.ok(cart.values.alone > 0.05 && cart.values.sag > cart.values.alone, JSON.stringify(cart.values));
@@ -4921,8 +4921,8 @@ test('frame checks: a figure on estimated joins says so even where the springs c
 
     // 2. a 2 m beam g rides a slide along x1 (from 100 to 400 mm along it), its middle on the slide: g is not part of
     // the frame, and its whole weight hangs on x1 where the slide is. The hand check is superposition: x1 is linear,
-    // so x1's sag 400 mm along with g at the slide's far end equals its sag with g's mass set down as a load on
-    // x1.top@400 (its centre straight above the node: no moment, the force alone), within 1%
+    // so x1's sag 400 mm along with g where it sags it most equals its sag with g's mass set down as a load there
+    // (its centre straight above the node: no moment, the force alone), within 1%
     const ride = { ...portal, items: [...portal.items, { id: 'g', beam: { profile: P, length: 2000 } }],
       joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 1000], axis: [0, 0, 1] }, min: 0, max: 300 }],
       frame: { ...portal.frame, points: ['x1.top@400'] } };
@@ -4933,9 +4933,13 @@ test('frame checks: a figure on estimated joins says so even where the springs c
     assert.match(solve.text, /g rides on slide, its [\d.]+ kg weighed on the frame/);
     // 2020 HFS5 weighs about 0.5 kg/m (its sheet's mass per metre): 2 m of it about 1 kg
     assert.ok(g.kg > 0.8 && g.kg < 1.3, JSON.stringify(g));
+    // The slide is swept through its travel in quarters (frame.sweep, issue 302), and the worst place for the sag at
+    // 400 mm is not its far end: on a simple span L the sag at x from a load at a < x goes as a (2 L x - x^2 - a^2),
+    // greatest at a = sqrt((2 L x - x^2) / 3) = sqrt((2 x 600 x 400 - 400^2) / 3) = 327 mm along it. The slide's
+    // quarter at 225 puts g's middle at 325 mm, the sweep's step nearest that
     const riding = point('x1.top@400');
-    assert.equal(riding.refs.pose, 'slide at 300');
-    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@400' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
+    assert.equal(riding.refs.pose, 'slide at 225');
+    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@325' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
     r = probe();
     const set = point('x1.top@400');
     assert.ok(Math.abs(riding.values.sag - set.values.sag) / set.values.sag < 0.01, `riding ${riding.values.sag} mm, set down ${set.values.sag} mm`);
@@ -4980,7 +4984,9 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     let r = probe();
     const solve = r.find((x) => x.code === 'frame.solve'), sag = r.find((x) => x.code === 'frame.deflection');
     assert.equal(solve.level, 'info', solve.text);
-    assert.match(solve.text, /Nothing holds it at z2\.b \(rx\): it can move there with nothing resisting \(a frame in one plane on pinned feet sways out of that plane/);
+    // said as how it moves, not as a freedom at a node (issue 304): the posts lean about their feet, the top along y
+    assert.match(solve.text, /Nothing holds it one way: the frame tips over along y \(free at z2\.b: rx\), with nothing resisting\. Its loads do not move it that way/);
+    assert.deepEqual(solve.refs.how, ['the frame tips over along y']);
     assert.deepEqual(solve.refs.held, [{ node: 'z2.b', freedom: 'rx' }]);
     assert.ok(sag, 'the sag is solved, not left to estimates');
     assert.ok(Math.abs(sag.values.aloneRigid / 0.2166 - 1) < 0.01, `rigid ${sag.values.aloneRigid} mm against 0.2166 by hand`);
@@ -4988,7 +4994,7 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     const rack = r.filter((x) => x.code === 'frame.rack'), across = rack.find((x) => x.refs.direction === 'along y');
     assert.ok(rack.find((x) => x.refs.direction === 'along x').values.stiffness > 0, 'racked in its plane, it has a stiffness');
     assert.equal(across.level, 'warn');
-    assert.match(across.text, /racked along y: nothing holds the frame that way, so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
+    assert.match(across.text, /racked along y: nothing holds the frame that way, the frame tips over along y \(free at z2\.b: rx\), so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
     // Out of its plane the frame turns about the line through its feet, and its posts are squeezed (each carries half
     // the rail and the 5 kg): turned by θ, each post's compression N does N θ² h of work leaning it further, so
     // nothing in the frame stops it at any share of its load. It tips over: factor 0 (held at the post's top it read
@@ -4996,12 +5002,12 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     const whole = r.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text));
     assert.equal(whole.level, 'fail', whole.text);
     assert.equal(whole.values.factor, 0);
-    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it at z2\.b \(rx\)/);
+    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it one way, the frame tips over along y \(free at z2\.b: rx\)/);
     assert.deepEqual(whole.refs.tipped, [{ node: 'z2.b', freedom: 'rx' }]);
     const mode = r.find((x) => x.code === 'frame.frequency');
     assert.equal(mode.level, 'warn', mode.text);
     assert.equal(mode.values.Hz, 0); assert.equal(mode.values.free, 1);
-    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame at z2\.b \(rx\), so it moves that way with nothing resisting/);
+    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame one way, the frame tips over along y \(free at z2\.b: rx\), so it moves that way with nothing resisting/);
     assert.ok(mode.values.modes[1] > 1, JSON.stringify(mode.values.modes));
     assert.match(solve.text, /its modes and buckling count it free \(frame\.frequency, frame\.buckling\)/);
     // with no supports said, its lowest ends are guessed: pinned would leave it free, so each post stands on its end
@@ -5016,12 +5022,12 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     // tip-over above), so the solve warns and every figure that rests on them says so. Racked along x it sways 0.259 mm
     // here where pinned feet gave 1.669 mm and a warning, and along y it passes at 0.411 mm though pinned feet leave it free
     assert.equal(gs.level, 'warn', gs.text);
-    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, it would be free at z2\.b \(rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
+    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, nothing would hold it: the frame tips over along y \(free at z2\.b: rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
     assert.deepEqual([gs.refs.guessed, gs.refs.free], [['z1.a', 'z2.a'], [{ node: 'z2.b', freedom: 'rx' }]]);
     const onGuess = guessed.filter((x) => ['frame.rack', 'frame.buckling', 'frame.frequency'].includes(x.code));
     assert.deepEqual([...new Set(onGuess.map((x) => x.code))].sort(), ['frame.buckling', 'frame.frequency', 'frame.rack']);
     for (const x of onGuess) {
-      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where pinned feet would leave the frame free at z2\.b \(rx\)$/, x.text);
+      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where on pinned feet nothing would hold it: the frame tips over along y \(free at z2\.b: rx\)$/, x.text);
       assert.deepEqual(x.refs.guessed, ['z1.a', 'z2.a'], x.code);
     }
     assert.deepEqual(guessed.filter((x) => x.code === 'frame.rack').map((x) => [x.refs.direction, x.values.sway]), [['along x', 0.259], ['along y', 0.411]]);
@@ -5030,7 +5036,7 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
     write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
     r = probe();
-    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it at x1\.b \(rx\)/);
+    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it one way: x1 spins on its own axis \(free at x1\.b: rx\)/);
     // the 3 kg alone: P l³ / 48 E I = 29.42 × 600³ / (48 × 69972 × 7420) = 0.2550 mm
     assert.ok(Math.abs(r.find((x) => x.code === 'frame.deflection').values.alone / 0.2550 - 1) < 0.01);
   } finally { done(); }
@@ -5304,7 +5310,8 @@ test('generated frames: a box asked for by its inside size expands into beams on
     write('box', { frame: { ...ask, profile: '3030-item-6', feet: undefined } });
     r = probe('box');
     assert.deepEqual(Object.values(r.lengths), [410, 410, 410, 410, 300, 300, 300, 300, 300, 300, 300, 300]);
-    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad, []);
+    // (with no feet, it stands on its lowest ends, a guess the frame's solve warns of: issue 304)
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad.map((x) => x.replace(/:.*Its supports are guessed: nothing says where it is held.*$/, ': guessed')), ['frame.solve: guessed']);
     // asked by its outside, 340 x 340 x 390, the uprights are that height in either profile and each butting beam is
     // 340 - 2 x 30 = 280 mm in 3030 where it was 300 in 2020
     write('box', { frame: { ...ask, inside: undefined, outside: [340, 340, 390], profile: '3030-item-6', feet: undefined } });
@@ -5338,13 +5345,16 @@ test('generated frames: a box asked for by its inside size expands into beams on
     assert.deepEqual([r.z.y3, r.z.g, r.z.z1], [[238.5, 258.5], [258.5, 278.5], [0, 278.5]]);
     // 5. Joined by printed corner brackets: their slot nuts drop in through the opening (every butting beam is shut at
     // both ends by its brackets, so a slide-in nut could not reach its place), and nothing fails. It warns only that
-    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault
+    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault; and,
+    // with no feet, that it stands on its lowest ends, a guess (issue 304)
+    const guessed = (x) => /^frame\.solve: .*Its supports are guessed: nothing says where it is held/.test(x);
     write('bracket', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } } });
     r = probe('bracket');
-    assert.deepEqual([...new Set(r.bad.map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
+    assert.ok(r.bad.some(guessed), r.bad.join('\n'));
+    assert.deepEqual([...new Set(r.bad.filter((x) => !guessed(x)).map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
     write('braced', { frame: { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } } });
     r = probe('braced');
-    assert.deepEqual(r.bad, []);
+    assert.deepEqual(r.bad.filter((x) => !guessed(x)), []);
     assert.ok(['y1-z1-bracket', 'y3-z3-bracket', 'panel-back'].every((id) => r.items.includes(id)), r.items.join(', '));
     // 6. Across the series and makers, with blind joins: MISUMI's and Bosch's 3030 (M8 in an 8 mm slot, the access hole
     // 6.3 mm, inside the opening) and item's 4040 (M8, 8 mm) check clean with nothing warned. (MISUMI's and Bosch's 4040
@@ -5442,12 +5452,19 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     assert.ok(r.ok && r.search === 'every', JSON.stringify(r));
     assert.deepEqual(Object.keys(g), ['z1, z2, z3, z4', 'x1, x2', 'y1, y2'], 'beams grouped by themselves: one profile, one direction, one length');
     const legs = g['z1, z2, z3, z4'], rails = g['x1, x2'], short = g['y1, y2'];
-    // the long rails' profile is heavier than the legs': 2040 standing on edge (0.88 kg/m) against 1515 (0.297 kg/m)
-    assert.deepEqual([legs.choice, rails.choice, short.choice, rails.profile, rails.roll], ['1515-openbeam', '2040-misumi-hfs5 turned', '1515-openbeam', '2040-misumi-hfs5', 90]);
+    // the long rails' profile is heavier than the legs': 2040 standing on edge (0.88 kg/m) against 2020 (0.5 kg/m)
+    assert.deepEqual([legs.choice, rails.choice, short.choice, rails.profile, rails.roll], ['2020-misumi-hfs5', '2040-misumi-hfs5 turned', '2020-misumi-hfs5', '2040-misumi-hfs5', 90]);
     assert.ok(rails.kg / rails.length > legs.kg / legs.length);
-    // each choice names the limit that set it: the next lighter profile breaks it, and as chosen it is met
-    assert.deepEqual([legs.governs.limit, legs.governs.where, legs.governs.lighter, rails.governs.limit, rails.governs.lighter, short.governs.limit, short.governs.lighter], ['buckling', 'frame', '1010-makerbeam', 'deflection', '2020-misumi-hfs5', 'deflection', '1010-makerbeam']);
-    for (const x of [legs, rails, short]) assert.ok(x.governs.broken > 1 && x.margin >= 1, `${x.group}: ${JSON.stringify(x.governs)} margin ${x.margin}`);
+    // each choice names what set it: the long rails a limit their next lighter profile breaks; the legs and short rails
+    // a join their next lighter profile cannot make (issue 303). Without that, they came out 1515 OpenBeam (0.297 kg/m),
+    // whose joins do not go together: a 2040 rail's end takes an M5 screw (its bore, M5 by HFS5's set), and M5's 5 mm
+    // does not pass OpenBeam's 3.2 mm slot opening; a 1515 short rail's end takes an M3 button head 5.7 mm across
+    // (ISO 7380), which pulls through a 2020 leg's 6 mm slot opening
+    assert.deepEqual([legs.governs.limit, legs.governs.where, legs.governs.lighter, rails.governs.limit, rails.governs.lighter, short.governs.limit, short.governs.lighter], ['fit', 'blind join of x1.a to z1.back@710', '1515-openbeam', 'deflection', '2020-misumi-hfs5', 'fit', '1515-openbeam']);
+    assert.match(legs.governs.why, /an M5 screw \(2040-misumi-hfs5's bore\) does not pass 1515-openbeam's 3\.2 mm slot opening/);
+    assert.match(short.governs.why, /an M3 button head, 5\.7 mm across, pulls through 2020-misumi-hfs5's 6 mm slot opening/);
+    assert.ok(rails.governs.broken > 1 && rails.margin >= 1, JSON.stringify(rails));
+    for (const x of [legs, short]) assert.ok(x.margin >= 1, `${x.group}: margin ${x.margin}`);
     // Hand, for the long rails' sag under their own 30 kg (294.2 N) at the middle of 800 mm: simply supported it is
     // P L³ / 48 E I and with both ends fixed a quarter of that (Roark's, table 8.1, cases 1e and 1d); the blind joins'
     // springs hold the ends part way. 2040 on edge (I 51 300 mm⁴, E 69 972 MPa): 294.2 x 800³ / (48 x 69 972 x 51 300)
@@ -5465,9 +5482,9 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     // beams named in groups take one profile together; the check says the sizing as a finding
     write('grouped', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'x2', 'y1', 'y2'] } } }, loads });
     const gr = sized('grouped');
-    assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '1515-openbeam']]);
+    assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '2020-misumi-hfs5']]);
     const check = cad('check', 'frame/table');
-    assert.match(check, /sized: z1, z2, z3, z4: 1515-openbeam, 0\.855 kg, set by buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit [\d.]+ times over[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
+    assert.match(check, /sized: z1, z2, z3, z4: 2020-misumi-hfs5, 1\.44 kg, set by a join: with 1515-openbeam, blind join of x1\.a to z1\.back@710 does not go together \(an M5 screw[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
     // refused by name
     write('bad', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'q9'] } } }, loads });
     assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.groups\.rails: q9 is not a beam of the frame \(its beams: z1, z2/);
@@ -6307,6 +6324,105 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     // the quadruped's mass: its cad list (eight 17HS4401s) and about 0.4 kg of electronics, an estimate
     const q = JSON.parse(cad('list', 'leg/quadruped', '--json'));
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
+  } finally { done(); }
+});
+
+test('frame checks: a force on a slide and a torque on a hinge are carried into the beam the joint is mounted on, each way, as hand formulas say; a frame stood on guessed lowest ends warns, and empty supports are refused by name', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/arm.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/arm');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 600 mm 2020 beam x1 held fixed at its end a, level, its end b free. At b, on x1's top: a press, a slide
+    // straight up and down (its axis x1's top, world z) carrying a 100 mm 2020 stub p, and a hinge turning about x1's
+    // side (world y) carrying a stub h lying along that axis, so neither stub's weight moves as its joint does.
+    const P = '2020-misumi-hfs5', base = { title: 'Arm', kind: 'fit',
+      items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'p', beam: { profile: P, length: 100 } }, { id: 'h', beam: { profile: P, length: 100 } }],
+      joints: [{ id: 'press', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 600], axis: [0, 1, 0] }, child: { item: 'p', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 40 },
+        { id: 'hinge', type: 'revolute', parent: { item: 'x1', at: [0, 10, 600], axis: [1, 0, 0] }, child: { item: 'h', at: [0, 0, 50], axis: [0, 0, 1] }, min: 0, max: 90 }],
+      frame: { supports: { 'x1.a': 'fixed' }, points: ['x1.top@600'] } };
+    const tip = (loads) => { write({ ...base, loads }); const r = probe(); return { r, solve: r.find((x) => x.code === 'frame.solve'), sag: r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'x1.top@600') }; };
+    // Hand, a cantilever L = 600 mm, E = 69972 MPa, I = 7420 mm^4 (2020 HFS5's figures), so E I = 5.192e8 N mm^2:
+    //   100 N along the slide at the tip:   F L^3 / 3 E I = 100 x 600^3 / (3 x 5.192e8) = 13.868 mm
+    //   10 N m about the hinge at the tip:  T L^2 / 2 E I = 10 000 x 600^2 / (2 x 5.192e8) = 3.467 mm
+    // Each is solved one way and then the other, and the worse (down, with the weight) is the figure: the sag with the
+    // load less the sag without it is the load's own share. A torque on a hinge about the beam's own axis would twist
+    // it and move no node on its axis, so the hinge turns about the side.
+    const EI = 69972 * 7420, none = tip([]), force = tip([{ joint: 'press', force: 100 }]), torque = tip([{ joint: 'hinge', torque: 10 }]);
+    assert.doesNotMatch(none.solve.text, /carried into/);
+    assert.ok(Math.abs((force.sag.values.sag - none.sag.values.sag) / ((100 * 600 ** 3) / (3 * EI)) - 1) < 0.01, `force: ${force.sag.values.sag} less ${none.sag.values.sag} mm against ${(100 * 600 ** 3) / (3 * EI)}`);
+    assert.ok(Math.abs((torque.sag.values.sag - none.sag.values.sag) / ((10000 * 600 ** 2) / (2 * EI)) - 1) < 0.01, `torque: ${torque.sag.values.sag} less ${none.sag.values.sag} mm against ${(10000 * 600 ** 2) / (2 * EI)}`);
+    // Each joint is swept in quarters (frame.sweep): as drawn, then the press at 0 and 40 and the three steps between,
+    // and the hinge at 0 and 90 and the three between: 11 poses, each one way and the other
+    assert.match(force.solve.text, /with 100 N on press carried into x1 through its joint, one way and then the other, in 11 poses \(22 cases\)/);
+    assert.match(torque.solve.text, /with 10 N m on hinge carried into x1 through its joint, one way and then the other/);
+    assert.deepEqual(force.solve.refs.onJoints, [{ joint: 'press', value: 100, unit: 'N', beam: 'x1', note: null }]);
+    assert.match(force.sag.refs.pose, /joint loads -$/);
+    // 2. A frame stood on its lowest ends, guessed and left pinned (four legs and a ring of rails, which pinned feet
+    // hold), warns that nothing says where it stands; given supports, nothing of the guess is said
+    const leg = (id, x, y) => ({ id, beam: { profile: P }, from: [x, y, 0], to: [x, y, 400] }), rail = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const table = { title: 'Table', kind: 'fit', items: [leg('z1', 0, 0), leg('z2', 620, 0), leg('z3', 0, 320), leg('z4', 620, 320), rail('x1', [10, 0, 390], [610, 0, 390]), rail('x2', [10, 320, 390], [610, 320, 390]), rail('y1', [0, 10, 390], [0, 310, 390]), rail('y2', [620, 10, 390], [620, 310, 390])],
+      joins: [['x1.a', 'z1.back'], ['x1.b', 'z2.front'], ['x2.a', 'z3.back'], ['x2.b', 'z4.front'], ['y1.a', 'z1.top'], ['y1.b', 'z3.bottom'], ['y2.a', 'z2.top'], ['y2.b', 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@390` })) };
+    write(table);
+    let s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'warn', s.text);
+    assert.match(s.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), so it stands on its lowest ends, z1\.a, z2\.a, z3\.a and z4\.a, pinned, as feet stand on a floor, and every figure rests on that/);
+    assert.deepEqual(s.refs.guessed, ['z1.a', 'z2.a', 'z3.a', 'z4.a']);
+    write({ ...table, frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned', 'z3.a': 'pinned', 'z4.a': 'pinned' } } });
+    s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'info', s.text);
+    assert.ok(s.refs.guessed == null && !/guessed/.test(s.text));
+    // 3. "supports": {} names nowhere the frame is held: refused by name, not stood on nothing
+    write({ ...table, frame: { supports: {} } });
+    s = probe().find((x) => x.code === 'frame.solve');
+    assert.equal(s.level, 'fail');
+    assert.match(s.text, /frame\.supports names no support: give at least one place the frame is held, as \{ "z1\.a": "pinned" \}, or leave supports out/);
+  } finally { done(); }
+});
+
+test('frame sizing: racking is a limit where the frame asks it, set by a hand figure on a post fixed at its foot; a way nothing holds the frame is said and left out', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const sized = (n) => { const out = cad('frame', `frame/${n}`, '--size', '--json'); try { return JSON.parse(out); } catch { assert.fail(out); } };
+    const P = '2020-misumi-hfs5', profiles = ['2020-misumi-hfs5', '3030-misumi-hfs6', '4040-misumi-hfs8'];
+    // A post 700 mm tall fixed at its foot, pushed 20 N at its top, allowed 1 mm of sway there (frame.rack). Hand, a
+    // cantilever: sway = F H^3 / 3 E I (Roark's, table 8.1, case 1a), E = 69972 MPa (A6N01), I from each set:
+    //   2020 (I 7420):   20 x 700^3 / (3 x 69972 x 7420)   = 4.404 mm, 4.40 times over
+    //   3030 (I 28300):  20 x 700^3 / (3 x 69972 x 28300)  = 1.155 mm, 1.15 times over
+    //   4040 (I 104000): 20 x 700^3 / (3 x 69972 x 104000) = 0.314 mm, 3.18 times inside
+    // so the post is 4040, set by racking, its next lighter 3030 breaking it 1.155 times over
+    const sway = (I) => (20 * 700 ** 3) / (3 * 69972 * I);
+    write('post', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, rack: { load: 20, limit: 1 }, size: { profiles } } });
+    const r = sized('post'), g = r.groups[0];
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.deepEqual([g.choice, g.governs.limit, g.governs.lighter, g.governs.where, g.governs.case], ['4040-misumi-hfs8', 'deflection', '3030-misumi-hfs6', 'z1.b', 'racked along x']);
+    assert.ok(Math.abs(g.governs.broken / sway(28300) - 1) < 0.01, `3030 sways ${g.governs.broken} mm per mm allowed, ${sway(28300)} by hand`);
+    assert.ok(Math.abs(g.margin / (1 / sway(104000)) - 1) < 0.01, `4040: ${g.margin} times inside, ${1 / sway(104000)} by hand`);
+    assert.deepEqual(r.limits.filter((l) => /racked/.test(l.what ?? '')).map((l) => [l.where, l.value, l.from]), [['z1.b', 1, 'the assembly\'s frame.rack.limit'], ['z1.b', 1, 'the assembly\'s frame.rack.limit']]);
+    assert.match(cad('frame', 'frame/post', '--size'), /4040-misumi-hfs8 \(drawn 2020-misumi-hfs5\) \| [\d.]+ \| racking: with 3030-misumi-hfs6, the sway at z1\.b along x breaks its limit 1\.1[56] times over/);
+    // limits.rack in its place: 2 mm lets 3030 through
+    write('post2', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, size: { profiles, limits: { rack: 2 } } } });
+    assert.equal(sized('post2').groups[0].choice, '3030-misumi-hfs6');
+    // with no frame.rack and no limits.rack, racking is not a limit: the post stays 2020
+    write('post3', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 700] }], frame: { supports: { 'z1.a': 'fixed' }, size: { profiles } } });
+    assert.equal(sized('post3').groups[0].choice, '2020-misumi-hfs5');
+    // A portal in one plane (x-z) on pinned feet: nothing holds it along y, so no profile can; that way is said and
+    // left out, and along x it is sized
+    write('portal', { items: [{ id: 'z1', beam: { profile: P }, from: [0, 0, 0], to: [0, 0, 400] }, { id: 'z2', beam: { profile: P }, from: [620, 0, 0], to: [620, 0, 400] }, { id: 'x1', beam: { profile: P }, from: [10, 0, 390], to: [610, 0, 390] }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned' }, rack: { limit: 5 }, size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5'] } } });
+    const pr = sized('portal'), free = pr.limits.find((l) => l.limit === 'rack');
+    assert.match(free.what, /^not sized: nothing holds the frame along y, the frame tips over along y \(free at z2\.b: rx\); a brace or fixed feet, not a profile, holds it/);
+    assert.ok(pr.limits.some((l) => l.limit === 'deflection' && /racked along x/.test(l.what)));
   } finally { done(); }
 });
 
