@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { liveView } from '../packages/cad/lib/live.mjs';
+import { liveView, recorder } from '../packages/cad/lib/live.mjs';
 import { CHROME, startChrome } from './chrome.mjs';
 
 test('the live view draws a 3D part in view, and dragging turns it', { skip: !CHROME && 'no Chrome', timeout: 300000 }, async () => {
@@ -61,6 +61,45 @@ test('the live view draws a 3D part in view, and dragging turns it', { skip: !CH
   } finally {
     await chrome?.stop();
     await view.close();
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+});
+
+test('a run kept to watch again opens from its file with no server: the last step drawn, and any earlier step on the scrubber', { skip: !CHROME && 'no Chrome', timeout: 120000 }, async () => {
+  // Three steps of a 2D run, a bar growing from the left: 4, 8, then 12 cells of 16 solid
+  const rec = recorder(), grid = { nx: 16, ny: 4, h: 1 };
+  for (const [step, n] of [[1, 4], [2, 8], [3, 12]]) rec.step({ step, steps: 10, compliance: 100 / step, change: 0.5 / step, beta: 1, grid, density: Float64Array.from({ length: 64 }, (_, e) => (e % 16 < n ? 1 : 0)) });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-run-chrome-')), file = path.join(dir, 'run.html');
+  fs.writeFileSync(file, rec.page('a bar', 'finished: 3 steps'));
+  let chrome;
+  try {
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '700,900' });
+    const ws = new WebSocket(chrome.wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+    let id = 0; const waiting = new Map(), errors = [];
+    ws.addEventListener('message', (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+      if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
+    });
+    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`${method} timed out`)), 20000).unref(); });
+    const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
+    const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+    await send('Runtime.enable', {}, sessionId);
+    const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result?.value;
+    await send('Page.navigate', { url: `file://${file.split(path.sep).join('/').replace(/^([A-Za-z]:)/, '/$1')}` }, sessionId);
+    // The solid cells of the drawn view (dark on light: the live view draws solid as black)
+    const solid = "(() => { const c = document.querySelector('#views canvas'); if (!c) return null; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 128) n++; return n; })()";
+    let seen = null;
+    for (let t = 0; t < 40 && seen !== 48; t++) { await new Promise((r) => setTimeout(r, 100)); seen = await run(solid); }
+    assert.equal(seen, 48, 'the last step: 12 of 16 cells across, 4 rows');
+    assert.match(await run("document.getElementById('state').textContent"), /finished: 3 steps/);
+    await run("(() => { const a = document.getElementById('at'); a.value = 0; a.oninput(); })()");
+    for (let t = 0; t < 40 && seen !== 16; t++) { await new Promise((r) => setTimeout(r, 100)); seen = await run(solid); }
+    assert.equal(seen, 16, 'the first step, on the scrubber: 4 cells across');
+    assert.match(await run("document.getElementById('facts').textContent"), /Step1 of at most 10/);
+    assert.deepEqual(errors, []);
+  } finally {
+    await chrome?.stop();
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

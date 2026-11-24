@@ -1484,14 +1484,23 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 }
 ```
 
-- **The space** is where material may go (a circle `r`, a rectangle `size`, or a polygon `points`, in mm). **Keep**
+- **The space** is where material may go (a circle `r`, a rectangle `size`, a polygon `points`, in mm, or another
+  design's part, `{ "part": "blank.body" }`, taken as its section halfway up, holes open). **Keep**
   regions stay solid (bosses round bolts), **avoid** regions stay empty (the holes, clearances).
 - **Supports** hold the material within `r` of a point (a bolt's hole); **loads** push on it, in newtons, each in a load
   case. Cases are optimised together, each by its weight in `cases` (0: analysed, not optimised for).
 - **The material** is a rule set with `modulus` (MPa) and `poisson`: `pla`, `petg`, `al6061`, `al7075`, `s275`,
   `ss304`, `ti64` come with rulecad. Printed values vary: measure yours.
 - **Settings:** `volume`, the share of the space to fill; `cell`, the grid (smaller is finer and slower: a 140 × 40
-  grid takes about half a minute); `filter`, about the thinnest member, in mm.
+  grid takes about half a minute); `filter`, about the thinnest member, in mm. Left out, the filter is a cell and a
+  half, and never under two of the project's printer's lines (the thinnest wall it lays solid): on an X1C's 0.42 mm
+  lines that is 0.84 mm, which only takes over on cells under 0.56 mm.
+- **At a design's anchors:** any region, support or load can take `"anchor": "plate.pivot"` in place of `at`: the
+  anchor of another design in the project, where it is as that design is built (x and y of it in a flat problem; a
+  cylinder lies along the anchor's axis unless it names one, and an anchor with a `rotate` points along its z turned by
+  it, as an assembly reads it). The problem then follows the design: move the plate's
+  pivot and the support, the boss round it and the result move with it. A design built from this problem can't be
+  named (it would need the result to be built): name the part it is fixed to.
 - **Or a stress limit instead of a volume:** `"stress": "pla.strength / 3"` (MPa) finds the lightest layout that keeps
   every cell's von Mises stress under it, which rounds off the sharp inside corners where cracks start. It takes about
   a thousand steps, each with two solves, so it's slower: give it a coarse cell first. Give supports and loads some
@@ -1502,7 +1511,9 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 
 `cad optimise <project>/<problem>` runs it, reports how far each load case moves its load and the stiffness that
 gives, and draws the layout in `.preview/`. The result is kept, keyed by everything it's made from, so it's only
-worked out again when something it depends on changes.
+worked out again when something it depends on changes. `cad why <project>/<object>.<problem variable>` names what
+that is: the problem file, its rule sets and values, the parts and anchors it reads, where its filter came from, and
+the file the result is kept in.
 
 A 3D result with a build direction is made printable before it's drawn: built up layer by layer from the bed, every
 cell that nothing holds up (an icicle, a loose bit, a sheet hanging under an edge: whatever the optimiser's smooth
@@ -1518,6 +1529,13 @@ dropped, and `cad check` tests the part for one piece and nothing starting in mi
 `cad optimise <project>/<problem> --watch [port]` runs it afresh and serves a live view at `http://127.0.0.1:8090/`:
 the densities as they change (a 3D part as a surface you can turn, and from three sides), a chart of its compliance and how much it still changes, with a scrubber to look back at any earlier step, its run time and time left, the machine it runs on, and a button that stops the run. It shows the end for ten minutes after the run finishes.
 It listens on this computer only. To watch from elsewhere, reach it through a private network such as Tailscale.
+
+Every run is kept to watch again. `cad optimise` writes `.preview/<project>/<problem>-run.html`: the same page,
+reading its steps from the file, so it opens with no server and can be sent to someone. Drag the slider or the chart
+to any step. `cad preview <project>/problems/<problem>` (or the file's path) draws the result and writes that page.
+A result made without its steps recorded (by building a design that reads it) shows its end and each step's
+compliance; `cad preview <project>/problems/<problem> --fresh` runs it again to record the steps, and `--watch`
+shows the run live. A 3D run shows its three views; the turning surface needs the live view.
 
 A design uses it through a variable of type `problem`, which picks a problem by name:
 
@@ -1574,6 +1592,11 @@ or cast across its own plane often comes out so; give the problem in 3D or make 
 regions exactly. The surface is a big mesh, so set the object's `"engine": "manifold"`. With `"overhang"` set, the
 surface is also kept within the printer's overhang limit: faces smoothing tipped past it are tipped back. An
 `analysis` of a solid part voxelises it on the problem's grid.
+
+The surface comes out with many small triangles. `"outline": { "reduce": 0.1 }` thins them: the surface stays within
+0.1 mm of where it was drawn (a quarter of an X1C's print line), closed, with no more overhang and no new tips, and
+`cad optimise` says how many triangles it had and has. On the bracket bench's printable result that took 75,592
+triangles to 21,124 and 27.808 cm³ to 27.806 cm³, a quarter of the size in a file or a link. It is off unless given.
 
 A part prints in one orientation and is loaded in another. Draw it as it prints, and turn it back for its analysis:
 `"rotate"` (degrees about x, then y, then z, as JSCAD's `rotate`) then `"move"` (mm) put it in the problem's frame.

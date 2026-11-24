@@ -103,10 +103,10 @@ function plot() {
     ys.forEach((v, k) => { const x = k / (n - 1) * w, y = h - 8 - (v - lo) / (hi - lo || 1) * (h - 28); k ? c.lineTo(x, y) : c.moveTo(x, y); });
     c.stroke();
   };
-  line(history.compliance, false, '#6cf'); line(history.change, true, '#fc6');
+  line(history.compliance, false, '#6cf'); if (history.change.length) line(history.change, true, '#fc6');
   const x = shown / (n - 1) * w; c.strokeStyle = '#fff8'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke();
   c.font = '12px system-ui'; c.fillStyle = '#6cf'; c.fillText('compliance, N·mm: ' + fig(history.compliance[0]) + ' to ' + fig(history.compliance.at(-1)), 8, 14);
-  c.fillStyle = '#fc6'; c.textAlign = 'right'; c.fillText('change (log scale): ' + fig(history.change[0]) + ' to ' + fig(history.change.at(-1)), w - 8, 14); c.textAlign = 'left';
+  if (history.change.length) { c.fillStyle = '#fc6'; c.textAlign = 'right'; c.fillText('change (log scale): ' + fig(history.change[0]) + ' to ' + fig(history.change.at(-1)), w - 8, 14); c.textAlign = 'left'; }
 }
 // The 3D view's step: remembered, so the 3D script picks it up when it loads (it loads after the first steps arrive)
 const want3d = (n, grid) => { window.wanted3d = [n, grid]; window.model3d?.(n, grid); };
@@ -188,6 +188,56 @@ async function load(n, grid) {
 window.model3d = (n, grid) => { if (!box.hidden && grid) load(n, grid); };
 if (window.wanted3d) window.model3d(...window.wanted3d);
 </script>`;
+
+/**
+ * A run kept to watch again: each step's densities (as the live view draws them) and its numbers, recorded as the
+ * optimiser goes, then written as one page that needs no server: the live view's own page, its steps read from the
+ * file. A 3D run shows its three views (the turning surface needs the live view's server).
+ * @returns {{ step: (s: object) => void, steps: () => number, page: (title: string, done: string) => string }}
+ */
+export function recorder() {
+  const frames = [], history = { compliance: [], change: [] }, t0 = Date.now(), times = [];
+  return {
+    step(s) {
+      const now = Date.now(); times.push(now);
+      const last = times.slice(-11), perStep = last.length > 1 ? (last.at(-1) - last[0]) / (last.length - 1) / 1000 : null, { nx, ny, nz, h } = s.grid;
+      frames.push({ index: frames.length, grid: { nx, ny, nz, h }, step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, travel: s.travel,
+        elapsed: (now - t0) / 1000, perStep, views: views(s.density, s.grid).map((v) => ({ ...v, image: Buffer.from(v.image).toString('base64') })) });
+      history.compliance.push(s.compliance); history.change.push(s.change);
+    },
+    steps: () => frames.length,
+    page: (title, done) => replay(title, { history, frames, done }),
+  };
+}
+
+/**
+ * The page of a run that wasn't recorded step by step (made by a design's build, or before runs were kept): its end
+ * alone, with the compliance of each step where the result has it.
+ * @param {string} title @param {{ grid: object, density: ArrayLike<number>, history?: number[], steps: number, compliance: number }} r @param {string} done
+ */
+export function endOnly(title, r, done) {
+  const { nx, ny, nz, h } = r.grid;
+  const frame = { index: Math.max(0, (r.history?.length || 1) - 1), grid: { nx, ny, nz, h }, step: r.steps, steps: r.steps, compliance: r.compliance, change: 0, beta: '', elapsed: r.seconds ?? null, perStep: null,
+    views: views(r.density, r.grid).map((v) => ({ ...v, image: Buffer.from(v.image).toString('base64') })) };
+  return replay(title, { history: { compliance: r.history?.length ? r.history : [r.compliance], change: [] }, frames: [frame], done });
+}
+
+// The live view's page with its server's two answers read from the run instead: the stream of steps (one message: the
+// whole history, the last step and how it ended) and any step asked for (the nearest one kept at or before it). Long
+// runs keep every few steps, so the page stays under about 8 MB.
+function replay(title, { history, frames, done }) {
+  const size = frames.reduce((t, f) => t + f.views.reduce((u, v) => u + v.image.length, 0), 0), every = Math.max(1, Math.ceil(size / 8e6));
+  const kept = frames.filter((f, k) => k % every === 0 || k === frames.length - 1);
+  const run = JSON.stringify({ history, frames: kept, done }).replace(/</g, '\\u003c');
+  const shim = `<script>
+const RUN = ${run};
+window.EventSource = class { constructor() { setTimeout(() => this.onmessage?.({ data: JSON.stringify({ about: [['Recorded', 'a run kept to watch again: drag the slider or the chart to any step']], history: RUN.history, frame: RUN.frames.at(-1), done: RUN.done }) }), 0); } close() {} };
+window.fetch = async (u) => { const k = Number(String(u).replace('frame/', '')); let f = RUN.frames[0]; for (const x of RUN.frames) if (x.index <= k) f = x; return { ok: false, json: async () => f }; };
+</script>
+<style>#model,#hint{display:none!important}#stop{display:none}</style>
+`;
+  return page(title).split('<script type="importmap">')[0].replace('<script>', `${shim}<script>`);
+}
 
 const THREE = path.dirname(createRequire(import.meta.url).resolve('three')); // three's build files, for the 3D view
 

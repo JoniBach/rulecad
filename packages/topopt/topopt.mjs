@@ -16,15 +16,16 @@
 //   discretise(problem)  a problem in shapes (a region, bosses to keep, holes to avoid, loads at points) to a spec
 //   outlines(result)     a 2D result's edges as closed loops in mm, solid on the left, smoothed: ready to extrude
 //   surface(result)      a 3D result's surface as a closed triangle mesh in mm, smoothed: ready to print
+//   reduce(mesh)         a closed surface with fewer triangles, as close as asked, closed and as printable as it was
 import { grid as makeGrid, cellStiffness, solve, positions, jsBackend, centreStress, vonMises } from '@rulecad/fea';
 
 export { jsBackend };
 
 /**
- * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][] }} Region
+ * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][], flat?: boolean }} Region
  *   in mm: a circle (2D) or sphere (3D) at, r; a box at (its centre), size; a cylinder at (its centre), r, length,
  *   along axis (default z; teardrop '+z', '-y', …: a 45° point that way, across the axis, so it prints); a polygon (2D);
- *   or a closed triangle mesh (3D: a design's part)
+ *   or a closed triangle mesh (3D: a design's part; with flat, a region of a 2D problem: its section halfway up)
  */
 /** @typedef {Region & { fix?: string }} Support holds the nodes in the region (on material): fix the directions, 'xy' or 'xyz' (default all) */
 /** @typedef {Region & { force: number[], case?: string }} Load a force in N, shared by the nodes in the region */
@@ -925,7 +926,8 @@ function stressReport(spec, final) {
  * @returns {2 | 3}
  */
 export function dimension(r) {
-  if (r.triangles || r.length != null) return 3;
+  if (r.triangles) return r.flat ? 2 : 3;
+  if (r.length != null) return 3;
   if (r.points) return 2;
   return (r.size || r.at).length === 3 ? 3 : 2;
 }
@@ -943,7 +945,11 @@ const meshTests = new WeakMap();
 function insider(r) {
   if (r.triangles) {
     if (!meshTests.has(r.triangles)) meshTests.set(r.triangles, meshInside(r.triangles));
-    return meshTests.get(r.triangles);
+    const test = meshTests.get(r.triangles);
+    if (!r.flat) return test;
+    // flat: a part in a 2D problem is its section halfway up (a plate's outline, its holes open)
+    const b = bounds({ triangles: r.triangles }), mid = (b[2] + b[5]) / 2;
+    return ([x, y]) => test([x, y, mid]);
   }
   if (r.points) return (pt) => {
     let c = false; // even-odd ray crossing
@@ -1011,7 +1017,7 @@ export function bounds(r) {
   if (r.triangles) {
     const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (const t of r.triangles) for (const p of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], p[a]); hi[a] = Math.max(hi[a], p[a]); }
-    return [...lo, ...hi];
+    return r.flat ? [lo[0], lo[1], hi[0], hi[1]] : [...lo, ...hi];
   }
   if (r.points) { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
   const half = r.size ? r.size.map((s) => s / 2) : r.length != null ? [0, 1, 2].map((a) => (a === 'xyz'.indexOf(r.axis || 'z') ? r.length / 2 : r.r)) : new Array(dim).fill(r.r);
@@ -1505,6 +1511,113 @@ export function printable({ nx, ny, nz = 1 }, density, { up, iso = 0.5, keep, re
   let emptied = 0;
   for (let e = 0; e < cells; e++) if (!ok[e] && density[e] >= iso) { out[e] = 0; emptied++; }
   return { density: out, emptied };
+}
+
+/**
+ * A closed surface with fewer triangles: its edges collapsed, cheapest first, while every corner stays within
+ * tolerance (mm) of the planes of the faces it came from (the quadric error of Garland and Heckbert 1997, each face's
+ * plane counted once, so the sum of squares bounds the largest distance). A collapse is refused if it would open or
+ * pinch the surface (the two ends must share exactly the two corners across their edge: the link condition of Dey et
+ * al. 1999), fold a face over (its normal turning more than about 70°), or leave a sliver of no area. A corner on the
+ * grid's faces (lo, hi) only moves within them. With overhang (the build direction and the printer's limit, degrees from
+ * vertical), a collapse is refused if it adds to the area of faces hanging past the limit (faces on the bed aside), or
+ * leaves a corner lower than all its neighbours off the bed (a tip, which slices as an island). Each collapse moves the
+ * kept corner to whichever of its end, the other end or the middle costs least.
+ * @param {{ vertices: number[][], faces: number[][] }} mesh closed, faces counter-clockwise from outside
+ * @param {{ tolerance: number, overhang?: { up: string, angle: number }, lo?: number[], hi?: number[] }} o
+ * @returns {{ vertices: number[][], faces: number[][] }}
+ */
+export function reduce({ vertices, faces }, { tolerance, overhang, lo, hi }) {
+  if (!(tolerance > 0)) throw new Error(`reduce: the tolerance is a distance in mm, more than 0 (got ${tolerance})`);
+  const V = vertices.map((p) => p.slice()), F = faces.map((f) => f.slice()), alive = new Uint8Array(F.length).fill(1), n = V.length;
+  const vf = Array.from({ length: n }, () => new Set());
+  F.forEach((f, i) => { for (const v of f) vf[v].add(i); });
+  // Each corner on the grid's faces, as a mask of the six it is on: it may only move within them
+  const near = 1e-6, pinned = Int32Array.from(V, (p) => (lo && hi ? p.reduce((m, x, q) => m | (x < lo[q] + near ? 1 << q : 0) | (x > hi[q] - near ? 8 << q : 0), 0) : 0));
+  const ax = overhang ? 'xyz'.indexOf(overhang.up[1]) : -1, sign = overhang?.up[0] === '-' ? -1 : 1, steep = overhang ? Math.sin((overhang.angle * Math.PI) / 180) + 1e-3 : 0;
+  const bed = overhang && lo && hi ? (sign > 0 ? lo[ax] : hi[ax]) : null, height = (p) => sign * p[ax];
+  const onBed = (p) => bed !== null && Math.abs(p[ax] - bed) < near;
+  const normal = (a, b, c) => { const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]; return [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]; };
+  // How much of a face hangs past the limit: its area, if it faces down more steeply than the limit and isn't on the bed
+  const hanging = (a, b, c) => {
+    if (!overhang) return 0;
+    const m = normal(a, b, c), len = Math.hypot(...m);
+    if (!len || (-sign * m[ax]) / len <= steep || (onBed(a) && onBed(b) && onBed(c))) return 0;
+    return len / 2;
+  };
+  // Each corner's quadric: the sum over its faces' planes of (n·p + d)², as the ten numbers of a symmetric 4 × 4
+  const Q = Array.from({ length: n }, () => new Float64Array(10));
+  F.forEach((f) => {
+    const [a, b, c] = f.map((i) => V[i]), m = normal(a, b, c), len = Math.hypot(...m);
+    if (!len) return;
+    const [x, y, z] = m.map((t) => t / len), d = -(x * a[0] + y * a[1] + z * a[2]), k = [x * x, x * y, x * z, x * d, y * y, y * z, y * d, z * z, z * d, d * d];
+    for (const v of f) for (let i = 0; i < 10; i++) Q[v][i] += k[i];
+  });
+  const cost = (q, [x, y, z]) => q[0] * x * x + 2 * q[1] * x * y + 2 * q[2] * x * z + 2 * q[3] * x + q[4] * y * y + 2 * q[5] * y * z + 2 * q[6] * y + q[7] * z * z + 2 * q[8] * z + q[9];
+  const limit = tolerance * tolerance, version = new Int32Array(n), dead = new Uint8Array(n);
+  const neighbours = (v) => { const s = new Set(); for (const f of vf[v]) for (const w of F[f]) if (w !== v) s.add(w); return s; };
+  // Where an edge's corners would meet, and what it costs: at the end on more of the grid's faces (which stays on all
+  // of them), anywhere of the three if both are on the same ones, and nowhere if each is on one the other isn't
+  const plan = (a, b) => {
+    const pa = pinned[a], pb = pinned[b], both = pa & pb;
+    if (both !== pa && both !== pb) return null;
+    const q = Q[a].map((t, i) => t + Q[b][i]), mid = V[a].map((t, i) => (t + V[b][i]) / 2);
+    const options = pa === pb ? [V[a], V[b], mid] : both === pb ? [V[a]] : [V[b]];
+    let best = null;
+    for (const p of options) { const c = Math.max(0, cost(q, p)); if (!best || c < best.cost) best = { cost: c, p: p.slice() }; }
+    return best;
+  };
+  // A binary heap of edges by cost; an entry is stale once either corner has changed since it was made
+  const heap = [], push = (e) => { heap.push(e); let i = heap.length - 1; while (i) { const up = (i - 1) >> 1; if (heap[up].cost <= e.cost) break; heap[i] = heap[up]; i = up; } heap[i] = e; };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) { let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; const at = (k) => (k === i ? last : heap[k]); if (l < heap.length && heap[l].cost < at(m).cost) m = l; if (r < heap.length && heap[r].cost < at(m).cost) m = r; if (m === i) break; heap[i] = heap[m]; i = m; } heap[i] = last; }
+    return top;
+  };
+  const offer = (a, b) => { const p = plan(a, b); if (p && p.cost <= limit) push({ cost: p.cost, p: p.p, a, b, va: version[a], vb: version[b] }); };
+  for (let v = 0; v < n; v++) for (const w of neighbours(v)) if (v < w) offer(v, w);
+  while (heap.length) {
+    const e = pop(), { a, b, p } = e;
+    if (dead[a] || dead[b] || version[a] !== e.va || version[b] !== e.vb) continue;
+    const shared = [...vf[a]].filter((f) => vf[b].has(f));
+    if (shared.length !== 2) continue;
+    const across = new Set(shared.map((f) => F[f].find((v) => v !== a && v !== b))), na = neighbours(a), nb = neighbours(b);
+    if ([...na].filter((v) => nb.has(v)).length !== 2 || [...across].some((v) => !na.has(v) || !nb.has(v))) continue; // the link condition
+    // The faces that stay, each with its corners after: none folded over or left without area
+    const kept = [...new Set([...vf[a], ...vf[b]])].filter((f) => !shared.includes(f)), at = (v) => (v === a || v === b ? p : V[v]);
+    let ok = true, before = 0, after = 0;
+    for (const f of kept) {
+      const [x, y, z] = F[f], was = normal(V[x], V[y], V[z]), now = normal(at(x), at(y), at(z)), lw = Math.hypot(...was), ln = Math.hypot(...now);
+      if (ln < 1e-12 || (lw > 0 && (was[0] * now[0] + was[1] * now[1] + was[2] * now[2]) / (lw * ln) < 0.35)) { ok = false; break; }
+      before += hanging(V[x], V[y], V[z]); after += hanging(at(x), at(y), at(z));
+    }
+    for (const f of shared) before += hanging(...F[f].map((v) => V[v]));
+    if (!ok || after > before + 1e-9) continue;
+    // No new tip: the meeting corner, and each corner round it, has a neighbour no higher (or is on the bed)
+    if (overhang) {
+      const ring = new Set([...na, ...nb]); ring.delete(a); ring.delete(b);
+      const tip = (v, pos, round) => !onBed(pos) && [...round].every((w) => height(w === a || w === b ? p : V[w]) > height(pos) + near);
+      if (tip(a, p, ring)) continue;
+      let made = false;
+      for (const w of ring) {
+        const round = new Set([...neighbours(w)].map((u) => (u === b ? a : u))); round.delete(w);
+        const was = !onBed(V[w]) && [...neighbours(w)].every((u) => height(V[u]) > height(V[w]) + near);
+        if (!was && tip(w, V[w], round)) { made = true; break; }
+      }
+      if (made) continue;
+    }
+    // Collapse: b into a, a moved to p
+    for (const f of shared) { alive[f] = 0; for (const v of F[f]) vf[v].delete(f); }
+    for (const f of vf[b]) { F[f] = F[f].map((v) => (v === b ? a : v)); vf[a].add(f); }
+    vf[b].clear(); dead[b] = 1; V[a] = p; pinned[a] |= pinned[b];
+    for (let i = 0; i < 10; i++) Q[a][i] += Q[b][i];
+    version[a]++;
+    for (const w of neighbours(a)) { version[w]++; }
+    for (const w of neighbours(a)) { offer(a, w); for (const u of neighbours(w)) if (u !== a) offer(w, u); }
+  }
+  const index = new Map(), out = [];
+  const keep = F.filter((_, i) => alive[i]).map((f) => f.map((v) => { if (!index.has(v)) { index.set(v, out.length); out.push(V[v]); } return index.get(v); }));
+  return { vertices: out, faces: keep };
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));

@@ -6339,6 +6339,230 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
   } finally { done(); }
 });
 
+test('a problem at a design\'s anchors: its supports, loads and keeps follow the design, a move reruns it and nothing else does, cad why names what it is made from, and the filter is never under two print lines', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'lev');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'lev', objects: ['plate', 'arm', 'ring'] }));
+    // The plate the arm is bolted to and pushed by: a pivot hole and a pushing pin, as anchors
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0',
+      variables: { tip_x: { value: 24, unit: 'mm' }, thick: { value: 2, unit: 'mm' } },
+      anchors: { pivot: { at: [0, 0, 'thick'], axis: [0, 0, 1] }, pin: { at: ['tip_x', 0, 'thick'], axis: [0, 0, 1] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.tip_x, v.thick, v.thick] }) }\n");
+    const arm = { title: 'An arm on the plate', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 40,
+      space: { at: [12, 0], size: [30, 12] }, keep: [{ anchor: 'plate.pivot', r: 4 }, { anchor: 'plate.pin', r: 3 }], avoid: [{ anchor: 'plate.pivot', r: 1.6 }],
+      supports: [{ anchor: 'plate.pivot', r: 1.6 }], loads: [{ anchor: 'plate.pin', r: 1.2, force: [0, -10], case: 'down' }] };
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify(arm));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.json'), JSON.stringify({ name: 'arm', version: '0.1.0', variables: { problem: { type: 'problem', value: 'arm' }, t: { value: 4, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    const read = (ref) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const r = await readProblem('lev', ${JSON.stringify(ref)}); console.log(JSON.stringify({ problem: r.problem, inputs: r.inputs }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // Placed where the plate's anchors are: x and y of them in this flat problem (the plate's thickness is its z, dropped)
+    const r = read('arm');
+    assert.deepEqual([r.problem.supports[0].at, r.problem.loads[0].at, r.problem.keep.map((k) => k.at)], [[0, 0], [24, 0], [[0, 0], [24, 0]]]);
+    assert.deepEqual(r.inputs.anchors, [{ anchor: 'plate.pin', at: [24, 0, 2] }, { anchor: 'plate.pivot', at: [0, 0, 2] }]);
+    assert.equal(r.problem.filter, undefined, 'on 1 mm cells the filter is the solver\'s own cell and a half: 1.5 mm is more than two 0.42 mm lines');
+    assert.deepEqual(r.inputs.filter, { value: 1.5, from: 'a cell and a half' });
+    assert.match(cad('optimise', 'lev/arm'), /down: moves [\d.]+ mm along its load/);
+    // cad why on the result: the problem file, its rule sets, the anchors it read, its filter and where it is kept
+    const why = cad('why', 'lev/arm.problem');
+    assert.match(why, /optimised from projects\/lev\/problems\/arm\.json: An arm on the plate, pla/);
+    assert.match(why, /rule sets: x1c, pla/);
+    assert.match(why, /anchors read: plate\.pin at \(24, 0, 2\), plate\.pivot at \(0, 0, 2\)/);
+    assert.match(why, /filter 1\.5 mm: a cell and a half/);
+    assert.match(why, /kept in \.cache\/densities\/[0-9a-f]{64}\.json: made again only when one of these, or the solver, changes/);
+    // An unrelated value of the plate (its thickness: only the anchors' z, which a flat problem drops) leaves the result
+    // as it is; moving the pin moves the load and the boss with it, and the arm is optimised again
+    cad('set', 'lev/plate', 'thick=3');
+    assert.match(cad('optimise', 'lev/arm'), /\(cached\)/);
+    cad('set', 'lev/plate', 'tip_x=22');
+    const moved = cad('optimise', 'lev/arm');
+    assert.doesNotMatch(moved, /\(cached\)/); assert.match(moved, /down: moves/);
+    assert.deepEqual(read('arm').problem.loads[0].at, [22, 0]);
+    // A design built from the problem can't place it: the result would be needed before it could be made
+    fs.writeFileSync(path.join(project, 'objects', 'ring.json'), JSON.stringify({ name: 'ring', version: '0.1.0', variables: { problem: { type: 'problem', value: 'loop' } }, anchors: { hole: { at: [0, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'ring.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: 1 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    fs.writeFileSync(path.join(project, 'problems', 'loop.json'), JSON.stringify({ ...arm, keep: [], avoid: [], supports: [{ anchor: 'ring.hole', r: 1.6 }] }));
+    assert.match(cad('optimise', 'lev/loop'), /loop\.json: the anchor "ring\.hole" is on ring, which is built from this problem \(its variable problem\): name a part or anchor of what it is fixed to instead/);
+    // Named wrong: refused with the anchors there are
+    fs.writeFileSync(path.join(project, 'problems', 'typo.json'), JSON.stringify({ ...arm, supports: [{ anchor: 'plate.pivto', r: 1.6 }] }));
+    assert.match(cad('optimise', 'lev/typo'), /typo\.json: plate has no anchor "pivto" \(anchors: pivot, pin\)/);
+    // Fine cells: the filter is two of the printer's lines, the thinnest wall it lays solid. Hand sum: x1c's line is
+    // 0.42 mm, so two are 0.84 mm; a cell and a half of 0.5 mm cells is 0.75 mm, under it, so 0.84 mm is used
+    fs.writeFileSync(path.join(project, 'problems', 'fine.json'), JSON.stringify({ ...arm, cell: 0.5 }));
+    const fine = read('fine');
+    assert.equal(fine.problem.filter, 0.84);
+    assert.deepEqual(fine.inputs.filter, { value: 0.84, from: 'two of x1c\'s lines (2 × 0.42 mm), more than a cell and a half' });
+    // A filter the problem gives is its own
+    fs.writeFileSync(path.join(project, 'problems', 'given.json'), JSON.stringify({ ...arm, cell: 0.5, filter: 'x1c.line' }));
+    assert.deepEqual(read('given').inputs.filter, { value: 0.42, from: 'the problem: x1c.line' });
+  } finally { done(); }
+});
+
+test('cad preview of a problem file: its run kept step by step as a page to watch again, with no server; a result whose steps were never recorded shows its end', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'beam');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'beam', objects: [] }));
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify({ title: 'A short arm', material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 30,
+      space: { at: [12, 0], size: [30, 12] }, keep: [{ at: [0, 0], r: 4 }, { at: [24, 0], r: 3 }], avoid: [{ at: [0, 0], r: 1.6 }],
+      supports: [{ at: [0, 0], r: 1.6 }], loads: [{ at: [24, 0], r: 1.2, force: [0, -10], case: 'down' }] }));
+    const runOf = () => {
+      const html = fs.readFileSync(path.join(ws, '.preview', 'beam', 'arm-run.html'), 'utf8');
+      assert.doesNotMatch(html, /importmap|type="module"/, 'no server and no 3D surface needed');
+      return JSON.parse(/const RUN = (.*);\n/.exec(html)[1]);
+    };
+    const out = cad('preview', 'beam/problems/arm');
+    assert.match(out, /\.preview[\\/]beam[\\/]arm-optimised\.svg\n.*\.preview[\\/]beam[\\/]arm-run\.html\n {2}the run, step by step: open it to watch it again \((\d+) steps\)/);
+    const steps = Number(/watch it again \((\d+) steps\)/.exec(out)[1]), run = runOf(), r = JSON.parse(cad('optimise', 'beam/arm', '--json'));
+    // every step: its compliance, how much it changed, and its densities as the live view draws them (a byte a cell)
+    assert.equal(run.frames.length, steps); assert.equal(run.history.compliance.length, steps); assert.equal(run.history.change.length, steps);
+    assert.deepEqual(run.frames.map((f) => f.step), Array.from({ length: steps }, (_, k) => k + 1));
+    assert.equal(run.done, `finished: ${steps} steps${r.converged ? '' : ', not settled'}`);
+    const last = run.frames.at(-1), image = Buffer.from(last.views[0].image, 'base64');
+    assert.deepEqual([last.views[0].w, last.views[0].h, image.length], [r.grid.nx, r.grid.ny, r.grid.nx * r.grid.ny]);
+    const kept = JSON.parse(fs.readFileSync(path.join(ws, '.cache', 'optimise', `${r.hash}.json`), 'utf8')).density;
+    assert.ok(kept.every((d, e) => Math.abs(image[e] - d * 255) <= 1), 'the last step is the result');
+    // cached: the recorded run is still the one shown; the problem named by its file's path works too
+    assert.match(cad('preview', 'projects/beam/problems/arm.json'), /\(cached\)[^]*the run, step by step/);
+    assert.equal(runOf().frames.length, steps);
+    // made without its steps recorded (a design's build, or before runs were kept): its end, and how to record it
+    fs.rmSync(path.join(ws, '.cache', 'runs'), { recursive: true });
+    assert.match(cad('preview', 'beam/problems/arm'), /the run's end only: its steps weren't recorded \(cad preview --fresh runs it again and records them\)/);
+    const end = runOf();
+    assert.equal(end.frames.length, 1); assert.equal(end.history.compliance.length, steps, 'the compliance of each step, from the result');
+    assert.match(end.done, /its steps weren't recorded: run it again with --fresh to watch them/);
+    assert.match(cad('preview', 'beam/problems/arm', '--fresh'), /the run, step by step/);
+    assert.equal(runOf().frames.length, steps);
+  } finally { done(); }
+});
+
+test('a solid result with fewer triangles: outline.reduce keeps the surface within its tolerance, closed, and as printable as it was drawn', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'post');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'post', objects: [] }));
+    const post = { title: 'A post', material: 'pla', cell: 2, volume: 0.3, filter: 3, steps: 20, overhang: '+z',
+      space: { at: [0, 0, 12], size: [12, 12, 24] }, keep: [{ at: [0, 0, 22], r: 4, length: 4, axis: 'z' }],
+      supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }] };
+    fs.writeFileSync(path.join(project, 'problems', 'post.json'), JSON.stringify(post));
+    fs.writeFileSync(path.join(project, 'problems', 'lean.json'), JSON.stringify({ ...post, outline: { reduce: 0.1 } }));
+    const full = JSON.parse(cad('optimise', 'post/post', '--json')), out = cad('optimise', 'post/lean'), lean = JSON.parse(cad('optimise', 'post/lean', '--json'));
+    const mesh = (r) => JSON.parse(fs.readFileSync(path.join(ws, '.cache', 'optimise', `${r.hash}.json`), 'utf8')).mesh;
+    const a = mesh(full), b = mesh(lean);
+    // the same densities (the outline only draws them), drawn with under half the triangles
+    assert.equal(full.reduced, undefined, 'off unless asked');
+    assert.deepEqual(lean.reduced, { before: a.faces.length, after: b.faces.length, tolerance: 0.1 });
+    assert.ok(b.faces.length < a.faces.length / 2, `${a.faces.length} to ${b.faces.length} triangles`);
+    assert.match(out, new RegExp(`${a.faces.length} triangles reduced to ${b.faces.length} \\([\\d.]+%\\), the surface kept within 0\\.1 mm`));
+    assert.ok(Math.abs(lean.solid / full.solid - 1) < 0.005, `${full.solid} to ${lean.solid} mm³`);
+    // closed: every edge once each way round
+    const e = new Map(); for (const f of b.faces) for (let i = 0; i < 3; i++) e.set(`${f[i]},${f[(i + 1) % 3]}`, (e.get(`${f[i]},${f[(i + 1) % 3]}`) || 0) + 1);
+    assert.ok([...e].every(([k, c]) => c === 1 && e.get(k.split(',').reverse().join(',')) === 1));
+    // sliced as the printer will: no more islands than as drawn
+    const { islands } = await import('@rulecad/printcheck'), sliced = (m) => islands(m.faces.map((f) => f.map((i) => m.vertices[i])), { layer: 0.2, overhang: 45, line: 0.42 }).islands.length;
+    assert.ok(sliced(b) <= sliced(a), `${sliced(a)} to ${sliced(b)} islands`);
+    // A tolerance that isn't a distance is refused by name
+    fs.writeFileSync(path.join(project, 'problems', 'bad.json'), JSON.stringify({ ...post, outline: { reduce: 0 } }));
+    assert.match(cad('optimise', 'post/bad'), /reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/);
+  } finally { done(); }
+});
+
+test('a flat problem whose space is another design\'s part: its section halfway up, holes open, optimised and built', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'flat');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'flat', objects: ['blank', 'arm'] }));
+    // The blank: a 30 × 12 × 4 mm plate on the bed, a 4 mm hole through it 6 mm from its left end
+    fs.writeFileSync(path.join(project, 'objects', 'blank.json'), JSON.stringify({ name: 'blank', version: '0.1.0', variables: { l: { value: 30, unit: 'mm' }, w: { value: 12, unit: 'mm' }, t: { value: 4, unit: 'mm' }, hole: { value: 2, unit: 'mm' }, at: { value: 6, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'blank.js'), "import jscad from '@jscad/modeling'\nconst { cuboid, cylinder } = jscad.primitives\nexport function main (v) { return jscad.booleans.subtract(cuboid({ center: [v.l / 2, 0, v.t / 2], size: [v.l, v.w, v.t] }), cylinder({ center: [v.at, 0, v.t / 2], radius: v.hole, height: v.t * 2, segments: 32 })) }\n");
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify({ title: 'An arm cut from the blank', material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 30,
+      space: { part: 'blank.body' }, keep: [{ at: [27, 0], r: 2.5 }], supports: [{ at: [6, 0], r: 2.5 }], loads: [{ at: [27, 0], r: 1.5, force: [0, -10], case: 'down' }] }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.json'), JSON.stringify({ name: 'arm', version: '0.1.0', variables: { problem: { type: 'problem', value: 'arm' }, t: { value: 4, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    const spec = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const { discretise } = await import('@rulecad/topopt');
+      const r = await readProblem('flat', 'arm'), s = discretise(r.problem);
+      console.log(JSON.stringify({ dim: r.dim, at: r.problem.space[0].at, grid: s.grid, origin: s.origin, passive: Array.from(s.passive) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // A 30 × 12 grid of 1 mm cells over the plate, its middle the plate's (x and y only: it is flat; to a thousandth,
+    // as JSCAD's boolean snaps the corners by about 0.00001 mm)
+    const r3 = (a) => a.map((c) => Math.round(c * 1000) / 1000 + 0);
+    assert.deepEqual([spec.dim, r3(spec.at), spec.grid.nx, spec.grid.ny, r3(spec.origin)], [2, [15, 0], 30, 12, [0, -6]]);
+    // Outside the space: exactly the cells whose centres fall in the hole (a 32-sided 2 mm circle at x 6), and no others
+    const inHole = spec.passive.map((_, e) => { const x = (e % 30) + 0.5, y = Math.floor(e / 30) - 6 + 0.5; return Math.hypot(x - 6, y) < 2 * Math.cos(Math.PI / 32) ? 1 : 0; });
+    assert.ok(inHole.reduce((t, c) => t + c, 0) >= 12, 'a 2 mm hole covers a dozen 1 mm cells');
+    assert.deepEqual(spec.passive.map((p) => (p === -2 ? 1 : 0)), inHole);
+    // optimised and built: the part named as the space is the design's to cut, never drawn as a region
+    assert.match(cad('optimise', 'flat/arm'), /down: moves [\d.]+ mm along its load/);
+    assert.match(cad('check', 'flat/arm'), /arm/);
+    assert.doesNotMatch(cad('check', 'flat/arm'), /Error|error:/);
+  } finally { done(); }
+});
+
+test('a cylinder at an anchor with a rotate lies along the anchor\'s turned z, as an assembly reads it, and one turned off x, y and z is refused', () => {
+  const { ws, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'rot');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'rot', objects: ['block'] }));
+    // Hand turns (rotate is degrees about x, then y, then z, applied to the anchor's z, [0, 0, 1]):
+    // [90, 0, 0] about x takes z to (0, -sin 90, cos 90) = (0, -1, 0), along y; [0, 90, 0] about y takes it to
+    // (sin 90, 0, cos 90) = (1, 0, 0), along x; [45, 0, 0] gives (0, -0.707, 0.707), along none of them
+    fs.writeFileSync(path.join(project, 'objects', 'block.json'), JSON.stringify({ name: 'block', version: '0.1.0',
+      variables: { turn: { value: 90 } },
+      anchors: { side: { at: [10, 0, 5], rotate: ['turn', 0, 0] }, end: { at: [0, 0, 5], rotate: [0, 90, 0] }, slant: { at: [5, 0, 5], rotate: [45, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'block.js'), "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [20, 10, 10] }) }\n");
+    const base = { title: 'A bracket on the block', uses: ['x1c'], material: 'pla', cell: 1, volume: 0.5, steps: 10,
+      space: { at: [5, 0, 5], size: [20, 10, 10] }, loads: [{ at: [14, 0, 5], r: 1, force: [0, 0, -10] }] };
+    fs.writeFileSync(path.join(project, 'problems', 'turned.json'), JSON.stringify({ ...base,
+      supports: [{ anchor: 'block.side', r: 1.6, length: 10 }], keep: [{ anchor: 'block.end', r: 3, length: 4 }] }));
+    fs.writeFileSync(path.join(project, 'problems', 'slant.json'), JSON.stringify({ ...base, supports: [{ anchor: 'block.slant', r: 1.6, length: 10 }] }));
+    const read = (ref) => execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      try { const r = await readProblem('rot', ${JSON.stringify(ref)}); console.log(JSON.stringify(r.problem)); } catch (e) { console.log(JSON.stringify({ error: e.message })); }
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    const p = JSON.parse(read('turned'));
+    assert.deepEqual([p.supports[0].axis, p.supports[0].at], ['y', [10, 0, 5]], 'turned 90 degrees about x (a variable): along y, not the unturned z');
+    assert.deepEqual([p.keep[0].axis, p.keep[0].at], ['x', [0, 0, 5]], 'turned 90 degrees about y: along x');
+    assert.match(JSON.parse(read('slant')).error, /the anchor "block\.slant" points along \[0, -0\.707, 0\.707\], not along x, y or z: give the cylinder an axis/);
+  } finally { done(); }
+});
+
+test('problems that read each other through designs built from them are refused by name, with the chain, rather than read for ever', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'cyc');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'cyc', objects: ['xa', 'yb', 'plate'] }));
+    // Two flat designs, each with an anchor h and built from a problem: xa from pb, yb from pa. Problem pa is held at
+    // xa.h and pb at yb.h, so pa needs xa, which needs pb, which needs yb, which needs pa again
+    const js = "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: 1 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n";
+    for (const [o, from] of [['xa', 'pb'], ['yb', 'pa']]) {
+      fs.writeFileSync(path.join(project, 'objects', `${o}.json`), JSON.stringify({ name: o, version: '0.1.0', variables: { problem: { type: 'problem', value: from } }, anchors: { h: { at: [0, 0, 0] } } }));
+      fs.writeFileSync(path.join(project, 'objects', `${o}.js`), js);
+    }
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0', anchors: { h: { at: [0, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [4, 4, 1] }) }\n");
+    const base = { uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 10, space: { at: [12, 0], size: [30, 12] }, loads: [{ at: [24, 0], r: 1.2, force: [0, -10] }] };
+    fs.writeFileSync(path.join(project, 'problems', 'pa.json'), JSON.stringify({ ...base, supports: [{ anchor: 'xa.h', r: 1.6 }] }));
+    fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'yb.h', r: 1.6 }] }));
+    // Before the chain was carried this ran out of memory: give it a minute, then call it a hang
+    const run = (ref) => { try { return execFileSync(process.execPath, [BIN, 'optimise', ref], { cwd: ws, encoding: 'utf8', stdio: 'pipe', timeout: 60000, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); } catch (e) { return e.signal ? `hung (${e.signal})` : `${e.stdout}${e.stderr}`; } };
+    assert.match(run('cyc/pa'), /pa\.json: problems read each other through designs built from them: pa reads xa, built from pb, then pb reads yb, built from pa\. Fix one of them to a part or anchor of a design that is not made from the others/);
+    // The same pair with the loop broken (pb held at a plain design's anchor) is read and optimised
+    fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'plate.h', r: 1.6 }] }));
+    assert.match(cad('optimise', 'cyc/pa'), /moves [\d.]+ mm along its load/);
+  } finally { done(); }
+});
+
 test('the printed plastics ABS, ASA and PA-CF load in cad values with their units, and a strain limit reads off them', () => {
   const { ws, cad, done } = workspace();
   try {

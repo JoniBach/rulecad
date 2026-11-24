@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable, refine, despike, undercuts } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable, refine, despike, reduce, undercuts } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -448,6 +448,42 @@ test('discretise: a space a sliver of a cell over a whole number of cells keeps 
   assert.deepEqual([over.nx, over.ny, over.nz], [exact.nx, exact.ny, exact.nz], 'a surface 0.05 µm out of its space: the same grid');
   const wider = discretise(box(12.1, 24)).grid;
   assert.ok(wider.nx > exact.nx, 'a tenth of a cell over is a cell more');
+});
+
+test('reduce: a surface with far fewer triangles, still closed, as close as asked, and no more overhang or tips than it had', () => {
+  const N = 24, ball = new Float64Array(N ** 3), dome = new Float64Array(N ** 3);
+  for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = i + 0.5 - N / 2, y = j + 0.5 - N / 2;
+    ball[(k * N + j) * N + i] = Math.hypot(x, y, k + 0.5 - N / 2) < 9 ? 1 : 0;
+    dome[(k * N + j) * N + i] = Math.hypot(x, y, k + 0.5) < 11 ? 1 : 0; // a half ball standing on the bed
+  }
+  const g = { nx: N, ny: N, nz: N, h: 1 }, lo = [0, 0, 0], hi = [N, N, N], ov = { up: '+z', angle: 45 };
+  const volume = ({ vertices: v, faces }) => faces.reduce((t, [i, j, k]) => { const a = v[i], b = v[j], c = v[k]; return t + (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6; }, 0);
+  // Closed: every edge once each way round
+  const closed = ({ faces }) => { const e = new Map(); for (const f of faces) for (let i = 0; i < 3; i++) { const k = `${f[i]},${f[(i + 1) % 3]}`; e.set(k, (e.get(k) || 0) + 1); } return [...e].every(([k, c]) => c === 1 && e.get(k.split(',').reverse().join(',')) === 1); };
+  const hanging = ({ vertices: v, faces }) => faces.reduce((t, f) => {
+    const [a, b, c] = f.map((i) => v[i]), u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]], m = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]], L = Math.hypot(...m);
+    return t + (L && -m[2] / L > Math.SQRT1_2 + 1e-3 && !(a[2] < 1e-6 && b[2] < 1e-6 && c[2] < 1e-6) ? L / 2 : 0);
+  }, 0);
+  const tips = ({ vertices: v, faces }) => { const nb = v.map(() => new Set()); for (const [a, b, c] of faces) { nb[a].add(b).add(c); nb[b].add(a).add(c); nb[c].add(a).add(b); } return v.filter((p, i) => p[2] > 1e-6 && [...nb[i]].every((j) => v[j][2] > p[2] + 1e-6)).length; };
+  // A ball, free: within 0.1 mm, under a third of the triangles; its volume within 0.1%, and every corner left as far
+  // from the centre as the surface's own corners were, give or take the tolerance
+  const s = surface(g, ball, [0, 0, 0]), r = reduce(s, { tolerance: 0.1, lo, hi }), radius = (p) => Math.hypot(p[0] - 12, p[1] - 12, p[2] - 12);
+  assert.ok(closed(s) && closed(r));
+  assert.ok(r.faces.length < s.faces.length / 3, `${s.faces.length} to ${r.faces.length} triangles`);
+  assert.ok(Math.abs(volume(r) / volume(s) - 1) < 1e-3, `${volume(s)} to ${volume(r)} mm³`);
+  const was = s.vertices.map(radius), [rmin, rmax] = [Math.min(...was), Math.max(...was)];
+  assert.ok(r.vertices.every((p) => radius(p) >= rmin - 0.1 && radius(p) <= rmax + 0.1));
+  // A dome built up from the bed: no more of it hanging past 45° than before, no corner left as a tip in mid-air, and
+  // its corners on the bed still on it (the bed's own triangles thinned too)
+  const d = surface(g, dome, [0, 0, 0], { overhang: ov }), rd = reduce(d, { tolerance: 0.1, overhang: ov, lo, hi });
+  assert.ok(closed(rd) && rd.faces.length < d.faces.length / 3, `${d.faces.length} to ${rd.faces.length} triangles`);
+  assert.ok(hanging(rd) <= hanging(d) + 1e-9, `${hanging(d)} to ${hanging(rd)} mm² past 45°`);
+  assert.ok(tips(rd) <= tips(d), `${tips(d)} to ${tips(rd)} tips`);
+  assert.equal(Math.min(...rd.vertices.map((p) => p[2])), 0);
+  assert.ok(Math.abs(volume(rd) / volume(d) - 1) < 1e-3);
+  // Refused by name: a tolerance that isn't a distance
+  assert.throws(() => reduce(s, { tolerance: 0 }), /reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/);
 });
 
 // The force inverter in PLA (E 2680 MPa), 4 mm thick, pushed with 10 N against springs of 0.268 N/mm either side

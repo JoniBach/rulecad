@@ -5,6 +5,42 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.80: problems tied to designs, and optimisation you can watch again
+### Added
+
+- A problem's regions, supports and loads can sit at another design's anchor: `"anchor": "plate.pivot"` in place of
+  `at`, where that anchor is as the design is built (x and y of it in a flat problem; a cylinder along the anchor's
+  axis unless it names one; an anchor with a `rotate` points along its z turned by it, as an assembly reads it).
+  Moving the anchor moves the problem and optimises it again; a value of that design the anchors do not read leaves
+  the result as it is. A design built from the problem itself is refused by name, as is an anchor that is not there
+  (with the anchors there are). So are problems that reach each other through designs built from them, however long
+  the loop (problem a held at a design built from b, and b at one built from a): refused with the chain, where before
+  they were read until memory ran out. Schema first: `anchor` on regions, supports, loads and the output.
+- `cad preview <project>/problems/<problem>` (or the problem file's path) shows the run: the result is drawn as by
+  `cad optimise`, and `.preview/<project>/<problem>-run.html` replays the run step by step with no server (the live
+  view's page, its densities, compliance and change for every step read from the file). Every `cad optimise` run is
+  recorded and kept by its densities' key, so a cached result still shows the run that made it; one made without
+  recording (by a design's build) shows its end and each step's compliance, and says to run it with `--fresh`.
+  `--watch` on the preview shows the run live, as on `cad optimise`.
+- A flat (2D) problem's regions can be another design's part (`{ "part": "blank.body" }`), as solid problems' could:
+  its section halfway up, holes open, so an arm is optimised within the blank it is cut from. A problem with a
+  `thickness` is flat whatever its regions are.
+- `cad why <project>/<object>.<problem variable>` says what the optimised result is made from: the problem file, its
+  title and material, its rule sets and values, the parts and anchors of other designs it reads, where its filter
+  came from, and the file its densities are kept in (made, or not yet).
+
+- `"outline": { "reduce": 0.1 }` on a solid problem draws its surface with fewer triangles: within that many mm of
+  the surface as drawn, closed, with no more area past the printer's overhang limit and no new tips (topopt's
+  `reduce`). `cad optimise` says how many triangles it had and has. Off unless given: no existing result changes.
+  On the bracket bench's printable result, 0.1 mm took 75,592 triangles to 21,124 (27.808 to 27.806 cm³).
+
+### Changed
+
+- A problem with no `filter` is never filtered under two of the printer's lines (the thinnest wall it lays solid).
+  It was a cell and a half always, and still is wherever that is more: on an X1C's 0.42 mm lines, every cell of
+  0.56 mm or more. No existing problem's result moves: the kit's problems all give their filter or use cells of 1 mm
+  or more.
+
 ## 0.7.79: strength in optimisation
 ### Added
 
