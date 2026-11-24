@@ -18,7 +18,7 @@
     "bar": { "value": "x1c.line * 2", "unit": "mm", "rule": "A torsion bar's width: two lines, the thinnest wall that prints solid" },
     "slot": { "value": 1, "unit": "mm", "rule": "The slots' width: over the printer's 0.3 mm gap, so the bars print free of each other" },
     "bridge": { "value": 1.5, "unit": "mm", "rule": "The bridges' width along the edge" },
-    "series": { "value": 4, "rule": "Joints in series across each fold: four share 90 degrees at 22.5 each, half the 44.7 degrees PETG's strain limit allows one (about twice the margin)" },
+    "series": { "value": 4, "rule": "Joints in series across each fold: four share 90 degrees at 22.5 each, about half the 43.4 degrees PETG's strain limit allows one (1.93 times the margin)" },
     "fold": { "value": 0, "unit": "degrees", "rule": "The walls' fold as drawn: 0 as printed; an assembly's pose sets 90 to show them standing", "tweak": { "min": 0, "max": 90 } },
     "folded": { "value": 90, "unit": "degrees", "rule": "The fold the tray is checked to: the walls standing" },
     "clearance": { "value": "x1c.fit", "unit": "mm", "rule": "The least gap between two rigid parts on the way from flat to standing" }

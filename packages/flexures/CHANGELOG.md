@@ -4,6 +4,29 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## Unreleased: folding sheets and the Miura fold (#78)
+
+### Added
+
+- `letArray` and `letArrayModel` (issue #78): LET joints in series across a fold and in parallel along it. Joints in
+  series share the angle, so the hinge folds further for a strain; in parallel they share the moment. The model gives
+  the stiffness (m k / n), the strain at a fold, the fold a strain allows, the pinch (where the rigid parts either side
+  of a joint meet) and the gap between the panels folded flat.
+- `foldSheet`, `foldSheetModel` and `foldCheck`: a sheet of panels joined by LET arrays or living hinges, printed flat
+  in one piece and drawn folded at any set of folds (an assembly's pose can set them). `foldCheck` checks each pose on
+  the way from flat: every hinge's strain (`fold.strain`), its pinch (`fold.pinch`), and every two rigid bodies apart
+  by the clearance (`fold.clash`, `fold.clearance`); a bit of panel that two bands cut off is left out of the print and
+  said (`fold.loose`). Bad input is refused by name (`fold.*`, `let.*`). `foldSheet` and `foldCheck` are async: their
+  geometry is manifold-3d's.
+- `miura` and `miuraModel`: the Miura fold printed flat as panels on a web, its rigid folding (one tilt sets every
+  crease), each crease's turn, strain and pinch, and the furthest it folds (`miura.*` refusals).
+- The workspace example `flexures/tray` (a tray whose four walls fold up on LET arrays, in PETG) and the assembly
+  `flexures/tray-fit`, which shows it flat and folded and checks the block it holds in both poses.
+
+### Printed sizes that moved
+
+- None: the new generators draw new parts only.
+
 ## 0.5.6: compliant gripper jaws (#77)
 
 ### Added

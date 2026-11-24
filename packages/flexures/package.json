@@ -25,6 +25,8 @@
     "outofplane.mjs",
     "synth.mjs",
     "gripper.mjs",
+    "folding.mjs",
+    "origami.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -42,6 +44,8 @@
     "outofplane.d.mts",
     "synth.d.mts",
     "gripper.d.mts",
+    "folding.d.mts",
+    "origami.d.mts",
     "README.md",
     "LICENSE"
   ],

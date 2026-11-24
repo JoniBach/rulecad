@@ -1282,3 +1282,32 @@ test('folding sheets and Miura sheets: bad input is refused by name, before any 
   await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 1.6 }), 'miura.web');
   await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 0.4, hinge: { flex: 2, thickness: 0.4 } }), 'miura.web');
 });
+
+test('folding: the README\'s figures are the code\'s, and the workspace tray (examples/bench flexures/tray) folds to 90° within PETG\'s limit, its parts clear', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const petg = { ...f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }), nu: 0.38 };
+  const j = { width: 30, thickness: 1.2, bar: 0.84, slot: 1, bridge: 1.5, series: 4 }, m = f.letArrayModel(j, petg), one = f.letJointModel(j, petg);
+  for (const line of [`m.strain(Math.PI / 2); // ${m.strain(Math.PI / 2).toFixed(4)}: ${(m.strain(Math.PI / 2) * 100).toFixed(2)}% at 90°, against PETG's ${(petg.strainLimit * 100).toFixed(2)}%`,
+    `m.stiffness;           // ${m.stiffness.toFixed(2)} N·mm a radian: ${(m.stiffness * Math.PI / 2).toFixed(2)} N·mm holds a wall at 90°`, `m.across;              // ${m.across.toFixed(2)} mm`,
+    `One such joint folds ${(deg(one.angle(petg.strainLimit))).toFixed(1)}° within PETG's limit, so four in series fold 90° at ${(deg(one.angle(petg.strainLimit)) / 22.5).toFixed(2)} times the margin`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  const mi = f.miuraModel({ a: 12, b: 12, angle: 60, rows: 4, columns: 4, thickness: 1.6, hinge: { flex: 2, thickness: 0.4 } }, petg);
+  assert.ok(readme.includes(`On a 0.4 mm web 2 mm wide, PETG folds a Miura sheet only ${mi.fold.toFixed(1)}°`), 'the README\'s Miura limit');
+  // the bench tray, built by its own main with its own variables (bar: x1c.line × 2 = 0.84; clearance: x1c.fit = 0.2)
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), json = JSON.parse(fs.readFileSync(new URL('tray.json', dir), 'utf8'));
+  assert.equal(json.variables.bar.value, 'x1c.line * 2'); assert.equal(json.variables.clearance.value, 'x1c.fit');
+  const v = { ...Object.fromEntries(Object.entries(json.variables).map(([k, x]) => [k, x.value])), bar: 0.84, clearance: 0.2, flexures: f, petg: { modulus: 1810, strength: 34, poisson: 0.38 } };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('tray.js', dir))).href);
+  const made = await main(v), flat = made.parts.tray, folded = (await main({ ...v, fold: 90 })).parts.tray;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'every fold finding passes');
+  for (const x of made.findings.filter((x) => x.code === 'fold.strain')) near(x.values.strain, m.strain(Math.PI / 2), 1e-12, 'the tray\'s joints are the README\'s');
+  assert.ok(made.mechanism.poses.folded.gap >= 1.2 - 1e-9, 'its parts stay over 1.2 mm apart'); assert.ok(readme.includes('every two parts stay over 1.2 mm apart'));
+  assert.ok(onePiece(flat), 'one print'); const grams = (measureVolume(flat) * 1.27) / 1000;
+  assert.ok(readme.includes(`It weighs ${grams.toFixed(1)} g`), `the README's tray weighs ${grams.toFixed(1)} g`);
+  // standing: each wall's outer face at the first pin (25 - 1.5 × 6.68 = 14.98) plus the lands at 22.5°, 45° and 67.5°
+  // (6.68 × 2.0137 = 13.451) plus half the sheet: 29.031; its top 0.6 + 13.451 + 9.98 (the wall past the last pin, 45 - 35.02) = 24.031
+  const b = measureBoundingBox(folded);
+  near(b[1][0], 25 - 1.5 * 6.68 + 6.68 * (Math.cos(rad(22.5)) + Math.cos(rad(45)) + Math.cos(rad(67.5))) + 0.6, 1e-4, 'the wall\'s outer face'); near(b[1][0], 29.031, 1e-3, 'by hand');
+  near(b[1][2], 0.6 + 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))) + (45 - (25 + 1.5 * 6.68)), 1e-4, 'its top'); near(b[1][2], 24.031, 1e-3, 'by hand');
+  assert.ok(readme.includes(`so it stands about ${Math.round(b[1][2] - 0.6 - 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))))} mm above them`), 'the README\'s wall height');
+});
