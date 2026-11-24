@@ -19,3 +19,4 @@ export { shapeCurve, meander } from './synth.mjs';
 export { gripperJaws, gripperJawsModel } from './gripper.mjs';
 export { letArray, letArrayModel, foldSheet, foldSheetModel, foldCheck } from './folding.mjs';
 export { miura, miuraModel } from './origami.mjs';
+export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';

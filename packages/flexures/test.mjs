@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, pinJoint, pinJointCheck, snapPin, snapSocket, snapPinModel, travelStop, angleStop, contactLeaf, contactLeafModel, parallelogram, parallelogramModel, tweezers, tweezersModel, curvedLeaf, curvedLeafModel, ports, size, report, printable } from '@rulecad/flexures';
+import { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
 import { shape as pieces, check as printCheck } from '@rulecad/printcheck';
@@ -1320,6 +1321,129 @@ test('folding: the README\'s figures are the code\'s, and the workspace tray (ex
   near(b[1][0], 30 - 1.5 * 6.68 + 6.68 * (Math.cos(rad(22.5)) + Math.cos(rad(45)) + Math.cos(rad(67.5))) + 0.6, 1e-4, 'the wall\'s outer face'); near(b[1][0], 34.031, 1e-3, 'by hand');
   near(b[1][2], 0.6 + 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))) + (45 - (25 + 1.5 * 6.68)), 1e-4, 'its top'); near(b[1][2], 24.031, 1e-3, 'by hand');
   assert.ok(readme.includes(`so it stands about ${Math.round(b[1][2] - 0.6 - 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))))} mm above them`), 'the README\'s wall height');
+});
+
+test('latticeCell: a honeycomb\'s and a re-entrant honeycomb\'s moduli, Poisson\'s ratios and wall strains are Gibson and Ashby\'s; bad cells are refused by name', () => {
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  // A regular honeycomb: l = h = 6, θ = 30°, t = 0.84, E = 1810. t/l = 0.14, (t/l)³ = 0.002744, h/l + sin θ = 1.5.
+  //   E1 = E2 = 1810 × 0.002744 × cos 30 / (1.5 × sin² 30) = 1810 × 0.002744 × 2.309401 = 11.4700 MPa; ν = 1
+  //   G12 = 1810 × 0.002744 × 1.5 / (1 × 3 × cos 30) = 2.8675; density 0.14 × 3 / (2 cos 30 × 1.5) = 0.161658
+  //   a wall's strain for a strain along y: 3 × 0.14 × 1.5 / cos 30 = 0.727461
+  //   buckling along y: 1810 × 0.686² π² × 0.002744 / (24 × 1 × cos 30) = 1.10986 MPa (Gibson and Ashby's 0.22 E (t/l)³)
+  const pet = { E: 1810 }, reg = latticeCell({ slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 6 }, pet);
+  near(reg.E1, 11.4700, 1e-3, 'E1'); near(reg.E2, 11.4700, 1e-3, 'E2'); near(reg.nu12, 1, 1e-12, 'nu12'); near(reg.nu21, 1, 1e-12, 'nu21');
+  near(reg.G12, 2.8675, 1e-3, 'G12'); near(reg.density, 0.161658, 1e-5, 'density'); near(reg.wall2, 0.727461, 1e-5, 'wall2'); near(reg.buckle2, 1.10986, 1e-4, 'buckle2');
+  near(reg.buckle2 / (1810 * 0.14 ** 3), 0.2234, 1e-3, 'the 0.22 of a regular cell');
+  // Re-entrant: l = 6, h = 9, θ = −30°: h/l + sin θ = 1.5 − 0.5 = 1.
+  //   E2 = 1810 × 0.002744 × 1 / cos³ 30 = 7.6466; E1 = 1810 × 0.002744 × cos 30 / (1 × 0.25) = 17.2049
+  //   ν12 = cos² 30 / (1 × −0.5) = −1.5; ν21 = −0.5 / 0.75 = −0.6667. E1 ν21 = E2 ν12 (both −11.47), as they must
+  const re = latticeCell({ slant: 6, upright: 9, angle: -30, thickness: 0.84, depth: 6 }, pet);
+  near(re.E2, 7.6466, 1e-3, 'E2'); near(re.E1, 17.2049, 1e-3, 'E1'); near(re.nu12, -1.5, 1e-12, 'nu12'); near(re.nu21, -2 / 3, 1e-12, 'nu21');
+  near(re.E1 * re.nu21, re.E2 * re.nu12, 1e-9, 'reciprocity'); assert.ok(re.reentrant && !reg.reentrant);
+  // its narrowest opening: top point to bottom point, 9 − 2 × 6 × 0.5 − 0.84 / cos 30 = 2.03005
+  near(re.gap, 2.03005, 1e-4, 'gap');
+  const code = (fn) => { try { fn(); } catch (e) { return e.code; } return 'none'; };
+  const cell = { slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 6 };
+  assert.equal(code(() => latticeCell({ ...cell, angle: 0 }, pet)), 'lattice.angle');
+  assert.equal(code(() => latticeCell({ ...cell, angle: 90 }, pet)), 'lattice.angle');
+  assert.equal(code(() => latticeCell({ ...cell, angle: -30, upright: 5 }, pet)), 'lattice.cross', 'uprights under 2 × 6 × sin 30 = 6 let the points cross');
+  assert.equal(code(() => latticeCell({ ...cell, thickness: 11 }, pet)), 'lattice.thick');
+  assert.equal(code(() => latticeCell({ ...cell, slant: -1 }, pet)), 'lattice.size');
+  assert.equal(code(() => latticeCell(cell, {})), 'lattice.material');
+  assert.equal(code(() => latticeBlockModel({ ...cell, across: 1.5, rows: 2 }, pet)), 'lattice.count');
+  assert.equal(code(() => latticeBlockModel({ ...cell, across: 2, rows: 2, ends: 'glued' }, pet)), 'lattice.ends');
+  assert.match(String((() => { try { latticeCell({ ...cell, angle: -30, upright: 5 }, pet); } catch (e) { return e.message; } })()), /over 2 l \|sin θ\| = 6\.000 mm/);
+});
+
+test('latticeBlockModel: a wide block between sliding plates comes to Gibson and Ashby\'s E2, Poisson\'s ratio, wall strain and buckling; bonded plates stiffen a short block', () => {
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), pet = { E: 1810 };
+  // Thin walls (t / l = 0.033, so the walls' stretch the formulas leave out is small), 32 cells across, plates that
+  // press without holding the walls across: the frame of beams is within 2.5% of E2 b W / H, the side edges' half
+  // cells taking the rest, and within 1% of ν21 and of the wall strain 3 (t/l)(h/l + sin θ) / cos θ per strain
+  for (const [angle, h] of [[30, 6], [-30, 9]]) {
+    const m = latticeBlockModel({ slant: 6, upright: h, angle, thickness: 0.2, depth: 10, across: 32, rows: 2, ends: 'sliding' }, pet), H = 2 * (h + 6 * Math.sin((angle * Math.PI) / 180));
+    near(m.stiffness / m.estimate, 0.985, 0.012, `${angle}°: the frame's stiffness over Gibson and Ashby's`);
+    near(m.poisson, m.cell.nu21, 0.01 * Math.abs(m.cell.nu21), `${angle}°: Poisson's ratio`);
+    near((m.strain(0.01) * H) / 0.01 / m.cell.wall2, 1, 0.01, `${angle}°: the walls' strain`);
+  }
+  // more cells across, less of the side edges: the ratio climbs towards 1
+  const r = (n) => { const m = latticeBlockModel({ slant: 6, upright: 6, angle: 30, thickness: 0.2, depth: 10, across: n, rows: 2, ends: 'sliding' }, pet); return m.stiffness / m.estimate; };
+  assert.ok(r(8) < r(16) && r(16) < 1);
+  // buckling of a regular honeycomb, 4 × 4 cells between sliding plates: Gibson and Ashby's 0.22 E (t/l)³ over the
+  // block's face, to 3% (the frame's walls each cut in four)
+  const b = latticeBlockModel({ slant: 6, upright: 6, angle: 30, thickness: 0.42, depth: 10, across: 4, rows: 4, ends: 'sliding' }, pet);
+  near(b.buckling.force / (b.cell.buckle2 * b.size[0] * 10), 1, 0.03, 'buckling');
+  near(b.buckling.travel, b.buckling.force / b.stiffness, 1e-9, 'the travel it buckles at');
+  // bonded plates (the default) hold the walls' ends from sliding across: a block 8 cells wide and 2 rows tall, whose
+  // cells want to spread (ν = 1), is several times stiffer than the formula says; sliding, it is a little softer
+  const wide = { slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 10, across: 8, rows: 2 };
+  const bonded = latticeBlockModel(wide, pet), sliding = latticeBlockModel({ ...wide, ends: 'sliding' }, pet);
+  assert.ok(bonded.stiffness / bonded.estimate > 4, `bonded ${bonded.stiffness / bonded.estimate}`);
+  near(sliding.stiffness / sliding.estimate, 0.875, 0.01, 'sliding');
+  // a re-entrant block draws its sides in; a honeycomb bulges them
+  assert.ok(bonded.poisson > 0 && latticeBlockModel({ ...wide, upright: 9, angle: -30 }, pet).poisson < 0);
+});
+
+test('latticeBlock: the block\'s shape weighs what its model says, each inside corner rounded, and the bench\'s spring block is sized for its load with twice the margin', async () => {
+  const fs = await import('node:fs');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = { E: 1810, strainLimit: 34 / 1810 / 1.5, density: 1.27, name: 'PETG' };
+  // One cell across, two rows (honeycomb l = h = 6, θ = 30, t = 0.84, depth 6): the openings have 4 inside corners
+  // of 90° at the plates (the half cells' uprights) and 14 of 120° (3 in each half cell, 4 in each of the two side
+  // cells of the middle row, whose outer corners the sides cut off). Rounding a corner of angle φ to r = 0.42 with n
+  // chords over its turn α = 180° − φ adds r² (cot(φ/2) − (n/2) sin(α/n)) of wall:
+  //   90°, n = 6: 0.1764 × (1 − 3 sin 15°) = 0.1764 × 0.223543 = 0.039433
+  //   120°, n = 4: 0.1764 × (0.577350 − 2 sin 15°) = 0.1764 × 0.059712 = 0.010533
+  //   (4 × 0.039433 + 14 × 0.010533) × 6 deep = 1.83118 mm³
+  const one = { slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 6, across: 1, rows: 2 };
+  const rounded = latticeBlockModel(one, petg), sharp = latticeBlockModel({ ...one, fillet: 0 }, petg);
+  near(rounded.volume - sharp.volume, 1.83118, 1e-4, 'the rounds');
+  // the bench's block: re-entrant, l 10, h 15, θ −20°, two lines thick, 6 deep, 2 across, 4 rows, 3 mm plates
+  const bench = { slant: 10, upright: 15, angle: -20, thickness: 0.84, depth: 6, across: 2, rows: 4, plate: 3 };
+  const g = latticeBlock(bench), m = latticeBlockModel(bench, petg), box = measureBoundingBox(g);
+  near(measureVolume(g), m.volume, 1e-6 * m.volume, 'the shape\'s volume is the model\'s');
+  assert.ok(onePiece(g), 'one piece');
+  // its box: x from −l cos 20 − t/2 = −9.8169 to 3 l cos 20 + t/2 = 28.6108; y from −3 to 4 (15 − 10 sin 20) + 3 = 49.3192
+  near(box[0][0], -9.8169, 1e-4, 'x0'); near(box[1][0], 28.6108, 1e-4, 'x1'); near(box[0][1], -3, 1e-9, 'y0'); near(box[1][1], 49.3192, 1e-4, 'y1');
+  // sized for 5 N: 5.09 N/mm takes it 0.98 mm, and the walls reach PETG's 1.25% at 2.03 mm (2.06 times); they buckle
+  // at 30.3 N (6 times the load); its sides draw in 0.45 for each unit it is pressed; 3.72 g
+  const travel = 5 / m.stiffness;
+  near(m.stiffness, 5.086, 0.005, 'stiffness'); near(m.travel(petg.strainLimit), 2.029, 0.005, 'travel to the limit');
+  near(m.travel(petg.strainLimit) / travel, 2.06, 0.01, 'margin'); near(m.buckling.force, 30.3, 0.1, 'buckling');
+  near(m.poisson, -0.448, 0.005, 'Poisson'); near(m.grams, 3.72, 0.005, 'grams');
+  const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, found = latticeFindings({ ...bench, travel }, printer, petg, m), by = (c) => found.find((f) => f.code === c);
+  for (const c of ['lattice.lines', 'lattice.gap', 'lattice.direction', 'lattice.strain', 'lattice.buckle']) assert.equal(by(c)?.level, 'pass', c);
+  assert.match(by('lattice.strain').text, /pressed 0\.98 mm, the walls see 0\.61% strain, within PETG limit of 1\.25% \(2\.06 times\)/);
+  const far = latticeFindings({ ...bench, travel: 3 }, printer, petg, m);
+  assert.equal(far.find((f) => f.code === 'lattice.strain').level, 'fail'); assert.match(far.find((f) => f.code === 'lattice.strain').text, /at most 2\.03 mm/);
+  assert.equal(latticeFindings({ ...bench, travel: 7 }, printer, petg, m).find((f) => f.code === 'lattice.buckle').level, 'warn');
+  assert.equal(latticeFindings({ ...bench, thickness: 0.5 }, printer).find((f) => f.code === 'lattice.lines').level, 'fail');
+  assert.equal(latticeFindings({ ...bench, thickness: 1 }, printer).find((f) => f.code === 'lattice.lines').level, 'warn');
+  assert.equal(latticeFindings({ ...bench, depth: 6.1 }, printer).find((f) => f.code === 'lattice.layers').level, 'warn');
+  assert.equal(latticeFindings({ ...bench, upright: 8 }, printer).find((f) => f.code === 'lattice.gap').level, 'fail', 'the points 8 − 6.840 − 0.894 = 0.266 apart, under two lines');
+  // the bench object's rules say the model's figures
+  const obj = JSON.parse(fs.readFileSync(new URL('../../examples/bench/projects/flexures/objects/lattice.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n')), V = obj.variables;
+  for (const k of ['slant', 'upright', 'angle', 'depth', 'across', 'rows', 'plate']) assert.equal(V[k].value, bench[k], k);
+  assert.equal(V.thickness.value, 'x1c.line * 2');
+  assert.ok(V.load.rule.includes(`takes it ${travel.toFixed(2)} mm`) && V.load.rule.includes(`go ${m.travel(petg.strainLimit).toFixed(2)} mm`) && V.load.rule.includes(`(${(m.travel(petg.strainLimit) / travel).toFixed(2)} times the margin)`), V.load.rule);
+});
+
+test('latticeCell: an ordinary honeycomb\'s narrowest opening runs straight across between its parallel slanted walls, and lattice.gap reads it', () => {
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), pet = { E: 1810 };
+  // l 1.8, h 0.2, θ 60, t 0.84. Up y between the points: 0.2 + 2 × 1.8 × 0.8660 − 0.84 / 0.5 = 1.638 mm. Across x
+  // between the uprights: 2 × 1.8 × 0.5 − 0.84 = 0.96 mm. Straight across between two opposite slanted walls, along
+  // their normal (sin θ, cos θ): cos 60 × (0.2 + 2 × 1.8 × sin 60) − 0.84 = 0.5 × 3.3177 − 0.84 = 0.819 mm, the narrowest,
+  // and under two 0.42 mm lines (0.84 mm), so the walls print joined
+  const thin = { slant: 1.8, upright: 0.2, angle: 60, thickness: 0.84, depth: 4 };
+  near(latticeCell(thin, pet).gap, 0.8188, 1e-3, 'slanted walls set the gap');
+  const g = latticeFindings(thin, { line: 0.42, layer: 0.2 }).find((f) => f.code === 'lattice.gap');
+  assert.equal(g.level, 'fail'); assert.match(g.text, /0\.82 mm, under two lines/);
+  // thin walls (t 0.01): l 5, h 1, θ 60 gives 0.5 × (1 + 10 × 0.8660) − 0.01 = 4.820, under 2 × 2.5 − 0.01 = 4.99;
+  // l 5, h 2, θ 45 gives 0.7071 × (2 + 10 × 0.7071) − 0.01 = 6.404, under 2 × 3.5355 − 0.01 = 7.061
+  near(latticeCell({ slant: 5, upright: 1, angle: 60, thickness: 0.01, depth: 4 }, pet).gap, 4.820, 1e-3, 'l5 h1 θ60');
+  near(latticeCell({ slant: 5, upright: 2, angle: 45, thickness: 0.01, depth: 4 }, pet).gap, 6.4036, 1e-3, 'l5 h2 θ45');
+  // a regular cell is the same width each way: 2 × 6 × cos 30 − 0.84 = 9.552
+  near(latticeCell({ slant: 6, upright: 6, angle: 30, thickness: 0.84, depth: 6 }, pet).gap, 9.5523, 1e-3, 'regular');
 });
 
 test('corner-filleted and hyperbolic hinges: the fillet hinge is a strip EI / l when its rounds are small and the circular notch when its flat is; it turns four times as far as a notch as deep; the hyperbola is the stiff, precise end', async () => {

@@ -601,6 +601,77 @@ strain comes from the physics rather than its own model. `lamina.pin` fails a po
 body, and reports how tall the carried body turns on it. Across the plane, the cap and the floor hold the carried
 body to the post's body after their lift.
 
+## Lattices: a block that springs
+
+A block of honeycomb cells between two solid plates is a soft spring: pressed, its slanted walls bend, so it gives
+many times more than solid plastic would. Lean the slanted walls inwards (a re-entrant, or auxetic, honeycomb) and the
+block's sides draw in when it is pressed instead of bulging out, and its walls see less strain for the same travel.
+
+```js
+import { latticeCell, latticeBlock, latticeBlockModel, latticeFindings, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }); // strain limit 1.25%
+const block = { slant: 10, upright: 15, angle: -20, thickness: 0.84, depth: 6, across: 2, rows: 4, plate: 3 };
+const m = latticeBlockModel(block, petg);
+m.stiffness;              // 5.09 N/mm: 5 N presses it 0.98 mm
+m.travel(petg.strainLimit); // 2.03 mm before the walls reach PETG's limit: 2.06 times the travel at 5 N
+m.buckling.force;         // 30.3 N: past it the walls buckle and the block softens sharply
+m.poisson;                // -0.45: its sides draw in
+m.grams;                  // 3.72
+latticeBlock(block);      // the shape: 38.4 x 52.3 x 6 mm, every inside corner rounded
+latticeFindings({ ...block, travel: 0.98 }, { line: 0.42, layer: 0.2 }, petg, m); // lines, openings, layers, strain, buckling
+```
+
+The cell is drawn in the bed's plane: upright walls of length h along y, slanted walls of length l at an angle θ to
+x (below 0 for re-entrant), every wall t thick and b deep (its height off the bed). Printed on its face, every wall
+bends within its layers. `across` counts whole cells along x (the rows between have half cells at the sides), `rows`
+the cell rows from plate to plate; each plate cuts its row's uprights at their middles.
+
+`latticeCell(cell, material)` gives the cell's own properties, from the slanted walls' bending (Gibson and Ashby):
+
+| Property | Formula |
+|---|---|
+| Density against solid | (t/l)(h/l + 2) / (2 cos θ (h/l + sin θ)) |
+| Young's modulus along x, E1 | E (t/l)³ cos θ / ((h/l + sin θ) sin² θ) |
+| Young's modulus along y, E2 | E (t/l)³ (h/l + sin θ) / cos³ θ |
+| Poisson's ratio, pulled along x, ν12 | cos² θ / ((h/l + sin θ) sin θ) |
+| Poisson's ratio, pulled along y, ν21 | (h/l + sin θ) sin θ / cos² θ |
+| Shear modulus, G12 | E (t/l)³ (h/l + sin θ) / ((h/l)² (1 + 2h/l) cos θ) |
+| A wall's peak strain for a strain ε along x | 3 (t/l) cos θ / abs(sin θ) × ε |
+| A wall's peak strain for a strain ε along y | 3 (t/l)(h/l + sin θ) / cos θ × ε |
+| Stress along y at which the uprights buckle | E n² π² (t/l)³ / (24 (h/l)² cos θ), n = 0.686 |
+| The narrowest opening, `gap` (geometry) | the least of 2 l cos θ - t (between the uprights) and cos θ (h + 2 l sin θ) - t (straight across between two opposite slanted walls); re-entrant, the least of 2 l cos θ - t and h + 2 l sin θ - t / cos θ (up y between its inward points) |
+
+A regular honeycomb (h = l, θ = 30°) has E1 = E2 = 2.31 E (t/l)³ and ν = 1; its buckling stress is 0.22 E (t/l)³.
+The formulas leave out the walls' stretching, so they hold while the walls are thin (t / l under about 0.25), and the
+end-fixity factor n = 0.686 is that of a regular cell, an estimate for others.
+
+`latticeBlockModel(block, material)` solves the whole block as a frame of beams in `@rulecad/fea`: each wall a beam
+on its centreline, joined rigidly where walls meet, the bottom plate held and the top plate pressed straight down. It
+gives the stiffness, the most strain any wall sees at a travel (bending and stretch together), the force and travel
+at which the walls first buckle (each wall cut in four for that), the sides' strain at mid-height over the press's,
+the size, the volume and the grams. `estimate` is E2 over the block's face, b W / H, for comparison:
+
+- With `ends: 'sliding'` (pressed between smooth plates that let the walls' ends slide across), a wide block of thin
+  walls comes to Gibson and Ashby's figures: 32 cells across with t / l = 0.033, the frame's stiffness is within 2.5%
+  of the estimate (the half cells at the sides take the rest) and its Poisson's ratio and wall strain within 1%. Its
+  buckling force is theirs to 3%.
+- With `ends: 'bonded'` (the default, as the plates print with the cells), the plates stop the cells spreading, so a
+  short, wide block is much stiffer than the estimate: a honeycomb 8 cells wide and 2 rows tall is 4.9 times it. A
+  tall, narrow one is a little softer, as its free sides count for more.
+
+`latticeFindings` checks that the walls are whole printed lines (`lattice.lines`), each cell's narrowest opening is at
+least two lines so its walls print apart (`lattice.gap`), the depth is whole layers (`lattice.layers`), the cells lie
+in the bed's plane (`lattice.direction`), the walls' strain at the travel is within the material's limit
+(`lattice.strain`) and the travel is short of buckling (`lattice.buckle`). A cell whose walls would cross, fill it, or
+lean too little or too far is refused by name (`lattice.cross`, `lattice.thick`, `lattice.angle`).
+
+PETG's strain limit keeps a lattice's travel short: the block above, 52 mm tall, gives 2 mm. A plain honeycomb of the
+same walls gives less, as its walls bend more for a press. A softer, longer spring wants thinner walls against longer
+cells, more rows, or a material that bends further (TPU).
+
+The bench has this block as `flexures/lattice` (`npx cad check flexures/lattice`).
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
@@ -622,4 +693,5 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Wahl, A. M., *Mechanical Springs*, 2nd ed., McGraw-Hill, 1963: flat spiral springs, the moment and stiffness EI / L with the outer end clamped.
 - Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear, and an open thin-walled section's (the split tube).
 - Schenk, M., and Guest, S. D., "Geometry of Miura-folded metamaterials", *Proceedings of the National Academy of Sciences* 110(9), 3276-3281, 2013: the Miura cell and its fold angle.
+- Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.

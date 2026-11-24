@@ -71,6 +71,35 @@ Two more steps shape the result:
   what holds it up; `result.unsupported` says how much of the kept material is still left hanging, which means there
   wasn't material enough to stand it on.
 
+- **Process filters** (optional) hold the result to what another way of making it can make. `mill: '+z'` (the tool
+  cuts from that side) and `cast: '+z'` (a mould drawn off that way) make each cell as solid as every cell between
+  it and that side, by a smooth running maximum along each line (`drawFilter`, never below the larger of the two
+  densities it joins and never above 1), so nothing is undercut. With
+  `cast: { draw: 'z', parting }` the mould is in two halves, drawn off both ways from the parting plane (mm; the
+  space's middle by default). `symmetry: { mirror: 'xy', turns: 4, axis: 'z' }` and `extrude: 'x'` tie cells
+  together (`tieFilter`): each design density is the average over its mirror images, its copies turned about the
+  middle, or its line along the axis, so the part is the same in each. The mirror planes are the grid's middle
+  planes, which are the middle of the space and keep regions (in 3D, except along an overhang's build direction).
+  A mirror or turn that swaps the tool's side, the draw or the build direction for its opposite, or a quarter turn
+  that moves it onto another axis, is refused by name: the part would have to be made from both sides at once. A
+  mould in two halves parted at the grid's middle maps onto itself, so it may be mirrored or half turned across its
+  draw. A process filter goes after the density filter and before the projection, in
+  place of the overhang filter: a part is printed, milled or cast, one of them.
+  `undercuts(grid, density, { from, parting })` counts the cells a tool or a mould half could not reach (none, by
+  construction, unless an avoid region or the space's own edge sits behind material); `grey(density, passive)` is
+  the share of the design cells between a tenth and nine tenths solid. A clear result has a few per cent, on its
+  surfaces. A section milled, cast or extruded across its own plane in 2D often comes out grey (a grey column bends as
+  stiffly as a solid one of its share's height, so the optimiser has no reason to choose), and its outline at half
+  density is then a guess; `voids(grid, density)` finds enclosed empty pockets,
+  which a powder bed print can't empty of powder, with each one's volume and centre. Draft angles are a degree or
+  two, less than a cell, so they are left to the drawing.
+
+Milled from above, the 3D cantilever (24 × 8 × 8 cubes, volume 0.3, 200 steps) has no undercuts from the tool's
+side and a compliance of 3227 against 2989 optimised freely, 8% less stiff, with 5.3% of its cells grey; the free
+design has over 100 cells hidden under material from above. A 2D cantilever (30 × 20 squares, 200 steps) milled from
+its top edge has no undercuts either, but over 30% of it is grey. Mirrored across its middle, a cantilever loaded at one corner comes out the same both
+sides to the last digit.
+
 Several load cases are optimised together by weight. A case weighted 0 is solved only at the end, for its figures.
 `model(spec)` exposes the analysis and its gradient, for other update methods.
 
@@ -177,6 +206,10 @@ Its gradients agree with finite differences through the filter and the projectio
 - **Compliance:** the load times how far it moves (N·mm); the inverse of stiffness.
 - **Volume:** the share of the space the result fills, 0 to 1.
 - **Filter radius:** about the thinnest member, in mm.
+- **Undercut:** material the tool or mould can't reach, because other material lies between it and the side the tool
+  comes from or the mould is drawn off to.
+- **Parting plane:** where a two-part mould's halves meet.
+- **Draft:** a slight taper on faces along the draw, so a part slides out of its mould.
 - **Von Mises stress:** one number for how hard a point of material is worked, from all its stresses together; it's
   compared with the material's strength.
 
@@ -194,6 +227,8 @@ Its gradients agree with finite differences through the filter and the projectio
   Optimization* 50, 1175–1196.
 - Langelaar (2017). An additive manufacturing filter for topology optimization of print-ready designs. *Structural and
   Multidisciplinary Optimization* 55, 871–883.
+- Gersborg, Andreassen (2011). An explicit parameterization for casting constraints in gradient driven topology
+  optimization. *Structural and Multidisciplinary Optimization* 44, 875–881.
 - Taubin (1995). A signal processing approach to fair surface design. *SIGGRAPH '95*, 351–358.
 - Senhora, Giraldo-Londoño, Menezes, Paulino (2020). Topology optimization with local stress constraints: a stress
   aggregation-free approach. *Structural and Multidisciplinary Optimization* 62, 1639–1668.
