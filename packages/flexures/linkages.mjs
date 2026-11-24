@@ -327,7 +327,7 @@ export function sliderCrankModel(p, m, o) {
   if (o?.torque) {
     const ends = [-travel, travel].map((deg) => ({ deg, F: force(deg, o.torque) })), most = ends.reduce((a, b) => (b.F > a.F ? b : a));
     const ok = ends.every((x) => x.F > 0);
-    f(ok ? 'pass' : 'fail', `${o.torque} N m driving the crank on pushes the slider ${ends.map((x) => `${n2(x.F, 1)} N at ${n2(x.deg, 1)}°`).join(' and ')}, the flexures' share taken off${ok ? `; most at ${n2(most.deg, 1)}°, where the crank and coupler come nearest in line` : ': under 0, the torque cannot turn the crank that far against the flexures'}`, 'linkage.force', { values: { ends } });
+    f(ok ? 'pass' : 'fail', `${o.torque} N m driving the crank on pushes the slider ${ends.map((x) => `${n2(x.F, 1)} N at ${n2(x.deg, 1)}°`).join(' and ')}, the flexures' share taken off${ok ? `; most at ${n2(most.deg, 1)}°, where the slider moves ${n2(Math.abs(rateR(most.deg * rad)))} mm a radian of crank` : ': under 0, the torque cannot turn the crank that far against the flexures'}`, 'linkage.force', { values: { ends } });
   }
   const clear = swept(k, (d) => sliderMoves(k, d), travel * rad);
   clearFinding(f, clear, k.gap, travel);
