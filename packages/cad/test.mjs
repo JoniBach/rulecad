@@ -1839,6 +1839,11 @@ test('a mechanism problem: cad optimise reports how far the output moves its way
     assert.match(out, /the output moves [\d.e-]+ mm its way for [\d.e-]+ mm of push: an advantage of [\d.e-]+/);
     assert.match(out, /% of the space filled/);
     assert.match(out, /40 × 20 cells of 1 mm/);
+    // A strain limit: the mechanism is checked against it at its push, with the push and travel that reach it
+    // (PLA: 39 MPa over 2680 MPa is 1.46%, so half of it is 0.73%, 19.5 MPa)
+    const spec = JSON.parse(fs.readFileSync(path.join(project, 'problems', 'inverter.json'), 'utf8'));
+    fs.writeFileSync(path.join(project, 'problems', 'strained.json'), JSON.stringify({ ...spec, title: 'A strained inverter', strain: 'pla.strength / pla.modulus / 2' }));
+    assert.match(cad('optimise', 'mech/strained'), /peak stress [\d.]+ MPa at its input force \(strain [\d.]+%\), the limit 19\.5 MPa \(0\.728%\): it reaches the limit at [\d.]+ N of push, its output then [\d.e-]+ mm along/);
   } finally { done(); }
 });
 
