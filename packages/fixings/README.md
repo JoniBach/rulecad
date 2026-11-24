@@ -69,7 +69,7 @@ and stresses in MPa.
 | [Pins](#pins) | `pinModel`, `pinHole`, `pin`, `snapPin`, `snapSocket`, `snapPinModel`, `parsePin`, `isPinName` |
 | [Printed bolts](#printed-bolts) | `printedBoltModel`, `printedBolt` |
 | [Magnets](#magnets) | `magnetModel`, `magnetSeatModel`, `magnetSeat`, `magnet`, `parseMagnet`, `isMagnetName`, `fieldShare` |
-| [Annular snaps](#annular-snaps) | `annularSnapModel`, `annularBead`, `annularGroove`, `hubFactor`, `shaftFactor`, `tubeRing` |
+| [Annular snaps](#annular-snaps) | `annularSnapModel`, `annularBead`, `annularGroove`, `snapSlots`, `skirtFinger`, `hubFactor`, `shaftFactor`, `tubeRing` |
 | [Measuring the printer's fits](#measuring-the-printers-fits) | the fixings coupon and the holds coupon |
 | [Refusals and printability](#refusals-and-printability) | `printable` |
 
@@ -796,6 +796,66 @@ the most. The beam's own checks: a long tube deflects 1/8 under a ring load, and
 example project `enclosures` in the repository's bench draws this pot and lid (`snap-pot`) and puts the lid on
 (`snap-pot-closed`).
 
+### A slotted skirt
+
+A whole skirt on a stiff box takes a hard push: 351.1 N square for the pot above. Slots cut up from the skirt's mouth
+part it into fingers, and each finger bends as a cantilever, far more easily than a ring stretches, so the push falls
+several times over. Give `slots: { count, reach, width }`: `count` fingers (3 or more), `reach` from the slots' closed
+end to the groove's top edge (where the bead pushes each finger), and `width` the slots' (default `fixings.snap_slot`,
+1 mm, at least the printer's `print_gap`). `snapSlots(model, { at, mouth })` is the cutter: the slots through the
+skirt, in the same place as the bead and groove, each ending in a full round so the root that takes the bending has
+no square corner.
+
+**The sums.** `skirtFinger` gives one finger. Its section is a sector of the skirt's ring, its sides taken as radial,
+2φ round with φ = π / n - w / (2 rm). Its second moment about its own centroid, square to its line of symmetry, is
+∫x² dA - A x̄², worked exactly for the sector, so a wide finger's curve counts: for the pot's 16 fingers it is 2.14 mm⁴,
+where a flat strip as wide is 1.85. Clamped at its root and pushed out y at `reach` L, a finger takes k y with
+k = 3 E I / L³, and its root strains 3 c y / L², c its farthest fibre from that axis: the beam formulas for a
+cantilever with an end load. The fingers side by side are n k / 2 per mm of diameter, in series with the box's wall as
+before, and their root strain is held to the same limit as a hoop strain. The lid's top no longer holds the groove
+round: each finger is clamped at its root already. The finding `snap.fingers` says what a whole skirt would take for
+the same bead.
+
+**Reach.** A short finger strains more than the ring it was cut from, so a slotted skirt wants a deeper lid: reaching
+5.8 mm, eight fingers on the pot above hold the bead to 0.087 mm of undercut, under the least the print holds. Refused
+by name: under 3 fingers, a slot narrower than `print_gap`, a reach under twice the skirt (too short to bend as a beam)
+or past the lid's top (`lidTop`), and fingers narrower than the skirt is thick.
+
+```js
+import { annularSnapModel, snapSlots, skirtFinger } from '@rulecad/fixings';
+
+const joint = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 13.8, boxFloor: 23.3 };
+const slotted = annularSnapModel({ ...joint, slots: { count: 16, reach: 11.8 } }, { pull: 10 });
+console.log(slotted.bead, slotted.force, slotted.insertion, slotted.removal, slotted.margin, slotted.lid.strain, slotted.slots.whole);
+console.log(slotted.slots.finger);
+const one = skirtFinger({ count: 16, width: 1, reach: 11.8, inside: 30.2, outside: 31.46 }, 2680);
+console.log(+one.stiffness.toFixed(2), +(one.strainPerY * 100).toFixed(3));
+const slots = snapSlots(slotted, { at: 20, mouth: 18.3 });
+console.log(slots.model === slotted);
+try { annularSnapModel({ ...joint, slots: { count: 16, reach: 14 } }); } catch (e) { console.log(e.message.slice(0, 89)); }
+```
+
+```text
+0.4 32.5 49.2 97.4 9.74 0.004 217.8
+{
+  angle: 20.64,
+  width: 11.11,
+  inertia: 2.1412,
+  fibre: 0.9564,
+  stiffness: 10.5
+}
+10.48 2.061
+true
+annularSnapModel: slots.reach of 14 mm runs past the lid's top, 13.8 mm from the groove (
+```
+
+The first line reads: the same pot with its bead 14 mm under the rim, the lid's skirt in 16 fingers by 1 mm slots,
+each 11.8 mm from its root to the groove. The bead is the least the print holds, 0.4 mm. Its transverse force is
+32.5 N, where a whole skirt there would take 217.8 N: it goes on square with 49.2 N and comes off with 97.4 N, 9.74
+times the 10 N pull. The fingers' roots strain 0.40%, under PLA's 0.61%. Each finger is 20.64° round, 11.11 mm wide at
+its middle, and takes 10.48 N per mm it is pushed out; each millimetre strains its root 2.061%. The bench's `snap-pot`
+has this lid as its `slotted` variant, and `snap-pot-slotted-closed` puts it on.
+
 ## Measuring the printer's fits
 
 Every clearance a hole, a seat or a pocket is drawn with is a rule of the printer's, and most are estimates until two
@@ -890,7 +950,7 @@ hole: depth is a number above 0, in mm (got -2)
   `press`, `thread_gap`, `snap_clearance`, `pin_press`, `pin_slip`, `magnet_press`, `magnet_glue` and `magnet_crush`; a steel dowel's shear strength and the play a
   snap pin's shaft may have; a magnet's pull at a grade other than its seller's and across a gap, the grip of a press
   or of crush ribs on a magnet, the three layers under a magnet's pocket, and every strength of a printed bolt; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
-  an annular snap's friction (`snap_friction`, 0.5) and least undercut (`snap_least`), its stiffness between a free end
+  an annular snap's friction (`snap_friction`, 0.5), least undercut (`snap_least`) and slot width (`snap_slot`, 1 mm), a slotted skirt's fingers clamped at their roots with radial sides, its stiffness between a free end
   and a remote joint, a closed end taken as fully closed, the skirt's full thickness at its groove, and its plastic's yield strain (strength over modulus) and modulus in place of the guide's secant modulus;
   a material's shear strength (its tensile strength over √3) and what it bears under a head (its strength); the nut
   factor K (0.2); the diameter of thread asked in an insert; the millimetre kept at a screw's tip; and every mass.
@@ -954,6 +1014,7 @@ with its `rule`, `kind` and `source`.
 | Its forces along the push | W = P (μ + tan α) / (1 - μ tan α), α the lead going on and the return face coming off; refused where μ tan α ≥ 1 on the lead | The same guide (page 14) |
 | A closed end near the joint | w'''' + 4 w = 0 in ξ = βx, β⁴ = 3 (1 - ν²) / (R² t²); a ring load q steps w''' by q / (D β³), D = E t³ / 12 (1 - ν²); a free end has w'' = w''' = 0, a closed one w = w' = 0; the part is stiffer by w(open) / w(closed) | Hetényi, Beams on Elastic Foundation (1946): a long tube gives w = Pβ / 2k, a free end 2Pβ / k; the end taken as fully closed, an estimate on the stiff side |
 | The bending at a closed end | M = w''(ξ) q / β, q = P / (π d); ε = 6 M (1 - ν²) / (E t²) | Plate bending, with the same beam |
+| A slotted skirt's finger | φ = π / n - w / (2 rm); A = φ (ro² - ri²), A x̄ = 2 (ro³ - ri³) sin φ / 3, I = (ro⁴ - ri⁴)(φ + sin φ cos φ) / 4 - A x̄²; k = 3 E I / L³; root strain 3 c y / L²; the lid n k / 2 per mm of diameter | The area moments of a ring's sector, and the cantilever with an end load (deflection P L³ / 3 E I, root stress P L c / I) from Euler-Bernoulli beam theory; the root taken as clamped, an estimate on the stiff side |
 
 VDI 2230 and Machinery's Handbook are named because the plan asked for them. Neither was read at first hand for
 this package: the handbook's thread shear area and stress area are applied as the pages above give them, and VDI
@@ -986,6 +1047,7 @@ this package: the handbook's thread shear area and stress area are applied as th
 - **Start**: one of the separate threads wound side by side on a multi-start screw.
 - **Stripping**: a thread failing by its teeth shearing off.
 - **Secant modulus**: a plastic's stress over its strain at a given strain, a little under its modulus at small strains.
+- **Slotted skirt**: a lid's skirt cut by slots from its mouth into fingers, each a cantilever, so an annular snap goes on with a smaller push.
 - **Teardrop**: a round hole with a pointed top, so a hole lying on its side prints with no support.
 - **Trapezoidal thread**: the flat-topped thread of a lead screw, with flanks 30° apart.
 - **Undercut**: how far a snap's bead stands past the part it has to pass, so the parts must bend to let it by.
