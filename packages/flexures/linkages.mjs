@@ -296,7 +296,7 @@ function sliderMoves(k, d) {
  *   travel: the crank's swing each way (degrees; default 0.8 of the strain-limited swing); torque: at the crank, N m
  * @returns {{ stroke: number[], slide: (deg: number) => number, rate: (deg: number) => number, force: (deg: number, torque: number) => number,
  *   torque: (deg: number) => number, strain: (deg: number) => number, swing: number[], travel: number, K: number,
- *   guide: number, drop: number, solve: (deg: number) => object, clear: object, grams: number | null, findings: object[], rests: string[] }}
+ *   guide: number, drop: number, clear: object, grams: number | null, findings: object[], rests: string[] }}
  *   slide(deg): the slider's move (mm) for the crank's turn; rate(deg): dx/dθ (mm a radian); force(deg, torque):
  *   the push at the slider for a torque at the crank (N m), the flexures' and guide's share taken off (N);
  *   torque(deg): what the flexures and guide ask at the crank (N·mm); stroke: the slider's move at -travel and

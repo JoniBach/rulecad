@@ -43,14 +43,15 @@ const spansOf = (a, b, half, L, n = 16) => ({ path: Array.from({ length: n + 1 }
  * @param {ReturnType<typeof beamSystem>} sys @param {string} body @param {number} to @param {number} [steps]
  * @param {Float64Array} [start] @param {Map<number, number>} [loads] steady loads beside the push (a nudge that picks
  *   the way the beams buckle, where a perfect beam would stand on the knife edge between two)
+ * @param {Map<number, number>} [held] other unknowns held throughout (where the frame is supported, when it is a body)
  * @returns {{ curve: { push: number, force: number, strain: number }[], snap: { push: number, force: number }, back: { push: number, force: number },
  *   middle: number | null, second: number | null, bistable: boolean, strain: number, converged: boolean }}
  */
-export function snapCurve(sys, body, to, steps = 60, start, loads = new Map()) {
+export function snapCurve(sys, body, to, steps = 60, start, loads = new Map(), held = new Map()) {
   const d = sys.body[body].dof + 1, y0 = start ? start[d] : 0, curve = [];
   let q = start, ok = true;
   for (let i = 1; i <= steps; i++) {
-    const r = equilibrium(sys, { held: new Map([[d, y0 - (to * i) / steps]]), loads, start: q, iterations: 80 });
+    const r = equilibrium(sys, { held: new Map([...held, [d, y0 - (to * i) / steps]]), loads, start: q, iterations: 80 });
     q = r.q; ok = ok && r.converged;
     curve.push({ push: (to * i) / steps, force: -r.reaction.get(d), strain: Math.max(...Object.values(r.strain)) });
   }
@@ -79,17 +80,25 @@ function readCurve(curve) {
  *   length: each leaf's, shuttle to root (mm); angle: its tilt up from the roots' line toward the shuttle (degrees,
  *   above 0 and at most 30); thickness, width: the leaves'; fillet: the rounds where they meet the shuttle and the
  *   roots (default 1); shuttle: the shuttle's length along x (default 8); block: the root blocks' length along x
- *   (default 6); base: the frame's bar under the shuttle (default 6); gap: the least air (default 0.3)
+ *   (default 6); base: the frame's bar under the shuttle (default 20: the leaves' squeeze pushes the roots out above
+ *   it, and a shallower bar bends enough to take much of the snap away; see tiltedBistableModel); gap: the least air
+ *   (default 0.3)
  */
 function tiltedLayout(p, what) {
   if (!p || typeof p !== 'object') throw new Error(`${what}: give the bistable's parameters (length, angle, thickness, width)`);
-  const L = size(what, p, 'length'), t = size(what, p, 'thickness'), W = size(what, p, 'width'), s = size(what, p, 'shuttle', 'shuttle', 8), blk = size(what, p, 'block', 'block', 6), hb = size(what, p, 'base', 'base', 6), gap = size(what, p, 'gap', 'gap', 0.3), r = p.fillet ?? 1;
+  const L = size(what, p, 'length'), t = size(what, p, 'thickness'), W = size(what, p, 'width'), s = size(what, p, 'shuttle', 'shuttle', 8), blk = size(what, p, 'block', 'block', 6), hb = size(what, p, 'base', 'base', 20), gap = size(what, p, 'gap', 'gap', 0.3), r = p.fillet ?? 1;
   const al = p.angle;
   if (typeof al !== 'number' || !(al > 0 && al <= 30)) throw new Error(`${what}: angle is the leaves' tilt in degrees, above 0 and at most 30 (got ${JSON.stringify(p.angle)}): steeper leaves bend more than they squeeze, and won't stay over`);
   if (!(typeof r === 'number' && r >= 0 && 2 * r < L)) throw new Error(`${what}: fillet is the leaves' rounds, 0 or more and under half a leaf (got ${JSON.stringify(p.fillet)})`);
   const a = al * rad, h = L * Math.sin(a), run = L * Math.cos(a), pw = t + 2 * r + 2; // pw: the pads' width across a leaf
-  const leaves = [1, -1].map((sx) => ({ sx, a: [sx * s / 2, h], b: [sx * (s / 2 + run), 0] })); // from the shuttle down to the root
   const sh = Math.max(4, pw), yLow = -h - sh / 2 - gap - 1; // the shuttle's height; its lowest when over (at -h), and a gap
+  // each leaf from the shuttle down to its root; the root block's face square to the leaf (hi and lo its ends), then
+  // from lo down at 45° to the bar's top (the foot), so its corners there open to 135°; the block runs out to outer
+  const leaves = [1, -1].map((sx) => {
+    const a = [sx * s / 2, h], b = [sx * (s / 2 + run), 0], u = unit(sub(b, a)), n = [-u[1], u[0]], e1 = add(b, mul(n, pw / 2)), e2 = sub(b, mul(n, pw / 2));
+    const lo = e1[1] < e2[1] ? e1 : e2, hi = e1[1] < e2[1] ? e2 : e1;
+    return { sx, a, b, u, lo, hi, foot: [lo[0] - sx * (lo[1] - yLow), yLow], outer: sx * (s / 2 + run + blk) };
+  });
   return { L, t, W, s, blk, hb, gap, r, a, h, run, pw, leaves, sh, yLow, half: beamProfile({ length: L, thickness: t, fillet: r }, 'guided') };
 }
 
@@ -106,14 +115,12 @@ export function tiltedBistable(p, { part = 'all' } = {}) {
   if (!['all', 'frame', 'shuttle'].includes(part)) throw new Error(`tiltedBistable: part is all, frame or shuttle (got ${JSON.stringify(part)})`);
   const shuttle = [rect(-k.s / 2, k.s / 2, k.h - k.sh / 2, k.h + k.sh / 2)], frame = [], leaves = [];
   for (const lf of k.leaves) {
-    const u = unit(sub(lf.b, lf.a));
+    const u = lf.u;
     leaves.push(beamOutline(lf.a, lf.b, k.half, k.L, k.t, 0.5, k.r));
     shuttle.push(pad(lf.a, mul(u, -1), 2, k.pw)); // the shuttle's face square to the leaf
-    // the root block: the face the leaf leaves square to it, then from that face's lower end down at 45° to the bar,
-    // so its corners there open to 135°, under the leaf (which leaves its root rising at the tilt, or falling at it
-    // when over); outward to the frame's end
-    const n = [-u[1], u[0]], e1 = add(lf.b, mul(n, k.pw / 2)), e2 = sub(lf.b, mul(n, k.pw / 2)), lo = e1[1] < e2[1] ? e1 : e2, hi = e1[1] < e2[1] ? e2 : e1;
-    const foot = [lo[0] - lf.sx * (lo[1] - k.yLow), k.yLow], outer = lf.sx * (k.s / 2 + k.run + k.blk), pts = [hi, lo, foot, [outer, k.yLow], [outer, hi[1]]];
+    // the root block (its corners at the foot open to 135°, under the leaf, which leaves its root rising at the tilt,
+    // or falling at it when over); outward to the frame's end
+    const pts = [lf.hi, lf.lo, lf.foot, [lf.outer, k.yLow], [lf.outer, lf.hi[1]]];
     const area = pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0);
     frame.push(polygon({ points: area > 0 ? pts : pts.slice().reverse() })); // anticlockwise, as JSCAD's outlines run
   }
@@ -132,10 +139,13 @@ export function tiltedBistable(p, { part = 'all' } = {}) {
  * @param {{ steps?: number, printer?: { line: number, layer: number, wall_min?: number } }} [o] steps: the curve's
  *   (default 60, over 2.4 rises)
  * @returns {{ rise: number, stiffness: number, solvedStiffness: number, snap: { push: number, force: number }, back: { push: number, force: number },
- *   middle: number | null, second: number | null, bistable: boolean, strain: number, curve: object[], grams: number | null, findings: object[], rests: string[] }}
+ *   middle: number | null, second: number | null, bistable: boolean, strain: number, curve: object[],
+ *   rigid: { snap: { push: number, force: number }, back: { push: number, force: number }, second: number | null, bistable: boolean },
+ *   grams: number | null, findings: object[], rests: string[] }}
  *   stiffness: at rest, both leaves as fixed-guided beams, 2 (EA/L sin²α + 12EI/L³ cos²α) (N/mm); snap: the most
  *   push and where (mm down from rest); back: the most it pulls back on (a negative push) and where; second: where it
- *   rests again, mm down from rest
+ *   rests again, mm down from rest. These with the frame's bar bending, the frame sat on its two blocks; rigid: the
+ *   same on a frame that does not give (screwed down flat it comes near these)
  */
 export function tiltedBistableModel(p, m, o = {}) {
   const what = 'tiltedBistableModel', k = tiltedLayout(p, what);
@@ -146,28 +156,52 @@ export function tiltedBistableModel(p, m, o = {}) {
   const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra });
   const A = k.W * k.t, I = (k.W * k.t ** 3) / 12, sa = Math.sin(k.a), ca = Math.cos(k.a);
   const stiffness = 2 * ((m.E * A) / k.L * sa * sa + ((12 * m.E * I) / k.L ** 3) * ca * ca);
-  const sys = beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, shuttle: { at: [0, k.h] } }, beams: k.leaves.map((lf, i) => ({ name: `leaf ${i + 1}`, ...spansOf(lf.a, lf.b, k.half, k.L), width: k.W, E: m.E, from: 'shuttle', to: 'ground' })), segments: 32 });
+  // Two systems. The leaves on a rigid frame (the ground at the roots), for the stiffness at rest and to compare. And
+  // the part as drawn: the frame's bar a beam from its middle out to each block's foot, each root block a body. The
+  // leaves' squeeze pushes the roots out a few millimetres above the bar, so the bar bends and the blocks turn
+  // outward, and the leaves are squeezed less: with the roots that far above it, a bar no deeper than the blocks
+  // gives more than the leaves do along their length. The frame sat on its two blocks, held up and down there and free
+  // to spread and turn (on a bench, or on two screws that do not clamp); the bar's middle held only as the mirror
+  // holds it (no slide across, no turn). Screwed down flat, it is stiffer, nearer the rigid frame's figures.
+  const leafBeams = (to) => k.leaves.map((lf, i) => ({ name: `leaf ${i + 1}`, ...spansOf(lf.a, lf.b, k.half, k.L), width: k.W, E: m.E, from: 'shuttle', to: to(i) }));
+  const rigid = beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, shuttle: { at: [0, k.h] } }, beams: leafBeams(() => 'ground'), segments: 32 });
+  const yc = k.yLow - k.hb / 2, bodies = { middle: { at: [0, yc] }, shuttle: { at: [0, k.h] } }, bars = [];
+  k.leaves.forEach((lf, i) => {
+    bodies[`block ${i + 1}`] = { at: [(lf.foot[0] + lf.outer) / 2, yc] }; // the block's support, under its middle
+    bars.push({ name: `bar ${i + 1}`, path: Array.from({ length: 9 }, (_, j) => [(lf.foot[0] * j) / 8, yc]), thickness: k.hb, width: k.W, E: m.E, from: 'middle', to: `block ${i + 1}` });
+  });
+  const sys = beamSystem({ bodies, beams: [...leafBeams((i) => `block ${i + 1}`), ...bars], segments: 32 });
+  const support = new Map([[sys.body.middle.dof, 0], [sys.body.middle.dof + 2, 0], ...k.leaves.map((_, i) => [sys.body[`block ${i + 1}`].dof + 1, 0])]);
   // a nudge at each leaf's middle, square to it and down, a thousandth of its buckling load: a perfect leaf squeezed
   // along its length stays straight in the solver, where a printed one bows
-  const nudge = new Map(), Pcr = (4 * Math.PI ** 2 * m.E * I) / k.L ** 2;
-  for (const lf of k.leaves) {
-    const nodes = sys.nodes.filter((n) => n.beam === `leaf ${k.leaves.indexOf(lf) + 1}`), mid = nodes[Math.floor(nodes.length / 2)], u = unit(sub(lf.b, lf.a)), nn = [-u[1] * lf.sx, u[0] * lf.sx];
-    const down = nn[1] < 0 ? nn : mul(nn, -1);
-    nudge.set(mid.dof, 1e-3 * Pcr * down[0]); nudge.set(mid.dof + 1, 1e-3 * Pcr * down[1]);
-  }
-  const sc = snapCurve(sys, 'shuttle', 2.4 * k.h, steps, undefined, nudge), lim = m.strainLimit;
-  const probe = 1e-4 * k.h, solvedStiffness = -equilibrium(sys, { held: new Map([[sys.body.shuttle.dof + 1, -probe]]) }).reaction.get(sys.body.shuttle.dof + 1) / probe; // a ten-thousandth of the rise, no nudge
-  const rests = ['the force curve is the beam solver\'s on the drawn leaves, the shuttle free to slide sideways and turn; the frame taken as rigid'];
-  f('pass', `at rest the shuttle is ${n2(stiffness, 2)} N/mm stiff (two fixed-guided leaves, 2 (EA/L sin²α + 12EI/L³ cos²α)); the solver's ${n2(solvedStiffness, 2)} N/mm (rounds included)`, 'bistable.stiffness', { values: { stiffness, solvedStiffness } });
+  const Pcr = (4 * Math.PI ** 2 * m.E * I) / k.L ** 2, nudgeOf = (sy) => {
+    const nudge = new Map();
+    k.leaves.forEach((lf, i) => {
+      const nodes = sy.nodes.filter((n) => n.beam === `leaf ${i + 1}`), mid = nodes[Math.floor(nodes.length / 2)], nn = [-lf.u[1] * lf.sx, lf.u[0] * lf.sx];
+      const down = nn[1] < 0 ? nn : mul(nn, -1);
+      nudge.set(mid.dof, 1e-3 * Pcr * down[0]); nudge.set(mid.dof + 1, 1e-3 * Pcr * down[1]);
+    });
+    return nudge;
+  };
+  const sc = snapCurve(sys, 'shuttle', 2.4 * k.h, steps, undefined, nudgeOf(sys), support), lim = m.strainLimit;
+  const r0 = snapCurve(rigid, 'shuttle', 2.4 * k.h, steps, undefined, nudgeOf(rigid));
+  const probe = 1e-4 * k.h, solvedStiffness = -equilibrium(rigid, { held: new Map([[rigid.body.shuttle.dof + 1, -probe]]) }).reaction.get(rigid.body.shuttle.dof + 1) / probe; // a ten-thousandth of the rise, no nudge
+  const rests = ['the force curve is the beam solver\'s on the drawn leaves and the frame\'s bar, the shuttle free to slide sideways and turn, the frame sat on its two blocks (held up and down there, free to spread and turn); the root blocks taken as rigid'];
+  f('pass', `at rest the shuttle is ${n2(stiffness, 2)} N/mm stiff (two fixed-guided leaves, 2 (EA/L sin²α + 12EI/L³ cos²α)); the solver's ${n2(solvedStiffness, 2)} N/mm (rounds included), both on a rigid frame`, 'bistable.stiffness', { values: { stiffness, solvedStiffness } });
   if (sc.bistable) f('pass', `pushed ${n2(sc.snap.push)} mm it takes ${n2(sc.snap.force)} N, the most; past ${n2(sc.middle)} mm it snaps on by itself, pulling with up to ${n2(-sc.back.force)} N, and rests ${n2(sc.second)} mm from where it started (the rise is ${n2(k.h)} mm). Back the other way takes about ${n2(-sc.back.force)} N`, 'bistable.snap', { values: { snap: sc.snap, back: sc.back, middle: sc.middle, second: sc.second } });
-  else f('fail', `it does not stay over: pushed through ${n2(2.4 * k.h)} mm the force never falls below 0 (its least is ${n2(sc.back.force)} N at ${n2(sc.back.push)} mm), so it springs back. Longer, thinner leaves or a steeper tilt`, 'bistable.snap', { values: { snap: sc.snap, back: sc.back } });
+  else f('fail', `it does not stay over: pushed through ${n2(2.4 * k.h)} mm the force never falls below 0 (its least is ${n2(sc.back.force)} N at ${n2(sc.back.push)} mm), so it springs back. ${r0.bistable ? `On a rigid frame it would (${n2(-r0.back.force)} N back): the frame's ${k.hb} mm bar bends and lets the roots spread, so a deeper base` : 'Longer, thinner leaves or a steeper tilt'}`, 'bistable.snap', { values: { snap: sc.snap, back: sc.back, rigid: r0.back } });
+  // the frame's share: what the bar's bending costs of the pull back, against the leaves on a rigid frame
+  if (sc.bistable && r0.bistable) {
+    const kept = sc.back.force / r0.back.force;
+    f(kept >= 0.5 ? 'pass' : 'warn', `sat on its blocks, the frame's ${k.hb} mm bar bends and the roots spread: it pulls back with ${n2(-sc.back.force)} N, ${n2(kept * 100, 0)}% of the ${n2(-r0.back.force)} N on a rigid frame${kept >= 0.5 ? '' : ': the frame takes over half of it, so the bistable depends on the frame as much as on its leaves. A deeper base, or the blocks screwed down flat'}`, 'bistable.frame', { values: { back: sc.back.force, rigid: r0.back.force, kept, base: k.hb } });
+  }
   const most = sc.strain;
   f(most <= lim ? 'pass' : 'fail', `on the way over the leaves see at most ${n2(most * 100, 2)}%, ${most <= lim ? 'within' : 'over'} the limit of ${n2(lim * 100, 1)}%`, 'flexure.strain', { values: { strain: most, limit: lim } });
   if (!sc.converged) f('warn', 'the beam solver did not settle at every step: the force curve is a guide only', 'bistable.solver');
   if (o.printer) for (const x of printable({ thickness: k.t, width: k.W }, o.printer, m)) out.push(x);
   let grams = null;
   if (m.density > 0) { grams = (measureVolume(tiltedBistable(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, one piece`, 'bistable.mass', { values: { grams } }); }
-  return { rise: k.h, stiffness, solvedStiffness, snap: sc.snap, back: sc.back, middle: sc.middle, second: sc.second, bistable: sc.bistable, strain: most, curve: sc.curve, grams, findings: out, rests };
+  return { rise: k.h, stiffness, solvedStiffness, snap: sc.snap, back: sc.back, middle: sc.middle, second: sc.second, bistable: sc.bistable, strain: most, curve: sc.curve, rigid: { snap: r0.snap, back: r0.back, second: r0.second, bistable: r0.bistable }, grams, findings: out, rests };
 }
 
 // ----------------------------------------------------------------------------------------------- buckled-beam switch

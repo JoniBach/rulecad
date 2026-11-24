@@ -1287,3 +1287,50 @@ test('the README\'s linkages, amplifiers and bistables are the code\'s figures',
   const s = f.buckledSwitchModel({ length: 50, thickness: 0.84, width: 6, squeeze: 0.4, base: 12 }, plaG);
   has(`the frame gives ${s.give.toFixed(3)} mm; the strip pushes its pockets with ${x1(s.load)} N and bows ${x2(s.rise)} mm; ${x2(s.snap.force)} N switches it either way; ${x2(s.strain * 100)}% | ${x1(s.grams)} (strip and frame) |`);
 });
+
+test('a tilted-leaf bistable\'s frame bends in the solver: a shallow bar loses the snap, the default keeps most of it', async () => {
+  const { tiltedBistableModel } = await import('@rulecad/flexures');
+  // leaves 30 at 8°, 0.84 × 6, no rounds; the bar's top at -7.4752 (the rise 4.1752, half the 4 mm shuttle, the 0.3
+  // gap and 1), each block's foot 27.441 from the middle. The leaves push each root out with a thrust H at the roots'
+  // line, arm a above the bar's middle line; the bar, held square at its middle by the mirror, turns each block
+  // H a l / EI, so the root moves out a² l / EI a newton. Base 6: a = 10.475, I = 6 × 6³ / 12 = 108, so
+  // 10.475² × 27.441 / (2680 × 108) = 0.010403 mm/N, 96.1 N/mm, softer than a leaf along its length (EA/L = 450.24
+  // N/mm): the frame gives most of the squeeze. Base 20: a = 17.475, I = 4000, 0.00078173 mm/N, 1279 N/mm, 2.8 times a leaf
+  const p = { length: 30, angle: 8, thickness: 0.84, width: 6, fillet: 0 };
+  const thin = tiltedBistableModel({ ...p, base: 6 }, plaG, { steps: 40 });
+  assert.ok(thin.rigid.bistable && thin.rigid.back.force < -1.5, `on a rigid frame it snaps over (${thin.rigid.back.force} N back)`);
+  assert.equal(thin.bistable, false, 'on the 6 mm bar it springs back');
+  const snap = thin.findings.find((x) => x.code === 'bistable.snap');
+  assert.equal(snap.level, 'fail'); assert.match(snap.text, /On a rigid frame it would .* the frame's 6 mm bar bends .* a deeper base/);
+  // the default bar (20) keeps over half the rigid frame's pull back, and says so; 12 keeps less, and warns
+  const deep = tiltedBistableModel(p, plaG, { steps: 40 }), kept = deep.back.force / deep.rigid.back.force;
+  assert.ok(deep.bistable && kept >= 0.5 && kept < 1, `the default keeps ${kept}`);
+  assert.equal(deep.findings.find((x) => x.code === 'bistable.frame').level, 'pass');
+  const mid = tiltedBistableModel({ ...p, base: 12 }, plaG, { steps: 40 }), fr = mid.findings.find((x) => x.code === 'bistable.frame');
+  assert.ok(mid.bistable); assert.equal(fr.level, 'warn'); assert.match(fr.text, /A deeper base, or the blocks screwed down flat/);
+  assert.ok(mid.back.force > deep.back.force, 'a shallower bar pulls back less');
+  assert.match(deep.rests.join(' '), /sat on its two blocks/);
+});
+
+test('the slider-crank\'s and four-bar\'s results carry everything their declared types name', async () => {
+  const { sliderCrankModel, fourBarModel } = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('./linkages.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  // the names at the top level of the @returns {{ ... }} just above `export function <name>`
+  const declared = (name) => {
+    const at = src.indexOf(`export function ${name}(`), doc = src.slice(src.lastIndexOf('/**', at), at), from = doc.indexOf('@returns {{') + 10;
+    const keys = []; let depth = 0, word = '';
+    for (const c of doc.slice(from)) {
+      if ('{(['.includes(c)) depth++; else if ('})]'.includes(c)) { depth--; if (depth === 0) break; }
+      if (depth === 1 && /[\w$]/.test(c)) word += c; else { if (depth === 1 && c === ':' && word) keys.push(word); if (!/[\w$?]/.test(c)) word = ''; }
+    }
+    return keys;
+  };
+  const slider = sliderCrankModel({ crank: 15, coupler: 35, angle: 100, width: 6, flex: flex0, guide: { length: 25, thickness: 0.84 } }, plaG);
+  const four = fourBarModel({ ground: 40, crank: 15, coupler: 40, rocker: 30, angle: 60, width: 6, flex: flex0 }, plaG);
+  for (const [name, m] of [['sliderCrankModel', slider], ['fourBarModel', four]]) {
+    const keys = declared(name);
+    assert.ok(keys.length > 10, `${name} declares ${keys}`);
+    for (const key of keys) assert.ok(m[key] !== undefined, `${name} declares ${key}, which its result lacks`);
+  }
+  assert.ok(declared('fourBarModel').includes('solve') && !declared('sliderCrankModel').includes('solve'));
+});
