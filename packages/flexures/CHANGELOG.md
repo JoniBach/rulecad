@@ -4,6 +4,29 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## Unreleased
+
+### Added
+
+- Compliant linkages (issue #77): `fourBar` and `fourBarModel` (crank-rocker, parallelogram and the other Grashof
+  kinds), `sliderCrank` and `sliderCrankModel` (the slider on a parallel guide, every joint a flexure). Each joint is a
+  short flexure on the line halfway between its links, rounded into a knuckle on each. The models give the kind, the
+  transmission angle, each joint's turn and strain, the crank's torque, the swing the strain limit allows, the
+  clearances swept over the swing, the slider's stroke, drop and push for a torque, and the grams, as findings.
+  `fourBarModel(...).solve(deg)` runs the beam solver on the drawn flexures.
+- Displacement amplifiers (issue #77): `bridgeAmplifier`, `rhombusAmplifier`, `leverAmplifier` and their models: the
+  rigid links' ratio (cot α, or b / a), the beam solver's ratio on the drawn flexures, the input's stiffness, the strain,
+  the stroke the limit allows, and a fail by name for a bridge pushed past flat.
+- Bistables (issue #76): `tiltedBistable` (a shuttle on two tilted leaves, one piece) and `buckledSwitch` (a strip
+  squeezed into its frame, two prints), with models whose force curves come from the beam solver: the push that
+  switches it, the pull back, where it rests again, the strain on the way, and for the switch its rise, its load on the
+  frame and the frame's give. `snapCurve` reads such a curve for any beam system.
+- `pivots.mjs`: the drawing, clearances and beam-solver set-up the linkages and amplifiers share.
+
+### Printed sizes that moved
+
+- None: the new generators draw new parts only.
+
 ## 0.5.6: compliant gripper jaws (#77)
 
 ### Added

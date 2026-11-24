@@ -48,6 +48,12 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `gripperJaws` | Two jaws, each on a parallel guide with a stop both ways, resting closed and opened by a servo's double horn: the springs grip, so it holds with the power off | `gripperJawsModel`: the guide's 2 E w t³ / L³ in series with the bar's 3 E I / l³, the grip k (w - g) / 2 on an object w across | the guide's 3tδ / L² at the horn's stroke |
 | `curvedLeaf` | A leaf drawn as an arc, so its rest is the middle of its working range: a spring that works from a loaded rest | E w t³ / 4L³ | 3tδ / 2L² from the curved rest, either way; `preset` t / 2ρ already in the curve |
 | `angleStop` | Posts at a pivot's arm end where its strain limit says the turn must end, less a margin | — | `angle`: factor × angle(strainLimit) |
+| `fourBar` | A four-bar on four short flexures: a crank-rocker turns a small swing into another; crank = rocker and coupler = ground make a parallelogram | `fourBarModel`: K = 1 / ∫ dx / EI at each joint, the crank's torque dU/dθ from the joints' ½ K ψ² | t ψ / 2l at the most turned joint (ψ its turn) |
+| `sliderCrank` | A crank, a coupler and a slider on a parallel guide, every joint a flexure: a press near the toggle, a pump's stroke | `sliderCrankModel`: the joints' and the guide's energy; the push (T - dU/dθ) / \|dx/dθ\| | the joints' and the guide's 3tδ / L² |
+| `bridgeAmplifier`, `rhombusAmplifier` | Four links on in-line flexures between input and output blocks (the bridge) or corners (the rhombus): the input pushed apart, the output comes together about cot α times as far | 2K / L² sin²α at the input; the beam solver's ratio beside cot α | t Δα / 2l, Δα from cos α' = cos α + u / 2L |
+| `leverAmplifier` | One link on one flexure, pushed a from its pivot, its far end b out moving b / a times as far | K / a² at the input | t (u / a) / 2l |
+| `tiltedBistable` | A shuttle on two straight leaves tilted toward it: pushed past the roots' line it snaps on and stays (Jensen and Howell) | 2 (EA/L sin²α + 12EI/L³ cos²α) at rest; the snap from the beam solver | the solver's, along the way over |
+| `buckledSwitch` | A strip printed longer than its frame, squeezed past buckling when fitted: it bows either way, and switches with the same push each way (Vangbo) | buckles at 4π²EI / L²; rises (2/π) √(L s - π²t²/3); the snap from the beam solver | the solver's, fitted and switched |
 
 L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, s a spoke's length, r a hub's radius, y a hook's undercut, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
@@ -180,6 +186,62 @@ its whole box with 66 mm to spare, and the accuracy budget moves from 2.361 to 2
 So it can replace it: it holds the upright arm's 100 g where the hand-built one warns, with no estimated lever and no
 stalled servo, at 16.4 g more and 20 mm more reach. What it gives up is range: twice over at 100 g only on objects
 9.4 to 10.5 mm across. A different object size wants a different gap at rest.
+
+## Linkages, amplifiers and things that click
+
+A compliant linkage is a rigid machine with each pin replaced by a short flexure. The pseudo-rigid-body model
+(Howell 2001, chapter 5) moves its links as the rigid machine's would, and puts a torsion spring at each pin: a joint
+of length l and thickness t is as stiff as 1 / ∫ dx / EI along it, which is EI / l without rounds, and a turn ψ
+strains it t ψ / 2l. The input needs the torque the springs' energy asks. Each joint's flexure lies on the line halfway
+between its two links, and rounds into a disc (a knuckle) on each, so no corner it meets is square. Every model here
+also runs the beam solver on the drawn flexures, where the springs-and-pins sums stop being enough.
+
+```js
+import { fourBar, fourBarModel, bridgeAmplifierModel, tiltedBistableModel, buckledSwitch, buckledSwitchModel } from '@rulecad/flexures';
+
+const pla = { E: 2680, strainLimit: 0.02, density: 1.24, name: 'PLA' }, flex = { length: 6, thickness: 0.84 };
+const m = fourBarModel({ ground: 40, crank: 15, coupler: 40, rocker: 30, angle: 60, width: 6, flex }, pla);
+m.kind;          // 'crank-rocker'
+m.swing;         // [11.2, 11.9] degrees down and up before a joint reaches 2%
+m.torque(10);    // 75.6 N·mm at the crank, 10° on (the beam solver: 75.5)
+```
+
+The figures for that four-bar, and for one of each of the others, all in PLA, 6 mm wide, joints 6 mm by 0.84 mm:
+
+| Part | What the model says | Grams |
+|---|---|---|
+| `fourBar`, links 15, 40, 30 on 40 | each joint 159.9 N·mm a radian; swung ±9.0° (0.8 of the limit) the rocker turns 3.4° | 5.2 |
+| `bridgeAmplifier`, links 20 at 10° | cot 10° = 5.67; over 0.1 mm the rigid links give 5.93 and the drawn flexures 5.76; the links lie flat at 0.608 mm of input | 5.7 |
+| `tiltedBistable`, leaves 30 at 8° | rises 4.18 mm; 8.04 N switches it, 0.67 mm in; it rests again 6.14 mm down, and 1.82 N brings it back; 1.76% on the way | 5.2 |
+| `buckledSwitch`, strip 50 squeezed 0.4 | the frame gives 0.082 mm; the strip pushes its pockets with 15.8 N and bows 2.19 mm; 7.00 N switches it either way; 1.62% | 10.7 (strip and frame) |
+
+- **The slider-crank** pushes its slider with (T - dU/dθ) / |dx/dθ| for a torque T at the crank (virtual work). The
+  push grows as the crank and coupler come into line, the press's toggle. The slider rides a parallel guide, so it
+  drops 3δ² / 5L at a stroke δ.
+- **The bridge and the rhombus** move their outputs cot α times their input for the rigid links. The flexures stretch
+  and shear a little, so the drawn bridge gives less (the solver's `solved`). A bridge pushed past flat toggles, and
+  the model fails it by name.
+- **The tilted-leaf bistable** prints stress-free, one piece. Pushed, its leaves squeeze and buckle. Past the line
+  between their roots they push on, and it rests again short of twice its rise, because its leaves stay bent there.
+  The model nudges each leaf a thousandth of its buckling load: a printed leaf has a bow to start from, where the
+  solver's perfectly straight one would not.
+- **The buckled-beam switch** is two prints. The frame's pockets hold the strip's tabs `squeeze` nearer than they
+  print, so fitted the strip is squeezed past buckling and bows. Its two states are mirrors, so it switches with the
+  same push each way. A stem from its pad slides in a slot in the frame's top, which keeps the pad square, and a round
+  knob on the stem is what you push and pull. The frame gives a little under the strip's push, and the model takes that
+  off the squeeze (a beam sum on the frame's C). The tabs are taken as held square: a press fit, an estimate.
+
+| Formula | Where it is used | Source |
+|---|---|---|
+| K = 1 / ∫ dx / EI(x); EI / l without rounds; strain t ψ / 2l | each joint | Howell 2001, small-length flexural pivot |
+| cos μ = (b² + c² - BD²) / 2bc; keep μ within 40° to 140° | four-bar transmission angle | Norton, *Design of Machinery*, a rule of thumb |
+| x = r cos θ + √(l² - (r sin θ - e)²); F = (T - dU/dθ) / \|dx/dθ\| | slider-crank | rigid kinematics; virtual work |
+| v = 2L (sin α - sin α'), cos α' = cos α + u / 2L; k = 2K / L² sin²α | bridge, rhombus | rigid kinematics; the joints' energy |
+| k = 2 (EA/L sin²α + 12EI/L³ cos²α) | tilted bistable at rest | two fixed-guided beams |
+| P = 4π²EI / L²; h = (2/π) √(L s - π²t²/3) | buckled switch | Euler, clamped ends; first buckled mode |
+
+Left for later: the Young bistable and tristable mechanisms, the tensural bistable, compliant gear teeth and clutches,
+and force-sensing beams.
 
 ## Composing mechanisms
 
@@ -522,3 +584,6 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - BASF, *Snap-Fit Design Manual*, and Bayer MaterialScience, *Snap-Fit Joints for Plastics*: the cantilever hook's deflection, insertion and removal forces.
 - Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
+- Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
+- Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
+- Norton, R. L., *Design of Machinery*, McGraw-Hill: Grashof's condition and the transmission angle.
