@@ -1496,6 +1496,13 @@ dropped, and `cad check` tests the part for one piece and nothing starting in mi
 the densities as they change (a 3D part as a surface you can turn, and from three sides), a chart of its compliance and how much it still changes, with a scrubber to look back at any earlier step, its run time and time left, the machine it runs on, and a button that stops the run. It shows the end for ten minutes after the run finishes.
 It listens on this computer only. To watch from elsewhere, reach it through a private network such as Tailscale.
 
+Every run is kept to watch again. `cad optimise` writes `.preview/<project>/<problem>-run.html`: the same page,
+reading its steps from the file, so it opens with no server and can be sent to someone. Drag the slider or the chart
+to any step. `cad preview <project>/problems/<problem>` (or the file's path) draws the result and writes that page.
+A result made without its steps recorded (by building a design that reads it) shows its end and each step's
+compliance; `cad preview <project>/problems/<problem> --fresh` runs it again to record the steps, and `--watch`
+shows the run live. A 3D run shows its three views; the turning surface needs the live view.
+
 A design uses it through a variable of type `problem`, which picks a problem by name:
 
 ```json

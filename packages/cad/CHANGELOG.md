@@ -15,6 +15,12 @@ and head, the parts it passes through and the part it ends in.
   anchors do not read leaves the result as it is. A design built from the problem itself is refused by name, as is an
   anchor that is not there (with the anchors there are). Schema first: `anchor` on regions, supports, loads and the
   output.
+- `cad preview <project>/problems/<problem>` (or the problem file's path) shows the run: the result is drawn as by
+  `cad optimise`, and `.preview/<project>/<problem>-run.html` replays the run step by step with no server (the live
+  view's page, its densities, compliance and change for every step read from the file). Every `cad optimise` run is
+  recorded and kept by its densities' key, so a cached result still shows the run that made it; one made without
+  recording (by a design's build) shows its end and each step's compliance, and says to run it with `--fresh`.
+  `--watch` on the preview shows the run live, as on `cad optimise`.
 - `cad why <project>/<object>.<problem variable>` says what the optimised result is made from: the problem file, its
   title and material, its rule sets and values, the parts and anchors of other designs it reads, where its filter
   came from, and the file its densities are kept in (made, or not yet).

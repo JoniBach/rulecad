@@ -18,12 +18,12 @@ import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData, near } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
-import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
+import { optimised, readProblem, analysePart, picture, problemFile, densitiesKey } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
 import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue, parseSetting, newProject, setProject, newAssembly, newObject, setInAssembly, removeFromAssembly, moveInAssembly } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
-import { liveView } from '../lib/live.mjs';
+import { liveView, recorder, endOnly } from '../lib/live.mjs';
 import { checkSets, drawSet, draftSet, draftPart, draftParts } from '../lib/sheet.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
@@ -87,7 +87,10 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     assembly with a motor or gears: the drive turning them, cut across the shafts [--turns n]
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
-                                    [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button]
+                                    [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button];
+                                    each run is kept to watch again: <problem>-run.html in .preview/
+  cad preview <project>/problems/<problem>  a problem's result and its run, step by step, as a page that needs no
+                                    server (or the run live, with --watch [port])
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
   cad link <project>/<object>       links to open the model in a browser, and to download its STL or 3MF
@@ -229,7 +232,7 @@ const stiffOf = (c) => (c.moment ? c.torsion : c.stiffness);
 const howFar = (c) => (c.moment ? `turns ${sig(c.angle * 180 / Math.PI)}° under ${sig(c.moment / 1000)} N·m, ${sig(c.torsion / 1000 * Math.PI / 180)} N·m a degree` : `moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
 // cad optimise: run a problem (with a progress line), then report it and draw it: a 2D layout as an SVG of its
 // densities, a 3D one as the preview's views of its surface
-async function optimiseProblem(ref) {
+async function optimiseProblem(ref, { preview: previewing = false } = {}) {
   const [project, name] = String(ref).split('/');
   if (!project || !name) throw new Error('usage: cad optimise <project>/<problem>[:variant]');
   const file = problemFile(project, name.split(':')[0]);
@@ -244,8 +247,10 @@ async function optimiseProblem(ref) {
   const view = watch ? await liveView({ port: watch === true ? 8090 : Number(watch), title: `cad optimise ${ref}` }) : null;
   if (view) say(`watching at ${view.url}`);
   let r;
+  const rec = recorder(); // each step kept, so the run can be watched again (cad preview <project>/problems/<name>)
   try {
     r = await optimised(project, name, { fresh: !!opt('fresh') || !!view, onStep: (s) => {
+      rec.step(s);
       if (live) process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`);
       if (view) { view.step(s); if (view.stopped()) throw new Error(`stopped from the live view at step ${s.step}`); }
     } });
@@ -266,6 +271,12 @@ async function optimiseProblem(ref) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, picture(r, { title: r.title, lines }));
   }
+  // The run, to watch again: kept by the densities' key when it was recorded here, else its end alone
+  const done = `finished: ${r.steps} steps${r.converged ? '' : ', not settled'}`, kept = paths.cache('runs', `${densitiesKey(p.problem)}.html`);
+  if (rec.steps()) { fs.mkdirSync(path.dirname(kept), { recursive: true }); fs.writeFileSync(kept, rec.page(`cad optimise ${ref}`, done)); }
+  const run = paths.preview(project, `${name.replace(':', '-')}-run.html`), recorded = fs.existsSync(kept);
+  fs.mkdirSync(path.dirname(run), { recursive: true });
+  fs.writeFileSync(run, recorded ? fs.readFileSync(kept, 'utf8') : endOnly(`cad optimise ${ref}`, r, `${done} (its steps weren't recorded: run it again with --fresh to watch them)`));
   if (opt('json')) return console.log(JSON.stringify((({ density, history, mesh, ...x }) => x)(r), null, 2));
   console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
   for (const c of r.cases) console.log(`  ${c.name}: ${howFar(c)}`);
@@ -275,6 +286,7 @@ async function optimiseProblem(ref) {
   else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
   console.log(`  ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
   console.log(out);
+  if (previewing) console.log(`${run}\n  ${recorded ? `the run, step by step: open it to watch it again (${r.steps} steps)` : 'the run\'s end only: its steps weren\'t recorded (cad preview --fresh runs it again and records them)'}`);
 }
 
 // An object's analyses for cad check: each problem's load cases on the part, and its volume against a target
@@ -504,6 +516,9 @@ async function main() {
   if (cmd === 'add') return editAssembly(pos[1], pos[2]);
   if (cmd === 'remove' || cmd === 'move') return removeOrMove(cmd, ref, pos[2]);
   if (cmd === 'optimise' || cmd === 'optimize') return await optimiseProblem(ref);
+  // A problem file's preview: its result drawn, and its run to watch again (or live, with --watch)
+  const problemRef = /^(?:projects[\\/])?([^\\/]+)[\\/]problems[\\/]([^\\/:]+?)(?:\.json)?(:[^\\/]+)?$/.exec(ref || '');
+  if (cmd === 'preview' && problemRef) return await optimiseProblem(`${problemRef[1]}/${problemRef[2]}${problemRef[3] || ''}`, { preview: true });
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();

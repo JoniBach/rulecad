@@ -6372,3 +6372,42 @@ test('a problem at a design\'s anchors: its supports, loads and keeps follow the
     assert.deepEqual(read('given').inputs.filter, { value: 0.42, from: 'the problem: x1c.line' });
   } finally { done(); }
 });
+
+test('cad preview of a problem file: its run kept step by step as a page to watch again, with no server; a result whose steps were never recorded shows its end', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'beam');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'beam', objects: [] }));
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify({ title: 'A short arm', material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 30,
+      space: { at: [12, 0], size: [30, 12] }, keep: [{ at: [0, 0], r: 4 }, { at: [24, 0], r: 3 }], avoid: [{ at: [0, 0], r: 1.6 }],
+      supports: [{ at: [0, 0], r: 1.6 }], loads: [{ at: [24, 0], r: 1.2, force: [0, -10], case: 'down' }] }));
+    const runOf = () => {
+      const html = fs.readFileSync(path.join(ws, '.preview', 'beam', 'arm-run.html'), 'utf8');
+      assert.doesNotMatch(html, /importmap|type="module"/, 'no server and no 3D surface needed');
+      return JSON.parse(/const RUN = (.*);\n/.exec(html)[1]);
+    };
+    const out = cad('preview', 'beam/problems/arm');
+    assert.match(out, /\.preview[\\/]beam[\\/]arm-optimised\.svg\n.*\.preview[\\/]beam[\\/]arm-run\.html\n {2}the run, step by step: open it to watch it again \((\d+) steps\)/);
+    const steps = Number(/watch it again \((\d+) steps\)/.exec(out)[1]), run = runOf(), r = JSON.parse(cad('optimise', 'beam/arm', '--json'));
+    // every step: its compliance, how much it changed, and its densities as the live view draws them (a byte a cell)
+    assert.equal(run.frames.length, steps); assert.equal(run.history.compliance.length, steps); assert.equal(run.history.change.length, steps);
+    assert.deepEqual(run.frames.map((f) => f.step), Array.from({ length: steps }, (_, k) => k + 1));
+    assert.equal(run.done, `finished: ${steps} steps${r.converged ? '' : ', not settled'}`);
+    const last = run.frames.at(-1), image = Buffer.from(last.views[0].image, 'base64');
+    assert.deepEqual([last.views[0].w, last.views[0].h, image.length], [r.grid.nx, r.grid.ny, r.grid.nx * r.grid.ny]);
+    const kept = JSON.parse(fs.readFileSync(path.join(ws, '.cache', 'optimise', `${r.hash}.json`), 'utf8')).density;
+    assert.ok(kept.every((d, e) => Math.abs(image[e] - d * 255) <= 1), 'the last step is the result');
+    // cached: the recorded run is still the one shown; the problem named by its file's path works too
+    assert.match(cad('preview', 'projects/beam/problems/arm.json'), /\(cached\)[^]*the run, step by step/);
+    assert.equal(runOf().frames.length, steps);
+    // made without its steps recorded (a design's build, or before runs were kept): its end, and how to record it
+    fs.rmSync(path.join(ws, '.cache', 'runs'), { recursive: true });
+    assert.match(cad('preview', 'beam/problems/arm'), /the run's end only: its steps weren't recorded \(cad preview --fresh runs it again and records them\)/);
+    const end = runOf();
+    assert.equal(end.frames.length, 1); assert.equal(end.history.compliance.length, steps, 'the compliance of each step, from the result');
+    assert.match(end.done, /its steps weren't recorded: run it again with --fresh to watch them/);
+    assert.match(cad('preview', 'beam/problems/arm', '--fresh'), /the run, step by step/);
+    assert.equal(runOf().frames.length, steps);
+  } finally { done(); }
+});
