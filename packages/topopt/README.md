@@ -30,6 +30,9 @@ Regions take a z. A region can be a box (`size`), a cylinder (`r`, `length`, `ax
 triangle mesh (`triangles`). A cylinder can be a teardrop: `teardrop: '-z'` for a boss, `'+z'` for a hole, or any
 direction across its axis. It gets a 45° point that way, so it prints without support. Supports and loads can be any region.
 
+A part's mesh can be a region of a flat problem too: `{ triangles, flat: true }` is its section halfway up (a plate's
+outline, its holes open), so a flat part can be optimised within the blank it's cut from.
+
 ```js
 const spec = discretise({
   space: { at: [10, 0, 43], size: [40, 40, 86] },
