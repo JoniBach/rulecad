@@ -13,6 +13,9 @@ why.
   shaft on the X1C), `press` the estimate of -0.02 mm each side, `run` the printer's `fit`, or a gap in mm. Each answer
   says how far its fit is trusted (`kind`). `@rulecad/motors` now reads its bore from here, so the three agree.
 - `plainBearing` and `pulleyBore` take `fit` as `shaftBore` does.
+- `shaftBore` takes a `hole_comp` below 0, for a printer whose holes come out large, as `@rulecad/motors`' bore always
+  has; `plainBearing` and `pulleyBore` now take one too (they refused it). It refuses a `hole_comp` that is not a
+  number, or one that leaves no bore, by name.
 
 ### Printed sizes
 

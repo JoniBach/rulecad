@@ -260,4 +260,11 @@ test('shaft bores in one place: shaftBore holds the fits, and plainBearing and p
   assert.throws(() => shaftBore(0, { printer: x1c }), /shaftBore: shaft is a size above 0 mm/);
   assert.throws(() => pulleyBore({ bore: 5 }, { length: 10, fit: 'tight', printer: x1c }), /pulleyBore: fit is slide, press, run/);
   assert.throws(() => plainBearing(8, { length: 10, fit: 'run', clearance: 0.1, printer: x1c }), /plainBearing: give fit or clearance, not both/);
+  // hole_comp below 0 is a printer whose holes come out large: 5 + 2 × 0.05 - 0.1 = 5.0 (motors' bore has always taken it)
+  near(shaftBore(5, { printer: { hole_comp: -0.1 } }).diameter, 5, 'a hole_comp below 0');
+  assert.throws(() => shaftBore(5, { printer: { hole_comp: '0.1' } }), /shaftBore: printer.hole_comp is a number of mm/);
+  assert.throws(() => shaftBore(5, { fit: 0, printer: { hole_comp: -5 } }), /shaftBore: a fit of 0 mm each side and hole_comp -5 leaves no bore for a 5 mm shaft/);
+  assert.throws(() => shaftBore(5, { printer: { hole_comp: -6 } }), /shaftBore: hole_comp -6 leaves no bore for a 5 mm shaft at slide/);
+  // A name the table does not hold is refused, even one every object answers to
+  for (const fit of ['constructor', 'toString', 'hasOwnProperty']) assert.throws(() => shaftBore(5, { fit, printer: x1c }), /shaftBore: fit is slide, press, run/, fit);
 });

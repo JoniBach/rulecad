@@ -10,7 +10,8 @@ why.
 
 - `boreModel` and `bore` read their fit from `@rulecad/shapes`' `shaftBore` (#307), the one place every shaft bore in
   the kit reads it. `DEFAULTS.fit` and `DEFAULTS.press` are now the same objects as `SHAFT_FITS.slide` and
-  `SHAFT_FITS.press`, with a source and a date. The package depends on `@rulecad/shapes`, which fixings already did.
+  `SHAFT_FITS.press`, with a source and a date. The package depends on `@rulecad/shapes`, which fixings already did, at the release that
+  first ships `shaftBore`. A printer's `hole_comp` below 0 is still taken.
 
 ### Printed sizes
 

@@ -251,4 +251,8 @@ test('a motor\'s bore reads its fit from @rulecad/shapes\' shaftBore, the one pl
   } finally { SHAFT_FITS.slide.value = was; }
   assert.equal(boreModel(n, { depth: 10 }).diameter, pulleyBore({ bore: 5 }, { length: 10, printer: x1c }).bore, 'the same bore for the same shaft');
   assert.throws(() => boreModel(n, { depth: 10, fit: 'run' }), /bore: fit is slide or press \(got "run"\)/);
+  // A printer whose holes come out large takes a hole_comp below 0, as the bore always has (cad's hub test drives one):
+  // slide 5 + 2 × 0.05 - 0.1 = 5.0 and 4.5 + 2 × 0.05 - 0.1 = 4.5; press 5 - 2 × 0.02 - 0.1 = 4.86
+  const big = boreModel(n, { depth: 10, printer: { hole_comp: -0.1 } });
+  assert.deepEqual([big.diameter, big.across, boreModel(n, { depth: 10, fit: 'press', printer: { hole_comp: -0.1 } }).diameter], [5, 4.5, 4.86]);
 });

@@ -107,7 +107,8 @@ const SHAFT_FIT_NAMES = ['slide', 'press', 'run'];
 /**
  * The bore a printed part takes for a bought shaft, in numbers: the one place every shaft bore in the kit reads its fit
  * from (a motor's bore in @rulecad/motors, pulleyBore, plainBearing). The bore as drawn is the shaft, plus the fit each
- * side, plus the printer's hole compensation (printed holes come out that much small across).
+ * side, plus the printer's hole compensation (printed holes come out that much small across; below 0 for a printer
+ * whose holes come out large).
  * @param {number} shaft diameter
  * @param {{ fit?: 'slide' | 'press' | 'run' | number, across?: number, printer: { hole_comp: number, fit?: number } }} o
  *   fit: one of SHAFT_FITS, run (the printer's fit each side, for a part that turns on the shaft), or a gap each side
@@ -119,13 +120,16 @@ const SHAFT_FIT_NAMES = ['slide', 'press', 'run'];
 export function shaftBore(shaft, { fit = 'slide', across, printer, what = 'shaftBore' } = {}) {
   const p = printerOf(what, printer);
   size(what, 'shaft', shaft);
-  const comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true });
+  // hole_comp may be below 0 here, for a printer whose holes come out large: motors' bore has always taken one
+  const comp = p.hole_comp;
+  if (!(typeof comp === 'number' && Number.isFinite(comp))) throw new Error(`${what}: printer.hole_comp is a number of mm, how much smaller across a printed hole comes out (got ${comp})`);
   let each, kind;
-  if (typeof fit === 'number') { if (!Number.isFinite(fit) || 2 * fit <= -shaft) throw new Error(`${what}: a fit of ${fit} mm each side leaves no bore for a ${shaft} mm shaft`); each = fit; kind = 'given'; }
+  if (typeof fit === 'number') { if (!Number.isFinite(fit) || 2 * fit + comp <= -shaft) throw new Error(`${what}: a fit of ${fit} mm each side${comp < 0 ? ` and hole_comp ${comp}` : ''} leaves no bore for a ${shaft} mm shaft`); each = fit; kind = 'given'; }
   else if (fit === 'run') { each = size(what, 'printer.fit', p.fit); kind = 'derived'; }
-  else if (SHAFT_FITS[fit]) { each = SHAFT_FITS[fit].value; kind = SHAFT_FITS[fit].kind; }
+  else if (typeof fit === 'string' && Object.hasOwn(SHAFT_FITS, fit)) { each = SHAFT_FITS[fit].value; kind = SHAFT_FITS[fit].kind; }
   else throw new Error(`${what}: fit is ${SHAFT_FIT_NAMES.join(', ')}, or a gap each side in mm (got ${fit})`);
   const out = { diameter: +(shaft + 2 * each + comp).toFixed(4), each, comp, fit, kind };
+  if (!(out.diameter > 0)) throw new Error(`${what}: hole_comp ${comp} leaves no bore for a ${shaft} mm shaft at ${fit}`);
   if (across != null) {
     if (size(what, 'across', across) > shaft) throw new Error(`${what}: across the flat (${across}) is at most the shaft's diameter, ${shaft} mm`);
     out.across = +(across + 2 * each + comp).toFixed(4);
