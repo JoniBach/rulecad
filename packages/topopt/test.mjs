@@ -449,3 +449,29 @@ test('discretise: a space a sliver of a cell over a whole number of cells keeps 
   const wider = discretise(box(12.1, 24)).grid;
   assert.ok(wider.nx > exact.nx, 'a tenth of a cell over is a cell more');
 });
+
+// The force inverter in PLA (E 2680 MPa), 4 mm thick, pushed with 10 N against springs of 0.268 N/mm either side
+const plaInverter = (extra = {}) => discretise({
+  space: { at: [20, 10], size: [40, 20] }, cell: 1, volume: 0.3, filter: 1.5, material: { E: 2680, nu: 0.36 }, thickness: 4,
+  supports: [{ at: [0.5, 0.5], size: [1, 1] }, { at: [0.5, 19.5], size: [1, 1] }],
+  loads: [{ at: [0.5, 10], size: [1, 2], force: [10, 0] }], input_spring: 0.268,
+  output: { at: [39.5, 10], size: [1, 2], direction: [-1, 0], spring: 0.268 }, steps: 400, ...extra,
+});
+
+test('a mechanism under a strain limit: optimised as without it, then checked at its input force, with the force and travel that reach the limit', () => {
+  const plain = optimise(plaInverter()), r = optimise(plaInverter({ strain: 0.003 })), limit = 0.003 * 2680; // 8.04 MPa
+  assert.equal(plain.stress, undefined, 'no limit, no stress check');
+  assert.deepEqual(Array.from(r.density), Array.from(plain.density), 'the limit does not change the layout');
+  assert.equal(r.mechanism.travel, plain.mechanism.travel);
+  const { peak, strain, strainLimit, force, travel } = r.stress;
+  assert.ok(peak > 0 && Number.isFinite(peak));
+  assert.equal(r.stress.limit, limit);
+  assert.ok(Math.abs(strain - peak / 2680) < 1e-12 && strainLimit === 0.003);
+  // The part is linear, so the force that takes the peak to the limit is 10 N times limit over peak, and the output's
+  // travel scales with it: at 10 N the peak is about 12.1 MPa and the output travels about 1.81 mm, so 10 × 8.04 / 12.1 =
+  // about 6.6 N and 1.81 × 8.04 / 12.1 = about 1.2 mm
+  assert.ok(Math.abs(force - (10 * limit) / peak) < 1e-9 && Math.abs(travel - (r.mechanism.travel * limit) / peak) < 1e-9, JSON.stringify(r.stress));
+  assert.ok(peak > limit && force < 10, `at 10 N it is over 0.3%: ${peak} MPa, so its force is under 10 N: ${force}`);
+  assert.throws(() => plaInverter({ strain: 0.005, stress: 10 }), /not both/);
+  assert.throws(() => plaInverter({ strain: 2 }), /below 0\.2: 2% is 0\.02 \(got 2\)/);
+});
