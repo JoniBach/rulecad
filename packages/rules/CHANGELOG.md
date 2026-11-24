@@ -3,8 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## Unreleased
-
+## 0.3.20: MISUMI slot 10 nuts
 ### Added
 
 - `slot-nut-10-misumi-m4-slide-in` to `-m8-slide-in` and `-m4-drop-in` to `-m8-drop-in` (issue 308): MISUMI's 8 series

@@ -4,8 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Unreleased
-
+## 0.1.7: a slotted snap skirt and printed bolts into slot nuts
 ### Added
 
 - **A slotted skirt for the annular snap** (issue 309): `annularSnapModel` takes `slots: { count, reach, width }`, the

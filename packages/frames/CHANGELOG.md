@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
-
+## 0.1.12: slot 10 nuts and printed carriers
 ### Added
 
 - MISUMI's 8 series nuts (issue 308): the catalogue reads the new `slot-nut-10-misumi-*` sets (HNTT8 slide-in and HNTF8
