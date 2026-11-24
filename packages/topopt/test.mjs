@@ -454,16 +454,18 @@ test('the draw filter: no cell emptier than the cells between it and the tool, t
   const { drawFilter, undercuts } = await import('@rulecad/topopt');
   const size = { nx: 3, ny: 2, nz: 5 }, n = 30, at = (i, j, k) => (k * 2 + j) * 3 + i;
   // Milled from above (+z): one solid cell part way down a column fills everything under it; the column beside, empty, stays empty
+  // (an empty cell after empty ones gains the smooth maximum's rounding: ½√ε = 0.5 × 10⁻³ for ε = 10⁻⁶ after one,
+  // 0.5 × (0.5 × 10⁻³ + √(0.25 × 10⁻⁶ + 10⁻⁶)) = 0.81 × 10⁻³ after two, about √(k ε / 2) after k: under 2 × 10⁻³ here)
   const x = new Float64Array(n); x[at(1, 0, 3)] = 1;
   const top = drawFilter(size, '+z').apply(x, new Float64Array(n));
-  for (let k = 0; k < 5; k++) assert.ok(k <= 3 ? top[at(1, 0, k)] > 0.99 : top[at(1, 0, k)] < 1e-9, `layer ${k}: ${top[at(1, 0, k)]}`);
-  assert.ok(Math.max(...[0, 1, 2, 3, 4].map((k) => top[at(0, 0, k)])) < 1e-9, 'an empty column stays empty');
+  for (let k = 0; k < 5; k++) assert.ok(k <= 3 ? top[at(1, 0, k)] === 1 : top[at(1, 0, k)] < 2e-3, `layer ${k}: ${top[at(1, 0, k)]}`);
+  assert.ok(Math.max(...[0, 1, 2, 3, 4].map((k) => top[at(0, 0, k)])) < 2e-3, 'an empty column stays empty');
   // From below (-z), the same cell fills the layer above it to the top instead
   const bottom = drawFilter(size, '-z').apply(x, new Float64Array(n));
-  assert.ok(bottom[at(1, 0, 4)] > 0.99 && bottom[at(1, 0, 2)] < 1e-9);
+  assert.ok(bottom[at(1, 0, 4)] === 1 && bottom[at(1, 0, 2)] < 2e-3);
   // Two halves parted at layer 2: a cell at layer 3 fills layer 2 (its half's side is +z) but not layers 0 and 1
   const two = drawFilter(size, 'z', 2).apply(x, new Float64Array(n));
-  assert.ok(two[at(1, 0, 2)] > 0.99 && two[at(1, 0, 1)] < 1e-9 && two[at(1, 0, 0)] < 1e-9 && two[at(1, 0, 4)] < 1e-9);
+  assert.ok(two[at(1, 0, 2)] === 1 && two[at(1, 0, 1)] < 2e-3 && two[at(1, 0, 0)] < 2e-3 && two[at(1, 0, 4)] < 2e-3);
   // undercuts on a column with a hole under a solid cell, as seen from above; none from below the hole's own side
   const holed = new Float64Array(n); [0, 2, 3].forEach((k) => (holed[at(2, 1, k)] = 1));
   assert.deepEqual(undercuts(size, holed, { from: '+z' }).cells, [at(2, 1, 1)]);
@@ -547,13 +549,16 @@ test('symmetry: a short cantilever loaded at one corner, mirrored across its mid
   assert.ok(mirrored.compliance >= free.compliance * 0.999, 'tied cells can only cost stiffness');
 });
 
-test('the 3D cantilever milled from above: no undercuts from the tool\'s side, where the free design has hundreds', () => {
+test('the 3D cantilever milled from above: no undercuts from the tool\'s side, where the free design has hundreds, and it comes out solid or empty', async () => {
   const [nx, ny, nz] = [24, 8, 8], g = grid({ nx, ny, nz, h: 1 }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
   for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1;
   for (let k = 0; k <= nz; k++) f[3 * g.node(nx, 0, k) + 1] = -1;
   const s = { grid: { nx, ny, nz, h: 1 }, passive: new Int8Array(g.cells), fixed, loads: [{ name: 'load', force: f, weight: 1, size: nz + 1 }], material: { E: 1, nu: 0.3 }, volume: 0.3, filter: 1.5, penal: 3, projection: true };
   const milled = optimise({ ...s, mill: '+z', steps: 200 }), free = optimise({ ...s, steps: 60 });
   assert.equal(undercuts({ nx, ny, nz }, milled.density, { from: '+z' }).count, 0);
+  const { grey } = await import('@rulecad/topopt');
+  // (82 of its 1536 cells, 5.3%, on its surfaces: under the tenth cad warns at)
+  assert.ok(grey(milled.density) < 0.1, `solid or empty: ${grey(milled.density)} grey`);
   assert.ok(undercuts({ nx, ny, nz }, free.density, { from: '+z' }).count > 100, 'the free design hides material under itself');
   // (200 steps from above: compliance 3227 against the free design's 2989 at the same steps, 8% less stiff, its volume 31%)
   assert.ok(milled.compliance < free.compliance * 1.3 && Math.abs(milled.volume - 0.3) < 0.02, `compliance ${milled.compliance}, volume ${milled.volume}`);
@@ -573,4 +578,55 @@ test('the gradient matches finite differences through a mirror, an extrusion and
       assert.ok(Math.abs(fd - dc[e]) <= 1e-4 * Math.abs(fd) + 1e-12, `${JSON.stringify(extra)}, cell ${e}: ${dc[e]} against ${fd}`);
     }
   }
+});
+
+test('the draw filter never leaves a cell emptier than one on its way out, so a cantilever milled from its side has no undercuts with no avoid region', async () => {
+  const { drawFilter, grey } = await import('@rulecad/topopt');
+  // A column of 8 cells milled from +y: a full cell at the top fills every cell under it to exactly 1 (the smooth
+  // maximum used to lose ½√ε = 0.5 × 10⁻³ a cell: 0.9965 at the bottom), and any column comes out as solid as the
+  // cells above it, and at least its own
+  const size = { nx: 1, ny: 8 }, top = new Float64Array(8); top[7] = 1;
+  assert.deepEqual([...drawFilter(size, '+y').apply(top, new Float64Array(8))], [1, 1, 1, 1, 1, 1, 1, 1]);
+  const x = Float64Array.from({ length: 8 }, (_, e) => 0.2 + 0.6 * ((e * 5) % 7) / 7), made = drawFilter(size, '+y').apply(x, new Float64Array(8));
+  for (let j = 6; j >= 0; j--) assert.ok(made[j] >= made[j + 1] && made[j] >= x[j], `cell ${j}: ${made[j]} under ${made[j + 1]}, its own ${x[j]}`);
+  // The 30 × 20 cantilever, held at its left side and loaded down at its right side's middle, no avoid regions, 200
+  // steps: milled from above it had 5 undercut cells, from its free end 35 (densities 0.497 falling to 0.481 down a column)
+  const s = spec(30, 20, 0.4, 1.5, (g, fixed) => { for (let j = 0; j <= 20; j++) fixed[2 * g.node(0, j)] = fixed[2 * g.node(0, j) + 1] = 1; }, (g, f) => { f[2 * g.node(30, 10) + 1] = -1; });
+  for (const from of ['+y', '+x']) {
+    const r = optimise({ ...s, projection: true, steps: 200, mill: from });
+    assert.equal(undercuts(s.grid, r.density, { from }).count, 0, `milled from ${from}`);
+    // (a section milled from its own side is a grey result: a full-height grey column bends as stiffly as a solid one
+    // of its share's height, so the optimiser has no reason to choose; grey says so)
+    if (from === '+y') assert.ok(grey(r.density) > 0.3, `grey ${grey(r.density)}`);
+  }
+});
+
+test('symmetry the process can\'t keep is refused by name: a mirror or turn that swaps the tool\'s side, the draw or the build direction', () => {
+  const s = spec(30, 20, 0.4, 1.5, (g, fixed) => { for (let j = 0; j <= 20; j++) fixed[2 * g.node(0, j)] = fixed[2 * g.node(0, j) + 1] = 1; }, (g, f) => { f[2 * g.node(30, 10) + 1] = -1; });
+  const go = (extra) => optimise({ ...s, projection: true, steps: 40, ...extra });
+  // (accepted before: the halves came out 0.762, 0.991 and 0.838 apart while the part was said to be mirrored)
+  assert.throws(() => go({ mill: '+y', symmetry: { mirror: 'y' } }), /milled from \+y, a part can't be the same mirrored across y \(the tool's side\)/);
+  assert.throws(() => go({ overhang: '+y', symmetry: { turns: 2 } }), /printed \+y, a half turn about z turns the build direction round to face the other way: mirror across x instead/);
+  assert.throws(() => go({ cast: { draw: 'y', parting: 5 }, symmetry: { mirror: 'y' } }), /cast in two halves along y, .*mirrored across y \(the draw\).*or part it at the grid's middle \(layer 10 of 20\)/);
+  assert.throws(() => go({ mill: '+x', symmetry: { turns: 4 } }), /a quarter turn about z moves the tool's side onto another axis/);
+  // Two halves parted at the middle map onto each other, and a mirror across the other axis keeps the tool's side
+  const half = (r) => { let w = 0; for (let j = 0; j < 20; j++) for (let i = 0; i < 30; i++) w = Math.max(w, Math.abs(r.density[j * 30 + i] - r.density[(19 - j) * 30 + i])); return w; };
+  assert.ok(half(go({ cast: { draw: 'y', parting: 10 }, symmetry: { mirror: 'y' } })) < 1e-12);
+  assert.ok(half(go({ mill: '+x', symmetry: { mirror: 'y' } })) < 1e-12);
+  // In 3D: a turn about another axis than the tool's
+  const p = { space: { at: [0, 0, 5], size: [10, 10, 10] }, supports: [{ at: [0, 0, 0.5], size: [10, 10, 1] }], loads: [{ at: [0, 0, 9.5], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.3 };
+  assert.throws(() => discretise({ ...p, mill: '+z', symmetry: { turns: 2, axis: 'x' } }), /milled from \+z, a half turn about x turns the tool's side round to face the other way: turn about z/);
+  assert.throws(() => discretise({ ...p, overhang: '+z', symmetry: { turns: 4, axis: 'y' } }), /printed \+z, a quarter turn about y moves the build direction onto another axis/);
+  assert.throws(() => discretise({ ...p, cast: { draw: 'z' }, symmetry: { turns: 4, axis: 'x' } }), /a quarter turn about x moves the draw onto another axis/);
+  assert.equal(discretise({ ...p, cast: { draw: 'z' }, symmetry: { turns: 2, axis: 'x' } }).cast.parting, 6, 'parted at the middle: a half turn about x maps each half onto the other');
+  assert.equal(discretise({ ...p, mill: '+z', symmetry: { turns: 4 } }).mill, '+z', 'a quarter turn about the tool\'s own axis');
+});
+
+test('grey: the share of the design cells neither empty nor solid', async () => {
+  const { grey } = await import('@rulecad/topopt');
+  // 0.05 and 0.95 are clear, 0.1 and 0.9 on the line count as clear, 0.5 and 0.3 are grey: 2 of 6
+  assert.equal(grey([0.05, 0.95, 0.1, 0.9, 0.5, 0.3]), 2 / 6);
+  // A kept cell (passive) doesn't count: 1 grey of the 2 free cells
+  assert.equal(grey([0.5, 0.5, 1], [0, 1, 0]), 0.5);
+  assert.equal(grey([], []), 0);
 });

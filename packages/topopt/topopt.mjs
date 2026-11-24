@@ -92,7 +92,6 @@ export function discretise(p) {
   // One process at a time: printed (overhang), milled or cast
   const made = ['overhang', 'mill', 'cast'].filter((k) => p[k]);
   if (made.length > 1) throw new Error(`a part is printed (overhang), milled (mill) or cast (cast), one of them: this problem gives ${made.join(' and ')}`);
-  if (p.overhang && p.symmetry?.mirror?.includes(p.overhang.at(-1))) throw new Error(`symmetry: printed ${p.overhang}, a part can't be the same mirrored across ${p.overhang.at(-1)} (the build direction): mirror across the other axes`);
   for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
   const all = [...space, ...keep].map(bounds), lo = [], hi = [], n = [];
   for (let a = 0; a < dim; a++) {
@@ -164,7 +163,7 @@ export function discretise(p) {
     if (p.input_spring) for (const m of ins) springs[dim * m + inDir] += p.input_spring / ins.length;
     output = { force: L, spring: o.spring || 0, input: loads[0].force };
   }
-  return {
+  return clash({
     grid: size, origin, passive, fixed, loads, ...(output ? { output, springs } : {}),
     material: p.material, thickness: p.thickness, volume: p.volume,
     // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
@@ -173,7 +172,28 @@ export function discretise(p) {
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(p.stress ? { stress: p.stress } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
     regions: { keep, avoid },
-  };
+  });
+}
+
+// A symmetry the process can't keep: a mirror or turn that swaps the tool's side, the mould's draw or the build
+// direction for its opposite (or a quarter turn that moves it to another axis) would ask the part to be made from both
+// sides at once, and the tie and the process would pull it lopsided. Refused by name; a mould in two halves parted at
+// the grid's middle maps onto itself under a mirror or half turn across its draw, so that one stands.
+function clash(spec) {
+  const sym = spec.symmetry, way = spec.overhang || spec.mill || spec.cast;
+  if (!sym || !way || way === 'none') return spec;
+  const g = spec.grid, n = g.nz > 1 ? [g.nx, g.ny, g.nz] : [g.nx, g.ny], dim = n.length, names = 'xyz'.slice(0, dim);
+  const two = typeof way === 'object', axis = two ? way.draw : String(way).at(-1), ax = names.indexOf(axis);
+  if (ax < 0) return spec; // (a bad side is refused by its own filter, by name)
+  const what = spec.overhang ? `printed ${way}` : spec.mill ? `milled from ${way}` : two ? `cast in two halves along ${axis}` : `cast, drawn off ${way}`;
+  const role = spec.overhang ? 'the build direction' : spec.mill ? "the tool's side" : 'the draw';
+  const middle = two && 2 * way.parting === n[ax], about = dim === 2 ? 'z' : sym.axis || 'z', across = [...'xyz'].filter((a) => a !== about && names.includes(a)).includes(axis);
+  const fix = two ? `, or part it at the grid's middle (layer ${n[ax] / 2} of ${n[ax]})` : '';
+  if ((sym.mirror || '').includes(axis) && !middle) throw new Error(`symmetry: ${what}, a part can't be the same mirrored across ${axis} (${role}): mirror across the other axes${fix}`);
+  const instead = dim === 2 ? `mirror across ${names.replace(axis, '')} instead` : `turn about ${axis}`;
+  if (sym.turns === 2 && across && !middle) throw new Error(`symmetry: ${what}, a half turn about ${about} turns ${role} round to face the other way: ${instead}${fix}`);
+  if (sym.turns === 4 && across) throw new Error(`symmetry: ${what}, a quarter turn about ${about} moves ${role} onto another axis: ${instead}`);
+  return spec;
 }
 
 // A casting's draw on the grid: one way ('+z'), or two halves from a parting plane, its mm as a layer
@@ -411,7 +431,7 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
   const two = parting != null, sign = from[0] === '-' ? -1 : 1;
   if (ax < 0 || ax >= dim || (!two && !/^[+-]/.test(from))) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'}${two ? ', or with a parting plane the draw axis, x, y or z' : ''} (got ${from})`);
   if (two && !(Number.isInteger(parting) && parting >= 0 && parting <= n[ax])) throw new Error(`the parting plane is a layer from 0 to ${n[ax]} (got ${parting})`);
-  const stride = [1, nx, nx * ny][ax], eps = 1e-6, half = 0.5 * Math.sqrt(eps);
+  const stride = [1, nx, nx * ny][ax], eps = 1e-6;
   // Each line along the axis as a list of chains, each from the side its tool or mould half comes from inwards
   const chains = [];
   for (let e = 0; e < cells; e++) {
@@ -430,7 +450,11 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
           if (k === 0) { v = t; slopeIn[e] = 1; slopePrev[e] = 0; out[e] = v; continue; }
           const d = v - t, root = Math.sqrt(d * d + eps);
           slopePrev[e] = 0.5 * (1 + d / root); slopeIn[e] = 0.5 * (1 - d / root);
-          v = 0.5 * (v + t + root) - half; out[e] = v;
+          // (never below the larger of the two, so a cell is never less solid than one on its way out, and at most
+          // 1: a full cell stays full; past it the chain is solid and nothing before it changes that)
+          v = 0.5 * (v + t + root);
+          if (v >= 1) { v = 1; slopePrev[e] = slopeIn[e] = 0; }
+          out[e] = v;
         }
       }
       return out;
@@ -461,6 +485,7 @@ const SUPPORT = 10; // what a kept cell nothing holds up costs, in the part's co
 const ERODE = 0.7, DILATE = 0.3, DILATE_EVERY = 10; // a mechanism's robust formulation: the eroded and dilated copies' thresholds, and how often the dilated volume target follows
 
 export function model(spec, { method, backend = jsBackend } = {}) {
+  clash(spec);
   const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
   const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, ETA = 0.5, size = dim === 3 ? g.h : spec.thickness;
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
@@ -990,6 +1015,20 @@ export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.
   const cells = [];
   for (let e = 0; e < solid.length; e++) if (!solid[e] && made[e] >= 0.5) cells.push(e);
   return { count: cells.length, cells };
+}
+
+/**
+ * How grey a result is: the share of its design cells (free, inside the space) that are neither empty nor solid,
+ * between a tenth and nine tenths. A clear design has a few per cent, on its edges; much more and the outline drawn
+ * at half density is a guess at a part, not the part. A process or a tie that leaves no clear part (a 2D section
+ * milled from its side: a grey column bends as stiffly as a solid one of its share's height) shows as grey.
+ * @param {ArrayLike<number>} density @param {ArrayLike<number>} [passive] nonzero for cells that are not free
+ * @returns {number} 0 to 1
+ */
+export function grey(density, passive) {
+  let free = 0, mid = 0;
+  for (let e = 0; e < density.length; e++) if (!passive || !passive[e]) { free++; if (density[e] > 0.1 && density[e] < 0.9) mid++; }
+  return free ? mid / free : 0;
 }
 
 /**
