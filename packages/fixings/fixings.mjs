@@ -20,7 +20,7 @@ import { engagement, stripping, preload, torqueFor, seating, lengthFor, screwGro
 import { pinModel, pinHole, pin, snapPin, snapSocket, snapPinModel, parsePin, isPinName } from './pins.mjs';
 import { printedBoltModel, printedBolt } from './bolts.mjs';
 import { magnetModel, magnetSeatModel, magnetSeat, magnet, parseMagnet, isMagnetName, fieldShare } from './magnets.mjs';
-import { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor, tubeRing } from './snaps.mjs';
+import { annularSnapModel, annularBead, annularGroove, snapSlots, skirtFinger, hubFactor, shaftFactor, tubeRing } from './snaps.mjs';
 
 export { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS } from './model.mjs';
 export { holeModel, hole, HOLE_KINDS } from './holes.mjs';
@@ -31,7 +31,7 @@ export { engagement, stripping, preload, torqueFor, seating, lengthFor, screwGro
 export { pinModel, pinHole, pin, snapPin, snapSocket, snapPinModel, parsePin, isPinName, PIN_KINDS, PIN_FITS, PIN_GRAMMAR } from './pins.mjs';
 export { printedBoltModel, printedBolt, BOLT_NUTS } from './bolts.mjs';
 export { magnetModel, magnetSeatModel, magnetSeat, magnet, parseMagnet, isMagnetName, fieldShare, MAGNET_GRADES, MAGNET_FITS, MAGNET_SIZES, MAGNET_GRAMMAR } from './magnets.mjs';
-export { annularSnapModel, annularBead, annularGroove, hubFactor, shaftFactor, tubeRing, SNAP_USES } from './snaps.mjs';
+export { annularSnapModel, annularBead, annularGroove, snapSlots, skirtFinger, hubFactor, shaftFactor, tubeRing, SNAP_USES } from './snaps.mjs';
 
 /**
  * What this release is. `release` is `'placeholder'` until the package has functions to call (0.1.0), then `'ready'`:
@@ -62,7 +62,7 @@ export function fixingsFor({ sets, printer, ops, display } = {}) {
   out.lengthFor = (stack, m, o = {}) => lengthFor(stack, m, with_(o));
   out.screwGroup = screwGroup;
   // (a snap pin from plain figures, as @rulecad/flexures draws it, built with the design's booleans)
-  Object.assign(out, { snapPin: (p, o) => snapPin(p, o ?? ops ?? undefined), snapSocket, snapPinModel, parsePin, isPinName, parseMagnet, isMagnetName, fieldShare, hubFactor, shaftFactor, tubeRing });
+  Object.assign(out, { snapPin: (p, o) => snapPin(p, o ?? ops ?? undefined), snapSocket, snapPinModel, parsePin, isPinName, parseMagnet, isMagnetName, fieldShare, hubFactor, shaftFactor, tubeRing, skirtFinger, snapSlots });
   for (const [k, f] of Object.entries(JOINED)) out[k] = (m, o = {}) => (ops ? f(m, with_(o), ops) : f(m, with_(o)));
   return out;
 }

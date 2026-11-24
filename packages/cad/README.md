@@ -472,6 +472,7 @@ starts and stops. From that the check says:
 | `fasten.length` | The length chosen where none is given: the shortest sold length that fits the stack as measured (into a motor, the longest that stops short of the end of its thread). A given length is checked for reaching the far end, bottoming out in a blind hole (1 mm is kept at the tip) and standing more than a diameter proud |
 | `fasten.engagement` | The thread engaged at the far end against the rule for what it is in: the thread's `pilot_depth` or the engagement rule for the project's material, an insert's length, a nut's height; into a motor, its own thread's depth, and at least one diameter (`engagement.steel`, as `motor.mount` holds it). A short one names the length or the depth that would do |
 | `fasten.seat` | The head (or its washer) has a flat seat as wide as itself and square to the screw, read under the head from the part; a countersunk head has a countersink of its angle. It says the force and torque the seat takes on the project's material, and with `torque` holds the pressure against the material's strength and names the washer that would bring it within |
+| `fasten.torque` | A printed bolt given a `torque`: the clamp it is turned to (T = K d F with steel's nut factor, an estimate for a printed thread) held against what the bolt breaks at, about twice over (`fixings.load_margin`); a turn that would break it fails, naming the most to turn it to |
 | `fasten.access` | A key or driver reaches the head along its axis, in the build pose: a cylinder as wide as the key across its corners, as long as its long arm (both from the `hexkey` set, ISO 2936; a hexagon head's socket adds `hexkey.socket_wall`, an estimate), clear of every other part. A part over the head that goes on after the screw passes, with the step it goes on at: `cad order` puts it after. One that must be there first (it comes earlier in the order, it is one of the joined parts, or it is no step at all) fails by name with how far over the head it is; where a ball-end key tilted up to `hexkey.ball_end_tilt` (25°) clears it, it warns instead |
 | `fasten.load` | With `loads` or a motor's torque on the joint: what it holds up (the parts left with no other way to the first item, their masses, the loads hung on them, under the assembly's `gravity`, and the torque of a motor among them), shared between the screws as a group (`screwGroup` of `@rulecad/fixings`: shear by distance from the centroid, pull by a plane through it). The screw that takes the most is held against its proof load, the thread it is in against stripping, and the clamp against slipping, at its preload (`screwLoad`); the margin is how many times the load it holds, and under 2 it warns. With no `torque`, it says the torque that leaves the thread twice the load, within the seat, and `cad order` tightens to that. It names the estimates it rests on (the nut factor, a plastic's shear strength, the friction) |
 
@@ -514,7 +515,7 @@ draws its hole or pocket from the printer's rules:
 ```
 
 - **Pins** (`fit.pin`): a snap pin, a steel dowel, a length of filament or a printed pin. `cad check` finds round holes
-  in part a whose axis goes on into part b, holds each to the hole fixings draws for that pin (a snap pin's socket, a
+  in part a, standing or lying on their side as teardrops (the roof is left out of the round), whose axis goes on into part b, holds each to the hole fixings draws for that pin (a snap pin's socket, a
   plain pin's press or slip hole), and measures the parts along the axis: a pin too long or too short for its parts
   fails by name, and so do fewer holes than `count`. `load` (across the joint) and `pull` (along the pins) are held
   to about twice the margin.
@@ -523,7 +524,9 @@ draws its hole or pocket from the printer's rules:
   their pull, across `gap` where something lies between.
 - **Printed bolts** are a fasten's: `"screw": "M8x20 hex printed"`. Below the printer's smallest thread it is refused
   by name (M5 at 0.2 mm layers names M6); its load is held to the plastic's strength by how it prints, and no wrench
-  torque is said, since a printed thread is done up by hand.
+  torque is said, since a printed thread is done up by hand. Its length is any whole millimetre that fits, into a
+  slot nut too, where a bought screw is held to the lengths sold. A `torque` given for it is a turn by hand, held to
+  what the bolt breaks at (`fasten.torque`), and `cad order` says it as a turn to that torque and no further.
 
 `cad list` lists pins (printed, cut or bought) and magnets (bought) with their grams, and printed bolts among the
 printed parts; `cad order` names each on its step. A fastener given as text (`"fastener": "push pin"`) is listed as

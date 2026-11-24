@@ -235,3 +235,24 @@ test('drivers and the power budget: the trimmer from the sense resistor, refusal
   assert.equal(powerBudget(parts, { voltage: 24, current: 5 }).findings[0].level, 'pass');
   assert.throws(() => powerBudget(parts, {}), /give the supply's voltage/);
 });
+
+test('a motor\'s bore reads its fit from @rulecad/shapes\' shaftBore, the one place every shaft bore reads it', async () => {
+  const { SHAFT_FITS, pulleyBore } = await import('@rulecad/shapes');
+  assert.equal(DEFAULTS.fit, SHAFT_FITS.slide, 'the slide fit is shapes\' own, the measured D-bore'); assert.equal(DEFAULTS.press, SHAFT_FITS.press);
+  // The sizes stay as they were: a NEMA 17's 5 mm D-shaft, 4.5 across its flat, hole_comp 0.1:
+  // slide 5 + 2 × 0.05 + 0.1 = 5.2 and 4.5 + 2 × 0.05 + 0.1 = 4.7; press 5 - 2 × 0.02 + 0.1 = 5.06 and 4.56
+  const n = motorModel('nema17'), slide = boreModel(n, { depth: 10 }), press = boreModel(n, { depth: 10, fit: 'press' });
+  assert.deepEqual([slide.diameter, slide.across, press.diameter, press.across], [5.2, 4.7, 5.06, 4.56]);
+  // A change to the measured slide moves the motor's bore and a pulley's on the same shaft together
+  const was = SHAFT_FITS.slide.value, x1c = { hole_comp: 0.1, fit: 0.2 };
+  try {
+    SHAFT_FITS.slide.value = 0.1;
+    assert.equal(boreModel(n, { depth: 10, printer: x1c }).diameter, 5.3); assert.equal(pulleyBore({ bore: 5 }, { length: 10, printer: x1c }).bore, 5.3);
+  } finally { SHAFT_FITS.slide.value = was; }
+  assert.equal(boreModel(n, { depth: 10 }).diameter, pulleyBore({ bore: 5 }, { length: 10, printer: x1c }).bore, 'the same bore for the same shaft');
+  assert.throws(() => boreModel(n, { depth: 10, fit: 'run' }), /bore: fit is slide or press \(got "run"\)/);
+  // A printer whose holes come out large takes a hole_comp below 0, as the bore always has (cad's hub test drives one):
+  // slide 5 + 2 × 0.05 - 0.1 = 5.0 and 4.5 + 2 × 0.05 - 0.1 = 4.5; press 5 - 2 × 0.02 - 0.1 = 4.86
+  const big = boreModel(n, { depth: 10, printer: { hole_comp: -0.1 } });
+  assert.deepEqual([big.diameter, big.across, boreModel(n, { depth: 10, fit: 'press', printer: { hole_comp: -0.1 } }).diameter], [5, 4.5, 4.86]);
+});
