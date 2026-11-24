@@ -6477,3 +6477,32 @@ test('a flat problem whose space is another design\'s part: its section halfway 
     assert.doesNotMatch(cad('check', 'flat/arm'), /Error|error:/);
   } finally { done(); }
 });
+
+test('a cylinder at an anchor with a rotate lies along the anchor\'s turned z, as an assembly reads it, and one turned off x, y and z is refused', () => {
+  const { ws, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'rot');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'rot', objects: ['block'] }));
+    // Hand turns (rotate is degrees about x, then y, then z, applied to the anchor's z, [0, 0, 1]):
+    // [90, 0, 0] about x takes z to (0, -sin 90, cos 90) = (0, -1, 0), along y; [0, 90, 0] about y takes it to
+    // (sin 90, 0, cos 90) = (1, 0, 0), along x; [45, 0, 0] gives (0, -0.707, 0.707), along none of them
+    fs.writeFileSync(path.join(project, 'objects', 'block.json'), JSON.stringify({ name: 'block', version: '0.1.0',
+      variables: { turn: { value: 90 } },
+      anchors: { side: { at: [10, 0, 5], rotate: ['turn', 0, 0] }, end: { at: [0, 0, 5], rotate: [0, 90, 0] }, slant: { at: [5, 0, 5], rotate: [45, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'block.js'), "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [20, 10, 10] }) }\n");
+    const base = { title: 'A bracket on the block', uses: ['x1c'], material: 'pla', cell: 1, volume: 0.5, steps: 10,
+      space: { at: [5, 0, 5], size: [20, 10, 10] }, loads: [{ at: [14, 0, 5], r: 1, force: [0, 0, -10] }] };
+    fs.writeFileSync(path.join(project, 'problems', 'turned.json'), JSON.stringify({ ...base,
+      supports: [{ anchor: 'block.side', r: 1.6, length: 10 }], keep: [{ anchor: 'block.end', r: 3, length: 4 }] }));
+    fs.writeFileSync(path.join(project, 'problems', 'slant.json'), JSON.stringify({ ...base, supports: [{ anchor: 'block.slant', r: 1.6, length: 10 }] }));
+    const read = (ref) => execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      try { const r = await readProblem('rot', ${JSON.stringify(ref)}); console.log(JSON.stringify(r.problem)); } catch (e) { console.log(JSON.stringify({ error: e.message })); }
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    const p = JSON.parse(read('turned'));
+    assert.deepEqual([p.supports[0].axis, p.supports[0].at], ['y', [10, 0, 5]], 'turned 90 degrees about x (a variable): along y, not the unturned z');
+    assert.deepEqual([p.keep[0].axis, p.keep[0].at], ['x', [0, 0, 5]], 'turned 90 degrees about y: along x');
+    assert.match(JSON.parse(read('slant')).error, /the anchor "block\.slant" points along \[0, -0\.707, 0\.707\], not along x, y or z: give the cylinder an axis/);
+  } finally { done(); }
+});

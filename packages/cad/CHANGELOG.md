@@ -11,10 +11,10 @@ and head, the parts it passes through and the part it ends in.
 
 - A problem's regions, supports and loads can sit at another design's anchor: `"anchor": "plate.pivot"` in place of
   `at`, where that anchor is as the design is built (x and y of it in a flat problem; a cylinder along the anchor's
-  axis unless it names one). Moving the anchor moves the problem and optimises it again; a value of that design the
-  anchors do not read leaves the result as it is. A design built from the problem itself is refused by name, as is an
-  anchor that is not there (with the anchors there are). Schema first: `anchor` on regions, supports, loads and the
-  output.
+  axis unless it names one; an anchor with a `rotate` points along its z turned by it, as an assembly reads it).
+  Moving the anchor moves the problem and optimises it again; a value of that design the anchors do not read leaves
+  the result as it is. A design built from the problem itself is refused by name, as is an anchor that is not there
+  (with the anchors there are). Schema first: `anchor` on regions, supports, loads and the output.
 - `cad preview <project>/problems/<problem>` (or the problem file's path) shows the run: the result is drawn as by
   `cad optimise`, and `.preview/<project>/<problem>-run.html` replays the run step by step with no server (the live
   view's page, its densities, compliance and change for every step read from the file). Every `cad optimise` run is

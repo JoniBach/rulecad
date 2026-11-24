@@ -1465,7 +1465,8 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
   lines that is 0.84 mm, which only takes over on cells under 0.56 mm.
 - **At a design's anchors:** any region, support or load can take `"anchor": "plate.pivot"` in place of `at`: the
   anchor of another design in the project, where it is as that design is built (x and y of it in a flat problem; a
-  cylinder lies along the anchor's axis unless it names one). The problem then follows the design: move the plate's
+  cylinder lies along the anchor's axis unless it names one, and an anchor with a `rotate` points along its z turned by
+  it, as an assembly reads it). The problem then follows the design: move the plate's
   pivot and the support, the boss round it and the result move with it. A design built from this problem can't be
   named (it would need the result to be built): name the part it is fixed to.
 - **Or a stress limit instead of a volume:** `"stress": "pla.strength / 3"` (MPa) finds the lightest layout that keeps

@@ -13,6 +13,7 @@ import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
 import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
+import { turn } from '@rulecad/model-link';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
@@ -75,7 +76,9 @@ export async function readProblem(project, ref) {
         if (typeof v !== 'number') throw new Error(`${path.basename(file)}: the anchor "${ref}" reads "${n}", which isn't one of ${object}'s numbers`);
         return v;
       });
-      anchors.set(ref, { anchor: ref, at: (spec.at || [0, 0, 0]).map(num), axis: (spec.axis || [0, 0, 1]).map(num) });
+      // Its axis is its z, as an assembly reads it: turned by its rotate (degrees about x, then y, then z) where it has one
+      const m = spec.rotate && turn(spec.rotate.map(num)), axis = m ? [m[2], m[6], m[10]].map((c) => (Math.abs(c) < 1e-12 ? 0 : c)) : (spec.axis || [0, 0, 1]).map(num);
+      anchors.set(ref, { anchor: ref, at: (spec.at || [0, 0, 0]).map(num), axis });
     }
     return anchors.get(ref);
   };
