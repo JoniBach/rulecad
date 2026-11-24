@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: frame layout optimisation
-
+## 0.2.13: frame layout optimisation
 ### Added
 
 - `@rulecad/fea/layout`, a new entry: `layout(problem)` finds the least-volume pin-jointed frame that carries the
