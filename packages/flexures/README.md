@@ -115,7 +115,9 @@ One such joint folds 43.4° within PETG's limit, so four in series fold 90° at 
 **A sheet that folds.** `foldSheet(sheet, folds)` takes panels (outlines in the flat sheet) and hinges (a line, the
 panel on each side, and the hinge's sizes), and draws the sheet flat as printed, in one piece, or folded (`folds` in
 degrees for each hinge; a positive fold lifts its `to` panel off the bed). Where two arrays' bands meet near a corner
-they can cut a bit off a panel that no hinge holds; that bit is left out, so nothing prints loose. `foldSheetModel`
+they can cut a bit off a panel that no hinge holds; that bit is left out, so nothing prints loose. Two arrays whose
+joints would meet at a corner (wider than the panel left between their bands) are refused (`fold.strips`): they would
+print joined. `foldSheetModel`
 gives each hinge's model and where every body is at a set of folds.
 
 `foldCheck(sheet, material, { poses })` checks each pose on the way from flat, in `steps` stages (default 6):
@@ -129,9 +131,9 @@ The bodies are the panels less their hinges' bands, each the sheet's thickness. 
 left out of the clash check; the strain check covers them. Its geometry is manifold-3d's, so `foldSheet` and
 `foldCheck` are async.
 
-The workspace example `flexures/tray` is a tray printed flat in PETG: a 50 mm base and four 20 mm walls, each wall on
+The workspace example `flexures/tray` is a tray printed flat in PETG: a 60 mm base and four 20 mm walls, each wall on
 four LET joints in series. Folded to 90°, each joint sees 0.65% strain and every two parts stay over 1.2 mm apart on
-the way up. Half of each wall's height goes into its joints, so it stands about 10 mm above them. It weighs 5.8 g
+the way up. Half of each wall's height goes into its joints, so it stands about 10 mm above them. It weighs 7.2 g
 (PETG 1.27 g/cm³, an estimate). The walls spring back flat unless something holds them: a latch, or what the tray
 holds. The assembly `flexures/tray-fit` shows it flat and with its walls standing (its `tray.fold` pose), and checks
 the block it holds against both.

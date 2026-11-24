@@ -11,7 +11,7 @@
     "tray": { "label": "The tray: base, four walls and their joints in one print" }
   },
   "variables": {
-    "base": { "value": 50, "unit": "mm", "rule": "The base's side, a square; each wall is as long as its edge" },
+    "base": { "value": 60, "unit": "mm", "rule": "The base's side, a square; each wall is as long as its edge. Each edge's joints take 12.36 mm of it, and two edges' joints must not meet at a corner: 60 leaves 35.28 mm between the bands, over the joints' 30 and their 0.5 mm laps" },
     "wall": { "value": 20, "unit": "mm", "rule": "Each wall's height flat, from the base's edge: half of it goes into the joints' band, so a wall stands about 10 mm above the joints" },
     "thickness": { "value": 1.2, "unit": "mm", "rule": "The sheet: six layers, so the torsion bars are as deep as they are wide and a half" },
     "joint_w": { "value": 30, "unit": "mm", "rule": "Each LET joint's length along its edge: longer bars twist further for a strain" },

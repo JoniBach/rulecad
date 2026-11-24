@@ -1274,6 +1274,10 @@ test('folding sheets and Miura sheets: bad input is refused by name, before any 
   await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 1.2 } }] }), 'fold.web');
   const two = { thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] };
   await code(() => foldSheet(two, { nope: 10 }), 'fold.pose');
+  // a box whose two edges' joints (12 wide, so 6 either side of each edge's middle) meet at the corner of a 10 mm base:
+  // its bands leave 10 - 5 = 5 mm between them, under the joints' 12 and their laps
+  const corner = { thickness: 1.2, panels: { base: rect(-5, -5, 5, 5), e: rect(5, -5, 15, 5), n: rect(-5, 5, 5, 15) }, hinges: [{ name: 'e', from: 'base', to: 'e', at: [[5, -5], [5, 5]], let: { ...let_, width: 10, bridge: 1 } }, { name: 'n', from: 'base', to: 'n', at: [[-5, 5], [5, 5]], let: { ...let_, width: 10, bridge: 1 } }] };
+  await code(() => foldSheet(corner), 'fold.strips');
   await code(() => foldCheck(two, petg, {}), 'fold.pose');
   await code(() => foldCheck(two, petg, { poses: { up: { h: 30 } }, clearance: -1 }), 'fold.clearance');
   await code(() => miuraModel({ a: 10, b: 10, angle: 90, rows: 2, columns: 2 }), 'miura.angle');
@@ -1304,10 +1308,10 @@ test('folding: the README\'s figures are the code\'s, and the workspace tray (ex
   assert.ok(made.mechanism.poses.folded.gap >= 1.2 - 1e-9, 'its parts stay over 1.2 mm apart'); assert.ok(readme.includes('every two parts stay over 1.2 mm apart'));
   assert.ok(onePiece(flat), 'one print'); const grams = (measureVolume(flat) * 1.27) / 1000;
   assert.ok(readme.includes(`It weighs ${grams.toFixed(1)} g`), `the README's tray weighs ${grams.toFixed(1)} g`);
-  // standing: each wall's outer face at the first pin (25 - 1.5 × 6.68 = 14.98) plus the lands at 22.5°, 45° and 67.5°
-  // (6.68 × 2.0137 = 13.451) plus half the sheet: 29.031; its top 0.6 + 13.451 + 9.98 (the wall past the last pin, 45 - 35.02) = 24.031
+  // standing: each wall's outer face at the first pin (30 - 1.5 × 6.68 = 19.98) plus the lands at 22.5°, 45° and 67.5°
+  // (6.68 × 2.0137 = 13.451) plus half the sheet: 34.031; its top 0.6 + 13.451 + 9.98 (the wall past the last pin, 50 - 40.02) = 24.031
   const b = measureBoundingBox(folded);
-  near(b[1][0], 25 - 1.5 * 6.68 + 6.68 * (Math.cos(rad(22.5)) + Math.cos(rad(45)) + Math.cos(rad(67.5))) + 0.6, 1e-4, 'the wall\'s outer face'); near(b[1][0], 29.031, 1e-3, 'by hand');
+  near(b[1][0], 30 - 1.5 * 6.68 + 6.68 * (Math.cos(rad(22.5)) + Math.cos(rad(45)) + Math.cos(rad(67.5))) + 0.6, 1e-4, 'the wall\'s outer face'); near(b[1][0], 34.031, 1e-3, 'by hand');
   near(b[1][2], 0.6 + 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))) + (45 - (25 + 1.5 * 6.68)), 1e-4, 'its top'); near(b[1][2], 24.031, 1e-3, 'by hand');
   assert.ok(readme.includes(`so it stands about ${Math.round(b[1][2] - 0.6 - 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))))} mm above them`), 'the README\'s wall height');
 });

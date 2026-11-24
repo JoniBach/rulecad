@@ -16,7 +16,8 @@ why. Releases before this file was started are described in their pull requests 
   in one piece and drawn folded at any set of folds (an assembly's pose can set them). `foldCheck` checks each pose on
   the way from flat: every hinge's strain (`fold.strain`), its pinch (`fold.pinch`), and every two rigid bodies apart
   by the clearance (`fold.clash`, `fold.clearance`); a bit of panel that two bands cut off is left out of the print and
-  said (`fold.loose`). Bad input is refused by name (`fold.*`, `let.*`). `foldSheet` and `foldCheck` are async: their
+  said (`fold.loose`). Two arrays whose joints would meet at a corner are refused (`fold.strips`): they would print
+  joined. Bad input is refused by name (`fold.*`, `let.*`). `foldSheet` and `foldCheck` are async: their
   geometry is manifold-3d's.
 - `miura` and `miuraModel`: the Miura fold printed flat as panels on a web, its rigid folding (one tilt sets every
   crease), each crease's turn, strain and pinch, and the furthest it folds (`miura.*` refusals).

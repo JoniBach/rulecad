@@ -118,6 +118,11 @@ const about = (q, u, a) => {
 };
 const centroid = (pts) => pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length], [0, 0]);
 
+// A hinge's rectangle in the sheet, half sizes across and along its line; and whether two convex outlines overlap
+// (separating axes: they are apart if some side's line has the whole of the other beyond it)
+const rectOf = (g, ax, al) => [[-ax, -al], [ax, -al], [ax, al], [-ax, al]].map(([x, y]) => [g.mid[0] + g.nrm[0] * x + g.u[0] * y, g.mid[1] + g.nrm[1] * x + g.u[1] * y]);
+const overlaps = (A, B) => ![[A, B], [B, A]].some(([P, Q]) => P.some((p, i) => { const q = P[(i + 1) % P.length], n = [q[1] - p[1], p[0] - q[0]], side = (r) => (r[0] - p[0]) * n[0] + (r[1] - p[1]) * n[1], own = P.map(side).reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0); return Q.every((r) => side(r) * Math.sign(own) <= 1e-9); }));
+
 // The sheet worked out: each hinge's frame and pins, the bodies (panels, and an array's lands), the tree
 function layout(S, what) {
   if (!(S && S.thickness > 0)) throw refuse('fold.thickness', `${what}: the sheet needs a thickness above 0 mm (got ${JSON.stringify(S?.thickness)})`);
@@ -154,6 +159,13 @@ function layout(S, what) {
     // a positive turn about u lifts the `to` side if u × nrm points up
     const sign = Math.sign(u[0] * nrm[1] - u[1] * nrm[0]);
     hinges.push({ ...g, kind, u, mid, nrm, len, pins, at, across, along, zp, c, sign });
+  }
+  // two arrays' strips that overlap (at a corner, where two edges' joints are wider than the panel between their bands)
+  // would print joined, tying one hinge's bars to the other's: refused, with what fits
+  const strips = hinges.filter((g) => g.kind === 'let').map((g) => ({ g, pts: rectOf(g, g.across / 2 + OVERLAP, g.along / 2) }));
+  for (let i = 0; i < strips.length; i++) for (let k = i + 1; k < strips.length; k++) if (overlaps(strips[i].pts, strips[k].pts)) {
+    const [a, b] = [strips[i].g, strips[k].g];
+    throw refuse('fold.strips', `${what}: hinges ${a.name} and ${b.name} have joints that overlap (their strips meet, so they would print joined): narrower joints (width), fewer in series, or the panels between them larger`);
   }
   // the tree from the root: each panel reached once
   const parent = { [root]: null }, order = [root], queue = [root];
