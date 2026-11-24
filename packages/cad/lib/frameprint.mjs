@@ -94,7 +94,7 @@ const alongOf = (b, ctx) => ({ what: `${b.id} along its length`, beam: b, from: 
 function drawnSags(fm, ctx, targets) {
   const solver = solveFrame(fm.model), out = new Map(), all = [...targets, ...[...fm.beams.values()].map((b) => alongOf(b, ctx))];
   for (const cs of fm.cases) {
-    const res = stamp(fm, fm.model, solver.statics({ loads: fm.nodeLoads(cs.values) }));
+    const res = stamp(fm, fm.model, solver.statics({ loads: fm.nodeLoads(cs.values, null, cs.push) }));
     for (const t of all) out.set(`${t.what}|${cs.label}`, t.node ? ctx.sagAt(res, t.node(cs.values), fm.down) : ctx.sagAlong(res, t.beam, t.from, t.to, fm.down).sag);
   }
   const missed = [];
@@ -115,7 +115,7 @@ function evaluate(s, fm, ctx, cands, targets, drawn) {
   let def = null, creepSag = null;
   const per = new Map(cands.map((c) => [c.b.id, { stress: 0, compression: 0, case: null }]));
   for (const cs of fm.cases) {
-    const loads = fm.nodeLoads(cs.values), res = stamp(fm, model, solver.statics({ loads })), cr = stamp(fm, creep, creeper.statics({ loads }));
+    const loads = fm.nodeLoads(cs.values, null, cs.push), res = stamp(fm, model, solver.statics({ loads })), cr = stamp(fm, creep, creeper.statics({ loads }));
     for (const t of all) {
       // where the frame as drawn already misses this sag, the printed beam is held to the drawn frame's own figure
       const base = drawn.get(`${t.what}|${cs.label}`) ?? 0, missed = base > t.limit.value + 1e-12, lim = missed ? base * (1 + DRAWN_SLACK) : t.limit.value;
@@ -129,7 +129,7 @@ function evaluate(s, fm, ctx, cands, targets, drawn) {
   const moves = ctx.excitesOf(s).filter((x) => x.kind === 'move');
   if (moves.length) {
     const need = Math.max(...moves.map((x) => x.Hz)) * margin;
-    for (const cs of fm.cases) { const low = solveFrame(subdivide({ ...model, masses: fm.nodeMasses(cs.values) }, 4)).modes({ count: 1 }).frequencies[0]; if (!freq || low < freq.low) freq = { low, need, margin: low / need, case: cs.label }; }
+    for (const cs of fm.poses) { const low = solveFrame(subdivide({ ...model, masses: fm.nodeMasses(cs.values) }, 4)).modes({ count: 1 }).frequencies[0]; if (!freq || low < freq.low) freq = { low, need, margin: low / need, case: cs.label }; }
   }
   const out = new Map();
   for (const c of cands) {
