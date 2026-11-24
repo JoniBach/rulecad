@@ -885,7 +885,7 @@ export function fastenOf(s, worlds, opts = {}) {
                 // plastic thread, and held against what the bolt itself breaks at, since a printed bolt breaks long before a seat gives
                 const turned = fx.printed ? `turned by hand to ${mm(torque)} N m, it clamps with about ${mm(st.force)} N (T = K d F, fixings.nut_factor ${mm(K)} for steel threads: an estimate for a printed one)` : null;
                 if (fx.printed) {
-                  const bolt = F.printedBoltModel(fx, { length: L, head: form, material, nut: boltMate(sc) }), want = DEFAULTS.load_margin.value, ok = st.force * want <= bolt.breaking + 1e-9, safe = +torqueOf(bolt.breaking / want).toFixed(2);
+                  const bolt = F.printedBoltModel(fx, { length: L, head: form, material, nut: boltMate(sc) }), want = DEFAULTS.load_margin.value, ok = st.force * want <= bolt.breaking + 1e-9, safe = Math.floor(torqueOf(bolt.breaking / want) * 100 + 1e-9) / 100; // (down to the hundredth: rounded up, the most named would fail its own check)
                   say('fasten.torque', ok ? 'pass' : st.force <= bolt.breaking ? 'warn' : 'fail', `${turned}: ${ok ? `${mm(+(bolt.breaking / st.force).toFixed(2))} times under the ${mm(bolt.breaking)} N it breaks at (${bolt.governs})` : `${st.force <= bolt.breaking ? `under the ${mm(bolt.breaking)} N it breaks at (${bolt.governs}), but not ${mm(want)} times (fixings.load_margin)` : `more than the ${mm(bolt.breaking)} N it breaks at (${bolt.governs}): turning it that far breaks it`}. Turn it to ${mm(safe)} N m at most, or snug by hand with no torque given`}`,
                     { torque, force: st.force, breaking: bolt.breaking, margin: +(bolt.breaking / st.force).toFixed(2), most: safe });
                 }

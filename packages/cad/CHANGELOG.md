@@ -17,7 +17,7 @@ and head, the parts it passes through and the part it ends in.
   hand to 1 N m, it clamps with about 833.3 N (T = K d F, fixings.nut_factor 0.2 for steel threads: an estimate for a
   printed one)", and `cad order` says "to 1 N m and no further (a printed bolt, turned by hand, not tightened)". A new
   finding, `fasten.torque`, holds that clamp against what the bolt breaks at, about twice over: an M6 printed bolt in
-  PLA breaks at 625.2 N, so 1 N m fails and names 0.38 N m as the most. The seat's values no longer carry a
+  PLA breaks at 625.2 N, so 1 N m fails and names 0.37 N m as the most (rounded down, so it passes its own check). The seat's values no longer carry a
   tightening torque for a printed bolt.
 
 - **Pins lying on their side** (issue 306): a pin in teardrop holes, as `v.fixings.pinHole` draws one lying on its

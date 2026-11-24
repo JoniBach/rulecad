@@ -6349,13 +6349,17 @@ export function main (v) {
     // A torque given: 1 N m by T = K d F with K 0.2 is 1 / (0.2 × 0.006) = 833.3 N of clamp. The M6 printed bolt in PLA
     //   into a steel nut breaks at its root: 6 - 2 (5/8)(√3/2)(1) = 4.9175 mm less the whole 0.2 mm x1c.thread_gap each
     //   side, 4.518 mm; (π/4) 4.518² = 16.03 mm² × 39 MPa = 625.2 N. 833.3 N breaks it. Twice over, 312.6 N, is
-    //   0.2 × 6 × 312.6 / 1000 = 0.375 N m, said as 0.38
+    //   0.2 × 6 × 312.6 / 1000 = 0.37512 N m, said as 0.37: rounded down, since at 0.38 the clamp is 0.38 / (0.2 × 0.006)
+    //   = 316.7 N, and twice that, 633.3 N, is past the 625.2 N it breaks at
     write({ torque: 1 }); r = probe();
     const turn = said('fasten.torque');
     assert.deepEqual(turn.map((x) => x.level), ['fail'], 'one finding for both bolts');
-    assert.match(turn[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N \(T = K d F, fixings\.nut_factor 0\.2 for steel threads: an estimate for a printed one\): more than the 625\.2 N it breaks at \(tension\): turning it that far breaks it\. Turn it to 0\.38 N m at most, or snug by hand with no torque given/);
+    assert.match(turn[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N \(T = K d F, fixings\.nut_factor 0\.2 for steel threads: an estimate for a printed one\): more than the 625\.2 N it breaks at \(tension\): turning it that far breaks it\. Turn it to 0\.37 N m at most, or snug by hand with no torque given/); assert.equal(turn[0].values.most, 0.37);
     assert.match(said('fasten.seat')[0].text, /turned by hand to 1 N m, it clamps with about 833\.3 N/); assert.ok(!/the screw clamps/.test(said('fasten.seat')[0].text));
     assert.ok(r.order.some((l) => /M6x17 hex printed\) with a 10 mm socket or spanner turned by hand, to 1 N m and no further \(a printed bolt, turned by hand, not tightened\)/.test(l)), JSON.stringify(r.order));
+    // Turned to the most it names, 0.37 N m: 0.37 / (0.2 × 0.006) = 308.3 N, 2.03 times under 625.2 N, so it passes
+    write({ torque: turn[0].values.most }); r = probe();
+    assert.deepEqual(said('fasten.torque').map((x) => [x.level, x.values.margin]), [['pass', 2.03]], 'the most it names passes its own check');
     // 0.3 N m: 250 N, 2.5 times under 625.2 N, so it passes
     write({ torque: 0.3 }); r = probe();
     assert.deepEqual(said('fasten.torque').map((x) => [x.level, x.values.margin]), [['pass', 2.5]]);
