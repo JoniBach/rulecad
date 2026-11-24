@@ -4,8 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Unreleased
-
+## 0.4.7: shaft bores in one place
 ### Added
 
 - `shaftBore(shaft, { fit, across, printer })` and its table `SHAFT_FITS`: the bore a printed part takes for a bought

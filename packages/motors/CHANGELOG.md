@@ -4,8 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Unreleased
-
+## 0.1.7: bores from shapes' shaftBore
 ### Changed
 
 - `boreModel` and `bore` read their fit from `@rulecad/shapes`' `shaftBore` (#307), the one place every shaft bore in
