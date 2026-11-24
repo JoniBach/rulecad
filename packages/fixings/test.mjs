@@ -1587,3 +1587,24 @@ test('annular snap, a slotted skirt: the most undercut a failing bead names is w
     assert.equal(annularSnapModel({ ...p, slots: { count, reach } }, { pull: 400 }).most.undercut, big.most.undercut);
   }
 });
+
+test('annular snap, a slotted skirt: every given bead, passing or failing, names the same most undercut, and it holds what it says', () => {
+  // With few fingers the box's wall shares the stiffness, so the limit at a bead's own arm neither only falls nor only
+  //   rises with the bead: the most is searched over every thousandth. The 60 mm pot in 4 fingers reaching 4 mm passes
+  //   at 0.160 mm and fails at 0.161 (it named 0.152, 0.139 and 0.130 for beads of 0.5, 0.8 and 1.1 before); the 90 mm
+  //   joint in 4 fingers reaching 8 mm passes at 0.196 and not at 0.198, which a passing 0.35 mm bead named before
+  const strains = (m) => m.findings.filter((x) => /^snap\.(strain|root)$/.test(x.code)).every((x) => x.level === 'pass');
+  const pot = { diameter: 60, wall: 1.68, skirt: 1.26, boxEnd: 14, lidEnd: 1.5, lidTop: 16 }, wide = { diameter: 90, wall: 2, skirt: 1.2, boxEnd: 20, lidEnd: 2 };
+  const cases = [[pot, 4, 4, 0.16], [wide, 4, 8, 0.196], [pot, 8, 4, 0.067], [pot, 16, 4, null], [wide, 16, 8, null]];
+  for (const [p, count, reach, want] of cases) {
+    const at = (u) => annularSnapModel({ ...p, bead: +(u + 0.2).toFixed(3), slots: { count, reach } }, { pull: 1500 });
+    const named = [0.35, 0.5, 0.8, 1.1].filter((b) => b < p.skirt).map((b) => at(b - 0.2).most);
+    const u = named[0].undercut, say = `${p.diameter} mm in ${count} fingers reaching ${reach} mm`;
+    for (const m of named) assert.deepEqual(m, named[0], `${say}: every bead names the same most`);
+    if (want != null) assert.equal(u, want, say);
+    const most = at(u);
+    assert.ok(strains(most), `${say}: the ${u} mm it names passes`);
+    assert.ok(!strains(at(u + 0.001)), `${say}: a thousandth more fails`);
+    assert.equal(most.removal, named[0].removal, `${say}: it holds the pull-off it names`);
+  }
+});

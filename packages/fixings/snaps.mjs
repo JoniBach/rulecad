@@ -275,13 +275,16 @@ export function annularSnapModel(p, o = {}) {
     if (Math.max(least, up(need)) > lim.mostUndercut) sizeSays += `, more than the ${mm(r3(lim.mostUndercut))} mm the strain allows, so held to that`;
   }
   const { L, finger, arm } = sp, { k, Pmost, mostUndercut } = lim;
-  // The most undercut the strain allows, worked at its own arm: a smaller bead shortens the arm (stiffer fingers, more
-  // root strain per mm), so the limit at the given bead's arm would itself fail. Each pass takes the limit at the last
-  // one's arm; smaller beads only lower it, so the undercuts fall in thousandths to one that passes at its own arm
+  // The most undercut the strain allows, worked at its own arm: slotted, the arm (and so the fingers' stiffness and root
+  // strain per mm) follows the bead, and the box's share of the stiffness keeps the limit from simply falling or rising
+  // with it, so the thousandths are searched over the whole range the skirt allows (a bead under the skirt's thickness)
+  // for the largest undercut that passes at its own arm, whatever bead was given; it holds what that bead holds
   const mostAtOwnArm = () => {
-    let u = down(mostUndercut), l = lim;
-    if (slots && u < undercut) for (let i = 0; i < 100000; i++) { l = limits(springs(u).L); const next = Math.max(down(l.mostUndercut), 0); if (next >= u) break; u = next; }
-    return { undercut: u, removal: Number.isFinite(back1) ? n1(back1 * l.Pmost) : Infinity };
+    if (!slots) return { undercut: down(mostUndercut), removal: Number.isFinite(back1) ? n1(back1 * Pmost) : Infinity };
+    const passes = (u) => { const l = limits(springs(u).L); return { ok: 2 * u * l.k <= l.Pmost * (1 + 1e-9), l }; };
+    let best = { u: 0, l: limits(springs(0).L) };
+    for (let m = 1; m / 1000 + c < s - 1e-9; m++) { const u = m / 1000, r = passes(u); if (r.ok) best = { u, l: r.l }; }
+    return { undercut: best.u, removal: Number.isFinite(back1) ? n1(back1 * 2 * best.u * best.l.k) : Infinity };
   };
   // (worked before the parts' figures are rounded for show below)
   const mostOwn = mostAtOwnArm();
