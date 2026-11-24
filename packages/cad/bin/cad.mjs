@@ -740,6 +740,16 @@ async function explainValue(ref) {
     const where = n.via ? `  (${n.object})` : '';
     console.log(`${pad}${n.name} = ${fmt(n.value)}${n.unit ? ` ${n.unit}` : ''}${n.expr ? `  = ${n.expr}` : ''}${where}${n.seen ? '  (above)' : ''}${about}`);
     if (!n.seen && n.rule && !pad) console.log(`  ${n.rule}`);
+    if (n.problem) { // the result a problem variable picks, and what it is made from
+      const q = n.problem, vals = Object.entries(q.variables);
+      console.log(`${pad}  optimised from ${q.file}: ${q.title}, ${q.material}${q.set ? `, with ${Object.entries(q.set).map(([k, v]) => `${k} = ${v}`).join(', ')}` : ''}`);
+      console.log(`${pad}  rule sets: ${q.uses.join(', ')}`);
+      if (vals.length) console.log(`${pad}  its values: ${vals.map(([k, v]) => `${k} = ${typeof v === 'number' ? fmt(v) : v}`).join(', ')}`);
+      if (q.parts.length) console.log(`${pad}  parts read: ${q.parts.join(', ')}`);
+      if (q.anchors.length) console.log(`${pad}  anchors read: ${q.anchors.map((a) => `${a.anchor} at (${a.at.map(fmt).join(', ')})`).join(', ')}`);
+      console.log(`${pad}  filter ${fmt(q.filter.value)} mm: ${q.filter.from}`);
+      console.log(`${pad}  ${q.made ? `kept in ${q.densities}` : `not made yet (cad optimise ${n.object.split('/')[0]}/${q.problem}); it will be kept in ${q.densities}`}: made again only when one of these, or the solver, changes`);
+    }
     for (const c of n.reads || []) line(c, `${pad}  `);
   };
   line(tree, '');

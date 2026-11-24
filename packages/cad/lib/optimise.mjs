@@ -37,23 +37,59 @@ export async function readProblem(project, ref) {
     if (typeof v !== 'number') throw new Error(`${path.basename(file)}: "${n}" isn't a number here (variables: ${Object.keys(p.variables || {}).join(', ')})`);
     return v;
   };
-  const ev = (x) => evaluate(x, lookup), pt = (a) => a.map(ev);
+  const ev = (x) => evaluate(x, lookup), pt = (a) => a.map(ev), flat = p.thickness != null;
+  // Another design in the project, built once with its defaults, for its parts and anchors. One whose default is built
+  // from this very problem is refused: it would need the result before the result could be made.
+  const designs = new Map();
+  const design = (object, what) => { // (the build kept as it starts: regions are read side by side)
+    if (!designs.has(object)) designs.set(object, (async () => {
+      const { build, locate, readObject } = await import('./design.mjs'), d = locate(`${project}/${object}`);
+      const own = Object.entries(readObject(d).variables || {}).find(([, v]) => v.type === 'problem' && String(v.value).split(':')[0] === name);
+      if (own) throw new Error(`${path.basename(file)}: ${what} is on ${object}, which is built from this problem (its variable ${own[0]}): name a part or anchor of what it is fixed to instead`);
+      return build(d);
+    })());
+    return designs.get(object);
+  };
   // A named part of another design in the project, as triangles (built with its defaults)
   const parts = new Map();
   const part = async (ref) => {
     if (!parts.has(ref)) {
-      const [object, partName] = ref.split('.'), { build, locate } = await import('./design.mjs');
-      const b = await build(locate(`${project}/${object}`)), found = partName ? b.parts.find((q) => q.name === partName) : b.parts.find((q) => q.role !== 'support');
+      const [object, partName] = ref.split('.'), b = await design(object, `the part "${ref}"`);
+      const found = partName ? b.parts.find((q) => q.name === partName) : b.parts.find((q) => q.role !== 'support');
       if (!found) throw new Error(`${path.basename(file)}: ${object} has no part "${partName}" (parts: ${b.parts.map((q) => q.name).join(', ')})`);
       parts.set(ref, found.triangles);
     }
     return parts.get(ref);
+  };
+  // An anchor of another design (object.anchor): where it is and its axis, in that design's frame, worked out from its
+  // values as built. A region at an anchor follows the design: move the anchor, and the problem (and its result) moves.
+  const anchors = new Map();
+  const anchor = async (ref) => {
+    if (!anchors.has(ref)) {
+      const [object, a, ...more] = String(ref).split('.');
+      if (!object || !a || more.length) throw new Error(`${path.basename(file)}: name an anchor as <object>.<anchor> (got "${ref}")`);
+      const b = await design(object, `the anchor "${ref}"`), spec = b.object.anchors?.[a];
+      if (!spec) throw new Error(`${path.basename(file)}: ${object} has no anchor "${a}" (anchors: ${Object.keys(b.object.anchors || {}).join(', ') || 'none'})`);
+      const num = (x) => evaluate(x, (n) => {
+        const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values);
+        if (typeof v !== 'number') throw new Error(`${path.basename(file)}: the anchor "${ref}" reads "${n}", which isn't one of ${object}'s numbers`);
+        return v;
+      });
+      anchors.set(ref, { anchor: ref, at: (spec.at || [0, 0, 0]).map(num), axis: (spec.axis || [0, 0, 1]).map(num) });
+    }
+    return anchors.get(ref);
   };
   // The build direction: a direction ('+z'), or a variable holding one
   const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
+    if (r.anchor) { // at an anchor: its place (x and y in a flat problem), and a cylinder along the anchor's axis unless it names one
+      if (r.at) throw new Error(`${path.basename(file)}: a region at an anchor ("${r.anchor}") takes no at: the anchor places it`);
+      const a = await anchor(r.anchor), along = a.axis.map((c) => Math.abs(c) > 1e-9);
+      if (r.length != null && !r.axis && along.filter(Boolean).length !== 1) throw new Error(`${path.basename(file)}: the anchor "${r.anchor}" points along [${a.axis.map((c) => round(c, 3)).join(', ')}], not along x, y or z: give the cylinder an axis`);
+      return region({ ...r, anchor: undefined, at: flat ? a.at.slice(0, 2) : a.at, ...(r.length != null && !r.axis ? { axis: 'xyz'[along.indexOf(true)] } : {}) });
+    }
     if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
       const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
       for (const t of triangles) for (const q of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], q[a]); hi[a] = Math.max(hi[a], q[a]); }
@@ -67,6 +103,9 @@ export async function readProblem(project, ref) {
   const regions = (list) => Promise.all([list || []].flat().map(region));
   const m = values[p.material];
   if (typeof m?.modulus !== 'number' || typeof m?.poisson !== 'number') throw new Error(`material ${p.material}: its rule set needs modulus (MPa) and poisson`);
+  // The filter's radius is about the thinnest member: a cell and a half unless the problem gives one, and never under two
+  // of the printer's lines, the thinnest wall it lays solid (so it only binds on cells under 0.56 mm on a 0.42 mm line)
+  const printer = printerOf(project), line = printer ? resolve({ uses: [printer] }).values[printer]?.line : null, lines = typeof line === 'number' ? 2 * line : 0;
   const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
   const problem = {
     space, keep: await regions(p.keep), avoid: await regions(p.avoid),
@@ -74,7 +113,7 @@ export async function readProblem(project, ref) {
     loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
     material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), ...(p.volume != null ? { volume: ev(p.volume) } : {}), ...(p.stress != null ? { stress: ev(p.stress) } : {}),
-    ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
+    ...(p.filter != null ? { filter: ev(p.filter) } : lines > ev(p.cell) * 1.5 ? { filter: lines } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
@@ -87,7 +126,12 @@ export async function readProblem(project, ref) {
   // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
   // tipped corners leave dips that slice as islands, and the layers step out no further for it)
   if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42, ...(p.outline?.tip ? { tip: true } : {}) }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
-  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
+  // What the result is made from, for cad why: the rule sets, the problem's own values, the parts and anchors of other
+  // designs it reads, and where its filter came from
+  const inputs = { uses, variables: Object.fromEntries(Object.keys(p.variables || {}).map((k) => [k, values[k]])), ...(variant ? { set: p.variants[variant] } : {}),
+    parts: [...parts.keys()].sort(), anchors: [...anchors.values()].sort((a, b) => (a.anchor < b.anchor ? -1 : 1)).map(({ anchor: a, at }) => ({ anchor: a, at: at.map((c) => round(c, 4)) })),
+    filter: p.filter != null ? { value: problem.filter, from: `the problem: ${p.filter}` } : problem.filter ? { value: problem.filter, from: `two of ${printer}'s lines (2 × ${line} mm), more than a cell and a half` } : { value: round(problem.cell * 1.5), from: 'a cell and a half' } };
+  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical, inputs };
 }
 
 /**

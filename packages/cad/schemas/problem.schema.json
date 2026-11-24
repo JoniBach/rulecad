@@ -62,7 +62,7 @@
     },
     "filter": {
       "$ref": "#/$defs/expr",
-      "description": "Filter radius, mm: about the thinnest member (default 1.5 cells)"
+      "description": "Filter radius, mm: about the thinnest member (default a cell and a half, and never under two of the printer's lines)"
     },
     "penal": {
       "$ref": "#/$defs/expr",
@@ -159,7 +159,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "at",
         "direction"
       ],
       "description": "A mechanism's output: where it should move, along one axis, against a spring. The first load is then the input.",
@@ -167,6 +166,11 @@
         "at": {
           "$ref": "#/$defs/point",
           "description": "The centre, mm"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
         "r": {
           "$ref": "#/$defs/expr"
@@ -205,7 +209,19 @@
         "label": {
           "type": "string"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "at"
+          ]
+        },
+        {
+          "required": [
+            "anchor"
+          ]
+        }
+      ]
     },
     "input_spring": {
       "$ref": "#/$defs/expr",
@@ -234,6 +250,11 @@
         "at": {
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
         "r": {
           "$ref": "#/$defs/expr",
@@ -298,6 +319,11 @@
         "at": {
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
         "r": {
           "$ref": "#/$defs/expr",
@@ -369,6 +395,11 @@
         "at": {
           "$ref": "#/$defs/point",
           "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+          "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
         "r": {
           "$ref": "#/$defs/expr",

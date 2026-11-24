@@ -6309,3 +6309,66 @@ test('the bench leg on the parts its builder has: a 17HS4401 at hip and knee on 
     assert.ok(Math.abs(q.totals.machineGrams / 1000 + 0.4 - rules.robot_mass.value) < 0.05, `${q.totals.machineGrams} g as drawn; leg.robot_mass ${rules.robot_mass.value} kg`);
   } finally { done(); }
 });
+
+test('a problem at a design\'s anchors: its supports, loads and keeps follow the design, a move reruns it and nothing else does, cad why names what it is made from, and the filter is never under two print lines', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'lev');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'lev', objects: ['plate', 'arm', 'ring'] }));
+    // The plate the arm is bolted to and pushed by: a pivot hole and a pushing pin, as anchors
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0',
+      variables: { tip_x: { value: 24, unit: 'mm' }, thick: { value: 2, unit: 'mm' } },
+      anchors: { pivot: { at: [0, 0, 'thick'], axis: [0, 0, 1] }, pin: { at: ['tip_x', 0, 'thick'], axis: [0, 0, 1] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.tip_x, v.thick, v.thick] }) }\n");
+    const arm = { title: 'An arm on the plate', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 40,
+      space: { at: [12, 0], size: [30, 12] }, keep: [{ anchor: 'plate.pivot', r: 4 }, { anchor: 'plate.pin', r: 3 }], avoid: [{ anchor: 'plate.pivot', r: 1.6 }],
+      supports: [{ anchor: 'plate.pivot', r: 1.6 }], loads: [{ anchor: 'plate.pin', r: 1.2, force: [0, -10], case: 'down' }] };
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify(arm));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.json'), JSON.stringify({ name: 'arm', version: '0.1.0', variables: { problem: { type: 'problem', value: 'arm' }, t: { value: 4, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    const read = (ref) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const r = await readProblem('lev', ${JSON.stringify(ref)}); console.log(JSON.stringify({ problem: r.problem, inputs: r.inputs }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // Placed where the plate's anchors are: x and y of them in this flat problem (the plate's thickness is its z, dropped)
+    const r = read('arm');
+    assert.deepEqual([r.problem.supports[0].at, r.problem.loads[0].at, r.problem.keep.map((k) => k.at)], [[0, 0], [24, 0], [[0, 0], [24, 0]]]);
+    assert.deepEqual(r.inputs.anchors, [{ anchor: 'plate.pin', at: [24, 0, 2] }, { anchor: 'plate.pivot', at: [0, 0, 2] }]);
+    assert.equal(r.problem.filter, undefined, 'on 1 mm cells the filter is the solver\'s own cell and a half: 1.5 mm is more than two 0.42 mm lines');
+    assert.deepEqual(r.inputs.filter, { value: 1.5, from: 'a cell and a half' });
+    assert.match(cad('optimise', 'lev/arm'), /down: moves [\d.]+ mm along its load/);
+    // cad why on the result: the problem file, its rule sets, the anchors it read, its filter and where it is kept
+    const why = cad('why', 'lev/arm.problem');
+    assert.match(why, /optimised from projects\/lev\/problems\/arm\.json: An arm on the plate, pla/);
+    assert.match(why, /rule sets: x1c, pla/);
+    assert.match(why, /anchors read: plate\.pin at \(24, 0, 2\), plate\.pivot at \(0, 0, 2\)/);
+    assert.match(why, /filter 1\.5 mm: a cell and a half/);
+    assert.match(why, /kept in \.cache\/densities\/[0-9a-f]{64}\.json: made again only when one of these, or the solver, changes/);
+    // An unrelated value of the plate (its thickness: only the anchors' z, which a flat problem drops) leaves the result
+    // as it is; moving the pin moves the load and the boss with it, and the arm is optimised again
+    cad('set', 'lev/plate', 'thick=3');
+    assert.match(cad('optimise', 'lev/arm'), /\(cached\)/);
+    cad('set', 'lev/plate', 'tip_x=22');
+    const moved = cad('optimise', 'lev/arm');
+    assert.doesNotMatch(moved, /\(cached\)/); assert.match(moved, /down: moves/);
+    assert.deepEqual(read('arm').problem.loads[0].at, [22, 0]);
+    // A design built from the problem can't place it: the result would be needed before it could be made
+    fs.writeFileSync(path.join(project, 'objects', 'ring.json'), JSON.stringify({ name: 'ring', version: '0.1.0', variables: { problem: { type: 'problem', value: 'loop' } }, anchors: { hole: { at: [0, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'ring.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: 1 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    fs.writeFileSync(path.join(project, 'problems', 'loop.json'), JSON.stringify({ ...arm, keep: [], avoid: [], supports: [{ anchor: 'ring.hole', r: 1.6 }] }));
+    assert.match(cad('optimise', 'lev/loop'), /loop\.json: the anchor "ring\.hole" is on ring, which is built from this problem \(its variable problem\): name a part or anchor of what it is fixed to instead/);
+    // Named wrong: refused with the anchors there are
+    fs.writeFileSync(path.join(project, 'problems', 'typo.json'), JSON.stringify({ ...arm, supports: [{ anchor: 'plate.pivto', r: 1.6 }] }));
+    assert.match(cad('optimise', 'lev/typo'), /typo\.json: plate has no anchor "pivto" \(anchors: pivot, pin\)/);
+    // Fine cells: the filter is two of the printer's lines, the thinnest wall it lays solid. Hand sum: x1c's line is
+    // 0.42 mm, so two are 0.84 mm; a cell and a half of 0.5 mm cells is 0.75 mm, under it, so 0.84 mm is used
+    fs.writeFileSync(path.join(project, 'problems', 'fine.json'), JSON.stringify({ ...arm, cell: 0.5 }));
+    const fine = read('fine');
+    assert.equal(fine.problem.filter, 0.84);
+    assert.deepEqual(fine.inputs.filter, { value: 0.84, from: 'two of x1c\'s lines (2 × 0.42 mm), more than a cell and a half' });
+    // A filter the problem gives is its own
+    fs.writeFileSync(path.join(project, 'problems', 'given.json'), JSON.stringify({ ...arm, cell: 0.5, filter: 'x1c.line' }));
+    assert.deepEqual(read('given').inputs.filter, { value: 0.42, from: 'the problem: x1c.line' });
+  } finally { done(); }
+});

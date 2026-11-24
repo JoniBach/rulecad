@@ -5,6 +5,27 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased: problems tied to designs, and optimisation you can watch again
+
+### Added
+
+- A problem's regions, supports and loads can sit at another design's anchor: `"anchor": "plate.pivot"` in place of
+  `at`, where that anchor is as the design is built (x and y of it in a flat problem; a cylinder along the anchor's
+  axis unless it names one). Moving the anchor moves the problem and optimises it again; a value of that design the
+  anchors do not read leaves the result as it is. A design built from the problem itself is refused by name, as is an
+  anchor that is not there (with the anchors there are). Schema first: `anchor` on regions, supports, loads and the
+  output.
+- `cad why <project>/<object>.<problem variable>` says what the optimised result is made from: the problem file, its
+  title and material, its rule sets and values, the parts and anchors of other designs it reads, where its filter
+  came from, and the file its densities are kept in (made, or not yet).
+
+### Changed
+
+- A problem with no `filter` is never filtered under two of the printer's lines (the thinnest wall it lays solid).
+  It was a cell and a half always, and still is wherever that is more: on an X1C's 0.42 mm lines, every cell of
+  0.56 mm or more. No existing problem's result moves: the kit's problems all give their filter or use cells of 1 mm
+  or more.
+
 ## 0.7.69: --dry-run never writes
 
 ### Fixed

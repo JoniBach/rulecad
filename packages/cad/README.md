@@ -1459,7 +1459,14 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 - **The material** is a rule set with `modulus` (MPa) and `poisson`: `pla`, `petg`, `al6061`, `al7075`, `s275`,
   `ss304`, `ti64` come with rulecad. Printed values vary: measure yours.
 - **Settings:** `volume`, the share of the space to fill; `cell`, the grid (smaller is finer and slower: a 140 × 40
-  grid takes about half a minute); `filter`, about the thinnest member, in mm.
+  grid takes about half a minute); `filter`, about the thinnest member, in mm. Left out, the filter is a cell and a
+  half, and never under two of the project's printer's lines (the thinnest wall it lays solid): on an X1C's 0.42 mm
+  lines that is 0.84 mm, which only takes over on cells under 0.56 mm.
+- **At a design's anchors:** any region, support or load can take `"anchor": "plate.pivot"` in place of `at`: the
+  anchor of another design in the project, where it is as that design is built (x and y of it in a flat problem; a
+  cylinder lies along the anchor's axis unless it names one). The problem then follows the design: move the plate's
+  pivot and the support, the boss round it and the result move with it. A design built from this problem can't be
+  named (it would need the result to be built): name the part it is fixed to.
 - **Or a stress limit instead of a volume:** `"stress": "pla.strength / 3"` (MPa) finds the lightest layout that keeps
   every cell's von Mises stress under it, which rounds off the sharp inside corners where cracks start. It takes about
   a thousand steps, each with two solves, so it's slower: give it a coarse cell first. Give supports and loads some
@@ -1470,7 +1477,9 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 
 `cad optimise <project>/<problem>` runs it, reports how far each load case moves its load and the stiffness that
 gives, and draws the layout in `.preview/`. The result is kept, keyed by everything it's made from, so it's only
-worked out again when something it depends on changes.
+worked out again when something it depends on changes. `cad why <project>/<object>.<problem variable>` names what
+that is: the problem file, its rule sets and values, the parts and anchors it reads, where its filter came from, and
+the file the result is kept in.
 
 A 3D result with a build direction is made printable before it's drawn: built up layer by layer from the bed, every
 cell that nothing holds up (an icicle, a loose bit, a sheet hanging under an edge: whatever the optimiser's smooth
