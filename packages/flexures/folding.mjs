@@ -30,8 +30,9 @@ const TOUCH = 1e-3; // mm³: an overlap smaller than this is rounding, not a cla
  *   each series joint `land` apart (the rigid strip between two joints; default twice the bar, at least 2 mm) */
 
 function letCheck(what, p) {
-  need(what, p);
+  // its own sizes first, so they are refused as let.size; need() then checks the rest (it names slot too, without a code)
   for (const k of ['slot', 'bridge']) if (!(p[k] > 0)) throw refuse('let.size', `${what}: ${k} is a size above 0 (got ${JSON.stringify(p[k])})`);
+  need(what, p);
   for (const k of ['series', 'parallel']) if (p[k] !== undefined && !(Number.isInteger(p[k]) && p[k] >= 1)) throw refuse('let.count', `${what}: ${k} is a whole number of joints, 1 or more (got ${JSON.stringify(p[k])})`);
   if (p.land !== undefined && !(p.land > 0)) throw refuse('let.size', `${what}: land is a size above 0 (got ${JSON.stringify(p.land)})`);
   if (!(p.width > 3 * p.bridge)) throw refuse('let.bridge', `${what}: a joint ${p.width} mm wide has no torsion bar left between three bridges of ${p.bridge} mm: give a width over ${3 * p.bridge} mm, or narrower bridges`);
