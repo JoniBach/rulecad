@@ -6506,3 +6506,30 @@ test('a cylinder at an anchor with a rotate lies along the anchor\'s turned z, a
     assert.match(JSON.parse(read('slant')).error, /the anchor "block\.slant" points along \[0, -0\.707, 0\.707\], not along x, y or z: give the cylinder an axis/);
   } finally { done(); }
 });
+
+test('problems that read each other through designs built from them are refused by name, with the chain, rather than read for ever', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'cyc');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'cyc', objects: ['xa', 'yb', 'plate'] }));
+    // Two flat designs, each with an anchor h and built from a problem: xa from pb, yb from pa. Problem pa is held at
+    // xa.h and pb at yb.h, so pa needs xa, which needs pb, which needs yb, which needs pa again
+    const js = "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: 1 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n";
+    for (const [o, from] of [['xa', 'pb'], ['yb', 'pa']]) {
+      fs.writeFileSync(path.join(project, 'objects', `${o}.json`), JSON.stringify({ name: o, version: '0.1.0', variables: { problem: { type: 'problem', value: from } }, anchors: { h: { at: [0, 0, 0] } } }));
+      fs.writeFileSync(path.join(project, 'objects', `${o}.js`), js);
+    }
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0', anchors: { h: { at: [0, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [4, 4, 1] }) }\n");
+    const base = { uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, steps: 10, space: { at: [12, 0], size: [30, 12] }, loads: [{ at: [24, 0], r: 1.2, force: [0, -10] }] };
+    fs.writeFileSync(path.join(project, 'problems', 'pa.json'), JSON.stringify({ ...base, supports: [{ anchor: 'xa.h', r: 1.6 }] }));
+    fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'yb.h', r: 1.6 }] }));
+    // Before the chain was carried this ran out of memory: give it a minute, then call it a hang
+    const run = (ref) => { try { return execFileSync(process.execPath, [BIN, 'optimise', ref], { cwd: ws, encoding: 'utf8', stdio: 'pipe', timeout: 60000, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); } catch (e) { return e.signal ? `hung (${e.signal})` : `${e.stdout}${e.stderr}`; } };
+    assert.match(run('cyc/pa'), /pa\.json: problems read each other through designs built from them: pa reads xa, built from pb, then pb reads yb, built from pa\. Fix one of them to a part or anchor of a design that is not made from the others/);
+    // The same pair with the loop broken (pb held at a plain design's anchor) is read and optimised
+    fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'plate.h', r: 1.6 }] }));
+    assert.match(cad('optimise', 'cyc/pa'), /moves [\d.]+ mm along its load/);
+  } finally { done(); }
+});

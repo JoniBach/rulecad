@@ -14,7 +14,9 @@ and head, the parts it passes through and the part it ends in.
   axis unless it names one; an anchor with a `rotate` points along its z turned by it, as an assembly reads it).
   Moving the anchor moves the problem and optimises it again; a value of that design the anchors do not read leaves
   the result as it is. A design built from the problem itself is refused by name, as is an anchor that is not there
-  (with the anchors there are). Schema first: `anchor` on regions, supports, loads and the output.
+  (with the anchors there are). So are problems that reach each other through designs built from them, however long
+  the loop (problem a held at a design built from b, and b at one built from a): refused with the chain, where before
+  they were read until memory ran out. Schema first: `anchor` on regions, supports, loads and the output.
 - `cad preview <project>/problems/<problem>` (or the problem file's path) shows the run: the result is drawn as by
   `cad optimise`, and `.preview/<project>/<problem>-run.html` replays the run step by step with no server (the live
   view's page, its densities, compliance and change for every step read from the file). Every `cad optimise` run is

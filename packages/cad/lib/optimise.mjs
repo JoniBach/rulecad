@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
@@ -26,6 +27,18 @@ export const hasProblem = (project, ref) => host.exists(problemFile(project, Str
  * @param {string} project @param {string} ref name, or name:variant
  */
 export async function readProblem(project, ref) {
+  // The problems being read above this one, each with the design it reads that is built from the next: a problem met
+  // again on that chain is refused by name, since each would need the other's result before its own could be made
+  const name = String(ref).split(':')[0], chain = reading.getStore() || [], key = `${project}/${name}`;
+  if (chain.some((c) => c.key === key)) {
+    const from = chain.slice(chain.findIndex((c) => c.key === key)), steps = from.map((c, i) => `${c.name} reads ${c.object}, built from ${(from[i + 1] || { name })?.name}`);
+    throw new Error(`${name}.json: problems read each other through designs built from them: ${steps.join(', then ')}. Fix one of them to a part or anchor of a design that is not made from the others`);
+  }
+  const link = { key, name, object: null };
+  return reading.run([...chain, link], () => readOne(project, ref, link));
+}
+const reading = new AsyncLocalStorage();
+async function readOne(project, ref, link) {
   const [name, variant] = String(ref).split(':'), file = problemFile(project, name);
   if (!host.exists(file)) throw new Error(`no problem "${name}" (projects/${project}/problems/${name}.json)`);
   const p = readJson(file);
@@ -47,7 +60,8 @@ export async function readProblem(project, ref) {
       const { build, locate, readObject } = await import('./design.mjs'), d = locate(`${project}/${object}`);
       const own = Object.entries(readObject(d).variables || {}).find(([, v]) => v.type === 'problem' && String(v.value).split(':')[0] === name);
       if (own) throw new Error(`${path.basename(file)}: ${what} is on ${object}, which is built from this problem (its variable ${own[0]}): name a part or anchor of what it is fixed to instead`);
-      return build(d);
+      const chain = reading.getStore(); // this problem's place on the chain names the design it reads
+      return reading.run([...chain.slice(0, -1), { ...link, object }], () => build(d));
     })());
     return designs.get(object);
   };
