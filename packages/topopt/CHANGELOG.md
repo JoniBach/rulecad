@@ -2,8 +2,7 @@
 
 What changed in each release, for someone upgrading.
 
-## Unreleased: process filters
-
+## 0.3.4: process filters
 ### Added
 
 - `symmetry: { mirror, turns, axis }`: the same either side of the grid's middle planes (mirror `'x'`, `'xy'`, ...)

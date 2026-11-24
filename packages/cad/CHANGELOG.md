@@ -5,8 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Unreleased: parts milled, cast or printed in a powder bed
-
+## 0.7.75: parts milled, cast or printed in a powder bed
 ### Added
 
 - Problems take how the part is made: `"mill": "+z"` (milled from that side, no undercuts), `"cast": "+z"` or
