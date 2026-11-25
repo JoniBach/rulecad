@@ -590,14 +590,11 @@ function transfer(fg, cg) {
 /**
  * Stress at a cell's centre from its corners' movements, for Young's modulus 1: a matrix (rows × cell dofs, row by row;
  * rows: σx, σy, τxy in 2D; σx, σy, σz, τxy, τyz, τzx in 3D). Times a cell's movements and its modulus, it's the stress.
- * Given at, the stress at that point of the cell instead, in the cell's own coordinates from -1 to 1 along each axis
- * (its corners are at plus or minus 1).
- * @param {number} h cell size (mm) @param {number} nu @param {2 | 3} dim @param {number[]} [at] default the centre
+ * @param {number} h cell size (mm) @param {number} nu @param {2 | 3} dim
  * @returns {Float64Array}
  */
-export function centreStress(h, nu, dim, at = new Array(dim).fill(0)) {
-  if (at.length !== dim || !at.every((v) => Math.abs(v) <= 1)) throw new Error(`a point in a cell is ${dim} numbers from -1 to 1 (got ${JSON.stringify(at)})`);
-  const m = CORNERS[dim].length * dim, rows = dim === 3 ? 6 : 3, B = strains(at, h, dim), D = elasticity(nu, dim), S = new Float64Array(rows * m);
+export function centreStress(h, nu, dim) {
+  const m = CORNERS[dim].length * dim, rows = dim === 3 ? 6 : 3, B = strains(new Array(dim).fill(0), h, dim), D = elasticity(nu, dim), S = new Float64Array(rows * m);
   for (let p = 0; p < rows; p++) for (let a = 0; a < m; a++) { let t = 0; for (let q = 0; q < rows; q++) t += D[p * rows + q] * B[q * m + a]; S[p * m + a] = t; }
   return S;
 }
