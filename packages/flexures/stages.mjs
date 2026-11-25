@@ -163,3 +163,75 @@ export function butterflyPivotModel(p, m) {
   const rests = ['the stiffness and strain treat each blade as a straight beam of its least thickness, its rounds left out (they stiffen it a little); the drift is the beam solver\'s on the drawn blades, the blocks rigid'];
   return { stiffness, stage, strain, angle, travel: angle, stress: (th) => m.E * strain(th), drift, pair, grams, findings: out, rests };
 }
+
+// ---------- the three-axis stage ----------
+/**
+ * @typedef {import('./core.mjs').ShapedLeaf & { gap: number, base?: number, stage?: number,
+ *   pivot: { spoke: number, thickness?: number, hub?: number, rim?: number, arm?: number, opening?: number } }} XYTheta
+ *   the XY stage's leaves and gap (as xyStage takes them); pivot: the cartwheel on its stage (as cartwheel takes it;
+ *   thickness defaults to the leaves', width is the stage's)
+ */
+function xyThetaLayout(p, what) {
+  need(what, p);
+  if (!(p.gap > 0)) throw new Error(`${what}: gap is a size above 0 (got ${JSON.stringify(p.gap)})`);
+  if (!p.pivot || typeof p.pivot !== 'object') throw new Error(`${what}: pivot is the cartwheel on the stage, { spoke, thickness?, hub?, rim?, arm?, opening? } (got ${JSON.stringify(p.pivot)})`);
+  const cw = { ...p.pivot, thickness: p.pivot.thickness ?? p.thickness, width: p.width };
+  need(`${what} pivot`, cw);
+  const t = p.thickness, end = Math.max(3, 2 * t), across = p.gap + 2 * t + 2 * (p.fillet || 0), s = p.stage ?? end;
+  const r = cw.hub ?? Math.max(2, 2 * cw.thickness), rim = cw.rim ?? 3, Ro = r + cw.spoke + rim;
+  const cx = p.length + across / 2, top = across / 2 + p.length + s, sink = 0.5, cy = top - sink + Ro; // the rim sunk half a millimetre into the stage block
+  return { cw, across, s, r, rim, Ro, cx, cy, top, sink, c: (p.gap + t) / 2 };
+}
+
+/**
+ * A three-axis stage: the XY stage (xyStage) with a cartwheel pivot standing on its stage, so the cartwheel's hub
+ * moves along x and y and turns about z: a planar x, y, θ stage, printed flat in one piece. (A z axis would need
+ * leaves lying one over another, which cannot print flat without support.) The rim sits half a millimetre into the
+ * stage block, joined to it by a pad whose sides meet the rim at an open angle, never a square one. The hub's arm, out
+ * through the rim's opening along +x, is the output.
+ * @param {XYTheta} p
+ * @returns {object} a JSCAD geom3, z = 0 to the width
+ */
+export function xyThetaStage(p) {
+  const k = xyThetaLayout(p, 'xyThetaStage'), w = p.width, h = k.rim / 2;
+  // the rim's outer circle from where it crosses y = top + h, down through its lowest point and back up: the pad is the
+  // hull of that and the stage block
+  const dip = h + k.sink, half = Math.sqrt(2 * k.Ro * dip - dip * dip), seg = [];
+  for (let i = 0; i <= 24; i++) { const x = -half + (2 * half * i) / 24; seg.push([k.cx + x, k.cy - Math.sqrt(k.Ro * k.Ro - x * x)]); }
+  const block = polygon({ points: [[k.cx - k.across / 2, k.top - k.s], [k.cx + k.across / 2, k.top - k.s], [k.cx + k.across / 2, k.top], [k.cx - k.across / 2, k.top]] });
+  const pad = hull(block, polygon({ points: seg }));
+  return union(xyStage(p), extrudeLinear({ height: w }, pad), translate([k.cx, k.cy, 0], cartwheel(k.cw)));
+}
+
+/**
+ * What the three-axis stage does. Along x and y, the XY stage's guides (2 E w t³ / L³ each; the cartwheel's spokes,
+ * pushed along their length, are far stiffer). About z, the cartwheel in series with the XY stage turning: each guide's
+ * shuttle turned by φ, free to shift, stretches one leaf and squeezes the other by c φ (c half the leaves' spacing) and
+ * bends both, E A c² φ² / L + E I φ² / L between them, so a guide turns at 2 E A c² / L + 2 E I / L, and the two guides
+ * are in series. Pushed at the hub along x or y, the guides also turn under the push's moment about their middles,
+ * so the hub is a little softer than a guide. The strain is the worse of the guides' at the travel and the spokes' at the turn.
+ * @param {XYTheta} p @param {import('./core.mjs').Material & { density?: number, name?: string }} m
+ * @returns {{ xy: ReturnType<typeof xyStageModel>, pivot: ReturnType<typeof cartwheelModel>, stiffness: number[],
+ *   turn: number, strain: (travel: number[]) => number, travel: (strain: number) => { x: number, y: number, angle: number },
+ *   parasitic: (travel: number[]) => number[], grams: number | null, findings: object[] }} stiffness: at the hub, [x, y] N/mm and
+ *   about z N·mm a radian; turn: the XY stage's own turning stiffness, N·mm a radian; strain at [dx, dy, θ]
+ */
+export function xyThetaStageModel(p, m) {
+  const what = 'xyThetaStageModel', k = xyThetaLayout(p, what);
+  need(what, {}, m);
+  const xy = xyStageModel(p, m), pivot = cartwheelModel(k.cw, m), A = p.width * p.thickness, I = (p.width * p.thickness ** 3) / 12;
+  const guideTurn = (2 * m.E * A * k.c * k.c) / p.length + (2 * m.E * I) / p.length, turn = guideTurn / 2;
+  const kz = 1 / (1 / pivot.stiffness + 1 / turn);
+  // Pushed at the hub, each guide also turns under the push times the hub's reach from the guide's middle (the first
+  // guide's at (L/2, 0), the second's at (cx, across/2 + L/2)), which adds reach² / (the guide's turning stiffness)
+  const kg = xy.stiffness[0], lx = [k.cy, k.cy - k.across / 2 - p.length / 2], ly = [k.cx - p.length / 2, 0];
+  const kx = 1 / (1 / kg + lx.reduce((a, d) => a + (d * d) / guideTurn, 0)), ky = 1 / (1 / kg + ly.reduce((a, d) => a + (d * d) / guideTurn, 0));
+  const strain = ([dx, dy, th]) => Math.max(xy.strain([dx, dy]), pivot.strain(Math.abs(th)));
+  const travel = (e) => ({ x: xy.travel(e), y: xy.travel(e), angle: pivot.angle(e) });
+  const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra });
+  f('info', `at the hub ${n2(kx, 2)} N/mm along x and ${n2(ky, 2)} along y (each guide ${n2(kg, 2)}, less what the guides' turning gives); ${n2(kz, 0)} N·mm a radian about z: the cartwheel's ${n2(pivot.stiffness, 0)} in series with the XY stage turning at ${n2(turn, 0)}`, 'stage.stiffness', { values: { x: kx, y: ky, z: kz, guide: kg, pivot: pivot.stiffness, turn } });
+  if (m.strainLimit > 0) { const tr = travel(m.strainLimit); f('info', `at ${n2(m.strainLimit * 100, 1)}% it travels ${n2(tr.x)} mm along x and y and turns ${n2(tr.angle / rad, 1)}° either way`, 'stage.travel', { values: tr }); }
+  let grams = null;
+  if (m.density > 0) { grams = (measureVolume(xyThetaStage(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, one piece`, 'stage.mass', { values: { grams } }); }
+  return { xy, pivot, stiffness: [kx, ky, kz], turn, strain, travel, parasitic: xy.parasitic, grams, findings: out };
+}
