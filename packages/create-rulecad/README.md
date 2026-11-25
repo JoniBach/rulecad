@@ -26,7 +26,7 @@ npx cad plot arm/arm projects/arm/drawings/test.svg
 
 `--machine arm` also makes a two-link arm that draws: sized for a landscape A6, A5 or A4 sheet (`--sheet`, default A5) and an
 accuracy at the pen (`--accuracy` in mm, default 0.3), with its task, bought items, wires, plates, a test drawing fitted to the
-sheet, and the streamer for an Uno. `--machine leg` makes a leg on a test stand, for a robot of `--robot` kg (default 1.5). In a
+sheet, and the streamer for an Uno. `--machine leg` makes a leg on a test stand, for a robot of `--robot` kg (default 1.5), with the same streamer and sender. In a
 terminal with neither given it asks; given a flag, or with no terminal, it uses the defaults without asking. The arm and the leg
 are explained part by part in EXAMPLES chapters 12 and 14, and [the machines guide](https://jonibach.github.io/rulecad/docs/machines/)
 walks the arm from task to drawing.
