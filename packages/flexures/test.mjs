@@ -1927,3 +1927,32 @@ test('the README\'s Young bistable, tensural bistable and split-tooth gear are t
   ];
   for (const r of rows) assert.ok(readme.includes(r), `the README should read:\n${r}`);
 });
+
+test('after check: a split-tooth gear fails when its preloads shut the slits at rest, its stop counts the sibling\'s preload, its bore is drawn the size asked; the Young ground stands on two feet', async () => {
+  const { splitToothGear, splitToothGearModel, youngBistable } = await import('@rulecad/flexures');
+  const p = { module: 2, teeth: 24, width: 6, bore: 5 }, m = splitToothGearModel(p, pla), lv = (r, c) => r.findings.find((x) => x.code === c)?.level;
+  // In mesh both halves of a tooth are pushed toward their shared slit. One half alone closes it at Fclose (5.11 N on
+  // its flank by default); each carries the preload F = 1.70 N, so at rest the slit closes by 2F / Fclose of its 0.4 mm:
+  // 2 x 1.698 / 5.113 x 0.4 = 0.266 mm. Driven, the driving half closes it at Fclose - F = 5.113 - 1.698 = 3.415 N
+  assert.ok(Math.abs(m.stop.force + m.force - 5.113) < 0.01 && Math.abs(m.stop.closed - 0.2657) < 0.002, JSON.stringify({ stop: m.stop, force: m.force }));
+  assert.equal(lv(m, 'gear.preload'), 'pass');
+  // At a preload of 0.2 mm the force is about twice (3.4 N) and 2 x 3.4 / 5.1 x 0.4 = 0.53 mm: past the slit, shut at
+  // rest, a fail; at 0.39 (still under the slit's 0.4, so not refused) one half alone is past Fclose
+  for (const preload of [0.2, 0.39]) {
+    const s = splitToothGearModel({ ...p, preload }, pla), f = s.findings.find((x) => x.code === 'gear.preload');
+    assert.ok(f.level === 'fail' && /it is shut/.test(f.text) && s.stop.closed > 0.4, `${preload}: ${f.level} ${s.stop.closed}`);
+  }
+  // The bore: @rulecad/gears draws a 48-sided circle, area 24 r² sin(360° / 48) = 24 x 2.5² x 0.130526 = 19.579 mm²,
+  // 117.47 mm³ through the 6 mm face. Grown with the teeth it would be 4.73 mm across (105.1 mm³)
+  const hole = measureVolume(splitToothGear({ ...p, bore: undefined })) - measureVolume(splitToothGear(p));
+  assert.ok(Math.abs(hole - 117.47) < 0.05, `the bore takes ${hole} mm³`);
+  // The Young ground, as assembled (turned over, its feet on the table): its centre of mass (x 30.75) is over what
+  // touches the table, the end foot 52.5 to 62.5 and the second foot between the pins, 3.5 + 2 = 5.5 to 13.5; with the
+  // end foot alone it would tip about its edge at 52.5
+  const g = youngBistable({ spacing: 46, thickness: 0.84, width: 6 }, { part: 'ground' }), H = 3 + 0.3 + 6;
+  const placed = jscad.transforms.translate([0, 0, H], jscad.transforms.mirrorZ(g)), cx = jscad.measurements.measureCenterOfMass(placed)[0];
+  const touch = jscad.measurements.measureBoundingBox(jscad.booleans.intersect(placed, jscad.primitives.cuboid({ size: [200, 50, 0.2], center: [0, 0, 0.1] })));
+  assert.ok(touch[0][0] < cx && cx < touch[1][0] && Math.abs(touch[0][0] - 5.5) < 0.01, JSON.stringify({ cx, touch }));
+  assert.ok(onePiece(g));
+  assert.throws(() => youngBistable({ spacing: 14, thickness: 0.84, width: 6 }), /no room between the hubs .* for the ground's second foot/);
+});

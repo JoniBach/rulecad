@@ -64,6 +64,7 @@ function youngLayout(p, what) {
   const pw = t + 2 * r + 2; // a pad's width across an arm
   if (rh < pw / 2) throw new Error(`${what}: hub ${rh} is narrower than an arm's pad (${n2(pw / 2)} mm round): ${n2(pw / 2)} or more`);
   if (g < 2 * rh + 2 * gap + 2) throw new Error(`${what}: spacing ${g} leaves the two hubs (radius ${rh}) under 2 mm apart: ${n2(2 * rh + 2 * gap + 2)} or more`);
+  if (g < 2 * rh + 8) throw new Error(`${what}: spacing ${g} leaves no room between the hubs (radius ${rh}) for the ground's second foot, 4 mm long and 2 mm off each: ${n2(2 * rh + 8)} or more`);
   for (const [k, v] of [['long', lL], ['short', lS]]) if (v - rh <= 2 * r + t + 2) throw new Error(`${what}: ${k} ${v} leaves the arm ${n2(v - rh)} mm past its hub: over ${n2(rh + 2 * r + t + 2)}`);
   const A = [0, 0], B = [g, 0], uL = dir(aL), uS = dir(aS), Pt = mul(uL, lL), Pb = add(B, mul(uS, lS)), H = add(Pt, mul(uL, e));
   if (len(sub(Pt, Pb)) < pw + 2 * gap) throw new Error(`${what}: the arms' ends are ${n2(len(sub(Pt, Pb)))} mm apart, too near to join with a coupler`);
@@ -83,21 +84,25 @@ function youngFlat(k) {
   const hook = pad(k.Pt, k.uL, k.e, k.pw), bar = hull(circle({ radius: k.pw / 2, center: k.H, segments: SEG }), pad(k.Pb, k.uS, 2, k.pw));
   return { hubs, arms, coupler: union(hook, bar) };
 }
-// The ground: a bar over both pins, run on past the short arm's pin to a foot that stands on the table (or a board,
-// by its screw hole). Printed on its back: the bar on the bed, the foot standing up, the corner between them rounded
+// The ground: a bar over both pins, run on past the short arm's pin to an end foot (with a screw hole, to fix it to a
+// board), and a second foot between the pins, clear of both hubs, so it stands on the table by itself with its centre
+// of mass between the two (the long arm swings out past its own pin's far side, so the second foot goes inboard of
+// it). Printed on its back: the bar on the bed, the feet standing up, the corners between them rounded
 function youngGround(k) {
   const x0 = -k.rh - 1, f0 = k.g + k.rh + 3, f1 = f0 + 10, bw = 2 * k.rh + 2, H = k.hb + k.gap + k.W, fr = 1.5;
-  const prof = union(rect(x0, f1, 0, k.hb), rect(f0, f1, 0, H), subtract(rect(f0 - fr, f0, k.hb, k.hb + fr), circle({ radius: fr, center: [f0 - fr, k.hb + fr], segments: 32 })));
+  const m0 = k.rh + 2, m1 = Math.min(k.rh + 10, k.g - k.rh - 2); // the second foot: 2 mm off each hub, up to 8 long
+  const round = (x, side) => subtract(rect(side > 0 ? x : x - fr, side > 0 ? x + fr : x, k.hb, k.hb + fr), circle({ radius: fr, center: [x + side * fr, k.hb + fr], segments: 32 }));
+  const prof = union(rect(x0, f1, 0, k.hb), rect(f0, f1, 0, H), round(f0, -1), rect(m0, m1, 0, H), round(m0, -1), round(m1, 1));
   const solid = jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: bw }, prof)); // the profile in x and z, bw across y
   const body = translate([0, bw / 2, 0], solid);
   const holes = [k.A, k.B].map((c) => cylinder({ radius: k.press.hole.diameter / 2, height: k.hb + 2, center: [c[0], c[1], k.hb / 2], segments: 32 }));
   const screw = cylinder({ radius: M3() / 2, height: H + 2, center: [(f0 + f1) / 2, 0, H / 2], segments: 32 }); // an M3's clearance hole, as @rulecad/fixings draws it
-  return { solid: subtract(body, ...holes, screw), foot: [f0, f1, -bw / 2, bw / 2], height: H };
+  return { solid: subtract(body, ...holes, screw), feet: [[f0, f1, -bw / 2, bw / 2], [m0, m1, -bw / 2, bw / 2]], height: H };
 }
 
 /**
  * A Young bistable mechanism, class I (YoungBistable above), drawn at rest: the mover (two hubs, two arms and the
- * coupler, one piece printed flat), the ground (a bar over the pins with a foot, printed on its back) and two pins.
+ * coupler, one piece printed flat), the ground (a bar over the pins on two feet, printed on its back) and two pins.
  * Assembled, the mover lies on the table and the ground's bar sits over its hubs, a gap above, so the pins can't
  * lift out.
  * @param {YoungBistable} p
@@ -139,7 +144,7 @@ function youngPRB(k, sense, gamma = 0.85) {
  * What a Young bistable does, from the beam solver on its drawn arms (each hub on a pin, free to turn, the coupler
  * rigid): turned by a moment on the coupler from rest, the torque curve, the moment that switches it, the moment it
  * gives back past the middle, where it rests again, the arms' strain on the way and held there, the clearances
- * between the moving parts and the ground's foot over the whole swing, the pins, and the grams. Beside it the
+ * between the moving parts and the ground's feet over the whole swing, the pins, and the grams. Beside it the
  * patent's pseudo-rigid-body four-bar (γ 0.85, Kθ 2.65), for the class and a check on the second position.
  * @param {YoungBistable} p
  * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m
@@ -152,7 +157,7 @@ function youngPRB(k, sense, gamma = 0.85) {
  *   findings: object[], rests: string[] }}
  *   turns in degrees of the coupler from rest (sense: +1 anticlockwise); torques in N·mm on the coupler; strain: the
  *   most on the way over; held: at the second position; margin: the limit over the most; hubs: each hub's turn on
- *   its pin at the second position; clearance: the least air between moving parts, or between them and the foot
+ *   its pin at the second position; clearance: the least air between moving parts, or between them and the feet
  */
 export function youngBistableModel(p, m, o = {}) {
   const what = 'youngBistableModel', k = youngLayout(p, what);
@@ -192,11 +197,13 @@ export function youngBistableModel(p, m, o = {}) {
     hubs = { long: r.q[sys.body['long hub'].dof + 2] / rad, short: r.q[sys.body['short hub'].dof + 2] / rad };
   }
   // Clearances over the swing (to the second position, or the whole sweep): each arm's nodes from the other hub, the
-  // coupler's outline from both hubs, each arm from the coupler's bar (away from its own end), and all from the foot
+  // coupler's outline from both hubs, each arm from the coupler's bar (away from its own end), and all from the feet (and the hubs too)
   const cpts = jscad.geometries.geom2.toPoints(flat.coupler), last = sc.bistable ? Math.min(steps, Math.ceil((sc.second / to) * steps) + 1) : steps;
   let least = Infinity, where = '';
   const note = (v, w) => { if (v < least) { least = v; where = w; } };
-  const [fx0, fx1, fy0, fy1] = ground.foot, footDist = (pt) => { const dx = Math.max(fx0 - pt[0], 0, pt[0] - fx1), dy = Math.max(fy0 - pt[1], 0, pt[1] - fy1); return Math.hypot(dx, dy); };
+  const footDist = (pt) => Math.min(...ground.feet.map(([fx0, fx1, fy0, fy1]) => Math.hypot(Math.max(fx0 - pt[0], 0, pt[0] - fx1), Math.max(fy0 - pt[1], 0, pt[1] - fy1))));
+  // each hub turns in place: its pad's corners reach √(rh² + (pw / 2)²) from its pin, whichever way it faces
+  for (const c of [k.A, k.B]) note(footDist(c) - Math.hypot(k.rh, k.pw / 2), 'a hub and the ground\'s feet');
   for (let i = 0; i < last; i++) {
     const q = sc.qs[i], cq = [q[sys.body.coupler.dof], q[sys.body.coupler.dof + 1], q[sys.body.coupler.dof + 2]], hA = add(k.A, [q[sys.body['long hub'].dof], q[sys.body['long hub'].dof + 1]]), hB = add(k.B, [q[sys.body['short hub'].dof], q[sys.body['short hub'].dof + 1]]);
     const Hm = moved(k.H, mid, cq), Pbm = moved(k.Pb, mid, cq), Ptm = moved(k.Pt, mid, cq);
@@ -204,9 +211,9 @@ export function youngBistableModel(p, m, o = {}) {
       const at = [n.at[0] + q[n.dof], n.at[1] + q[n.dof + 1]], own = n.beam === 'long arm' ? Ptm : Pbm, other = n.beam === 'long arm' ? hB : hA;
       note(len(sub(at, other)) - k.rh - k.t / 2, `the ${n.beam} and the ${n.beam === 'long arm' ? 'short' : 'long'} hub`);
       if (len(sub(at, own)) > k.pw + 2) note(segDist(at, Hm, Pbm) - k.pw / 2 - k.t / 2, `the ${n.beam} and the coupler`);
-      note(footDist(at) - k.t / 2, `the ${n.beam} and the ground's foot`);
+      note(footDist(at) - k.t / 2, `the ${n.beam} and the ground's feet`);
     }
-    for (const pt of cpts) { const at = moved(pt, mid, cq); note(Math.min(len(sub(at, hA)), len(sub(at, hB))) - k.rh, 'the coupler and a hub'); note(footDist(at), 'the coupler and the ground\'s foot'); }
+    for (const pt of cpts) { const at = moved(pt, mid, cq); note(Math.min(len(sub(at, hA)), len(sub(at, hB))) - k.rh, 'the coupler and a hub'); note(footDist(at), 'the coupler and the ground\'s feet'); }
   }
   const most = sc.strain, margin = lim / most;
   const rests = ['the force curve is the beam solver\'s on the drawn arms, each hub free to turn on its pin, the coupler rigid and turned by a moment, free to move', 'the pins frictionless; the mover sliding on the table, its own weight\'s friction left out (a few grams)', 'the default proportions measured off the patent\'s FIG. 4a, a drawing with no dimensions: an estimate of its layout', `the pseudo-rigid-body constants γ 0.85 and Kθ 2.65 are the patent's`];
