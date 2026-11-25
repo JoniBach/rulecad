@@ -2027,3 +2027,133 @@ test('kirigami: a neck a hair past the table\'s ends reads the end row, not a li
   const low = neckHingeModel({ neck: 0.3, radius: 0.15 - 1e-12, depth: 1 }, { E: 1 });
   assert.ok(Math.abs(low.stiffness / 0.09 - 0.04944) < 1e-9, `${low.stiffness / 0.09}`);
 });
+
+test('TPU: a rubber\'s flex_strain is its limit; the waterbomb base folds with every sector its own shape, and prints flat in TPU', async () => {
+  const { waterbomb, waterbombModel, flexureMaterial } = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), r = (d) => (d * Math.PI) / 180;
+  const t = JSON.parse(fs.readFileSync(new URL('../rules/tpu.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n')).rules;
+  // TPU 95A: 29.6 / 9.2 = 3.22 is no strain limit for a rubber: its flex_strain (25%, an estimate) is, as it stands
+  const tpu = flexureMaterial({ modulus: t.modulus.value, strength: t.strength.value, flex_strain: t.flex_strain.value, density: t.density.value, name: 'TPU' });
+  assert.deepEqual([tpu.E, tpu.strainLimit, tpu.density], [9.2, 0.25, 1.2]);
+  assert.throws(() => flexureMaterial({ modulus: 9.2, strength: 29.6 }), /strength over its modulus of 3\.22 is a rubber.*give its flex_strain/);
+  assert.equal(flexureMaterial({ modulus: 1810, strength: 34 }).strainLimit, 34 / 1810 / 1.5, 'a stiff plastic as before');
+  // Four corners on R 40, panels 1.6 on webs 0.4 thick and 5.2 wide. At a corner droop of 30°: C = cos 45° = 0.707107,
+  // ρ = √(C² cos² 30° + sin² 30°) = √0.625 = 0.790569, δ = atan2(0.5, C cos 30°) = 39.2315°, acos(C / ρ) = 26.5651°, so
+  // the side creases droop 65.7966°. Side crease 0's fold, between c0 × m0 and m0 × c1 with c0 = (0.866025, 0, -0.5),
+  // m0 = (0.289871, 0.289871, -0.912109), c1 = (0, 0.866025, -0.5): (0.144936, 0.644973, 0.251036) and (0.644973,
+  // 0.144936, 0.251036), each 0.707117 long (sin 45°: the sector keeps its angle), dot 0.249979: cos ψ = 0.49995, 60°
+  const p = { sides: 4, radius: 40, thickness: 1.6, hinge: { flex: 5.2, thickness: 0.4 } }, m = waterbombModel(p, tpu), a = m.at(30);
+  near(a.side, 65.7966, 1e-4, 'the side creases\' droop'); near(a.folds.side, 60, 1e-6, 'the side crease folds 60°');
+  const v = a.vertices, angle = (x, y) => Math.acos((x[0] * y[0] + x[1] * y[1] + x[2] * y[2]) / Math.hypot(...x) / Math.hypot(...y)) * 180 / Math.PI;
+  for (let k = 1; k < 8; k++) near(angle(v[k], v[k + 1]), 45, 1e-9, `sector ${k} keeps its 45°`);
+  near(a.height, 40 * Math.sin(r(30)), 1e-9, 'the middle stands R sin 30° = 20 over the corners');
+  // the end: the side creases hang straight down at sin e_c = cos 45°, e_c = 45°; the corner creases fold flat (180°),
+  // the side creases 180° - 360° / 4 = 90°. The webs: 0.4 π / (2 × 5.2) = 12.083% at the corners, 0.25 / 0.120830 =
+  // 2.07 times under the limit
+  near(m.end, 45, 1e-9, 'the end'); assert.equal(m.fold, m.end); assert.equal(m.limit, null);
+  const e = m.at(m.end); near(e.folds.corner, 180, 1e-6, 'corners flat'); near(e.folds.side, 90, 1e-6, 'sides 90°');
+  near(e.strain.corner, (0.4 * Math.PI) / 10.4, 1e-9, 'corner web strain'); near(m.margin, 0.25 / ((0.4 * Math.PI) / 10.4), 1e-9, 'margin'); assert.ok(m.margin > 2);
+  // the pinch: 180° - 2 atan((1.6 - 0.2) / (2.6 + 1.2)) = 139.55°, past the side creases' 90°
+  near(e.pinch, 180 - 2 * Math.atan(1.4 / 3.8) * 180 / Math.PI, 1e-9, 'pinch');
+  assert.deepEqual(m.findings.map((x) => [x.level, x.code]), [['pass', 'flexure.strain'], ['pass', 'waterbomb.pinch'], ['pass', 'waterbomb.mass']]);
+  // in PETG (1.25%) the same webs fold only so far: 0.4 ψ / 10.4 = 0.012523 at ψ = 18.65° for the corners
+  const pg = waterbombModel(p, flexureMaterial({ modulus: 1810, strength: 34 }));
+  assert.equal(pg.limit, 'strain'); assert.ok(pg.fold < 10, `${pg.fold}`); assert.equal(pg.findings[0].level, 'fail');
+  // printed flat: the web the whole square on the bed (56.57 mm a side, 0.4 thick), the panels on it, one piece
+  const g = waterbomb(p), box = measureBoundingBox(g);
+  near(box[1][2], 1.6, 1e-9, 'panels on top'); near(box[1][0], 40, 1e-9, 'corner on x'); assert.ok(onePiece(g));
+  near(m.grams, (measureVolume(g) / 1000) * 1.2, 1e-9, 'grams');
+  assert.ok(measureVolume(g) > 3200 * 0.4 && measureVolume(g) < 3200 * 1.6, 'between the web alone and a solid sheet');
+  const found = printCheck(jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices), { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 });
+  assert.deepEqual(found.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'it prints flat without support');
+  for (const [bad, code] of [[{ ...p, sides: 9 }, 'waterbomb.sides'], [{ ...p, thickness: 0.3 }, 'waterbomb.web'], [{ ...p, radius: 8 }, 'waterbomb.panel']]) assert.throws(() => waterbombModel(bad, tpu), (x) => x.code === code, code);
+  assert.throws(() => m.at(50), (x) => x.code === 'waterbomb.fold');
+});
+
+test('the Kresling tube printed standing in TPU: both states, each crease\'s turn from print, the webs within TPU\'s limit, and no overhang past 45°', async () => {
+  const { kreslingTube, kreslingTubeModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const tpu = flexureMaterial({ modulus: 9.2, strength: 29.6, flex_strain: 0.25, density: 1.2, name: 'TPU' });
+  const p = { sides: 6, radius: 20, height: 30, twist: 100, wall: 0.8, panel: { thickness: 1.6 }, hinge: { flex: 4 } }, m = kreslingTubeModel(p, tpu);
+  near(m.states[1].height, 20.6418, 1e-4, 'the second state'); near(m.states[1].twist, 140, 1e-9, 'its twist');
+  // The floor's crease turns the lower triangle B0 B1 T0 about B0 B1, e = (-0.5, 0.866025, 0), out = (0.866025, 0.5, 0).
+  // Printed, T0 = (-3.47296, 19.69616, 30): u0 = T0 - B0 = (-23.47296, 19.69616, 30), u0 · e = 28.79385 (the flat
+  // pattern's x0), u = (-9.07603, -5.24001, 30), u · out = -10.48007, atan2(30, -10.48007) = 109.254°. Second state,
+  // T0 = (-15.32089, 12.85575, 20.6418): u = (-20.92396, -12.08042, 20.6418), u · out = -24.16090, atan2(20.6418, -24.16090) = 139.491°: 30.236°
+  near(m.turns.floor, 139.491 - 109.254, 0.002, 'the floor\'s crease'); near(m.turns.ring, m.turns.floor, 1e-9, 'the ring\'s, the same turned over');
+  // the webs: the wall, 0.8 thick, over 4 mm: the sides turn most, 65.345°: 0.8 × 1.140497 / 8 = 11.405%; the limit 25%
+  near(m.strain, (0.8 * m.turns.side * Math.PI) / 180 / 8, 1e-12, 'web strain'); near(m.strain, 0.11405, 1e-5, 'web strain figure');
+  assert.ok(m.margin > 2 && m.stretch < m.strain, `margin ${m.margin}`); assert.ok(m.barrier.force > 0 && m.barrier.height < 30 && m.barrier.height > 20.64);
+  assert.ok(m.overhang <= 45 && m.overhang > 19, `its steepest underside ${m.overhang}°, more than the walls' own 19° lean`);
+  assert.deepEqual(m.findings.map((x) => [x.level, x.code]), [['pass', 'kresling.states'], ['pass', 'flexure.strain'], ['pass', 'kresling.stretch'], ['pass', 'kresling.overhang'], ['pass', 'kresling.mass']]);
+  const g = kreslingTube(p), box = measureBoundingBox(g);
+  assert.ok(onePiece(g)); near(box[0][2], 0, 1e-9, 'on its floor'); near(box[1][2], 32, 1e-9, 'the ring 2 over the top');
+  near(m.grams, (measureVolume(g) / 1000) * 1.2, 1e-9, 'grams');
+  // in PETG the same webs crack: 11.4% against 1.25%
+  const pg = kreslingTubeModel(p, flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }));
+  assert.equal(pg.findings.find((x) => x.code === 'flexure.strain').level, 'fail');
+  assert.throws(() => kreslingTube({ ...p, panel: { thickness: 0.8 } }), (x) => x.code === 'kresling.web');
+  assert.throws(() => kreslingTube({ ...p, hinge: { flex: 12 } }), (x) => x.code === 'kresling.panel');
+  assert.throws(() => kreslingTubeModel(p, { E: 9.2 }), (x) => x.code === 'kresling.material');
+});
+
+test('a four-bar on a cone: a spherical four-bar on the cone\'s rulings, the tube\'s as the cone flattens to a cylinder, printed on its wide end', async () => {
+  const { coneFourBar, coneFourBarModel, coneFourBarFindings, tubeFourBarModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), r = (d) => (d * Math.PI) / 180;
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  const p = { radius: 26, angle: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 7, thickness: 0.84 } }, m = coneFourBarModel(p, petg);
+  // the links are the angles between the joints' axes: cos = sin² 20° cos 60° + cos² 20° = 0.058489 + 0.883022 =
+  // 0.941511, 19.693° for the input; the ground's, 140° round: 0.116978 cos 140° + 0.883022 = 0.793412, 37.494°
+  near(m.links.input, Math.acos(Math.sin(r(20)) ** 2 * 0.5 + Math.cos(r(20)) ** 2) * 180 / Math.PI, 1e-9, 'input'); near(m.links.input, 19.6931, 1e-4, 'input figure'); near(m.links.ground, 37.4945, 1e-4, 'ground');
+  // each hinge a web down the slant, 20 / cos 20° = 21.2836 mm wide: E b t³ / 12 l = 1810 × 21.2836 × 0.592704 / 12 /
+  // 6.20216 = 306.79 N·mm a radian (l the drawn web's bending length, as the tube's)
+  near(m.hinge.width, 20 / Math.cos(r(20)), 1e-9, 'the slant'); near(m.hinge.stiffness, (1810 * m.hinge.width * 0.84 ** 3) / 12 / m.hinge.length, 1e-9, 'K'); near(m.hinge.stiffness, 306.79, 0.01, 'K figure');
+  // turned -3.7°, the coupler's joint turns 5.156°: 0.84 × 0.089993 / (2 × 6.20216) = 0.6094%, 2.05 times under PETG's 1.2523%
+  const a = m.at(-3.7); near(a.strain, (0.84 * r(Math.max(...a.turns.map(Math.abs)))) / (2 * m.hinge.length), 1e-12, 'strain'); near(a.strain, 0.006094, 1e-6, 'strain figure');
+  near(a.turns.reduce((s, x) => s + x, 0), 0, 0.05, 'the turns round the loop nearly cancel (exactly, on a plane)');
+  // the loop closes on the sphere: the coupler's axes keep their angle
+  // as the cone's angle goes to 0 its apex goes far off and it is the tube's planar four-bar, joint for joint
+  const flat = coneFourBarModel({ ...p, radius: 20, angle: 0.03, height: 1 }, petg).at(3).turns, tube = tubeFourBarModel({ radius: 20, wall: 2.5, height: 1, joints: p.joints, hinge: p.hinge }, petg).at(3).turns;
+  flat.forEach((x, i) => near(x, tube[i], 1e-3, `joint ${i}`));
+  // the planar four-bar's own figures at a 3° input (brute force on the closing chord): -4.1783, 3.4460, -2.2677
+  near(tube[1], -4.1783, 1e-4, 'the planar coupler joint');
+  assert.ok(m.travel[0] < -3.7 && m.travel[1] > 3.7);
+  const found = coneFourBarFindings({ ...p, turn: -3.7 }, { line: 0.42, layer: 0.2 }, petg, m);
+  assert.deepEqual(found.map((x) => [x.level, x.code]), [['pass', 'developable.web'], ['pass', 'developable.layers'], ['pass', 'developable.direction'], ['pass', 'developable.overhang'], ['pass', 'developable.strain'], ['info', 'developable.surface']].filter(([, c]) => found.some((x) => x.code === c)));
+  assert.equal(coneFourBarFindings({ ...p, angle: 50, height: 8 }, { line: 0.42, layer: 0.2 }).find((x) => x.code === 'developable.overhang').level, 'fail');
+  const g = coneFourBar(p), box = measureBoundingBox(g);
+  assert.ok(onePiece(g)); near(box[0][2], 0, 1e-9, 'on its wide end'); near(box[1][2], 20, 1e-9, 'its height'); near(m.grams, (measureVolume(g) / 1000) * 1.27, 1e-9, 'grams');
+  const pc = printCheck(jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices), { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 });
+  assert.deepEqual(pc.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'it prints standing without support');
+  assert.throws(() => coneFourBarModel({ ...p, angle: 0 }, petg), (x) => x.code === 'developable.angle');
+  assert.throws(() => coneFourBarModel({ ...p, height: 60 }, petg), (x) => x.code === 'developable.height');
+  assert.throws(() => coneFourBarModel({ ...p, hinge: { flex: 8, thickness: 0.84 }, radius: 24 }, petg), (x) => x.code === 'developable.hinge');
+});
+
+test('the balanced strip cell: the buckled strip, its pad free to turn on a printed pin, cancelled by a two-leaf spring over most of its rise', async () => {
+  const { balancedStrip, balancedStripModel, buckledSwitchModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  const p = { length: 90, thickness: 0.84, width: 6, squeeze: 0.28, base: 12 }, m = balancedStripModel(p, petg, { steps: 20 });
+  // free to turn, the strip goes over S-shaped and is the same negative stiffness most of the way (Vangbo): the pair is
+  // flat over far more than a square-held pad allows. The spring is 10% over the strip's: two leaves 0.84 by 6, 2 E W
+  // t³ / l³ = 2 × 1810 × 6 × 0.592704 / l³, about 0.147 N/mm at l = 44 mm
+  assert.ok(m.negative < 0, `${m.negative}`); near(m.spring.stiffness, -1.1 * m.negative, 0.002 * m.spring.stiffness, 'the spring');
+  near(m.spring.stiffness, (2 * 1810 * 6 * 0.84 ** 3) / m.spring.length ** 3, 0.05 * m.spring.stiffness, 'the leaves near their formula (their rounds make the difference)');
+  assert.ok(m.stiffness > 0 && m.stiffness < 0.1 * m.spring.stiffness, `stable, and nearly 0 at the middle: ${m.stiffness}`);
+  assert.ok(m.flat && m.flat.span > 2.5 && m.flat.force < 0.02, JSON.stringify(m.flat));
+  assert.ok(m.margin > 2, `strain margin ${m.margin}`);
+  // the D5 arch's balanced cell, flat over 1.86 mm, wanted 11 leaves of 37.2 mm (409 mm of leaf); this one 2 of about 44
+  assert.ok(2 * m.spring.length < 100);
+  assert.deepEqual(m.findings.map((x) => [x.level, x.code]), [['pass', 'cell.balance'], ['pass', 'cell.flat'], ['pass', 'flexure.strain'], ['pass', 'cell.mass']]);
+  // the strip alone is the switch's, bistable with its rise either side
+  const sw = buckledSwitchModel({ ...p, pad: 9 }, petg, { steps: 24 }); assert.ok(sw.bistable);
+  // a spring softer than the strip's negative stiffness leaves the middle unstable, by name
+  const weak = balancedStripModel({ ...p, spring: { stiffness: 0.05 } }, petg, { steps: 10 });
+  assert.equal(weak.findings.find((x) => x.code === 'cell.stable').level, 'fail');
+  const strip = balancedStrip(p, petg, { part: 'strip' }), frame = balancedStrip(p, petg, { part: 'frame' });
+  assert.ok(onePiece(frame)); assert.equal(pieces(jscad.geometries.geom3.toPolygons(strip).map((q) => q.vertices)).pieces.length, 2, 'the strip and its disc on the stem, printed in place in the ring');
+  near(m.grams, ((measureVolume(strip) + measureVolume(frame)) / 1000) * 1.27, 0.01, 'grams');
+  assert.throws(() => balancedStripModel({ ...p, within: 2 }, petg), /within is a share/);
+  assert.throws(() => balancedStripModel({ ...p, spring: { gap: 2 } }, petg), /spring\.gap 2/);
+});

@@ -399,7 +399,8 @@ export function kreslingTube(p) {
     // starts: a crease between two panels half a web, the floor's and the ring's edges a whole web over them
     for (const [q, back] of [[[Bi, Ti, Bj], [l / 2, l / 2, cap + l]], [[Bj, Ti, Tj], [l / 2, l, l / 2]]]) {
       const nm = normalOf([...q, q[2]]), lo = inset(q, nm, back), hi = inset(q, nm, back.map((d) => d + 3 * rise));
-      if (!(dot(cross(sub(hi[1], hi[0]), sub(hi[2], hi[0])), nm) > 1)) throw refuse('kresling.panel', `kreslingTube: the panels, set back from their creases by the web and sloped back 3:1 over ${n2f(rise)} mm, leave next to nothing of their triangles: a bigger tube, narrower webs or thinner panels`);
+      // set back too far the three lines cross over, and their triangle is the original turned half round: each side then runs backwards
+      if (!(dot(cross(sub(hi[1], hi[0]), sub(hi[2], hi[0])), nm) > 1 && [0, 1, 2].every((j) => dot(sub(hi[(j + 1) % 3], hi[j]), sub(q[(j + 1) % 3], q[j])) > 0))) throw refuse('kresling.panel', `kreslingTube: the panels, set back from their creases by the web and sloped back 3:1 over ${n2f(rise)} mm, leave next to nothing of their triangles: a bigger tube, narrower webs or thinner panels`);
       parts.push(prism3(lo.map((x) => add(x, nm.map((v) => -v * 0.01))), hi.map((x) => add(x, nm.map((v) => v * rise)))));
     }
   }
