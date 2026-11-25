@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased
+## 0.5.16: the Young and tensural bistables, split-tooth gears
 ### Added
 
 - `youngBistable` and `youngBistableModel` (issue #76): the Young bistable mechanism of US 6215081, class I (both
