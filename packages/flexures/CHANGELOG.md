@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased
+## 0.5.14: a tristable, a force gauge and a slip clutch
 ### Fixed
 
 - `forceGaugeModel`: `gauge.ticks` fails whenever the ticks lie closer than two slots, as `forceGauge` refuses to cut
