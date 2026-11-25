@@ -14,17 +14,15 @@ import jscad from '@jscad/modeling';
 import { beamProfile, printable, need } from './core.mjs';
 import { beamSystem, equilibrium } from './beams.mjs';
 import { beamOutline, spansOf } from './bistables.mjs';
-import { size, n2, rad } from './pivots.mjs';
+import { size, n2, rad, cornerRound } from './pivots.mjs';
 
 const { polygon, rectangle, roundedRectangle, circle } = jscad.primitives;
 const { union, subtract } = jscad.booleans;
+const { hull } = jscad.hulls;
 const { extrudeLinear } = jscad.extrusions;
 const { measureVolume } = jscad.measurements;
-const { offset } = jscad.expansions;
 
 const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [(x0 + x1) / 2, (y0 + y1) / 2] });
-// Every inside corner of a rigid outline rounded to r (grown by r, then shrunk back: its outside corners round too)
-const rounded = (g, r) => offset({ delta: -r, corners: 'round', segments: 32 }, offset({ delta: r, corners: 'round', segments: 32 }, g));
 // Holes and slots are cut in 3D, through and past both faces: JSCAD's 2D cuts leave open outlines on these shapes
 const solid = (g, W) => extrudeLinear({ height: W }, g), cutter = (g, W) => jscad.transforms.translate([0, 0, -1], extrudeLinear({ height: W + 2 }, g));
 
@@ -86,7 +84,7 @@ function gaugeSums(k, m) {
   const n = Math.floor(k.range / k.step + 1e-9), ticks = [];
   for (let i = -n; i <= n; i++) { const F = i * k.step, at = -Math.sign(F) * (across(curve, 'force', Math.abs(F), 'at') ?? 0); ticks.push({ force: F, at, long: i % 5 === 0 }); }
   const travel = across(curve, 'force', k.range, 'at'), strain = across(curve, 'force', k.range, 'strain'), drop = across(curve, 'force', k.range, 'drop');
-  const first = curve[0], solvedStiffness = first.force / first.at, spacing = Math.min(...ticks.slice(1).map((x, i) => x.at - ticks[i].at));
+  const first = curve[0], solvedStiffness = first.force / first.at, spacing = Math.min(...ticks.slice(1).map((x, i) => Math.abs(x.at - ticks[i].at)));
   return { stiffness, solvedStiffness, curve, ticks, travel, strain, drop, spacing, converged: curve.every((c) => c.converged) };
 }
 
@@ -94,15 +92,17 @@ function gaugeOutline(k, sums) { // the three bodies in 3D, up to the width
   const top = k.a / 2 + k.pw / 2, room = sums.travel * 1.1 + k.gap + 1; // how far the platform goes, and air
   const xp = k.L + k.s, tip = xp + k.nl, post0 = tip + k.gap + 0.5, post1 = post0 + 6; // the needle's tip a little off the post
   const yb = -top - room; // the bar's top
-  // the platform: a block, its needle (tapering to a 0.4 mm flat tip), and a tab up out of the frame with a hole for
-  // a string or a hook; every inside corner rounded
-  const needle = polygon({ points: [[xp - 0.5, -1.2], [tip, -0.2], [tip, 0.2], [xp - 0.5, 1.2]] });
+  // the platform: a block, its needle (straight for 1.5 mm, then tapering to a 0.4 mm flat tip), and a tab up out of
+  // the frame with a hole for a string or a hook; each inside corner rounded (a quarter round in the corner's square)
+  const needle = polygon({ points: [[xp - 0.5, -1.2], [xp + 1.5, -1.2], [tip, -0.2], [tip, 0.2], [xp + 1.5, 1.2], [xp - 0.5, 1.2]] });
   const tabTop = top + room + 8, tab = rect(k.L + 0.5, xp - 0.5, 0, tabTop);
-  const platform = subtract(solid(rounded(union(rect(k.L, xp, -top, top), needle, tab), 0.8), k.W), cutter(circle({ radius: 1.5, center: [k.L + k.s / 2, tabTop - 3], segments: 32 }), k.W));
-  // the frame: the back block, the bar under it all and the post the scale is cut in, which rises past the most travel
-  const postTop = Math.max(top, sums.travel + 3), frame0 = union(rect(-k.blk, 0, yb, top), rect(-k.blk, post1, yb - k.hb, yb + 0.01), rect(post0, post1, yb, postTop));
+  const rounds = [cornerRound(xp, 1.2, 1, 1, 0.8), cornerRound(xp, -1.2, 1, -1, 0.8), cornerRound(k.L + 0.5, top, -1, 1, 0.8), cornerRound(xp - 0.5, top, 1, 1, 0.8)];
+  const platform = subtract(solid(union(rect(k.L, xp, -top, top), needle, tab, ...rounds), k.W), cutter(circle({ radius: 1.5, center: [k.L + k.s / 2, tabTop - 3], segments: 32 }), k.W));
+  // the frame: the back block, the bar under it all and the post the scale is cut in, which rises past the most travel;
+  // its two inside corners rounded
+  const postTop = Math.max(top, sums.travel + 3), frame0 = union(rect(-k.blk, 0, yb, top), rect(-k.blk, post1, yb - k.hb, yb + 0.01), rect(post0, post1, yb, postTop), cornerRound(0, yb, 1, 1, 1), cornerRound(post0, yb, -1, 1, 1));
   const slots = sums.ticks.map((x) => { const d = x.long ? 2.5 : 1.2; return roundedRectangle({ size: [2 * d, k.tick], center: [post0, x.at], roundRadius: k.tick / 2 - 0.01, segments: 16 }); });
-  const frame = subtract(solid(rounded(frame0, 1), k.W), ...slots.map((x) => cutter(x, k.W)));
+  const frame = subtract(solid(frame0, k.W), ...slots.map((x) => cutter(x, k.W)));
   const leaves = [1, -1].map((sy) => solid(beamOutline([0, (sy * k.a) / 2], [k.L, (sy * k.a) / 2], k.half, k.L, k.t, 0.5, k.r), k.W));
   return { platform, frame, leaves, post0, tip, yb, top };
 }
@@ -192,36 +192,50 @@ function clutchLayout(p, what) {
   const lugAng = lug / rc / rad, pitch = 360 / n, free = pitch - sweep - lugAng; // what is left of an arm's share of the turn
   if ((free * rad) * rc < y + 2 + bumpAng * rad * R / 2) throw new Error(`${what}: ${n} arms of ${sweep}° each, with their roots, leave ${n2(free * rad * rc)} mm from a tip to the next root: ${n2(y + 2 + (bumpAng * rad * R) / 2)} or more (fewer arms, or a shorter sweep)`);
   if (360 / m < bumpAng + 2 * (gap / R / rad) + 4) throw new Error(`${what}: ${m} notches ${n2(360 / m, 1)}° apart are too close for notches ${n2(bumpAng, 1)}° wide: fewer notches, a shallower depth or a steeper angle`);
-  return { R, t, W, y, n, m, sweep, al, bore, wall, lug, gap, rc, rh, flank, nf, bumpAng, lugAng, Ro: R + y + 2 * gap + wall };
+  return { R, t, W, y, n, m, sweep, al, bore, wall, lug, gap, rc, rh, flank, nf, bumpAng, lugAng, Ro: R + y + gap + wall };
 }
 
-// A V notch or bump on a circle: its flanks at the angle, a flat top nf wide, `h` deep from radius r0 outward
-function vee(r0, h, flank, nf, angle, sx = 1) {
+// A V bump on a circle: its flanks at the angle, a flat top nf wide, `h` high from radius r0 outward, its foot run into
+// the body under it a little so the two join; as points, anticlockwise
+function veePoints(r0, h, flank, nf, angle) {
   const c = [Math.cos(angle), Math.sin(angle)], u = [-Math.sin(angle), Math.cos(angle)], at = (along, r) => [c[0] * r + u[0] * along, c[1] * r + u[1] * along];
-  const w0 = flank + nf / 2, w1 = nf / 2, base = r0 - 0.5 * sx; // run into the body a little, so it joins
-  const pts = [at(-w0 - 0.5, base), at(w0 + 0.5, base), at(w0, r0), at(w1, r0 + sx * h), at(-w1, r0 + sx * h), at(-w0, r0)];
+  const w0 = flank + nf / 2, w1 = nf / 2, base = r0 - 0.5;
+  const pts = [at(-w0 - 0.5, base), at(w0 + 0.5, base), at(w0, r0), at(w1, r0 + h), at(-w1, r0 + h), at(-w0, r0)];
   const area = pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0);
-  return polygon({ points: area > 0 ? pts : pts.reverse() });
+  return area > 0 ? pts : pts.reverse();
 }
 const arc = (r0, r1, a0, a1, n = 96) => { const pts = []; for (let i = 0; i <= n; i++) { const a = a0 + ((a1 - a0) * i) / n; pts.push([r1 * Math.cos(a), r1 * Math.sin(a)]); } for (let i = n; i >= 0; i--) { const a = a0 + ((a1 - a0) * i) / n; pts.push([r0 * Math.cos(a), r0 * Math.sin(a)]); } return polygon({ points: pts }); };
+// A round for the inside corner at P between two walls, ex and ey along each wall into the empty quarter: the r × r
+// square there less a circle, its own sides run a little into the material (so a gently curved wall is covered)
+function roundIn(P, ex, ey, r) {
+  const e = 0.05, loc = [[-e, -e], [r, -e]];
+  for (let i = 0; i <= 24; i++) { const a = (Math.PI / 2) * (i / 24); loc.push([r - r * Math.sin(a), r - r * Math.cos(a)]); }
+  loc.push([-e, r]);
+  const pts = loc.map(([x, y]) => [P[0] + x * ex[0] + y * ey[0], P[1] + x * ex[1] + y * ey[1]]);
+  const area = pts.reduce((a, q, i) => { const w = pts[(i + 1) % pts.length]; return a + q[0] * w[1] - w[0] * q[1]; }, 0);
+  return polygon({ points: area > 0 ? pts : pts.reverse() });
+}
+const polar = (r, a) => [r * Math.cos(a), r * Math.sin(a)], er = (a) => [Math.cos(a), Math.sin(a)], et = (a) => [-Math.sin(a), Math.cos(a)], neg = (v) => [-v[0], -v[1]];
 
 function clutchOutline(k) { // the hub and the ring in 3D, up to the width
   // the hub: a disc, and for each arm a lug from the disc out to the arm's root, the arm along its arc to its tip, and
-  // the bump on the tip's outside; every inside corner rounded (the gaps are wider than twice the round)
-  const parts = [circle({ radius: k.rh, segments: 128 })];
+  // the bump on the tip's outside. The three inside corners at each lug rounded (where the arm leaves it, and where it
+  // stands on the disc either side); the bump's flanks meet the arm at 180° less the flank angle
+  const parts = [circle({ radius: k.rh, segments: 128 })], bumps = [], rr = 0.6;
   for (let i = 0; i < k.n; i++) {
-    const a0 = (i * 360) / k.n, root = a0 * rad, tip = (a0 + k.lugAng + k.sweep) * rad;
-    parts.push(arc(k.rh - 0.5, k.rc + k.t / 2, root, root + k.lugAng * rad, 16)); // the lug
-    parts.push(arc(k.rc - k.t / 2, k.rc + k.t / 2, root + k.lugAng * rad - 0.01, tip, 96)); // the arm
-    parts.push(vee(k.rc + k.t / 2, k.y + k.gap, k.flank, k.nf, tip - ((k.flank + k.nf / 2 + 0.5) / k.rc), 1)); // the bump, its far flank at the tip
+    const root = ((i * 360) / k.n) * rad, side = root + k.lugAng * rad, tip = side + k.sweep * rad, at = tip - (k.flank + k.nf / 2 + 0.5) / k.rc;
+    parts.push(arc(k.rh - 0.5, k.rc + k.t / 2, root, side, 16)); // the lug
+    parts.push(arc(k.rc - k.t / 2, k.rc + k.t / 2, side - 0.01, tip, 96)); // the arm
+    parts.push(polygon({ points: veePoints(k.rc + k.t / 2, k.y + k.gap, k.flank, k.nf, at) })); bumps.push(at); // the bump, its far flank at the tip
+    parts.push(roundIn(polar(k.rc - k.t / 2, side), et(side), neg(er(side)), rr), roundIn(polar(k.rh, side), et(side), er(side), rr), roundIn(polar(k.rh, root), neg(et(root)), er(root), rr));
   }
-  const hub = subtract(solid(rounded(union(...parts), 0.5), k.W), cutter(circle({ radius: k.bore / 2 + 0.1, segments: 64 }), k.W));
-  // the ring: its bore at the radius, a notch over each bump at rest and the rest spaced evenly
-  const bumpAt = (i) => ((i * 360) / k.n + k.lugAng + k.sweep) * rad - (k.flank + k.nf / 2 + 0.5) / k.rc;
-  const notches = Array.from({ length: k.m }, (_, j) => vee(k.R, k.y + 2 * k.gap, k.flank, k.nf, bumpAt(0) + (2 * Math.PI * j) / k.m, 1));
-  // (a notch is the bump grown by the gap at its top; its flanks a gap off the bump's, near enough at these angles)
-  // (each notch cut by its outline grown by half the gap with round corners, so the notch's bottom corners are round)
-  const ring = subtract(solid(subtract(circle({ radius: k.Ro, segments: 192 }), circle({ radius: k.R, segments: 192 })), k.W), ...notches.map((v) => cutter(offset({ delta: k.gap / 2, corners: 'round', segments: 16 }, v), k.W)));
+  const hub = subtract(solid(union(...parts), k.W), cutter(circle({ radius: k.bore / 2 + 0.1, segments: 64 }), k.W));
+  // the ring: its bore at the radius, a notch over each bump at rest and the rest spaced evenly. A notch is its bump
+  // grown by the gap all round (the hull of a gap's circle on each of the bump's corners), so its bottom corners are
+  // round and its flanks a gap off the bump's
+  const notch = (a) => hull(...veePoints(k.rc + k.t / 2, k.y + k.gap, k.flank, k.nf, a).map((c) => circle({ radius: k.gap, center: c, segments: 16 })));
+  const notches = Array.from({ length: k.m }, (_, j) => notch(bumps[0] + (2 * Math.PI * j) / k.m));
+  const ring = subtract(solid(circle({ radius: k.Ro, segments: 192 }), k.W), cutter(circle({ radius: k.R, segments: 192 }), k.W), ...notches.map((v) => cutter(v, k.W)));
   return { hub, ring };
 }
 
@@ -240,7 +254,7 @@ export function slipClutch(p, { part = 'all' } = {}) {
 
 /**
  * What a slip clutch does: each arm's stiffness at its tip, in toward the hub, from the beam solver on the drawn arc
- * (checked against the curved cantilever's 1 / k = r³ (φ/2 - sin 2φ / 4) / EI), the force P that lifts a bump its
+ * (checked against the curved cantilever's 1 / k = r³ (φ/2 - sin 2φ / 4) / EI, from Castigliano with M = P r sin θ), the force P that lifts a bump its
  * depth, the push along the bore that rides a bump up its flank, P (μ + tan α) / (1 - μ tan α) (the snap-fit
  * guides' wedge), the torque that slips it (that times the arms and the radius), the arms' strain against half the
  * limit, the clicks a turn, and the grams.
@@ -249,9 +263,10 @@ export function slipClutch(p, { part = 'all' } = {}) {
  *   between bump and notch (default 0.3; printed plastics 0.2 to 0.6)
  * @param {{ torque?: number, printer?: { line: number, layer: number, wall_min?: number } }} [o] torque: the most it
  *   must carry without slipping (N·mm), checked against the slip torque
- * @returns {{ stiffness: number, arc: number, lift: number, push: number, torque: number, strain: number, margin: number,
+ * @returns {{ stiffness: number, solvedArc: number, arc: number, lift: number, push: number, torque: number, strain: number, margin: number,
  *   clicks: number, grams: number | null, findings: object[], rests: string[] }}
- *   stiffness: the solver's, N/mm at a tip; arc: the curved cantilever's; lift: P at the depth (N); push: along the
+ *   stiffness: the solver's over the whole lift, N/mm at a tip (lift / depth); solvedArc: the solver's at the start;
+ *   arc: the curved cantilever's; lift: P at the depth (N); push: along the
  *   bore at a bump (N); torque: the slip torque (N·mm); strain: an arm's at the depth; margin: the limit over it
  */
 export function slipClutchModel(p, m, o = {}) {
@@ -269,12 +284,13 @@ export function slipClutchModel(p, m, o = {}) {
   const phi = k.sweep * rad, path = Array.from({ length: 49 }, (_, i) => { const a = Math.PI / 2 - phi + (phi * i) / 48; return [k.rc * Math.cos(a), k.rc * Math.sin(a)]; });
   const sys = beamSystem({ bodies: { ground: { at: path[0], fixed: true }, tip: { at: path[48] } }, beams: [{ name: 'arm', path, thickness: k.t, width: k.W, E: m.E, from: 'ground', to: 'tip' }], segments: 48 });
   const d = sys.body.tip.dof + 1;
+  const probe = 1e-4 * k.y, solvedArc = -equilibrium(sys, { held: new Map([[d, -probe]]) }).reaction.get(d) / probe; // small, to set beside the formula
   let q, r;
   for (let i = 1; i <= 8; i++) { r = equilibrium(sys, { held: new Map([[d, (-k.y * i) / 8]]), start: q, iterations: 80 }); q = r.q; }
   const lift = -r.reaction.get(d), stiffness = lift / k.y, strain = Math.max(...Object.values(r.strain)), margin = lim / strain;
   const EI = (m.E * k.W * k.t ** 3) / 12, arcK = EI / (k.rc ** 3 * (phi / 2 - Math.sin(2 * phi) / 4));
   const push = (lift * (mu + tan)) / (1 - mu * tan), rm = k.R + k.y / 2, torque = k.n * rm * push;
-  f('pass', `each arm is ${n2(stiffness, 3)} N/mm at its tip (the beam solver on the drawn arc); a curved cantilever, r³ (φ/2 - sin 2φ / 4) / EI, gives ${n2(arcK, 3)} N/mm`, 'clutch.stiffness', { values: { stiffness, arc: arcK } });
+  f('pass', `each arm is ${n2(solvedArc, 3)} N/mm at its tip to start with (the beam solver on the drawn arc; a curved cantilever, EI / r³ (φ/2 - sin 2φ / 4), gives ${n2(arcK, 3)} N/mm) and ${n2(stiffness, 3)} N/mm over the whole lift`, 'clutch.stiffness', { values: { stiffness, solvedArc, arc: arcK } });
   f('pass', `a bump lifts its arm ${k.y} mm with ${n2(lift, 2)} N; up a ${k.al}° flank at μ ${mu} that takes ${n2(push, 2)} N along the bore, so ${k.n} arms at ${n2(rm, 1)} mm slip at ${n2(torque, 1)} N·mm, ${k.m} clicks a turn`, 'clutch.slip', { values: { lift, push, torque, clicks: k.m } });
   if (o.torque !== undefined) f(torque >= 2 * o.torque ? 'pass' : torque >= o.torque ? 'warn' : 'fail', `it must carry ${o.torque} N·mm: it slips at ${n2(torque, 1)} N·mm, ${n2(torque / o.torque, 2)}x${torque >= 2 * o.torque ? '' : torque >= o.torque ? ', under twice: friction varies (0.2 to 0.6 printed), so it may slip early. Thicker arms, a deeper notch or a steeper flank' : ': it slips under the load. Thicker arms, a deeper notch or a steeper flank'}`, 'clutch.torque', { values: { need: o.torque, torque } });
   f(margin >= 2 ? 'pass' : strain <= lim ? 'warn' : 'fail', `lifted ${k.y} mm an arm sees ${n2(strain * 100, 2)}%, ${margin >= 2 ? `under half the limit of ${n2(lim * 100, 1)}% (${n2(margin, 1)}x)` : strain <= lim ? `within the limit of ${n2(lim * 100, 1)}% but with only ${n2(margin, 2)}x the margin: it clicks round many times, so a longer sweep or a thinner arm` : `over the limit of ${n2(lim * 100, 1)}%: a longer sweep, a thinner arm or a shallower depth`}`, 'flexure.strain', { values: { strain, limit: lim, margin } });
@@ -283,5 +299,5 @@ export function slipClutchModel(p, m, o = {}) {
   let grams = null;
   if (m.density > 0) { grams = (measureVolume(slipClutch(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, hub and ring`, 'clutch.mass', { values: { grams } }); }
   const rests = [`friction μ ${mu}: printed plastic on itself is 0.2 to 0.6, and the slip torque moves with it (an estimate; measure it on the print)`, 'the push along the bore is the snap-fit guides\' wedge at the flank\'s angle, with the arm\'s full lift: a bump\'s rounded top rides a little easier', 'the ring taken as rigid (its wall several times an arm\'s thickness)'];
-  return { stiffness, arc: arcK, lift, push, torque, strain, margin, clicks: k.m, grams, findings: out, rests };
+  return { stiffness, solvedArc, arc: arcK, lift, push, torque, strain, margin, clicks: k.m, grams, findings: out, rests };
 }
