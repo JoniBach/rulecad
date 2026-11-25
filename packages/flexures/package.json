@@ -32,6 +32,7 @@
     "amplifiers.mjs",
     "bistables.mjs",
     "lattices.mjs",
+    "kirigami.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -56,6 +57,7 @@
     "amplifiers.d.mts",
     "bistables.d.mts",
     "lattices.d.mts",
+    "kirigami.d.mts",
     "README.md",
     "LICENSE"
   ],
