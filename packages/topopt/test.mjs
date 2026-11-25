@@ -822,3 +822,50 @@ test('the 3D cantilever milled with a tool, from two sides, and cast with a draf
   assert.ok(two.compliance < tool.compliance && two.compliance < cast.compliance, `${two.compliance}, ${tool.compliance}, ${cast.compliance}`);
   for (const r of [tool, two, cast]) assert.ok(Math.abs(r.volume - 0.3) < 0.03, `volume ${r.volume}`);
 });
+
+test('the virtual temperature: an enclosed void runs hot, an open one cool, and its gradient matches finite differences', async () => {
+  const { virtualTemperature, voids } = await import('@rulecad/topopt');
+  // A 12 mm cube of cells with a hollow box in it (8 cells a side, its 4-cell inside empty), then the same box with a
+  // 2 × 2 hole through its floor: the enclosed void's heat has to cross the solid (conductivity 10⁻⁴ of an empty
+  // cell's), the open one's flows out through the hole
+  const N = 12, at = (i, j, k) => (k * N + j) * N + i, size = { nx: N, ny: N, nz: N }, box = new Float64Array(N ** 3);
+  for (let k = 2; k < 10; k++) for (let j = 2; j < 10; j++) for (let i = 2; i < 10; i++) box[at(i, j, k)] = i > 3 && i < 8 && j > 3 && j < 8 && k > 3 && k < 8 ? 0 : 1;
+  const holed = Float64Array.from(box);
+  for (let k = 2; k < 4; k++) for (const [i, j] of [[5, 5], [6, 5], [5, 6], [6, 6]]) holed[at(i, j, k)] = 0;
+  const vt = virtualTemperature(size), empty = vt.evaluate(new Float64Array(N ** 3)).value, closed = vt.evaluate(box).value, open = vt.evaluate(holed).value;
+  // (scratch c3/vt1.mjs: empty 5.4, open 46, closed 6180)
+  assert.equal(voids({ ...size, h: 1 }, box).length, 1); assert.equal(voids({ ...size, h: 1 }, holed).length, 0);
+  assert.ok(closed > 100 * open && open < 10 * empty, `empty ${empty}, open ${open}, closed ${closed}`);
+  // The gradient, against finite differences, each solve fresh (from the last answer, the solver's stopping rule
+  // shows in the differences)
+  const small = { nx: 6, ny: 5, nz: 4 }, rho = Float64Array.from({ length: 120 }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11);
+  const d = virtualTemperature(small).evaluate(rho).d.slice(), big = Math.max(...d.map(Math.abs));
+  for (let e = 0; e < 120; e += 7) {
+    const up = Float64Array.from(rho), down = Float64Array.from(rho); up[e] += 1e-5; down[e] -= 1e-5;
+    const fd = (virtualTemperature(small).evaluate(up).value - virtualTemperature(small).evaluate(down).value) / 2e-5;
+    assert.ok(Math.abs(fd - d[e]) < 1e-6 * big, `cell ${e}: ${d[e]} against ${fd}`);
+  }
+});
+
+test('voids prevented: a twisted block optimised freely closes into a tube round an enclosed void; prevented, it vents it, and costs a little stiffness', async () => {
+  const { voids, virtualTemperature } = await import('@rulecad/topopt');
+  // A 12 × 12 × 20 mm block on 1 mm cells, kept end plates, held at its foot and twisted at its top by four tangential
+  // 1 N forces, filling 45%. (At its 131st step the free run used to crash: an empty cell times an infinite scale.)
+  const W = 12, L = 20, a = W / 2 - 0.5, p = {
+    space: { at: [0, 0, L / 2], size: [W, W, L] }, keep: [{ at: [0, 0, 0.5], size: [W, W, 1] }, { at: [0, 0, L - 0.5], size: [W, W, 1] }],
+    supports: [{ at: [0, 0, 0.5], size: [W, W, 1] }],
+    loads: [{ at: [a, 0, L - 0.5], r: 1, force: [0, 1, 0] }, { at: [-a, 0, L - 0.5], r: 1, force: [0, -1, 0] }, { at: [0, a, L - 0.5], r: 1, force: [-1, 0, 0] }, { at: [0, -a, L - 0.5], r: 1, force: [1, 0, 0] }],
+    material: { E: 1000, nu: 0.3 }, cell: 1, volume: 0.45, steps: 150,
+  };
+  const s = discretise(p), free = optimise(s), vented = optimise(discretise({ ...p, voids: 'prevented' }));
+  const found = (r) => voids({ ...s.grid }, r.density);
+  // (scratch c3/vt3.mjs: free 0.012770 N·mm with one void of 1520 mm³, the tube's whole inside; prevented 0.013446,
+  // 5.3% less stiff, none: slots two cells wide in each wall at its foot)
+  assert.deepEqual(found(free).map((v) => v.volume), [1520]);
+  assert.deepEqual(found(vented), []);
+  assert.ok(vented.compliance < free.compliance * 1.1 && Math.abs(vented.volume - 0.45) < 0.01, `${vented.compliance} against ${free.compliance}, volume ${vented.volume}`);
+  const heat = (r) => virtualTemperature(s.grid).evaluate(r.density).value;
+  assert.ok(heat(free) > 10 * heat(vented), `free ${heat(free)}, vented ${heat(vented)}`);
+  assert.throws(() => discretise({ ...p, voids: 'refused' }), /voids: allowed, or prevented .*got "refused"/);
+  assert.throws(() => optimise(discretise({ ...p, voids: 'prevented', stress: 5, volume: undefined })), /voids are prevented for the stiffest part that fills a volume, not under a stress limit/);
+});

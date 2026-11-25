@@ -65,6 +65,9 @@ export { jsBackend };
  *   left where no side's tool reaches it
  * @property {number} [tool] with mill, the tool's radius (mm, a flat end mill): no pocket narrower than the tool, and
  *   every inside corner seen from the tool rounded to at least it. At least a cell
+ * @property {'allowed' | 'prevented'} [voids] prevented: every empty pocket is kept open to the grid's outside as
+ *   the part is optimised (a powder bed print's powder, a casting's core, must get out), by the virtual temperature
+ *   (virtualTemperature) kept under a cap. For the stiffest part that fills a volume
  * @property {string | { draw: 'x' | 'y' | 'z', parting?: number }} [cast] cast in a mould drawn off this way ('+z'),
  *   or in two halves drawn off both ways along draw from a parting plane (mm along it, default the space's middle)
  * @property {number} [draft] with cast, the draft (degrees): the part narrows towards the side it is drawn off, a cell
@@ -101,6 +104,7 @@ export function discretise(p) {
   const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
   // One process at a time: printed (overhang), milled or cast
+  if (p.voids != null && !['allowed', 'prevented'].includes(p.voids)) throw new Error(`voids: allowed, or prevented (each kept open to the outside as it is optimised); got "${p.voids}"`);
   const made = ['overhang', 'mill', 'cast'].filter((k) => p[k]);
   if (made.length > 1) throw new Error(`a part is printed (overhang), milled (mill) or cast (cast), one of them: this problem gives ${made.join(' and ')}`);
   for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
@@ -188,7 +192,7 @@ export function discretise(p) {
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (stress && !p.output ? 1000 : dim === 3 ? 500 : 300),
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(stress ? { stress, ...(p.strain != null ? { strain: p.strain } : {}) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
-    ...(p.tool ? { tool: p.tool } : {}), ...(p.draft ? { draft: p.draft } : {}),
+    ...(p.tool ? { tool: p.tool } : {}), ...(p.draft ? { draft: p.draft } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
     regions: { keep, avoid },
   }));
 }
@@ -699,6 +703,7 @@ function draftEvery(draft) {
  */
 const SUPPORT = 10; // what a kept cell nothing holds up costs, in the part's compliances, over the kept cells
 const ERODE = 0.7, DILATE = 0.3, DILATE_EVERY = 10; // a mechanism's robust formulation: the eroded and dilated copies' thresholds, and how often the dilated volume target follows
+const VENT = 10; // voids prevented: the virtual temperature's cap, in the even spread's
 
 export function model(spec, { method, backend = jsBackend } = {}) {
   clash(spec);
@@ -709,6 +714,8 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   // Milled or cast: no undercuts from the tool's side or the mould's draw; symmetric or extruded: cells tied together
   // (milled from more than one side, or with a tool's size, or cast with a draft: processFilter combines them)
   const draw = processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
+  // Enclosed voids prevented: the virtual temperature of the part as made, kept under a limit
+  const heat = spec.voids === 'prevented' ? virtualTemperature(spec.grid) : null;
   const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
@@ -805,7 +812,13 @@ export function model(spec, { method, backend = jsBackend } = {}) {
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
     if (stress) { for (let e = 0; e < cells; e++) stress.d[e] *= passive[e] ? 0 : slope(made[e], beta); toDesign(stress.d); }
-    return { compliance, dc, dv, u, cases, unsupported: lack, ...(stress ? { stress } : {}), ...(mechanism ? { mechanism } : {}) };
+    let hot = null;
+    if (heat) {
+      const h = heat.evaluate(phys), d = Float64Array.from(h.d, (v, e) => (passive[e] ? 0 : v * slope(made[e], beta, eta)));
+      toDesign(d);
+      hot = { value: h.value, max: h.max, d };
+    }
+    return { compliance, dc, dv, u, cases, unsupported: lack, ...(stress ? { stress } : {}), ...(mechanism ? { mechanism } : {}), ...(hot ? { heat: hot } : {}) };
   };
   // Stress limits on every cell (Senhora, Giraldo-Londoño, Menezes, Paulino 2020): each cell's von Mises stress at its
   // centre, as if solid, over the limit, less 1, times the cell's density, so an empty cell's limit vanishes. They're
@@ -1017,7 +1030,8 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0);
   // A stress limit asks for the lightest layout that keeps to it; a volume, for the stiffest that fills it
   // (a mechanism with a stress limit is checked against it once optimised, not optimised under it: see the README)
-  const mechanism = !!spec.output, lightest = spec.stress > 0 && !mechanism;
+  const mechanism = !!spec.output, lightest = spec.stress > 0 && !mechanism, vent = spec.voids === 'prevented';
+  if (vent && (mechanism || lightest)) throw new Error(`voids are prevented for the stiffest part that fills a volume, not ${mechanism ? 'a mechanism' : 'under a stress limit'}: leave voids out, or refuse them to have them found`);
   if (lightest && spec.volume != null) throw new Error('give a volume (the stiffest layout that fills it) or a stress limit (the lightest that keeps to it), not both');
   if (!lightest && !(spec.volume > 0 && spec.volume <= 1)) throw new Error(`the volume is a share of the space, from 0 to 1 (got ${spec.volume})`);
   const target = lightest ? 0 : spec.volume * inSpace;
@@ -1032,7 +1046,13 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   // Lagrangian term, its multipliers raised every INNER steps (λ += μ h) and its penalty grown (μ × 1.1, at most 10⁴)
   const INNER = 5, freeCells = Int32Array.from(Array.from(passive).flatMap((p, e) => (p ? [] : [e]))), n = freeCells.length;
   // A mechanism: the method of moving asymptotes maximising the output's travel (minimising −travel) under the volume
-  const mmaStep = lightest ? mma({ n, m: 0, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : mechanism ? mma({ n, m: 1, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
+  const mmaStep = lightest ? mma({ n, m: 0, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : mechanism ? mma({ n, m: 1, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : vent ? mma({ n, m: 2, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
+  // Voids prevented: by the method of moving asymptotes, the stiffest part (compliance over the first step's) that fills
+  // the volume and keeps its virtual temperature under VENT times the first step's, the even spread, where nothing is
+  // enclosed. (VENT is a choice, an estimate: in a 12 mm cube of cells, all empty is 5.4, a hollow box 6180 and the same
+  // box with a 2 × 2 hole 46 (test); on the 12 × 12 × 20 twist the even spread is 21, so the cap is 214. Ten times keeps
+  // an enclosed void out with room to spare for open pockets)
+  let c0 = 0, heat0 = 0;
   const multipliers = lightest ? { lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 } : undefined;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
   let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, targetD = target;
@@ -1043,7 +1063,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
     // design (threshold ERODE), its volume on a dilated one (DILATE), the design as made between them. A hinge that
     // survives erosion has real width, so no hinge is a point. (The design as made is stiffer than the eroded copy
     // it's optimised on, by a hinge width's worth; a worst-of-three objective would close that gap, and is to come.)
-    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers, ...(mechanism ? { eta: ERODE } : {}) });
+    const { compliance, dc, dv, stress, mechanism: mech, heat } = m.evaluate(x, beta, { multipliers, ...(mechanism ? { eta: ERODE } : {}) });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);
     if (lightest) {
@@ -1070,6 +1090,14 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
       mmaStep(xf, -mech.travel, pick(mech.d).map((v) => -v), [usedD / targetD - 1], [pick(dvD).map((v) => v / targetD)], limit); // (minimising −travel)
       xnew.set(x);
       freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
+    } else if (vent) {
+      history.push(compliance);
+      if (step === 1) { c0 = compliance; heat0 = heat.value; }
+      const used = m.physical(x, beta).reduce((s, v) => s + v, 0), cap = VENT * heat0;
+      xf.set(pick(x));
+      mmaStep(xf, compliance / c0, pick(dc).map((v) => v / c0), [used / target - 1, heat.value / cap - 1], [pick(dv).map((v) => v / target), pick(heat.d).map((v) => v / cap)], limit);
+      xnew.set(x);
+      freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
     } else {
       history.push(compliance);
       // Optimality criteria: scale each cell by √(−dc/dv/λ), within the move limit, finding λ by bisection so the
@@ -1082,7 +1110,9 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
         for (let e = 0; e < cells; e++) {
           if (passive[e]) { xnew[e] = fixedValue(passive[e]); continue; }
           const b = Math.sqrt(Math.max(0, -dc[e]) / Math.max(1e-30, dv[e]) / mid);
-          xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] * b))));
+          // (an empty cell stays at its move limit's reach: 0 × an infinite scale, once the bisection's λ has run to
+          // nothing on a sharp projection, was not a number, and crashed the next solve)
+          xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] > 0 ? x[e] * b : 0))));
           if (xnew[e] !== tried[e]) same = false;
         }
         // (far from the answer every cell is at its move limit, the same design as the last try: not analysed again)
@@ -1300,6 +1330,74 @@ export function voids({ nx, ny, nz = 1, h }, density, { iso = 0.5, origin } = {}
     out.push({ cells: list, volume: list.length * h ** dim, at });
   }
   return out;
+}
+
+/**
+ * The virtual temperature (Liu, Li, Chen, Tong and Cheng 2015, "An identification method for enclosed voids
+ * restriction in manufacturability design for additive manufacturing structures", Frontiers of Mechanical Engineering
+ * 10, 126-137): empty cells are a good conductor that makes heat, solid ones a poor conductor that makes none, and
+ * the grid's outside faces are held at 0. Heat made in a void open to the outside flows out through empty cells and
+ * stays cool; heat made in an enclosed void has to cross the solid round it, and the void runs hot. The measure is
+ * the p-mean of the cells' temperatures, so one hot pocket shows; its gradient takes one more solve (the adjoint).
+ * Cells: conductivity k = ks + (1 - ks)(1 - ρ)³, heat 1 - ρ, conductances face to face (the harmonic mean of the two
+ * cells', half a cell to an outside face), solved by conjugate gradients from the last answer.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {{ ks?: number, p?: number }} [o]
+ */
+export function virtualTemperature({ nx, ny, nz = 1 }, { ks = 1e-4, p = 8 } = {}) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, cells = n.reduce((q, c) => q * c, 1), stride = [1, nx, nx * ny];
+  // Each cell's neighbour along + each axis (-1 at the outside: a face held at 0), and how many outside faces it has
+  const next = n.map((m, a) => Int32Array.from({ length: cells }, (_, e) => (Math.floor(e / stride[a]) % m < m - 1 ? e + stride[a] : -1)));
+  const outside = Uint8Array.from({ length: cells }, (_, e) => n.reduce((s, m, a) => { const c = Math.floor(e / stride[a]) % m; return s + (c === 0) + (c === m - 1); }, 0));
+  const k = new Float64Array(cells), T = new Float64Array(cells), lam = new Float64Array(cells), diag = new Float64Array(cells);
+  const r = new Float64Array(cells), z = new Float64Array(cells), d = new Float64Array(cells), Ad = new Float64Array(cells), q = new Float64Array(cells), rhs = new Float64Array(cells);
+  const cond = (a, b) => (2 * k[a] * k[b]) / (k[a] + k[b]);
+  const mult = (x, out) => { // out = K x
+    for (let e = 0; e < cells; e++) out[e] = 2 * outside[e] * k[e] * x[e];
+    for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) { const f = nb[e]; if (f < 0) continue; const c = cond(e, f), t = c * (x[e] - x[f]); out[e] += t; out[f] -= t; } }
+    return out;
+  };
+  const cg = (b, x) => { // K x = b by conjugate gradients, preconditioned by the diagonal, from x
+    diag.fill(0);
+    for (let e = 0; e < cells; e++) diag[e] += 2 * outside[e] * k[e];
+    for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) { const f = nb[e]; if (f < 0) continue; const c = cond(e, f); diag[e] += c; diag[f] += c; } }
+    mult(x, Ad);
+    let bb = 0, rz = 0;
+    for (let e = 0; e < cells; e++) { r[e] = b[e] - Ad[e]; z[e] = r[e] / diag[e]; d[e] = z[e]; rz += r[e] * z[e]; bb += b[e] * b[e]; }
+    for (let it = 0; it < 20 * cells; it++) {
+      let rr = 0; for (let e = 0; e < cells; e++) rr += r[e] * r[e];
+      if (rr <= 1e-20 * bb) break;
+      mult(d, Ad);
+      let dAd = 0; for (let e = 0; e < cells; e++) dAd += d[e] * Ad[e];
+      const alpha = rz / dAd;
+      let rz2 = 0;
+      for (let e = 0; e < cells; e++) { x[e] += alpha * d[e]; r[e] -= alpha * Ad[e]; z[e] = r[e] / diag[e]; rz2 += r[e] * z[e]; }
+      const beta = rz2 / rz; rz = rz2;
+      for (let e = 0; e < cells; e++) d[e] = z[e] + beta * d[e];
+    }
+    return x;
+  };
+  return {
+    /** @param {ArrayLike<number>} rho the physical densities @returns {{ value: number, max: number, T: Float64Array, d: Float64Array }} d: the value's gradient by density */
+    evaluate(rho) {
+      for (let e = 0; e < cells; e++) { const v = 1 - rho[e]; k[e] = ks + (1 - ks) * v * v * v; q[e] = v; }
+      cg(q, T);
+      let s = 0, max = 0;
+      for (let e = 0; e < cells; e++) { s += Math.pow(T[e], p); max = Math.max(max, T[e]); }
+      const value = Math.pow(s / cells, 1 / p);
+      // The adjoint: K λ = d value / d T (K is symmetric), then d value / d ρ = λ · dq/dρ − λᵀ (dK/dρ) T
+      for (let e = 0; e < cells; e++) rhs[e] = (Math.pow(value, 1 - p) * Math.pow(T[e], p - 1)) / cells;
+      cg(rhs, lam);
+      const dk = new Float64Array(cells), g = new Float64Array(cells);
+      for (let e = 0; e < cells; e++) dk[e] += 2 * outside[e] * lam[e] * T[e];
+      for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) {
+        const f = nb[e]; if (f < 0) continue;
+        const sum = k[e] + k[f], w = (lam[e] - lam[f]) * (T[e] - T[f]);
+        dk[e] += (2 * k[f] * k[f] * w) / (sum * sum); dk[f] += (2 * k[e] * k[e] * w) / (sum * sum);
+      } }
+      for (let e = 0; e < cells; e++) { const v = 1 - rho[e]; g[e] = -lam[e] - dk[e] * -3 * (1 - ks) * v * v; }
+      return { value, max, T, d: g };
+    },
+  };
 }
 
 // (Everything above decides the densities; everything below only draws them, so results can be kept by the code above)
