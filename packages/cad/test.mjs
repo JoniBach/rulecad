@@ -6964,3 +6964,15 @@ test('a problem\'s thinnest member from the printer\'s line (#35): met by the gr
     assert.deepEqual(JSON.parse(cad('optimise', 'thin/wide', '--json')).feature.cells, 1);
   } finally { done(); }
 });
+
+test('the bench lever milled (examples/bench lever E): its tool is the 4 mm end mill it names, 2 mm of radius, two whole cells, not the 1.9998 mm the third of the depth gives', () => {
+  // mill_3axis.corner_per_depth (0.3333) × the 6 mm plate = 1.9998 mm: on 1 mm cells the disc then loses the four cells
+  // 2 cells out and draws a 3 × 3 square, about a 3 mm tool (topopt's test of a refusal's sizes shows a 4 mm slot open
+  // under it and filled under 2). Rounded to the 0.5 mm steps end mills come in: 3.9996 halves, so 4, 2 mm
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+    const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+    const r = await readProblem('bench', 'lever:milled'); console.log(JSON.stringify({ tool: r.problem.tool, mill: r.problem.mill, cell: r.problem.cell }));
+  `], { cwd: bench, encoding: 'utf8' }));
+  assert.deepEqual(r, { tool: 2, mill: '+z', cell: 1 });
+});

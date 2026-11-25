@@ -15,13 +15,16 @@ What changed in each release, for someone upgrading.
 - `voids: 'prevented'`: enclosed voids prevented as the part is optimised, by the virtual temperature
   (`virtualTemperature`, Liu and others 2015) kept under a cap.
 - `feature` (mm): the thinnest member, held by an opening filter (`featureFilter`) of up to three cells across;
-  nothing to do where a cell is already as wide; wider is refused by name with the cell size that holds it.
+  nothing to do where a cell is already as wide; wider is refused by name with the cell size that holds it (a third
+  of the feature, rounded up so the size asked for passes) or the feature the grid holds (rounded down).
   `featureCells(feature, h)` and `thin(grid, density, { radius })` give the ball and the cells in narrower members.
 - `undercuts(grid, density, { from, tool, draft })` also counts what a tool of a size, or a draft, could not make.
 
 ### Fixed
 
 - An empty cell no longer crashes the optimality criteria's update.
+- A tool under a cell is refused with cells no bigger than the tool, rounded down (to the nearest, 1.237 mm asked
+  for 1.24 mm cells, still too big).
 
 ## 0.3.6: fewer triangles, problems in 2D from a part
 ### Added

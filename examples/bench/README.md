@@ -23,13 +23,13 @@ every specimen's volume to within 1% of that.
 | B | `bench/lever-plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.72 N/mm |
 | C | `bench/lever` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 100 N/mm |
 | D | `bench/lever:both` | Optimised for a second load too, 45° from straight down. | 99.3 N/mm (191 N/mm at 45°) |
-| E | `bench/lever:milled` | C's problem, with its profile milled through a 6 mm plate by a 4 mm end mill (`mill` from +z with a `tool` of 2 mm radius): no window narrower than the tool, every inside corner rounded to its radius. | 99.6 N/mm (184 N/mm at 45°) |
+| E | `bench/lever:milled` | C's problem, with its profile milled through a 6 mm plate by a 4 mm end mill (`mill` from +z with a `tool` of 2 mm radius): no window narrower than the tool, every inside corner rounded to its radius. | 98.9 N/mm (183 N/mm at 45°) |
 
 E is for a shop with a router or a mill rather than a printer (it prints as well as the others). Its tool's radius
 is a third of the plate's thickness, the inside corner the Protolabs Network machining guide gives for a pocket that
-deep (`rules/mill-3axis.json`). Milling costs it 0.4% straight down against C (99.6 against 100 N/mm). `cad optimise
-bench/lever:milled` says what is left for the tool: 2 cells of the design and the bolt holes are narrower than a 4 mm
-end mill on the 1 mm grid, so drill the holes.
+deep (`rules/mill-3axis.json`). Milling costs it 1.1% straight down against C (98.9 against 100 N/mm). `cad optimise
+bench/lever:milled` says what is left for the tool: the design has no member narrower than a 4 mm end mill, and the
+bolt holes (16 cells on the 1 mm grid) are, so drill the holes.
 
 The predictions are from `cad check` (the analysis in @rulecad/fea, with Bambu Lab PLA Basic's data sheet modulus,
 2680 MPa), verified: each specimen is analysed on cells smaller than the optimiser's (0.5 mm for the levers, 0.8 mm

@@ -20,7 +20,9 @@ and head, the parts it passes through and the part it ends in.
   grid holds it where a cell is as wide, or that it was held to three cells, with any cells left narrower; past three
   cells it is refused with the cell size that would hold it.
 - The bench's lever E (`bench/lever:milled`): the lever's profile milled through a 6 mm plate by a 4 mm end mill,
-  99.6 N/mm against the printed C's 100. No existing printed size moves.
+  98.9 N/mm against the printed C's 100. No existing printed size moves.
+- A refusal of a feature past three cells asks for cells of at least a third of it, rounded up (it asked for cells of
+  1.33 mm or less for 4 mm, which it refused again), or a smaller feature.
 
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
