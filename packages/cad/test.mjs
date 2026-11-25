@@ -6926,5 +6926,13 @@ test('a problem milled from two sides by a tool of a size, or cast with a draft 
     assert.match(cad('optimise', 'made/small'), /a tool's radius of 1 mm is under a cell \(1\.5 mm\) and changes nothing on the grid/);
     write('milldraft', { mill: '+z', draft: 5 });
     assert.match(cad('optimise', 'made/milldraft'), /a draft is for a cast or moulded part \(cast\): a milled part's walls come out straight down the tool's side/);
+    // Voids prevented: the optimiser keeps every pocket open (topopt's test twists a block into a tube and vents it),
+    // and says so; one a keep region walls in can't be opened, and is still an error, said to be left though prevented
+    write('vented', { uses: ['dmls'], voids: 'prevented' });
+    assert.match(cad('optimise', 'made/vented'), /voids prevented: none enclosed, every empty pocket open to the outside/);
+    write('walled', { uses: ['dmls'], voids: 'prevented', keep: [{ at: [0, 0, 6], size: [6, 6, 6] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] });
+    const r = spawnSync(process.execPath, [BIN, 'optimise', 'made/walled'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\), left though voids were prevented \(a keep region or the space walls it in\)/);
   } finally { done(); }
 });

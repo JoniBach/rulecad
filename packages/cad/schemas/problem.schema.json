@@ -208,8 +208,8 @@
       ]
     },
     "voids": {
-      "enum": ["allowed", "refused"],
-      "description": "Enclosed voids in the result: allowed (the default), or refused, for metal powder bed printing (powder left inside can't be got out) or a casting's trapped core: cad optimise then reports each as an error with its volume and where it is. Rules: dmls"
+      "enum": ["allowed", "refused", "prevented"],
+      "description": "Enclosed voids in the result: allowed (the default); refused, for metal powder bed printing (powder left inside can't be got out) or a casting's trapped core: cad optimise then reports each as an error with its volume and where it is; or prevented: the optimiser keeps every void open to the outside as it goes (a virtual temperature, kept under a cap: an enclosed void runs hot), and any left are still reported as errors. Prevented is for the stiffest part that fills a volume, not a mechanism or a stress limit. Rules: dmls"
     },
     "output": {
       "type": "object",

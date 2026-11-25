@@ -293,7 +293,7 @@ async function optimiseProblem(ref, { preview: previewing = false } = {}) {
   if (r.process) console.log(`  ${processLine(r)}`);
   if (r.symmetry || r.extrude) console.log(`  ${[r.symmetry?.mirror ? `mirrored across ${[...r.symmetry.mirror].join(' and ')}` : '', r.symmetry?.turns ? `the same each ${r.symmetry.turns === 4 ? 'quarter' : 'half'} turn about ${r.symmetry.axis || 'z'}` : '', r.extrude ? `one section along ${r.extrude}` : ''].filter(Boolean).join(', ')}`);
   if (r.grey > 0.1) console.log(`  warning: ${greyLine(r)}`);
-  if (r.voids?.length) { console.log(`  error: ${voidsLine(r)}`); process.exitCode = 1; }
+  if (r.voids?.length) { console.log(`  error: ${voidsLine(r)}`); process.exitCode = 1; } else if (r.vented) console.log('  voids prevented: none enclosed, every empty pocket open to the outside');
   console.log(out);
   if (previewing) console.log(`${run}\n  ${recorded ? `the run, step by step: open it to watch it again (${r.steps} steps)` : 'the run\'s end only: its steps weren\'t recorded (cad preview --fresh runs it again and records them)'}`);
 }
@@ -313,7 +313,7 @@ function greyLine(r) {
 }
 // Enclosed voids, refused by the problem (powder that can't get out, a trapped core)
 function voidsLine(r) {
-  return `${r.voids.length} enclosed ${r.voids.length === 1 ? 'void' : 'voids'} (${r.voids.map((v) => `${sig(v.volume)} ${r.dim === 3 ? 'mm³' : 'mm²'} at ${v.at.map(fmt).join(', ')}`).join('; ')}): powder or a core can't get out: open ${r.voids.length === 1 ? 'it' : 'each'} to the outside with an avoid region (an escape hole), or allow voids`;
+  return `${r.voids.length} enclosed ${r.voids.length === 1 ? 'void' : 'voids'} (${r.voids.map((v) => `${sig(v.volume)} ${r.dim === 3 ? 'mm³' : 'mm²'} at ${v.at.map(fmt).join(', ')}`).join('; ')})${r.vented ? ', left though voids were prevented (a keep region or the space walls it in)' : ''}: powder or a core can't get out: open ${r.voids.length === 1 ? 'it' : 'each'} to the outside with an avoid region (an escape hole), or allow voids`;
 }
 
 // An object's analyses for cad check: each problem's load cases on the part, and its volume against a target
