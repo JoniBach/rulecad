@@ -9,7 +9,7 @@ screw by thread and head, the parts it passes through and the part it ends in.
 
 ### Changed
 
-- the agents' guide follows cad 0.7.87. No printed size changes.
+- The template's AGENTS.md follows cad 0.7.87's: `robust: true` on an optimisation problem. No printed size changes.
 
 ## 0.3.26: the agents' guide follows cad 0.7.78
 ### Changed
