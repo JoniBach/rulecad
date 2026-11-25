@@ -13,6 +13,8 @@ and head, the parts it passes through and the part it ends in.
   bracket bench's printable result 75,592 triangles become 21,124, the volume 27.808 cm³ becomes 27.806 cm³ (0.007%
   less) and the weight stays 35.04 g of PLA. `"outline": { "reduce": false }` keeps every triangle, as before. Results
   are drawn again from their cached densities; nothing is optimised again.
+- cad's share of the densities key (the text of `holdEmpty` and `optimised()`) is pinned by a test, so an edit there,
+  a comment included, that would optimise every cached problem again is made on purpose.
 
 ### Added
 

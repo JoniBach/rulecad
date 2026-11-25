@@ -6918,3 +6918,13 @@ test('a design reads the weak end of a printed plastic\'s range (pa_cf.strength_
     assert.match(end.source, /PAHT-CF/);
   } finally { done(); }
 });
+
+test('cad\'s share of the densities key is pinned, so a change to holdEmpty or optimised() (a comment included) that would optimise every cached problem again is made on purpose', async () => {
+  const crypto = await import('node:crypto');
+  const { densityCode } = await import('./lib/optimise.mjs');
+  // densityCode().cad is the source text of holdEmpty and optimised(), comments and all; CI's dimension diff keeps
+  // densities by it too (.cache/dimension-diff/slow). A reworded comment inside optimised() once moved it and threw
+  // every kept result away. When a change there is meant to optimise again, put the new digest here and say so in the
+  // CHANGELOG; otherwise keep the change outside those two functions.
+  assert.equal(crypto.createHash('sha256').update(densityCode().cad).digest('hex'), '5e4fb33bb0c71c40d22adfec2b24a8de9b8202bb292dd7d339b2a5423c81c417');
+});

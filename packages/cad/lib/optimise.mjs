@@ -39,7 +39,9 @@ export async function readProblem(project, ref) {
 }
 // A solid result's surface is thinned by default to within this many mm of where it was drawn: a quarter of an X1C's
 // 0.42 mm print line, so the printer cannot tell. On the bracket bench's printable result it takes 75,592 triangles to
-// 21,124 and 27.808 cm³ to 27.806 (35.04 g of PLA either way). "outline": { "reduce": false } keeps every triangle
+// 21,124 and 27.808 cm³ to 27.806 (35.04 g of PLA either way). "outline": { "reduce": false } keeps every triangle.
+// Fewer triangles is on unless outline.reduce is false: within outline.reduce mm of the surface as drawn, closed, and no
+// more overhang or tips. (Said here, not in optimised(), whose text is part of the densities key: see densityCode)
 const REDUCE = 0.1;
 const reading = new AsyncLocalStorage();
 async function readOne(project, ref, link) {
@@ -287,7 +289,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
     }
     const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
     let { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h), reduced = null;
-    // Fewer triangles (on unless outline.reduce is false): within outline.reduce mm of the surface as drawn, closed, and no more overhang or tips
+    // Fewer triangles, if asked: within outline.reduce mm of the surface as drawn, closed, and no more overhang or tips
     if (r.outline.reduce != null) {
       const { nx, ny, nz, h } = spec.grid, lo = spec.origin, hi = [lo[0] + nx * h, lo[1] + ny * h, lo[2] + nz * h], before = faces.length;
       ({ vertices, faces } = reduce({ vertices, faces }, { tolerance: r.outline.reduce, lo, hi, ...(ov ? { overhang: { up: ov.up, angle: ov.angle } } : {}) }));
