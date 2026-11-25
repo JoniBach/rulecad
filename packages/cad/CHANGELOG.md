@@ -5,6 +5,18 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.81: a folding sheet checked in an assembly's poses (#78)
+### Tests
+
+- A test that an assembly's pose can fold a sheet from `@rulecad/flexures` (the workspace example `flexures/tray-fit`
+  sets `tray.fold`): the fit is checked flat and folded, and a block that clears the flat sheet is caught once the
+  walls stand. No code in cad changed: a design whose `main` returns a fold check's findings with its parts has them
+  reported by `cad check`, as a lamina mechanism's are.
+
+### Printed sizes that moved
+
+- None.
+
 ## 0.7.80: problems tied to designs, and optimisation you can watch again
 ### Added
 

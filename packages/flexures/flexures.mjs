@@ -17,6 +17,8 @@ export { place, combine } from './modules.mjs';
 export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';
 export { shapeCurve, meander } from './synth.mjs';
 export { gripperJaws, gripperJawsModel } from './gripper.mjs';
+export { letArray, letArrayModel, foldSheet, foldSheetModel, foldCheck } from './folding.mjs';
+export { miura, miuraModel } from './origami.mjs';
 export { fourBar, fourBarModel, sliderCrank, sliderCrankModel } from './linkages.mjs';
 export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifierModel, leverAmplifier, leverAmplifierModel } from './amplifiers.mjs';
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve } from './bistables.mjs';

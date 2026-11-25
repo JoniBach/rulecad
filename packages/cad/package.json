@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/cad",
-  "version": "0.7.80",
+  "version": "0.7.81",
   "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
   "type": "module",
   "bin": {
@@ -70,7 +70,7 @@
     "three": "^0.186.1",
     "@rulecad/fea": "^0.2.14",
     "@rulecad/topopt": "^0.3.6",
-    "@rulecad/flexures": "^0.5.4",
+    "@rulecad/flexures": "^0.5.12",
     "@rulecad/gears": "^0.3.4",
     "@rulecad/motors": "^0.1.6",
     "@rulecad/fixings": "^0.1.7",

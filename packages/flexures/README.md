@@ -33,6 +33,7 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `livingHinge` | A thin strip between two blocks that folds | EI / l, N·mm a radian | tθ / 2l |
 | `compoundGuide` | Two parallel guides in series, one folded back inside the other: a linear bearing with no drop | E w t³ / L³ | 3t(δ/2) / L²; no drop |
 | `letJoint` | A hinge cut into a flat sheet: torsion bars either side of a slot, turning about an axis in the sheet (Jacobsen et al. 2009) | 2 / (2/k_t + 1/k_b), N·mm a radian: half-bars GJ / L_t, end bridges EI / L_b | the bars' shear (as von Mises) or the bridges' bending, whichever is more |
+| `letArray` | LET joints in series across a fold and in parallel along it: a hinge that folds further, or holds its line | m k / n | one joint's at θ / n |
 | `constantForce` | A slider-crank with a leaf coupler (Howell): the slider's force stays within ±5% over about a quarter of the leaf's length | `force(stroke)`, `flat` {from, to, force} | 0.85 × 2.65 t Θ / 2l, the leaf's pseudo-rigid-body angle Θ |
 | `ellipticalHinge` | A notch hinge with half-ellipse notches, longer along the beam for less stress at an angle (Smith 2000) | ∫ dx / EI(x) along the notch, N·mm a radian; the circle within a few % of `notchHinge` | 1.2 × t K θ / 2 E I at the neck |
 | `cartwheel` | Two leaves crossing at a hub inside a rim, joined where they cross: a pivot that prints flat | 16 EI / s × (1 + 3 r / s + 3 r² / s²), N·mm a radian, spokes s from a hub r | 2tθ / s × (1 + 1.5 r / s) |
@@ -98,6 +99,76 @@ flat sheet, a slot pattern whose torsion bars twist about an axis lying in the s
 bed. Printed, its bars twist about an axis in the layer plane and its end bridges bend across the layers, so PLA
 cracks here sooner than anywhere else: PETG, nylon or TPU, and a sheet several layers thick. `letJointModel` gives the
 joint's stiffness, each half-bar's twist and each bridge's bend at an angle, and the angle a strain allows.
+
+## Folding: sheets printed flat that fold up
+
+A lamina-emergent mechanism is printed as a flat sheet and folds up out of it: panels joined by hinges that lie in
+the sheet. Here a hinge is either an array of LET joints or a living hinge (a thin web on the bed, with the panels'
+sides above it sloped back at 45°). In the pseudo-rigid-body model each hinge is a row of pins: an LET joint turns
+about its centre on the sheet's mid-plane, a living hinge about the middle of its web. So a folded pose is the panels,
+and the lands between an array's joints, turned about those pins, and it can be checked before anything is printed.
+
+**LET arrays.** `letArray` draws `series` LET joints one after another across the fold and `parallel` side by side
+along it, between two panels; `letArrayModel` gives its stiffness, its strain at a fold and the fold a strain allows.
+Joints in series share the angle, so the hinge folds further for the same strain; joints in parallel share the moment.
+One joint folds until the rigid parts either side meet: its pinch.
+
+```js
+import { letArrayModel, flexureMaterial } from '@rulecad/flexures';
+const petg = { ...flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }), nu: 0.38 };
+const m = letArrayModel({ width: 30, thickness: 1.2, bar: 0.84, slot: 1, bridge: 1.5, series: 4 }, petg);
+m.strain(Math.PI / 2); // 0.0065: 0.65% at 90°, against PETG's 1.25%
+m.stiffness;           // 1.72 N·mm a radian: 2.70 N·mm holds a wall at 90°
+m.across;              // 24.72 mm of sheet the four joints take across the fold
+```
+
+One such joint folds 43.4° within PETG's limit, so four in series fold 90° at 1.93 times the margin.
+
+**A sheet that folds.** `foldSheet(sheet, folds)` takes panels (outlines in the flat sheet) and hinges (a line, the
+panel on each side, and the hinge's sizes), and draws the sheet flat as printed, in one piece, or folded (`folds` in
+degrees for each hinge; a positive fold lifts its `to` panel off the bed). Where two arrays' bands meet near a corner
+they can cut a bit off a panel that no hinge holds; that bit is left out, so nothing prints loose. Two arrays whose
+joints would meet at a corner (wider than the panel left between their bands) are refused (`fold.strips`): they would
+print joined. `foldSheetModel`
+gives each hinge's model and where every body is at a set of folds.
+
+`foldCheck(sheet, material, { poses })` checks each pose on the way from flat, in `steps` stages (default 6):
+- `fold.strain`: each hinge's strain against the material's limit, and how far it may fold
+- `fold.pinch`: a hinge folded past its pinch
+- `fold.clash` and `fold.clearance`: any two rigid bodies (panels and lands) that overlap, or come nearer than the
+  clearance (default 0.2 mm), and how far from flat that happens
+- `fold.loose`: a bit of panel left out of the print
+
+The bodies are the panels less their hinges' bands, each the sheet's thickness. The bars and webs bend, so they are
+left out of the clash check; the strain check covers them. Its geometry is manifold-3d's, so `foldSheet` and
+`foldCheck` are async.
+
+The workspace example `flexures/tray` is a tray printed flat in PETG: a 60 mm base and four 20 mm walls, each wall on
+four LET joints in series. Folded to 90°, each joint sees 0.65% strain and every two parts stay over 1.2 mm apart on
+the way up. Half of each wall's height goes into its joints, so it stands about 10 mm above them. It weighs 7.2 g
+(PETG 1.27 g/cm³, an estimate). The walls spring back flat unless something holds them: a latch, or what the tray
+holds. The assembly `flexures/tray-fit` shows it flat and with its walls standing (its `tray.fold` pose), and checks
+the block it holds against both.
+
+**The Miura fold.** `miura(p, fold)` draws a Miura sheet: parallelograms with sides `a` and `b` at `angle`, in `rows`
+and `columns`. It is printed flat as panels on a web over the whole sheet, so the first layer is the whole sheet. Each
+panel is set back from its creases by half the web's width and sloped back at 45°. A Miura sheet folds rigidly: one
+number, `fold` (the facets' tilt off the bed, 0 flat to 90° folded flat), sets every crease, and the facets keep their
+sides and angle. `miuraModel(p, material)` gives the sheet at a fold (its cell, its size, its vertices, every crease's
+turn and whether it closes the panels' tops), each crease's strain and pinch, and the furthest it folds before a crease
+strains past the limit or pinches. On a 0.4 mm web 2 mm wide, PETG folds a Miura sheet only 3.6°: Miura sheets want a
+material that stretches, such as TPU or polypropylene, or a web much wider than its thickness.
+
+| Quantity | Formula | Source |
+|---|---|---|
+| LET array stiffness | m k / n, n joints in series and m in parallel, k one joint's | springs in series and in parallel, as Jacobsen et al. 2009 build the single joint |
+| LET array strain at a fold θ | one joint's strain at θ / n | the same |
+| LET joint pinch | π - 2 atan(h / 2c), c = slot / 2 + bar + slot, from the pin to the rigid parts' ends | geometry |
+| Gap between the panels folded flat | p (sin(π / n) + sin(2π / n) + ... + sin((n - 1)π / n)) - h, p the joints' pitch | geometry |
+| Living hinge strain | t θ / 2l, t the web's thickness and l its width | Howell 2001 (small-length flexural pivot) |
+| Living hinge pinch | π - 2 max(atan(t / l), atan((h - t / 2) / (l / 2 + h - t))), the panels sloped back 45° | geometry |
+| Miura cell at a tilt θ | H = a sin θ sin γ, L = √(a² - H²), V = a b cos γ / L, S = √(b² - V²); vertex (i, j) at (i L + (j mod 2) V, j S, (i mod 2) H) | derived here; the same cell as Schenk and Guest 2013 |
+| Miura crease turns | between columns 2θ; between rows acos((H²S² - H²V² + L²S²) / (H² b² + L²S²)) | the facets' normals |
 
 ## Pinned where it must be: the constant-force mechanism
 
@@ -690,6 +761,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - BASF, *Snap-Fit Design Manual*, and Bayer MaterialScience, *Snap-Fit Joints for Plastics*: the cantilever hook's deflection, insertion and removal forces.
 - Wahl, A. M., *Mechanical Springs*, 2nd ed., McGraw-Hill, 1963: flat spiral springs, the moment and stiffness EI / L with the outer end clamped.
 - Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear, and an open thin-walled section's (the split tube).
+- Schenk, M., and Guest, S. D., "Geometry of Miura-folded metamaterials", *Proceedings of the National Academy of Sciences* 110(9), 3276-3281, 2013: the Miura cell and its fold angle.
 - Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.

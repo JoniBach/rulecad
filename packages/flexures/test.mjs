@@ -1139,6 +1139,190 @@ test('gripper jaws: the arm\'s jaws (examples/bench arm/jaws) sit on the yoke bl
   for (const line of [`m.stroke;     // ${m.stroke.toFixed(2)} mm`, `m.grip(10);   // ${m.grip(10).toFixed(2)} N`, `m.rated;      // ${m.rated.toFixed(2)}:`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
 
+const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
+
+test('LET arrays: joints in series share the fold, in parallel the moment; the pinch and the folded gap are the hand sums', async () => {
+  const { letArray, letArrayModel, letJointModel } = await import('@rulecad/flexures');
+  const j = { width: 12, thickness: 1.2, bar: 1, slot: 1, bridge: 1.5 }, petg = { E: 1810, nu: 0.38 };
+  const one = letJointModel(j, petg), m = letArrayModel({ ...j, series: 3, parallel: 2 }, petg);
+  near(m.stiffness, (2 * one.stiffness) / 3, 1e-9, 'm k / n'); near(m.strain(0.9), one.strain(0.3), 1e-12, 'each joint turns a third');
+  near(m.angle(0.01), 3 * one.angle(0.01), 1e-9, 'three times the fold for a strain'); assert.equal(m.joints, 6);
+  // c = slot / 2 + bar + slot = 2.5 from a joint's centre to its outer slot's far side; the land max(2 bar, 2) = 2, so
+  // the pitch is 2c + 2 = 7, three joints span 3 × 5 + 2 × 2 = 19 across, two bands 2 × 12 + 1 = 25 along
+  near(m.pitch, 7, 1e-12, 'pitch'); near(m.across, 19, 1e-12, 'across'); near(m.along, 25, 1e-12, 'along');
+  // one joint: the bodies end 2.5 from the pin, their corners 0.6 above it, so they meet at 180 - 2 atan(0.6 / 2.5) = 153.009°
+  near(deg(letArrayModel(j, petg).pinch), 180 - 2 * deg(Math.atan(0.6 / 2.5)), 1e-9, 'pinch'); near(deg(letArrayModel(j, petg).pinch), 153.009, 1e-3, 'pinch, by hand');
+  // folded flat (180°): one joint lays the panels on each other (0 - 1.2 = -1.2), two hold them a pitch apart
+  // (7 sin 90° - 1.2 = 5.8), three 7 (sin 60° + sin 120°) - 1.2 = 10.924
+  near(letArrayModel(j, petg).gap(Math.PI), -1.2, 1e-9, 'one joint'); near(letArrayModel({ ...j, series: 2 }, petg).gap(Math.PI), 5.8, 1e-9, 'two'); near(letArrayModel({ ...j, series: 3 }, petg).gap(Math.PI), 10.924, 1e-3, 'three');
+  // drawn: between two 10 mm panels, one piece, on the bed
+  const g = letArray({ ...j, series: 3, parallel: 2, panel: 10 }), box = measureBoundingBox(g);
+  assert.deepEqual(box.map((v) => v.map((x) => +x.toFixed(6))), [[-19.5, -12.5, 0], [19.5, 12.5, 1.2]]); assert.ok(onePiece(g), 'one piece');
+  assert.ok(measureVolume(g) < 39 * 25 * 1.2 - 2 * 19 * 1, 'the slot between the two bands is cut');
+});
+
+test('a folding sheet: drawn flat in one piece and folded where its pins put it; the fold check finds the pinch and the clash by the hand sums', async () => {
+  const { foldSheet, foldSheetModel, foldCheck } = await import('@rulecad/flexures');
+  const j = { width: 12, bar: 1, slot: 1, bridge: 1.5 }, h = 1.2, petg = { E: 1810, nu: 0.38 };
+  const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  // two panels on one LET joint: at a fold φ the nearest corners (2.5 along, 0.6 above the pin: r = 2.5709, 13.496° off
+  // the mid-plane) are 2 r cos(13.496° + φ / 2) apart: at 140°, 5.1419 cos 83.496° = 0.5824 mm; past 153.009° they overlap
+  const two = (let_) => ({ thickness: h, panels: { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6) }, hinges: [{ name: 'fold', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] });
+  const r = Math.hypot(2.5, 0.6), at = (phi) => 2 * r * Math.cos(Math.atan(0.6 / 2.5) + rad(phi) / 2);
+  let c = await foldCheck(two(j), petg, { poses: { up: { fold: 140 } } });
+  near(c.poses.up.gap, at(140), 1e-3, 'at 140°'); near(c.poses.up.gap, 0.5824, 1e-3, 'by hand'); assert.ok(c.ok, 'clear'); assert.deepEqual(c.poses.up.between, ['a', 'b']);
+  c = await foldCheck(two(j), petg, { poses: { up: { fold: 156 } } });
+  assert.ok(!c.ok); assert.deepEqual(c.findings.map((f) => f.code).sort(), ['fold.clash', 'fold.pinch'], 'past the pinch: the panels overlap');
+  // the fold lifts the `to` panel off the bed: its far end's middle (20, 0, 0.6) turns 140° about the pin (0, 0.6):
+  // to (20 cos 140°, 0.6 + 20 sin 140°) = (-15.321, 13.456)
+  const B = foldSheetModel(two(j), petg).bodies({ fold: 140 }).b, end = [B.R[0] * 20 + B.R[2] * 0.6 + B.t[0], B.R[6] * 20 + B.R[8] * 0.6 + B.t[2]];
+  near(end[0], 20 * Math.cos(rad(140)), 1e-9, 'over'); near(end[1], 0.6 + 20 * Math.sin(rad(140)), 1e-9, 'up off the bed'); near(end[1], 13.456, 1e-3, 'by hand');
+  // two joints at 180°: each land stands upright, its corners 2r cos(13.496° + 45°) = 2.6866 from a panel's; the panels
+  // themselves lie 7 - 1.2 = 5.8 apart, so the nearest pair is a panel and the land
+  c = await foldCheck(two({ ...j, series: 2 }), petg, { poses: { flat: { fold: 180 } }, clearance: 5 });
+  near(c.poses.flat.gap, 2 * r * Math.cos(Math.atan(0.6 / 2.5) + rad(45)), 1e-3, 'panel to land'); near(c.poses.flat.gap, 2.6866, 1e-3, 'by hand');
+  assert.ok(c.poses.flat.between.includes('fold.land1'));
+  // a box's two walls on one joint each, standing at 90°: each wall stands 1.2 thick on its edge (19.4 to 20.6), from
+  // 0.6 + 2.5 = 3.1 to 0.6 + 15 = 15.6 up. Walls the base's 40 overlap at the corner, 0.6 × 0.6 × 12.5 = 4.5 mm³;
+  // walls of 38 clear it by √2 (19.4 - 19) = 0.5657 (corner to corner)
+  const box = (bw) => ({ thickness: h, panels: { base: rect(-20, -20, 20, 20), east: rect(20, -bw / 2, 35, bw / 2), north: rect(-bw / 2, 20, bw / 2, 35) },
+    hinges: [{ name: 'e', from: 'base', to: 'east', at: [[20, -bw / 2], [20, bw / 2]], let: j }, { name: 'n', from: 'base', to: 'north', at: [[-bw / 2, 20], [bw / 2, 20]], let: j }] });
+  c = await foldCheck(box(40), petg, { poses: { standing: { e: 90, n: 90 } } });
+  near(-c.poses.standing.gap, 4.5, 1e-3, 'the corner overlap'); assert.deepEqual(c.poses.standing.between, ['east', 'north']);
+  assert.equal(c.findings.find((f) => f.code === 'fold.clash').values.at, 1, 'in the pose, not on the way');
+  c = await foldCheck(box(38), petg, { poses: { standing: { e: 90, n: 90 } } });
+  near(c.poses.standing.gap, Math.SQRT2 * 0.4, 1e-3, 'walls of 38'); assert.ok(c.ok);
+  // drawn: flat, one piece on the bed; standing, the walls where the sums put them
+  const flatBox = await foldSheet(box(38)), up = measureBoundingBox(await foldSheet(box(38), { e: 90, n: 90 }));
+  // walls of 38 leave the base a corner 20 - 19.001 square past both bands' ends, which no hinge holds: left out, and said
+  assert.ok(onePiece(flatBox), 'one print, no loose corner'); const loose = c.findings.find((f) => f.code === 'fold.loose');
+  assert.equal(loose.values.panel, 'base'); near(loose.values.area, 0.999 ** 2, 1e-6, 'the corner left out'); near(measureBoundingBox(flatBox)[1][2], 1.2, 1e-5, 'flat');
+  near(up[1][0], 20.6, 1e-5, 'the east wall\'s outer face'); near(up[1][2], 15.6, 1e-5, 'its top');
+  // a living hinge (web 0.4 on the bed, 2 wide, panels 1.6 sloped back 45°): strain t θ / 2l, and its pinch from the
+  // steeper of the web's edge (atan(0.2 / 1) = 11.31°) and the panel's top (atan(1.4 / 2.2) = 32.47°): 115.06°
+  const liv = { thickness: 1.6, panels: { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6) }, hinges: [{ name: 'fold', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 0.4 } }] };
+  const lm = foldSheetModel(liv, petg).hinges.fold;
+  near(lm.strain(1), 0.4 / 4, 1e-12, 'strain'); near(deg(lm.pinch), 180 - 2 * deg(Math.atan(1.4 / 2.2)), 1e-9, 'pinch'); near(deg(lm.pinch), 115.06, 0.01, 'pinch, by hand');
+  // the check's bodies are the drawn ones: the panels' top corners sit 2.2 across and 1.4 above the pin (r = √(2.2² +
+  // 1.4²) = 2.6077), so folded θ they are 2 r cos(32.47° + θ / 2) apart: at 113°, 5.2154 × cos(88.97°) = 0.0936 mm;
+  // at the pinch they touch, and a degree past it they overlap (the clash found by the geometry, not only the pinch)
+  const short = await foldCheck(liv, petg, { poses: { up: { fold: 113 } }, clearance: 0 });
+  assert.ok(short.ok, 'just short of the pinch: clear'); near(short.poses.up.gap, 2 * Math.hypot(2.2, 1.4) * Math.cos(Math.atan(1.4 / 2.2) + rad(113) / 2), 1e-3, 'the gap, by hand');
+  near((await foldCheck(liv, petg, { poses: { up: { fold: deg(lm.pinch) } }, clearance: 0 })).poses.up.gap, 0, 1e-3, 'at the pinch the corners touch');
+  const past = await foldCheck(liv, petg, { poses: { up: { fold: 117 } }, clearance: 0 });
+  assert.ok(!past.ok, 'just past it: the panels meet'); assert.ok(past.findings.some((f) => f.code === 'fold.clash' && f.level === 'fail'), 'and the geometry overlaps: a clash, not only the pinch');
+  assert.ok(onePiece(await foldSheet(liv)), 'the web joins the panels');
+  // with a strain limit, a hinge that folds too far for it fails by name and says how far it may go: the strain is
+  // linear in the fold, 9.365% at 90°, so PETG's 34 / 1810 / 1.5 = 1.2523% allows 90 × 1.2523 / 9.365 = 12.03°
+  c = await foldCheck(two(j), { ...petg, strainLimit: 34 / 1810 / 1.5 }, { poses: { up: { fold: 90 } } });
+  const st = c.findings.find((f) => f.code === 'fold.strain');
+  assert.equal(st.level, 'fail'); assert.match(st.text, /sees 9\.37% strain, over the limit of 1\.25%: it folds 12° at most/); near(st.values.strain, 0.09365, 1e-5, 'the strain at 90°');
+});
+
+test('a Miura sheet folds rigidly: its facets keep their sides and angle at every fold, its creases turn as the hand sums say, and its webs set how far it folds', async () => {
+  const { miura, miuraModel } = await import('@rulecad/flexures');
+  const p = { a: 10, b: 12, angle: 60, rows: 3, columns: 4 }, m = miuraModel(p), len = (u, w) => Math.hypot(...u.map((x, i) => x - w[i]));
+  for (const fold of [0, 20, 45, 70, 89]) {
+    const v = m.at(fold).vertices;
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 4; i++) {
+      const e1 = v[j][i + 1].map((x, k) => x - v[j][i][k]), e2 = v[j + 1][i].map((x, k) => x - v[j][i][k]);
+      near(len(v[j][i + 1], v[j][i]), 10, 1e-9, `side a at ${fold}°`); near(len(v[j + 1][i], v[j][i]), 12, 1e-9, `side b at ${fold}°`);
+      const c = Math.abs(e1.reduce((s, x, k) => s + x * e2[k], 0)) / 120; near(c, Math.cos(rad(60)), 1e-9, `the angle at ${fold}°`);
+    }
+  }
+  // a = b = 1, γ 60°, tilted 30°: H = sin 30° sin 60° = 0.43301, L = √(1 - H²) = 0.90139, V = cos 60° / L = 0.55470,
+  // S = √(1 - V²) = 0.83205. The creases between columns turn 2θ = 60°; between rows acos((H²S² - H²V² + L²S²) /
+  // (H² + L²S²)) = acos((0.12981 - 0.05769 + 0.5625) / 0.75) = acos(0.84615) = 32.204°, alternately closing the top
+  const u = miuraModel({ a: 1, b: 1, angle: 60, rows: 2, columns: 3 }).at(30);
+  near(u.cell.H, 0.43301, 1e-5, 'H'); near(u.cell.L, 0.90139, 1e-5, 'L'); near(u.cell.V, 0.55470, 1e-5, 'V'); near(u.cell.S, 0.83205, 1e-5, 'S');
+  for (const c of u.creases.filter((x) => x.kind === 'across')) near(c.turn, 60, 1e-9, 'across');
+  const along = u.creases.filter((x) => x.kind === 'along');
+  for (const c of along) near(c.turn, 32.204, 1e-3, 'along');
+  assert.deepEqual(along.map((c) => c.top), [true, false, true], 'mountain, valley, mountain');
+  const across = u.creases.filter((x) => x.kind === 'across' && x.between[0][1] === 0).map((c) => c.top);
+  assert.deepEqual(across, [false, true], 'and the zigzag creases alternate too');
+  // flat it is the sheet; folded flat (near 90°) it packs to L = a cos γ across, S → 0 along
+  assert.deepEqual(m.at(0).size.map((x) => +x.toFixed(9)), [40 + 12 * 0.5, 3 * 12 * Math.sin(rad(60)), 0].map((x) => +x.toFixed(9)));
+  near(m.at(89.99).cell.L, 10 * Math.cos(rad(60)), 1e-4, 'folded flat across');
+  // printed with webs: a crease of web t on l wide strains t ψ / 2l. The zigzag creases turn most (2θ), so PETG at
+  // 34 / 1810 / 1.5 = 1.2523% on a 0.4 mm web 2 mm wide folds to θ = e l / t = 0.012523 × 2 / 0.4 = 0.0626 rad, 3.588°
+  const petg = { E: 1810, strainLimit: 34 / 1810 / 1.5 }, web = { ...p, thickness: 1.6, hinge: { flex: 2, thickness: 0.4 } }, w = miuraModel(web, petg);
+  near(w.fold, deg((petg.strainLimit * 2) / 0.4), 1e-6, 'the furthest fold'); near(w.fold, 3.588, 1e-3, 'by hand'); assert.equal(w.limit, 'strain');
+  // a material that stretches further (10%, as a TPU might: an example, not a rule set) on a web 6 mm wide strains
+  // to its limit at θ = 0.1 × 6 / 0.4 = 1.5 rad, past where the panels meet: the top-closing creases pinch at
+  // 180 - 2 max(atan(0.4 / 6), atan(1.4 / (3 + 1.2))) = 180 - 2 × 18.435 = 143.13°, which a zigzag crease turns at θ = 71.565°
+  const t = miuraModel({ ...web, hinge: { flex: 6, thickness: 0.4 } }, { E: 26, strainLimit: 0.1 }); assert.equal(t.limit, 'pinch');
+  near(t.fold, (180 - 2 * deg(Math.atan(1.4 / 4.2))) / 2, 1e-6, 'the pinch, a zigzag crease turning 2θ'); near(t.fold, 71.565, 1e-3, 'by hand');
+  // printed flat: one piece, the web the whole sheet on the bed, the panels up to the sheet's thickness
+  const g = miura(web), b = measureBoundingBox(g);
+  assert.ok(onePiece(g), 'one piece'); near(b[0][2], 0, 1e-9, 'on the bed'); near(b[1][2], 1.6, 1e-9, 'the panels'); near(b[1][0], 46, 1e-9, 'as wide as the sheet');
+  // its volume: the web (the sheet's area, 12 parallelograms of 10 × 12 sin 60°, by 0.4) and each panel a frustum
+  // from the web's top to 1.6, so at least the web and less than the whole sheet at full thickness
+  const sheet = 12 * 10 * 12 * Math.sin(rad(60));
+  assert.ok(measureVolume(g) > sheet * 0.4 && measureVolume(g) < sheet * 1.6, `volume ${measureVolume(g)}`);
+  assert.ok(measureBoundingBox(miura(web, 40))[1][2] > 5, 'drawn folded, it stands up off the bed');
+});
+
+test('folding sheets and Miura sheets: bad input is refused by name, before any sums', async () => {
+  const { letArray, letArrayModel, foldSheet, foldCheck, miura, miuraModel } = await import('@rulecad/flexures');
+  const j = { width: 12, thickness: 1.2, bar: 1, slot: 1, bridge: 1.5 }, petg = { E: 1810, nu: 0.38 };
+  const code = async (fn, c) => { let e = null; try { await fn(); } catch (x) { e = x; } assert.ok(e, `refused (${c})`); assert.equal(e.code, c, e.message); };
+  const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], let_ = { width: 12, bar: 1, slot: 1, bridge: 1.5 };
+  const panels = { a: rect(-20, -6, 0, 6), b: rect(0, -6, 20, 6), c: rect(0, 6, 20, 26) };
+  await code(() => letArray({ ...j, width: 4 }), 'let.bridge');
+  await code(() => letArrayModel({ ...j, series: 0 }, petg), 'let.count');
+  await code(() => letArray({ ...j, slot: 0 }), 'let.size');
+  await code(() => foldSheet({ thickness: 0, panels, hinges: [] }), 'fold.thickness');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: [[0, 0], [1, 0]] }, hinges: [] }), 'fold.panels');
+  await code(() => foldSheet({ thickness: 1.2, panels, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] }), 'fold.tree');
+  await code(() => foldSheet({ thickness: 1.2, panels, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }, { name: 'i', from: 'b', to: 'c', at: [[0, 6], [20, 6]], let: let_ }, { name: 'k', from: 'a', to: 'c', at: [[0, 6], [0, 26]], let: let_ }] }), 'fold.loop');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_, living: { flex: 2, thickness: 0.4 } }] }), 'fold.kind');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: { ...let_, width: 30 } }] }), 'fold.width');
+  await code(() => foldSheet({ thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], living: { flex: 2, thickness: 1.2 } }] }), 'fold.web');
+  const two = { thickness: 1.2, panels: { a: panels.a, b: panels.b }, hinges: [{ name: 'h', from: 'a', to: 'b', at: [[0, -6], [0, 6]], let: let_ }] };
+  await code(() => foldSheet(two, { nope: 10 }), 'fold.pose');
+  // a box whose two edges' joints (12 wide, so 6 either side of each edge's middle) meet at the corner of a 10 mm base:
+  // its bands leave 10 - 5 = 5 mm between them, under the joints' 12 and their laps
+  const corner = { thickness: 1.2, panels: { base: rect(-5, -5, 5, 5), e: rect(5, -5, 15, 5), n: rect(-5, 5, 5, 15) }, hinges: [{ name: 'e', from: 'base', to: 'e', at: [[5, -5], [5, 5]], let: { ...let_, width: 10, bridge: 1 } }, { name: 'n', from: 'base', to: 'n', at: [[-5, 5], [5, 5]], let: { ...let_, width: 10, bridge: 1 } }] };
+  await code(() => foldSheet(corner), 'fold.strips');
+  await code(() => foldCheck(two, petg, {}), 'fold.pose');
+  await code(() => foldCheck(two, petg, { poses: { up: { h: 30 } }, clearance: -1 }), 'fold.clearance');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 90, rows: 2, columns: 2 }), 'miura.angle');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 60, rows: 1.5, columns: 2 }), 'miura.count');
+  await code(() => miuraModel({ a: 10, b: 10, angle: 60, rows: 2, columns: 2 }).at(90), 'miura.fold');
+  await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 1.6 }), 'miura.web');
+  await code(() => miura({ a: 10, b: 10, angle: 60, rows: 2, columns: 2, thickness: 0.4, hinge: { flex: 2, thickness: 0.4 } }), 'miura.web');
+});
+
+test('folding: the README\'s figures are the code\'s, and the workspace tray (examples/bench flexures/tray) folds to 90° within PETG\'s limit, its parts clear', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const petg = { ...f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }), nu: 0.38 };
+  const j = { width: 30, thickness: 1.2, bar: 0.84, slot: 1, bridge: 1.5, series: 4 }, m = f.letArrayModel(j, petg), one = f.letJointModel(j, petg);
+  for (const line of [`m.strain(Math.PI / 2); // ${m.strain(Math.PI / 2).toFixed(4)}: ${(m.strain(Math.PI / 2) * 100).toFixed(2)}% at 90°, against PETG's ${(petg.strainLimit * 100).toFixed(2)}%`,
+    `m.stiffness;           // ${m.stiffness.toFixed(2)} N·mm a radian: ${(m.stiffness * Math.PI / 2).toFixed(2)} N·mm holds a wall at 90°`, `m.across;              // ${m.across.toFixed(2)} mm`,
+    `One such joint folds ${(deg(one.angle(petg.strainLimit))).toFixed(1)}° within PETG's limit, so four in series fold 90° at ${(deg(one.angle(petg.strainLimit)) / 22.5).toFixed(2)} times the margin`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  const mi = f.miuraModel({ a: 12, b: 12, angle: 60, rows: 4, columns: 4, thickness: 1.6, hinge: { flex: 2, thickness: 0.4 } }, petg);
+  assert.ok(readme.includes(`On a 0.4 mm web 2 mm wide, PETG folds a Miura sheet only ${mi.fold.toFixed(1)}°`), 'the README\'s Miura limit');
+  // the bench tray, built by its own main with its own variables (bar: x1c.line × 2 = 0.84; clearance: x1c.fit = 0.2)
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), json = JSON.parse(fs.readFileSync(new URL('tray.json', dir), 'utf8'));
+  assert.equal(json.variables.bar.value, 'x1c.line * 2'); assert.equal(json.variables.clearance.value, 'x1c.fit');
+  const v = { ...Object.fromEntries(Object.entries(json.variables).map(([k, x]) => [k, x.value])), bar: 0.84, clearance: 0.2, flexures: f, petg: { modulus: 1810, strength: 34, poisson: 0.38 } };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('tray.js', dir))).href);
+  const made = await main(v), flat = made.parts.tray, folded = (await main({ ...v, fold: 90 })).parts.tray;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'every fold finding passes');
+  for (const x of made.findings.filter((x) => x.code === 'fold.strain')) near(x.values.strain, m.strain(Math.PI / 2), 1e-12, 'the tray\'s joints are the README\'s');
+  assert.ok(made.mechanism.poses.folded.gap >= 1.2 - 1e-9, 'its parts stay over 1.2 mm apart'); assert.ok(readme.includes('every two parts stay over 1.2 mm apart'));
+  assert.ok(onePiece(flat), 'one print'); const grams = (measureVolume(flat) * 1.27) / 1000;
+  assert.ok(readme.includes(`It weighs ${grams.toFixed(1)} g`), `the README's tray weighs ${grams.toFixed(1)} g`);
+  // standing: each wall's outer face at the first pin (30 - 1.5 × 6.68 = 19.98) plus the lands at 22.5°, 45° and 67.5°
+  // (6.68 × 2.0137 = 13.451) plus half the sheet: 34.031; its top 0.6 + 13.451 + 9.98 (the wall past the last pin, 50 - 40.02) = 24.031
+  const b = measureBoundingBox(folded);
+  near(b[1][0], 30 - 1.5 * 6.68 + 6.68 * (Math.cos(rad(22.5)) + Math.cos(rad(45)) + Math.cos(rad(67.5))) + 0.6, 1e-4, 'the wall\'s outer face'); near(b[1][0], 34.031, 1e-3, 'by hand');
+  near(b[1][2], 0.6 + 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))) + (45 - (25 + 1.5 * 6.68)), 1e-4, 'its top'); near(b[1][2], 24.031, 1e-3, 'by hand');
+  assert.ok(readme.includes(`so it stands about ${Math.round(b[1][2] - 0.6 - 6.68 * (Math.sin(rad(22.5)) + Math.sin(rad(45)) + Math.sin(rad(67.5))))} mm above them`), 'the README\'s wall height');
+});
+
 // Linkages, amplifiers and bistables (#76, #77): each joint a short flexure, 6 mm long, 0.84 thick, 6 wide in PLA.
 // With no rounds its stiffness is EI / l = 2680 × 6 × 0.84³ / 12 / 6 = 132.371 N·mm a radian, and its strain t / 2l =
 // 0.07 a radian (Howell 2001, the small-length flexural pivot)
