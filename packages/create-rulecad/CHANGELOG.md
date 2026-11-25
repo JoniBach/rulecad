@@ -6,7 +6,9 @@ it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` 
 screw by thread and head, the parts it passes through and the part it ends in.
 
 
-## Unreleased: the leg's streamer and sender, eight axes on a Mega (#199)
+## 0.3.27: the leg's streamer and sender, eight axes on a Mega (#199)
+- The sender refuses a step file whose axes are not the machine's, by name and in order, so a file written for one machine never drives another's motors.
+- STREAMER.md: set each driver breakout's switches to 1/8 (M0 and M1 on, M2 off) before streaming; they come set to 1/32.
 ### Added
 
 - `--machine leg` makes the leg with the streamer (`projects/leg/firmware/leg/leg.ino`), its sender (`send.mjs`) and

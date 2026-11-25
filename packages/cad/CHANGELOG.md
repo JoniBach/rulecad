@@ -6,7 +6,9 @@ its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screw
 and head, the parts it passes through and the part it ends in.
 
 
-## Unreleased: eight axes on a Mega 2560 (#199)
+## 0.7.85: eight axes on a Mega 2560 (#199)
+- The wiring sheet names a Mega slot's pins as step, dir and enable (D38, every slot's): the wire to a driver breakout carries EN, STEP, DIR and GND, and the axis's home switch is a wire of its own. A CNC shield's axis still names its limit pin.
+- The quadruped carries a 12 V supply (a Mean Well LRS-100-12 to buy: about 6 A for eight motors, an estimate) and a power wire to each breakout.
 ### Added
 
 - `cad machine` writes the machine's `controller`: the bought board the streamer runs on, a CNC Shield V3 (an Uno,

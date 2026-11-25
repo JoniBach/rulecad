@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A rule set's **
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
 
-## Unreleased: the Mega 2560 and a driver breakout (#199)
+## 0.3.26: the Mega 2560 and a driver breakout (#199)
 ### Added
 
 - `arduino-mega-2560`: the board the streamer drives eight stepper axes from, each axis's STEP (D22 to D29), DIR (D37
