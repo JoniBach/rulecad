@@ -141,8 +141,9 @@ async function readOne(project, ref, link) {
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
     // How it's made other than printed: milled from a side, cast in a mould; symmetric, extruded (topopt's filters)
     ...(millSides ? { mill: millSides } : {}), ...(castWay ? { cast: typeof castWay === 'string' ? castWay : { draw: castWay.draw, ...(castWay.parting != null ? { parting: ev(castWay.parting) } : {}) } } : {}),
-    // (a tool or draft with the process switched off by its variable is left out with it)
-    ...(p.tool != null && millSides ? { tool: ev(p.tool) } : {}), ...(p.draft != null && castWay ? { draft: ev(p.draft) } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
+    // (a tool or draft with the process switched off by its variable is left out with it; one with no such process
+    // at all goes on, for topopt to refuse by name)
+    ...(p.tool != null && (millSides || !p.mill) ? { tool: ev(p.tool) } : {}), ...(p.draft != null && (castWay || !p.cast) ? { draft: ev(p.draft) } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
     ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
