@@ -10,7 +10,9 @@ why. Releases before this file was started are described in their pull requests 
 - `butterflyPivot`, `butterflyPivotModel` and `butterflyBeams` (issue #74): the butterfly pivot (Henein et al. 2003),
   four blade pairs in series turning about one axis, each a quarter of the way, their drifts cancelling. Printed flat
   in one piece; the base has two screw holes. The model gives the stiffness, the strain, the angle a strain allows and
-  the drift from the beam solver, beside one pair's (`pair`). Bad input is refused by name.
+  the drift from the beam solver, beside one pair's (`pair`). Bad input is refused by name. Block 2's cap over the base
+  leaves the gap below the pocket's 2 mm top rounds, so the base's corners keep the gap at the drawn turn (67 mm
+  across the frame at the defaults, 15.2 cm³).
 - `rollingJoint` and `rollingJointModel` (issue #74): the compliant rolling-contact joint (CORE). Two rollers alike,
   printed standing, and two bands printed flat, each ending in a bead that slides into a roller's pocket. The model
   gives the bands' strain t / 2ρ, the same at every angle, the range (where the drawn outlines first meet), the pull

@@ -71,8 +71,10 @@ function butterflyLayout(p, what) {
   if (!(spread > 0)) throw new Error(`${what}: the two inner blocks meet at the drawn turn: wide is too near 90 degrees for the turn (their edges are ${n2(phi / rad, 1)}° from the x axis)`);
   const ri = Math.max(a / 3, a - B, gap / spread + 0.5);
   if (a - ri < 1.5) throw new Error(`${what}: the inner blocks are ${n2(a - ri)} mm deep, under 1.5 mm: a larger inner`);
-  const top = R + B + gap + 0.05 * L, Ro = top + F; // block 2's cap over the base (a twentieth of a blade's length more, for the drift)
-  return { L, t, w, a, g1, g2, turn, hole, B, F, gap, r, arm, R, d1, d2, win, sides, ri, top, Ro, half: beamProfile({ length: L, thickness: t, fillet: r }, 'guided') };
+  // block 2's cap over the base: the gap, and above it the larger of a twentieth of a blade's length (for the drift) and
+  // the pocket's top rounds (rc), so those rounds start the gap above the base and its corners, turned, stay clear of them
+  const rc = Math.min(B / 2, 2), top = R + B + gap + Math.max(0.05 * L, rc), Ro = top + F;
+  return { L, t, w, a, g1, g2, turn, hole, B, F, gap, r, arm, R, d1, d2, win, sides, ri, rc, top, Ro, half: beamProfile({ length: L, thickness: t, fillet: r }, 'guided') };
 }
 
 // The blades, as [angle, from body, to body, inward?]: from the base the narrow pair inward to block 1, the wide pair
@@ -107,7 +109,7 @@ export function butterflyPivot(p) {
   const output = union(sector(k.R, R1, down - k.sides, down + k.sides), hull(edge, polygon({ points: [[-aw / 2, -tip], [aw / 2, -tip], [aw / 2, -tip + 0.5], [-aw / 2, -tip + 0.5]] })));
   // block 2: a ring from the blades' outer ends out to Ro, less a pocket round the base (its top corners round) and an
   // opening at the bottom for the output's arm
-  const rc = Math.min(k.B / 2, 2), pr = k.win, cr = rc / (k.top - rc);
+  const rc = k.rc, pr = k.win, cr = rc / (k.top - rc);
   const pocket = union(sector(k.R - 1, k.top - rc, up - pr, up + pr), sector(k.R - 1, k.top, up - pr + cr, up + pr - cr), ...[-1, 1].map((s) => circle({ radius: rc, center: polar(k.top - rc, up + s * (pr - cr)), segments: 32 })));
   const opening = polygon({ points: [[0, 0], polar(k.Ro + 2, down - pr), polar((k.Ro + 2) / Math.cos(pr), down), polar(k.Ro + 2, down + pr)] });
   const ring = subtract(circle({ radius: k.Ro, segments: 192 }), circle({ radius: k.R, segments: 192 }));

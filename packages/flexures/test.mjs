@@ -1839,7 +1839,7 @@ test('a butterfly pivot: four blade pairs in series share the turn, a quarter ea
   // Drift at 10°: each pair's drift runs against the next one's, so the output's axis moves far less than one pair's
   const th = rad(10), dr = Math.hypot(...m.drift(th)), one = Math.hypot(...m.pair(th));
   assert.ok(dr < one / 10, `the butterfly drifts ${dr} mm, one pair ${one} mm`);
-  // The drawn part: one piece, prints flat with no support, 15.1 cm³ (18.7 g of PLA at 1.24 g/cm³, an estimate)
+  // The drawn part: one piece, prints flat with no support, 15.2 cm³ (18.8 g of PLA at 1.24 g/cm³, an estimate)
   const shape = butterflyPivot(p), polys = jscad.geometries.geom3.toPolygons(shape).map((q) => q.vertices);
   assert.ok(onePiece(shape), 'base, blocks, blades and output as one piece');
   assert.deepEqual(printCheck(polys, { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }).filter((x) => x.level !== 'pass').map((x) => x.code), [], 'it prints flat without support');
@@ -1913,4 +1913,32 @@ test('a rolling-contact joint: the bands bend to the rollers\' radius and no fur
   assert.throws(() => rollingJoint({ ...p, bead: 0.8 }), /rollingJoint: bead \(0\.8 mm\) must be over the band and its clearance/);
   assert.throws(() => rollingJoint({ ...p, wrap: 150 }), /rollingJoint: wrap is 30 to 120 degrees/);
   assert.throws(() => rollingJoint(p, { part: 'pin' }), /rollingJoint: part is all, roller, outer, inner or bands/);
+});
+
+test('a butterfly pivot keeps its gap at the base\'s turned corners: block 2\'s pocket rounds sit above the base, so the base turned through half the drawn turn stays the gap clear', async () => {
+  const { butterflyPivot } = await import('@rulecad/flexures');
+  const { cylinder } = jscad.primitives, { intersect } = jscad.booleans;
+  // At the drawn turn block 2 has turned half of it (10°) against the base. By hand, blades 15 × 0.84 with rounds of
+  // 0.84, the base 5.8 deep (a 3.4 hole and 1.2 either side):
+  //   gap 0.4: a = (0.84 + 1.68 + 0.4) / sin 25° + 0.5 = 7.4093, R = a + L = 22.4093, d2 = 2.26 / R = 0.100851,
+  //     block 2's window either side of y 45° - d2 = 0.684547 rad, the base's sides 0.684547 - (0.174533 + 0.4 / R)
+  //     = 0.492165; turned, its outer corner (radius R + 5.8 = 28.2093) at 0.666697 rad from y, 28.2093 × sin(0.684547
+  //     - 0.666697) = 0.5035 mm from the window's side.
+  //   gap 0.2: a = 6.9361, R = 21.9361, the sides 0.498721, the turned corner at 0.673254 rad, 27.7361 ×
+  //     sin(0.009117) = 0.2529 mm from the side.
+  // The window's top corners round with 2 mm (half the base's depth, at most 2). With the cap a gap and a twentieth of
+  // a blade (0.75) over the base, the rounds began 0.85 (gap 0.4) and 1.05 mm (gap 0.2) below the base's outer edge and
+  // reached the turned corner: 0.246 mm clear at gap 0.4, and 0.076 mm into block 2 at gap 0.2. The cap now leaves the
+  // gap and the larger of the round and the twentieth (2 mm), so the rounds start the gap above the base.
+  for (const gap of [0.4, 0.2]) {
+    const p = { length: 15, thickness: 0.84, width: 8, gap }, shape = butterflyPivot(p);
+    const a = (0.84 + 1.68 + gap) / Math.sin(rad(25)) + 0.5, R = a + 15, sides = rad(45) - 2.26 / R - (rad(10) + gap / R);
+    // probes of 0.95 of the gap round the base's outer corner, a point on its side and one on its outer edge 4° in from
+    // the corner (under the round, and 6°, about 3 mm, clear of the base at rest), all turned 10°
+    for (const [rr, ang] of [[R + 5.8, sides + rad(10)], [R + 5.8 - 0.5 * gap, sides + rad(10)], [R + 5.8, sides + rad(6)]]) {
+      const c = [rr * Math.cos(Math.PI / 2 + ang), rr * Math.sin(Math.PI / 2 + ang), 4];
+      const v = measureVolume(intersect(shape, cylinder({ radius: 0.95 * gap, height: 2, center: c, segments: 24 })));
+      assert.ok(v < 1e-6, `gap ${gap}: a ${0.95 * gap} mm probe at radius ${rr.toFixed(3)}, ${(ang / rad(1)).toFixed(2)}° from y meets block 2 (${v} mm³)`);
+    }
+  }
 });
