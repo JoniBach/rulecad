@@ -349,3 +349,195 @@ export function buckledSwitchModel(p, m, o = {}) {
   if (m.density > 0) { grams = (measureVolume(buckledSwitch(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, strip and frame`, 'switch.mass', { values: { grams } }); }
   return { rise, formula, load, euler, give, snap: { push: top.push, force: top.force }, back: { push: low.push, force: low.force }, second, bistable, strain: most, curve, grams, findings: out, rests };
 }
+
+// ------------------------------------------------------------------------------------------ the balanced strip cell
+
+// A zero-stiffness cell from the buckled strip. Pushed through with its pad held square, the strip goes over in its
+// symmetric shape and is negative only near its straight middle, less so the further it goes. With the pad free to turn
+// it goes over in its second, S-shaped mode, and its force falls in a straight line: the same negative stiffness all
+// the way to where it turns back to its symmetric shape (Vangbo, An analytical analysis of a compressed bistable buckled
+// beam, Sensors and Actuators A 69, 1998). A straight spring as stiff, in parallel, cancels it over all of that.
+// So here the pad is a ring round a disc on the knob's stem (a pin printed in place, so the pad turns freely), and the
+// knob presses into a carriage on two leaves from a post on the frame: a parallel guide, the spring, straight in its
+// force as its leaves are free to draw in at their ends (leaves held at both ends would stretch and stiffen).
+
+/**
+ * @typedef {BuckledSwitch & { spring?: { stiffness?: number, thickness?: number, length?: number, gap?: number, post?: number }, disc?: number, within?: number }} BalancedStrip
+ *   the buckled switch's strip and frame (BuckledSwitch above; pad defaults to the ring's width here), and:
+ *   spring.stiffness, N/mm (default 10% over the strip's negative stiffness, so the pair is just stable); thickness: the
+ *   two leaves' (default the least whole number of 0.42 mm lines that keeps them within half the strain limit over
+ *   the strip's rise either way); length: each leaf's (default: set by the solver to the stiffness); gap: between the
+ *   two leaves (default 6); post: the post's length along x (default 6). disc: the pin's disc radius (default 2.5).
+ *   within: the share of the spring's stiffness the pair may stray from 0 in its flat range (default 0.1)
+ */
+const LINE = 0.42; // mm: the kit's printer's line (x1c), for the leaves' default thickness in whole lines
+const RING = 1.5; // mm: the pad's ring round the disc
+
+function cellLayout(p, what) {
+  if (!p || typeof p !== 'object') throw new Error(`${what}: give the cell's parameters (length, thickness, width, squeeze)`);
+  const rd = size(what, p, 'disc', 'disc', 2.5), gap = p.gap ?? 0.3, ro = rd + gap + RING;
+  const k = switchLayout({ ...p, pad: p.pad ?? Math.ceil(2 * ro + 0.5) }, what);
+  if (k.pl < 2 * ro) throw new Error(`${what}: pad ${k.pl} is narrower than the ring round the disc: ${n2(2 * ro)} or more`);
+  return { ...k, rd, ro };
+}
+
+// The spring's two leaves from the stiffness wanted, 2 fixed-guided leaves together 2 E W t³ / l³, so l = t c with
+// c = (2 E W / k)^(1/3); a leaf's strain at a travel δ is 3 t δ / l² = 3 δ / (t c²), which falls as t grows: the least
+// t in whole lines that keeps it within half the limit
+function springOf(k, sp, kpos, reach, m, what) {
+  const c = Math.cbrt((2 * m.E * k.W) / kpos), t = sp.thickness ?? Math.max(2, Math.ceil((6 * reach) / (c * c * m.strainLimit) / LINE - 1e-9)) * LINE;
+  if (!(typeof t === 'number' && t > 0)) throw new Error(`${what}: spring.thickness is the leaves' thickness, above 0 mm (got ${JSON.stringify(sp.thickness)})`);
+  const gap = size(what, sp, 'gap', 'spring.gap', 6), post = size(what, sp, 'post', 'spring.post', 6), l = sp.length ?? t * c;
+  if (!(typeof l === 'number' && l > 6 * t)) throw new Error(`${what}: spring.length is each leaf's, over six times its thickness (got ${JSON.stringify(sp.length)})`);
+  if (gap < t + 2) throw new Error(`${what}: spring.gap ${gap} leaves the two leaves less than 2 mm of air: ${n2(t + 2)} or more`);
+  const r = Math.min(1, l / 6);
+  return { t, l, gap, post, r, half: beamProfile({ length: l, thickness: t, fillet: r }, 'guided') };
+}
+
+// Both prints' outlines. The strip: tabs, half beams, the pad as a ring with an opening at its top, the disc in it on
+// the stem, the knob. The frame: a C as the switch's, its window room for the ring to go the rise either way; on its
+// top a deck, the post on the left, the spring's two leaves and the carriage with the knob's hole
+function cellGeometry(k, s) {
+  const x0 = -k.L / 2, x1 = k.L / 2, [ta, tc] = k.tab, rise = riseOf(k.L - k.sq, k.t, k.sq), room = 1.25 * rise + Math.max(k.ro, k.ph / 2) + k.gap + 1;
+  const beams = [beamOutline([x0, 0], [x0 + k.lb, 0], k.half, k.lb, k.t, 0.5, k.r), beamOutline([k.pl / 2, 0], [x1, 0], k.half, k.lb, k.t, 0.5, k.r)];
+  const top = room + k.wall, cy = top + k.knob, open = STEM / 2 + k.gap + k.ro * Math.sin(10 * Math.PI / 180); // the stem's way out of the ring, room for the pad to turn 10° either way
+  const tabAt = (xa, xb) => roundedRectangle({ size: [xb - xa, tc], center: [(xa + xb) / 2, 0], roundRadius: 0.8, segments: 16 });
+  const ring = subtract(union(rect(-k.pl / 2, k.pl / 2, -k.ph / 2, k.ph / 2), circle({ radius: k.ro, segments: 64 })), circle({ radius: k.rd + k.gap, segments: 64 }), roundedRectangle({ size: [2 * open, k.ro + 2], center: [0, k.ro / 2 + 1.5], roundRadius: 0.5, segments: 16 }));
+  const pin = union(circle({ radius: k.rd, segments: 64 }), rect(-STEM / 2, STEM / 2, 0, cy), circle({ radius: k.knobR, center: [0, cy], segments: 64 }));
+  const strip = union(tabAt(x0 - ta, x0), tabAt(x1, x1 + ta), ring, ...beams, pin);
+  const f0 = x0 + k.sq / 2, f1 = x1 - k.sq / 2, outer = f1 + ta + k.wall, yb = -room - k.hb;
+  const c = { cy, hole: k.knobR + k.fit }; c.w = Math.max(2 * c.hole + 4, s.gap + s.t + 3); c.h = c.w;
+  const xa = -c.w / 2, xb = xa - s.l, postTop = cy + c.h / 2 + 1; // the leaves run from the carriage's left side (xa) to the post (xb)
+  const body = roundedRectangle({ size: [2 * outer, top - yb], center: [0, (top + yb) / 2], roundRadius: 2, segments: 16 });
+  const pocketL = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f0 - ta / 2 + 0.5, 0], roundRadius: 0.5, segments: 32 });
+  const pocketR = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f1 + ta / 2 - 0.5, 0], roundRadius: 0.5, segments: 32 });
+  const window = roundedRectangle({ size: [f1 - f0, 2 * room], center: [0, 0], roundRadius: 1.5, segments: 16 });
+  const way = roundedRectangle({ size: [2 * (STEM / 2 + k.gap + 1), 2 * top], center: [0, top], roundRadius: 0.5, segments: 16 }); // clear of the stem, which bends a little
+  const left = Math.min(xb - s.post, -outer), deck = roundedRectangle({ size: [-left + 2, 6], center: [left / 2 + 1, top - 1], roundRadius: 1, segments: 16 });
+  const post = roundedRectangle({ size: [s.post, postTop - top + 2], center: [xb - s.post / 2, top + (postTop - top) / 2 - 1], roundRadius: 1, segments: 16 });
+  const leaves = [-s.gap / 2, s.gap / 2].map((dy) => beamOutline([xb, cy + dy], [xa, cy + dy], s.half, s.l, s.t, 0.5, s.r));
+  const carriage = subtract(roundedRectangle({ size: [c.w, c.h], center: [0, cy], roundRadius: 1.5, segments: 16 }), circle({ radius: c.hole, center: [0, cy], segments: 64 }));
+  const frame = union(subtract(union(body, deck, post, ...leaves), pocketL, pocketR, window, way), carriage);
+  return { strip, frame, c, xa, xb, top, yb, postTop, room };
+}
+
+// The cell as the solver's beams: the strip as the switch's (the left tab the ground, the right tab a body held where
+// its pocket puts it), the pad a body, the disc a body pinned to it at the middle, the stem a beam from the disc up to
+// the carriage (the knob pressed in: one body); with the spring, its two leaves from the post to the carriage
+function cellSystem(k, m, s, g, { strip = true } = {}) {
+  const x0 = -k.L / 2, beams = [];
+  if (strip) beams.push({ name: 'left', ...spansOf([x0, 0], [x0 + k.lb, 0], k.half, k.lb), width: k.W, E: m.E, from: 'ground', to: 'pad' }, { name: 'right', ...spansOf([k.pl / 2, 0], [k.L / 2, 0], k.half, k.lb), width: k.W, E: m.E, from: 'pad', to: 'tab' });
+  if (strip && s) beams.push({ name: 'stem', path: [[0, k.rd], [0, g.c.cy - k.knobR]], thickness: STEM, width: k.W, E: m.E, from: 'disc', to: 'carriage' });
+  if (s) for (const dy of [-s.gap / 2, s.gap / 2]) beams.push({ name: `leaf ${dy < 0 ? 'low' : 'high'}`, ...spansOf([g.xb, g.c.cy + dy], [g.xa, g.c.cy + dy], s.half, s.l), width: k.W, E: m.E, from: 'ground', to: 'carriage' });
+  const bodies = { ground: { at: [x0, 0], fixed: true } };
+  if (strip) Object.assign(bodies, { pad: { at: [0, 0] }, tab: { at: [k.L / 2, 0] } });
+  if (strip && s) bodies.disc = { at: [0, 0] };
+  if (s) bodies.carriage = { at: [0, g.c.cy] };
+  const sys = beamSystem({ bodies, beams, pins: strip && s ? [{ name: 'pin', at: [0, 0], from: 'pad', to: 'disc', E: m.E, width: k.W }] : [], segments: 32 });
+  // the push: on the carriage, or with no spring on the pad itself (free to turn and slide across)
+  return { sys, tx: strip ? sys.body.tab.dof : null, py: s ? sys.body.carriage.dof + 1 : sys.body.pad.dof + 1, turn: strip ? sys.body.pad.dof + 2 : null };
+}
+// Squeezed in steps with the push held at the middle, and a nudge on the pad's turn so it takes the S-shaped way round
+function squeezeMiddle(S, sq) {
+  let q, r, ok = true;
+  for (let i = 1; i <= 12; i++) { r = equilibrium(S.sys, { held: new Map([[S.tx, (-sq * i) / 12], [S.tx + 1, 0], [S.tx + 2, 0], [S.py, 0]]), loads: new Map([[S.turn, 1]]), start: q, iterations: 80 }); q = r.q; ok = ok && r.converged; }
+  // the nudge (1 N·mm) let go in steps, so it stays on the S-shaped branch where there is one
+  for (const n of [0.3, 0.1, 0.01, 0]) { r = equilibrium(S.sys, { held: new Map([[S.tx, -sq], [S.tx + 1, 0], [S.tx + 2, 0], [S.py, 0]]), loads: new Map([[S.turn, n]]), start: q, iterations: 80 }); q = r.q; }
+  return { q: r.q, ok: ok && r.converged, turn: r.q[S.turn] };
+}
+// The force to hold the push `push` from the middle (+ down, as the switch's push)
+const holdAt = (S, sq, push, start) => { const e = equilibrium(S.sys, { held: new Map([...(S.tx == null ? [] : [[S.tx, -sq], [S.tx + 1, 0], [S.tx + 2, 0]]), [S.py, -push]]), start, iterations: 80 }); return { q: e.q, ok: e.converged, force: -e.reaction.get(S.py), strain: Math.max(...Object.values(e.strain)) }; };
+
+// The strip's stiffness at its middle alone, its pad free to turn (below 0), and the spring sized to it: the leaves as
+// drawn are a little stiffer than 2 E W t³ / l³ (their rounds), so unless a length is given, a few secant steps on l
+// (stiffness goes as 1 / l³) on the leaves alone set it
+const springCache = new Map();
+function cellSpring(p, m, what) {
+  need(what, {}, m);
+  if (!(m.strainLimit > 0)) throw new Error(`${what}: the material needs a strainLimit (flexureMaterial(rules) gives one)`);
+  const key = JSON.stringify([p, m.E, m.strainLimit]);
+  if (springCache.has(key)) return springCache.get(key);
+  const k = cellLayout(p, what), sw = buckledSwitchModel({ ...p, pad: k.pl }, { ...m, density: undefined }, { steps: 24 });
+  const sq = k.sq - sw.give, h = 0.05 * sw.rise, S = cellSystem(k, m), b0 = squeezeMiddle(S, sq), lo = holdAt(S, sq, -h, b0.q), hi = holdAt(S, sq, h, b0.q), negative = (hi.force - lo.force) / (2 * h);
+  if (!(negative < 0)) throw new Error(`${what}: the strip squeezed ${n2(sq, 3)} mm is not negative at its middle (${n2(negative, 3)} N/mm), so there is nothing to balance: more squeeze`);
+  const sp = p.spring ?? {}, kpos = sp.stiffness ?? -1.1 * negative;
+  if (!(typeof kpos === 'number' && kpos > 0)) throw new Error(`${what}: spring.stiffness is the spring's, above 0 N/mm (got ${JSON.stringify(sp.stiffness)})`);
+  let s = springOf(k, sp, kpos, sw.rise, m, what), leaves = null;
+  for (let it = 0; it < 6; it++) {
+    const T = cellSystem(k, m, s, cellGeometry(k, s), { strip: false }), a = holdAt(T, 0, -h), b = holdAt(T, 0, h);
+    leaves = (b.force - a.force) / (2 * h);
+    if (sp.length != null || Math.abs(leaves - kpos) < 0.002 * kpos) break;
+    const l = s.l * Math.cbrt(leaves / kpos);
+    s = { ...s, l, half: beamProfile({ length: l, thickness: s.t, fillet: s.r }, 'guided') };
+  }
+  const out = { switch: sw, sq, negative, turn: b0.turn, stiffness: leaves, spring: s, k };
+  springCache.set(key, out);
+  return out;
+}
+
+/**
+ * A balanced strip cell (BalancedStrip above): two prints, the strip (the buckled switch's, its pad a ring that turns
+ * on a disc printed in it, the disc on the knob's stem) and its frame with the spring on top. Fitted, the knob pressed
+ * into the carriage, the strip is held at its middle, where its negative stiffness and the spring's cancel. Each print
+ * drawn flat as printed, the strip above the frame.
+ * @param {BalancedStrip} p
+ * @param {{ E: number, strainLimit: number }} m the spring is sized from it
+ * @param {{ part?: 'all' | 'strip' | 'frame' }} [o]
+ * @returns {object} a JSCAD geom3
+ */
+export function balancedStrip(p, m, { part = 'all' } = {}) {
+  const what = 'balancedStrip';
+  if (!['all', 'strip', 'frame'].includes(part)) throw new Error(`${what}: part is all, strip or frame (got ${JSON.stringify(part)})`);
+  const b = cellSpring(p, m, what), g = cellGeometry(b.k, b.spring);
+  const strip = extrudeLinear({ height: b.k.W }, g.strip), frame = extrudeLinear({ height: b.k.W }, g.frame);
+  if (part === 'strip') return strip;
+  if (part === 'frame') return frame;
+  return union(jscad.transforms.translate([0, g.postTop - g.yb + g.room + 4, 0], strip), frame);
+}
+
+/**
+ * What a balanced strip cell does, from the beam solver on the strip, the pin, the stem and the spring's leaves
+ * together: the strip squeezed into its pockets with the knob in the carriage, then the carriage pushed from one side of
+ * the middle to the other by the strip's rise: the force curve, the flat range where the pair's stiffness stays within
+ * `within` of the spring's, the most force there, the most strain (strip, stem and leaves), and the grams.
+ * @param {BalancedStrip} p
+ * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m
+ * @param {{ steps?: number }} [o] steps across the push (default 40, an even number)
+ * @returns {{ negative: number, spring: { stiffness: number, thickness: number, length: number, gap: number }, curve: { push: number, force: number, slope: number, strain: number }[],
+ *   stiffness: number, flat: { from: number, to: number, span: number, force: number } | null, strain: number, margin: number, grams: number | null, findings: object[], rests: string[] }}
+ *   negative: the strip's stiffness at its middle alone, its pad free to turn (N/mm, below 0); spring: the two leaves,
+ *   their stiffness as the solver finds them; curve: push from the middle (mm, + down) and the force to hold the
+ *   carriage there; stiffness: the pair's at the middle; flat: the run about the middle within the band, and the most
+ *   force in it; margin: the limit over the most strain
+ */
+export function balancedStripModel(p, m, o = {}) {
+  const what = 'balancedStripModel', b = cellSpring(p, m, what), { k, spring: s } = b, g = cellGeometry(k, s), within = p.within ?? 0.1;
+  if (!(typeof within === 'number' && within > 0 && within < 1)) throw new Error(`${what}: within is a share of the spring's stiffness, between 0 and 1 (got ${JSON.stringify(p.within)})`);
+  const steps = o.steps ?? 40;
+  if (!(Number.isInteger(steps) && steps >= 10 && steps % 2 === 0)) throw new Error(`${what}: steps is an even whole number, 10 or more (got ${JSON.stringify(o.steps)})`);
+  const sq = b.sq, S = cellSystem(k, m, s, g), base = squeezeMiddle(S, sq), reach = b.switch.rise, curve = [];
+  let ok = base.ok;
+  for (const sg of [-1, 1]) { // pushed each way from the middle, each step from the last
+    let q = base.q;
+    for (let i = 1; i <= steps / 2; i++) { const push = (sg * reach * i) / (steps / 2), e = holdAt(S, sq, push, q); q = e.q; ok = ok && e.ok; curve.push({ push, force: e.force, strain: e.strain }); }
+  }
+  const mid = holdAt(S, sq, 0, base.q);
+  curve.push({ push: 0, force: mid.force, strain: mid.strain });
+  curve.sort((x, y) => x.push - y.push);
+  const cs = curve.map((c, i) => { const a = curve[Math.max(0, i - 1)], d = curve[Math.min(curve.length - 1, i + 1)]; return { ...c, slope: (d.force - a.force) / (d.push - a.push) }; });
+  const kp = b.stiffness, i0 = cs.findIndex((c) => c.push === 0), band = (c) => Math.abs(c.slope) <= within * kp, stiffness = cs[i0].slope;
+  let flat = null;
+  if (band(cs[i0])) { let a = i0, d = i0; while (a > 0 && band(cs[a - 1])) a--; while (d < cs.length - 1 && band(cs[d + 1])) d++; flat = { from: cs[a].push, to: cs[d].push, span: cs[d].push - cs[a].push, force: Math.max(...cs.slice(a, d + 1).map((c) => Math.abs(c.force))) }; }
+  const strain = Math.max(...cs.map((c) => c.strain)), margin = m.strainLimit / strain;
+  const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra });
+  f('pass', `alone, the strip squeezed ${n2(sq, 3)} mm with its pad free to turn (${n2((Math.abs(b.turn) * 180) / Math.PI, 1)}° at the middle) is ${n2(b.negative, 3)} N/mm; the spring's two leaves ${n2(s.t)} by ${k.W} mm, each ${n2(s.l)} mm long, are ${n2(kp, 3)} N/mm (2 E W t³ / l³ gives ${n2((2 * m.E * k.W * s.t ** 3) / s.l ** 3, 3)}; their rounds stiffen them)`, 'cell.balance', { values: { negative: b.negative, spring: kp } });
+  if (flat) f(flat.span > 0 ? 'pass' : 'warn', `together they are ${n2(stiffness, 3)} N/mm at the middle, and within ${n2(within * 100, 0)}% of the spring's stiffness from ${n2(flat.from)} to ${n2(flat.to)} mm (${n2(flat.span)} mm), holding the carriage anywhere there with at most ${n2(flat.force, 3)} N`, 'cell.flat', { values: { flat, stiffness } });
+  else f('fail', `together they are ${n2(stiffness, 3)} N/mm at the middle, over ${n2(within * 100, 0)}% of the spring's ${n2(kp, 3)} N/mm: no flat range. A spring nearer ${n2(-b.negative, 3)} N/mm`, 'cell.flat', { values: { stiffness, spring: kp } });
+  if (stiffness < 0) f('fail', `together they are ${n2(stiffness, 3)} N/mm at the middle, below 0: the carriage will not stay there but run off to one side. A stiffer spring`, 'cell.stable', { values: { stiffness } });
+  f(strain <= m.strainLimit ? 'pass' : 'fail', `pushed ${n2(reach)} mm either way, the strip, stem and leaves see at most ${n2(strain * 100, 2)}%, ${strain <= m.strainLimit ? 'within' : 'over'} the limit of ${n2(m.strainLimit * 100, 2)}% (${n2(margin)} times)`, 'flexure.strain', { values: { strain, limit: m.strainLimit, margin } });
+  if (!ok) f('warn', 'the beam solver did not settle at every step: the force curve is a guide only', 'cell.solver');
+  let grams = null;
+  if (m.density > 0) { grams = (measureVolume(balancedStrip(p, m)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, strip and frame with its spring`, 'cell.mass', { values: { grams } }); }
+  const rests = [...b.switch.rests, `the pin's ${k.gap} mm of play and its rub left out: the disc turns freely in its ring`, 'the knob held in the carriage with no play (a press fit, an estimate)', p.spring?.stiffness ? 'the spring as given' : "the spring 10% over the strip's negative stiffness, a choice so the middle stays stable"];
+  return { negative: b.negative, spring: { stiffness: kp, thickness: s.t, length: s.l, gap: s.gap }, curve: cs, stiffness, flat, strain, margin, grams, findings: out, rests };
+}
