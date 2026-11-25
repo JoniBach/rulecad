@@ -4,6 +4,15 @@ What changed in each release, for someone upgrading a workspace. A rule set's **
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
 ## Unreleased
+### Added
+
+- A second maker's sheet beside three printed plastics, each in the same rules with its sheet's range:
+  `pla-prusament` (Prusament PLA, version 1.0, 2018), `petg-polylite` and `asa-polylite` (Polymaker PolyLite PETG and
+  ASA, V5.4). A design reads either maker (`asa_polylite.strength_z`) or sets its material to one. No existing value
+  changed. ABS and PA-CF still have one maker each: no second sheet could be read with figures across the layers that
+  hold together (Bambu Lab's ABS sheet gives 3800 MPa in tension and 1880 MPa in bending; Polymaker's Fiberon PA6-CF20
+  is another nylon, and its density was not readable).
+
 ### Changed
 
 - The README says how expressions read a range's ends (`pla.strength.low`). No value changed.

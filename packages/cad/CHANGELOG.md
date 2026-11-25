@@ -16,6 +16,8 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- Printed fittings may be sized from the kit's new second-maker plastics (`pla-prusament`, `petg-polylite`,
+  `asa-polylite`); a project's material that has no rule set is refused naming them too.
 - A design's expressions read the ends of a rule's range (`pa_cf.strength_z.low`), and `cad why` explains one as the
   rule it comes from.
 

@@ -4081,7 +4081,7 @@ test('printed fittings in a project of another plastic: refused by name where no
     fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
     // once sized as PLA without a word; now refused by name, with what would do: every plastic the kit has a rule set
     // for (one with strength, modulus, density and modulus_z, the modulus across the layers), not only pla and petg
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, pa_cf, petg, pla, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, pa_cf, petg, pla/);
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament/);
     fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
     const pla = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/pla.json'), 'utf8'));
     fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { strength: pla.rules.strength } }));
@@ -4090,7 +4090,7 @@ test('printed fittings in a project of another plastic: refused by name where no
     assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of pc/);
     // a set the workspace gives is one of its plastics from then on: another missing plastic's refusal names it too
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'nylon', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, pa_cf, pc, petg, pla, and there is no rules\/nylon\.json/);
+    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, pc, petg, petg-polylite, pla, pla-prusament, and there is no rules\/nylon\.json/);
     // and a plastic the kit gives a set for (#27's abs) is sized from it, with no set of the workspace's own
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
     assert.match(cad('check', 'frame/clip'), /c: it weighs [\d.]+ g of abs/);
