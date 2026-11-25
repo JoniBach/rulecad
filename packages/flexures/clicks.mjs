@@ -1,13 +1,14 @@
 // Two more things that click over and stay, beside the tilted-leaf bistable and the buckled switch (bistables.mjs),
 // each from the source that names it, its force curve from the beam solver (beams.mjs) on the drawn parts.
 //
-// - The Young bistable mechanism (Jensen, Howell and Salmon, US 6215081, 2001, FIGS. 4a to 5b): two links. The base
+// - The Young bistable mechanism (Jensen, Howell and Roach, US 6215081, 2001, FIGS. 4a to 5b): two links. The base
 //   carries two pins; the other link is two compliant arms joined by a rigid coupler, each arm turning on its own pin
 //   at one end and fixed into the coupler at the other (class I: both arms fixed-pinned segments). Its
 //   pseudo-rigid-body model is a four-bar with torsion springs at the coupler's two joints only, since the pins are
 //   free. Turned over, the long arm bends, and the link rests again with that arm bent (the patent's "force loaded"
 //   second position, FIG. 4b).
-// - The tensural bistable (Wilcox and Howell, US 7126446, 2006; J. Microelectromech. Syst. 14(6), 2005): a thin
+// - The tensural bistable (Howell and Masters, US 7126446, 2006, FIGS. 1 to 3, whose thin segments it calls
+//   "tensural pivots", loaded in bending and axial tension; the class is Wilcox and Howell's, FTBM, 2005): a thin
 //   segment from the base's anchor out to one end of a thick compressive segment, which runs back past both anchors
 //   to a second thin segment, which comes in to the shuttle's anchor. At rest the thin segments are straight and on
 //   one line, tilted a little from square to the shuttle's travel. Pushed through, the line must pass square, where

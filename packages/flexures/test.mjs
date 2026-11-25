@@ -1911,3 +1911,19 @@ test('a split-tooth gear: the involute of @rulecad/gears grown by the preload, e
   assert.throws(() => splitToothGear({ ...p, bore: 26 }), /under two modules of rim over the 26 mm bore/);
   assert.throws(() => splitToothGear({ ...p, depth: 20 }), /depth 20 takes the slits to the middle/);
 });
+
+test('the README\'s Young bistable, tensural bistable and split-tooth gear are the code\'s figures', async () => {
+  const fs = await import('node:fs');
+  const { youngBistableModel, tensuralBistableModel, splitToothGearModel } = await import('@rulecad/flexures');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), n = (x, d = 2) => String(Number(Number(x).toFixed(d))), mat = { ...pla, density: 1.24 };
+  const y = youngBistableModel({ spacing: 46, thickness: 0.84, width: 6 }, mat);
+  const t = tensuralBistableModel({ length: 18, spacing: 12, angle: 7, thickness: 0.84, width: 6 }, mat);
+  const g = splitToothGearModel({ module: 2, teeth: 24, width: 6, bore: 5 }, mat);
+  const rows = [
+    `| \`youngBistable\`, spacing 46, arms 0.84 | ${n(y.snap.torque)} N·mm turns the coupler, ${n(y.snap.turn, 1)}° on; past ${n(y.middle, 1)}° it turns on by itself and rests ${n(y.second, 1)}° round (the four-bar: ${n(y.prb.second.coupler, 1)}°); ${n(-y.back.torque)} N·mm brings it back; ${n(y.strain * 100)}% on the way, ${n(y.held * 100)}% held over (${n(y.margin)} times under 2%) | ${n(y.grams.total, 1)} (mover ${n(y.grams.mover, 1)}, ground ${n(y.grams.ground, 1)}, pins) |`,
+    `| \`tensuralBistable\`, segments 18 at 7°, anchors 12 apart | ${n(t.snap.force)} N switches it, ${n(t.snap.push)} mm in; past ${n(t.middle)} mm it snaps on and rests ${n(t.second)} mm along; ${n(-t.back.force)} N brings it back; ${n(t.tension, 1)} N in each thin segment through the middle on a rigid slab, ${n(t.solvedTension, 1)} N as drawn; ${n(t.strain * 100)}% (${n(t.margin)} times under 2%) | ${n(t.grams, 1)} |`,
+    `| \`splitToothGear\`, module 2, 24 teeth | each half ${n(g.stiffness)} N/mm, pushed back 0.1 mm: ${n(g.force)} N on each flank, ${n(g.strain * 100)}%; no backlash up to ${n(g.hold, 1)} N·mm; a half closes its slit at ${n(g.stop.force)} N (${n(g.stop.strain * 100)}%); at the hold ${n(g.driven.strain * 100)}% (${n(g.driven.margin)} times under 2%) | ${n(g.grams, 1)} |`,
+    `y.second;        // ${n(y.second, 1)} degrees`, `t.solvedTension; // ${n(t.solvedTension, 1)} N`, `g.hold;          // ${n(g.hold, 1)} N·mm`,
+  ];
+  for (const r of rows) assert.ok(readme.includes(r), `the README should read:\n${r}`);
+});

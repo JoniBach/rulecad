@@ -324,8 +324,65 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 | δ / H = a² l / EI | tilted bistable's frame: a root's move out for its thrust H | the bar a cantilever from its middle under the moment H a |
 | P = 4π²EI / L²; h = (2/π) √(L s - π²t²/3) | buckled switch | Euler, clamped ends; first buckled mode |
 
-Left for later: the Young bistable and tristable mechanisms, the tensural bistable, compliant gear teeth and clutches,
-and force-sensing beams.
+### Two more bistables, and gear teeth with no play
+
+```js
+import { youngBistableModel, tensuralBistableModel, splitToothGear, splitToothGearModel } from '@rulecad/flexures';
+
+const pla = { E: 2680, strainLimit: 0.02, density: 1.24, name: 'PLA' };
+const y = youngBistableModel({ spacing: 46, thickness: 0.84, width: 6 }, pla);
+y.second;        // 60.7 degrees: the coupler's turn to where it rests again
+const t = tensuralBistableModel({ length: 18, spacing: 12, angle: 7, thickness: 0.84, width: 6 }, pla);
+t.solvedTension; // 22.1 N in each thin segment through the middle
+const g = splitToothGearModel({ module: 2, teeth: 24, width: 6, bore: 5 }, pla);
+g.hold;          // 76.6 N·mm carried with no backlash
+```
+
+| Part | What the model says | Grams |
+|---|---|---|
+| `youngBistable`, spacing 46, arms 0.84 | 13.64 N·mm turns the coupler, 12° on; past 30.6° it turns on by itself and rests 60.7° round (the four-bar: 61.8°); 5.12 N·mm brings it back; 0.99% on the way, 0.5% held over (2.03 times under 2%) | 8.5 (mover 5.6, ground 2.8, pins) |
+| `tensuralBistable`, segments 18 at 7°, anchors 12 apart | 2.76 N switches it, 1.14 mm in; past 3.06 mm it snaps on and rests 5.67 mm along; 0.88 N brings it back; 33.6 N in each thin segment through the middle on a rigid slab, 22.1 N as drawn; 0.99% (2.02 times under 2%) | 21.6 |
+| `splitToothGear`, module 2, 24 teeth | each half 16.98 N/mm, pushed back 0.1 mm: 1.7 N on each flank, 0.33%; no backlash up to 76.6 N·mm; a half closes its slit at 5.11 N (1.01%); at the hold 0.67% (2.99 times under 2%) | 11.9 |
+
+- **The Young bistable** is the patent's (Jensen, Howell and Roach, US 6215081, FIGS. 4a to 5b): two links. The
+  ground carries two pins; the mover is two compliant arms joined by a rigid coupler, each arm turning on its pin at one
+  end and fixed into the coupler at the other (class I: both arms fixed-pinned segments). As a pseudo-rigid-body model
+  it is a four-bar with springs at the coupler's two joints only, since the pins are free, each γ Kθ EI / l with the
+  patent's γ 0.85 and Kθ 2.65. Turned over, the long arm bends and holds the coupler there (the patent's "force loaded"
+  second position). The patent gives no dimensions, so the default proportions are measured off its FIG. 4a: an
+  estimate of its layout. The mover prints flat; the ground prints on its back, a bar with a foot; two filament pins
+  pass through the hubs (a slip fit) into the bar (a press fit). Assembled, the mover lies on the table and the bar sits
+  0.3 mm over its hubs, so they can't lift off. The foot has a screw hole to fix it to a board. The model turns the
+  coupler with a moment in the beam solver (each hub free on its pin), finds where it rests again, and checks the air
+  between the arms, the coupler, the hubs and the foot over the whole swing (`young.clear`).
+- **The tensural bistable** is the coupling of US 7126446 (Howell and Masters, FIGS. 1 to 3), whose thin segments
+  the patent calls tensural pivots: loaded in bending and axial tension. Wilcox and Howell named the class (FTBM, 2005).
+  The coupling is a thin segment from the base's anchor out to one foot of a thick compressive segment, which runs
+  back past both anchors to a second thin segment, which comes in to the shuttle's anchor. At rest the thin segments
+  lie straight on one line, tilted a little from square to the travel. Pushed through, the line passes square, where
+  the anchors are c (1 - cos α) nearer each other along it than the chain is long: the thin segments are stretched and
+  the compressive segment squeezed. So it holds by tension, and no thin part takes compression to buckle under. A
+  printed one takes tens of newtons along the line, more than the leaves of a flexure guide can carry in compression,
+  so two couplings are drawn as mirror images about the travel, and their pulls meet inside the shuttle. Each
+  compressive segment is a slab 12 mm deep, cut back where the anchor blocks pass it. The layout is the patent's; the
+  sizes are ours, the patent being a MEMS device of microns. Past the middle the chain folds on, so it rests again
+  further than 2 c sin α.
+- **The split-tooth gear** is the anti-backlash principle of Smith, Ricks and Morrise (US 2023/0003291 A1): each
+  tooth a pair of compliant members, the mating tooth wider than the gap, the members pressed apart and pinching it.
+  Here each involute tooth of `@rulecad/gears` is split down its middle, and each gap's root is cut on down too, four
+  modules below the root circle by default, so every half is a long member standing on the rim. The gear is drawn
+  fuller by the preload, plus what the mate's own backlash leaves. A plain mate at the standard centre then pushes the
+  two halves that face it back into their slits. The mesh carries 2 F rb with no backlash: the driving half takes on
+  what the trailing half lets go of. Driven harder, a half closes its slit and bends on with its sibling. The halves
+  print as walls of whole lines at the pitch circle (`gear.halves`); a printed tooth comes out about a tenth of a
+  millimetre fuller or thinner, so measure the hold before relying on it.
+
+| Formula | Where it is used | Source |
+|---|---|---|
+| K = γ Kθ EI / l at each coupler joint; ε = Kθ Θ t / 2l | Young bistable's four-bar | US 6215081 (γ 0.85, Kθ 2.65); Howell 2001, the fixed-pinned segment |
+| δ = c (1 - cos α); T = EA δ / 2a | tensural bistable through the middle | the chain's closure, the slab rigid |
+| 1/k = cos²α (∫ (r - ρ)² / EI dρ + ∫ dρ / κGA) | a split tooth's half along the flank's normal | Castigliano, Timoshenko's shear (κ 5/6) |
+| T = 2 F rb | split-tooth gear's hold | two preloaded flanks on one tooth |
 
 ## Composing mechanisms
 
@@ -767,3 +824,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
 - Norton, R. L., *Design of Machinery*, McGraw-Hill: Grashof's condition and the transmission angle.
+- Jensen, B. D., Howell, L. L., and Roach, G. M., "Bistable compliant mechanism", US Patent 6,215,081, 2001: the Young bistable mechanism, its classes and its pseudo-rigid-body model.
+- Howell, L. L., and Masters, N., "Self-retracting fully compliant bistable micromechanism", US Patent 7,126,446, 2006: the coupling with tensural pivots (its FIGS. 1 to 3), drawn here as the tensural bistable.
+- Wilcox, D. L., and Howell, L. L., "Fully compliant tensural bistable micromechanisms (FTBM)", *Journal of Microelectromechanical Systems* 14(6), 1223-1235, 2005: the class's name (its text was not read here).
+- Smith, R., Ricks, D., and Morrise, J., "Compliant anti-backlash gear", US Patent Application 2023/0003291 A1, 2023: teeth as pairs of compliant members that pinch the mating tooth.
