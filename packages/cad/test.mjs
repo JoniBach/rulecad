@@ -6956,8 +6956,11 @@ test('a problem\'s thinnest member from the printer\'s line (#35): met by the gr
     const held = JSON.parse(cad('optimise', 'thin/held', '--json')).feature;
     assert.deepEqual([held.asked, held.cells, held.holds], [2.5, 1, 3]);
     assert.match(cad('optimise', 'thin/held'), /thinnest member 2\.5 mm: held to three cells \(3 mm\)/);
-    // 4 mm: (4 - 1) / 2 = 1.5, so 2 cells, past three across; 4 / 3 = 1.33 mm cells would hold it
+    // 4 mm: (4 - 1) / 2 = 1.5, so 2 cells, past three across; 4 / 3 = 1.333, so cells of 1.34 mm hold it (4 / 1.34 =
+    // 2.985 cells, (2.985 - 1) / 2 = 0.99, a ball of 1), and do
     write('wide', { feature: 4 });
-    assert.match(cad('optimise', 'thin/wide'), /a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.33 mm or less/);
+    assert.match(cad('optimise', 'thin/wide'), /a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.34 mm or more, or a feature of 3 mm or less/);
+    write('wide', { feature: 4, cell: 1.34 });
+    assert.deepEqual(JSON.parse(cad('optimise', 'thin/wide', '--json')).feature.cells, 1);
   } finally { done(); }
 });

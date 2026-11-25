@@ -204,7 +204,7 @@ export function discretise(p) {
 // A milled or cast problem's process, checked by name on its grid before any maths (the filter itself is made by model)
 function howMade(spec) {
   if (spec.tool != null && !(spec.tool > 0)) throw new Error(`a tool's radius is a distance above 0 mm (got ${spec.tool})`);
-  if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(spec.tool)} mm or less, or leave the tool out`);
+  if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(down2(spec.tool))} mm or less, or leave the tool out`);
   processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
   if (spec.feature != null) featureCells(spec.feature, spec.grid.h);
   return spec;
@@ -704,13 +704,16 @@ export function featureFilter({ nx, ny, nz = 1 }, radius) {
  * A feature (the thinnest member, mm) on a grid of cells h mm: the ball's radius in cells, the least whose 2r + 1
  * cells across are at least the feature. 0 where a cell is already as wide (every member on the grid is at least
  * one), 1 up to three cells. Refused by name past three cells: optimised under a ball of 2 cells, a cantilever came
- * out speckled with loose cells and over twice as flexible (450 against 199), so give smaller cells instead.
+ * out speckled with loose cells and over twice as flexible (450 against 199), so give cells of at least a third of the
+ * feature instead (or a smaller feature).
  * @param {number} feature mm @param {number} h mm
  */
 export function featureCells(feature, h) {
   if (!(feature > 0)) throw new Error(`a feature is the thinnest member, a distance above 0 mm (got ${feature})`);
   const r = Math.max(0, Math.ceil((feature / h - 1) / 2 - 1e-9));
-  if (r > 1) throw new Error(`a feature of ${fmt(feature)} mm is more than three cells (${fmt(3 * h)} mm) across: the optimiser holds members to three cells at most, so give cells of ${fmt(feature / 3)} mm or less`);
+  // (the cells that hold it are at least a third of it, rounded up, and the feature held is at most three cells,
+  // rounded down: rounded to the nearest, 4 mm on 1 mm cells asked for 1.33 mm cells, 3.99 mm across, refused again)
+  if (r > 1) throw new Error(`a feature of ${fmt(feature)} mm is more than three cells (${fmt(3 * h)} mm) across: the optimiser holds members to three cells at most, so give cells of ${fmt(up2(feature / 3))} mm or more, or a feature of ${fmt(down2(3 * h))} mm or less`);
   return r;
 }
 
@@ -2042,3 +2045,5 @@ export function reduce({ vertices, faces }, { tolerance, overhang, lo, hi }) {
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));
+// To the hundredth, up or down: a size a refusal asks for, which must pass the check it failed once written to two places
+const up2 = (n) => Math.ceil(n * 100 - 1e-9) / 100, down2 = (n) => Math.floor(n * 100 + 1e-9) / 100;

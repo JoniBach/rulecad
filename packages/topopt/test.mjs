@@ -891,9 +891,9 @@ test('the thinnest member: a bar narrower than the ball goes and one as wide sta
   assert.equal(thin({ nx, ny }, x, { radius: 1 }).count, 20);
   // From mm: the least whole r whose 2r + 1 cells are as wide. A printer's two 0.42 mm lines (0.84 mm) on 1 mm cells:
   // 0, a cell is wider; 2.4 mm on 0.8 mm cells: (3 - 1) / 2 = 1; 3 mm on 1 mm cells: 1; 3.5 mm on 1 mm: (3.5 - 1) / 2 =
-  // 1.25, so 2, refused (cells of 3.5 / 3 = 1.17 mm or less would do)
+  // 1.25, so 2, refused (cells of 3.5 / 3 = 1.167, so 1.17 mm or more, would do, or a feature of 3 mm or less)
   assert.deepEqual([featureCells(0.84, 1), featureCells(2.4, 0.8), featureCells(3, 1)], [0, 1, 1]);
-  assert.throws(() => featureCells(3.5, 1), /a feature of 3\.5 mm is more than three cells \(3 mm\) across: .* give cells of 1\.17 mm or less/);
+  assert.throws(() => featureCells(3.5, 1), /a feature of 3\.5 mm is more than three cells \(3 mm\) across: .* give cells of 1\.17 mm or more, or a feature of 3 mm or less/);
   assert.throws(() => featureCells(0, 1), /a feature is the thinnest member, a distance above 0 mm \(got 0\)/);
   assert.throws(() => featureFilter({ nx, ny }, 1.5), /a feature's radius is a whole number of cells from 1 \(got 1\.5\)/);
   // The gradient, 2D and 3D: a weighted sum of the filtered densities against finite differences
@@ -923,4 +923,37 @@ test('a problem\'s feature: a cantilever optimised with a small filter has membe
   // A feature the grid already holds (two 0.42 mm lines on 1 mm cells) changes nothing; one past three cells is refused
   assert.equal(optimise(discretise({ ...p, feature: 0.84, steps: 20 })).compliance, optimise(discretise({ ...p, steps: 20 })).compliance);
   assert.throws(() => discretise({ ...p, feature: 4 }), /a feature of 4 mm is more than three cells \(3 mm\) across/);
+});
+
+test('a refusal\'s sizes pass the check they failed, and a tool a hair under 2 cells is drawn as a smaller tool than one of 2', async () => {
+  const { featureCells, processFilter } = await import('@rulecad/topopt');
+  // A feature past three cells asks for cells of at least a third of it, rounded up, or a feature of at most three
+  // cells, rounded down. 4 mm on 1 mm cells: 4 / 3 = 1.333, so 1.34 mm cells (4 / 1.34 = 2.985 cells, (2.985 - 1) / 2 =
+  // 0.99, a ball of 1); rounded to the nearest it asked for 1.33 (4 / 1.33 = 3.008 cells, (3.008 - 1) / 2 = 1.004, so 2,
+  // refused again). Each refused pair below, its two suggestions tried
+  for (const [feature, h] of [[4, 1], [3.5, 1], [5, 1.5], [7.3, 2], [3.2, 0.8], [4.01, 1.33], [10, 1]]) {
+    const said = (() => { try { featureCells(feature, h); } catch (e) { return e.message; } return null; })();
+    assert.ok(said, `${feature} mm on ${h} mm cells is refused`);
+    const cells = +said.match(/give cells of ([\d.]+) mm or more/)[1], smaller = +said.match(/or a feature of ([\d.]+) mm or less/)[1];
+    assert.ok(featureCells(feature, cells) <= 1, `${feature} mm on the suggested ${cells} mm cells holds`);
+    assert.ok(featureCells(smaller, h) <= 1, `the suggested ${smaller} mm feature on ${h} mm cells holds`);
+  }
+  assert.throws(() => featureCells(4, 1), /give cells of 1\.34 mm or more, or a feature of 3 mm or less/);
+  // A tool under a cell asks for cells no bigger than it, rounded down: 1.237 mm on 1.3 mm cells, 1.23 (to the nearest,
+  // 1.24, still more than the tool, refused again)
+  const p = { space: { at: [0, 0, 5], size: [10, 10, 10] }, supports: [{ at: [0, 0, 0.5], size: [10, 10, 1] }], loads: [{ at: [0, 0, 9.5], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, volume: 0.3, mill: '+z', tool: 1.237 };
+  assert.throws(() => discretise({ ...p, cell: 1.3 }), /a tool's radius of 1\.24 mm is under a cell \(1\.3 mm\) .* give cells of 1\.23 mm or less/);
+  assert.doesNotThrow(() => discretise({ ...p, cell: 1.23 }));
+  // The disc a tool is drawn as takes the cells whose centres are within its radius, so a radius a hair under a whole
+  // number of cells loses the four cells at that distance: 1.9998 cells (the bench's 0.3333 × 6 mm on 1 mm cells) is a
+  // 3 × 3 square, about a 3 mm tool, and a 4 mm slot stays open under it; 2 cells fills it (a 4 mm tool fits a 4 mm slot
+  // only exactly, and the disc is five cells across). A plate 30 × 12 cells, a slot 4 cells wide and 8 deep, through
+  const nx = 30, ny = 12, slot = (radius) => {
+    const x = new Float64Array(nx * ny).fill(1);
+    for (let j = 2; j < 10; j++) for (let i = 12; i < 16; i++) x[i + j * nx] = 0;
+    const out = processFilter({ nx, ny }, { mill: '+z', tool: radius }).apply(x, new Float64Array(nx * ny));
+    let open = 0; for (let j = 2; j < 10; j++) for (let i = 12; i < 16; i++) open += out[i + j * nx] < 0.5 ? 1 : 0;
+    return open;
+  };
+  assert.deepEqual([slot(0.3333 * 6), slot(2)], [32, 0]);
 });
