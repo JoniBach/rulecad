@@ -6995,3 +6995,37 @@ test('frame checks (#302): joints mounted on the frame are swept together; a mot
     assert.ok(Math.abs(turn / ((T * 600 ** 2) / (2 * EI)) - 1) < 0.01, `reaction: ${turn} against ${(T * 600 ** 2) / (2 * EI)}`);
   } finally { done(); }
 });
+
+test('beam.printable with a stalled motor (#302): a printed beam\'s options take the motor\'s stall against its stop, as frame.stress does, by the hand moment', async () => {
+  const { ws, done } = workspace();
+  try {
+    const { beamModel } = await import('@rulecad/frames');
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5';
+    const probe = (name, m) => {
+      fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Arm', kind: 'fit', items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'p', beam: { profile: P, length: 100 } }, { id: 'm1', motor: m, at: 'x1.top@300' }],
+        joints: [{ id: 'press', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 600], axis: [0, 1, 0] }, child: { item: 'p', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 40 }], frame: { supports: { 'x1.a': 'fixed' }, points: ['x1.top@600'], printed: 'petg' } }));
+      return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+        const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+        const s = await buildAssembly('frame/${name}');
+        console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(beam\\.printable|frame\\.stress)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })).find((x) => x.code === 'beam.printable' && x.refs.beam === 'x1');
+    };
+    // The arm of the #302 test, every beam tried printed in PETG. The NEMA 17 on x1 at 300 mm, stalled against the
+    // press's stop at the tip through its 8 mm lead screw, pushes F = 2 pi x 590 x 0.5748 / 8 = 266.46 N square to the
+    // beam at 600 mm and back at its mount at 300 mm: the moment at the mount is F x 300 = 79,939 N mm. Over the printed
+    // 2020's section modulus about that axis (modulusX, 717.6 mm^3, read from beamModel) that is 111.40 MPa. The beam's
+    // own weight and the motor's add their small share (the bench case: the same motor driving nothing, 2.65 MPa)
+    const stalled = probe('stall', { model: 'nema17', drives: 'press', leadscrew: { lead: 8, diameter: 8, friction: 0.2 } }), bench = probe('bench', { model: 'nema17' });
+    const pm = beamModel('profile-2020-printed', { length: 600, material: 'petg', printed: { pose: 'lying' } });
+    const eta = Math.tan(Math.atan(8 / (Math.PI * 8))) / Math.tan(Math.atan(8 / (Math.PI * 8)) + Math.atan(0.2)), F = (2 * Math.PI * 590 * eta) / 8, hand = (F * 300) / pm.figures.modulusX.value;
+    const stressOf = (r) => Number(r.text.match(/on stress \(([\d.]+) MPa against/)[1]);
+    const benchStress = stressOf(bench), stallStress = stressOf(stalled);
+    assert.ok(benchStress < 5, `the bench case is the weights only: ${benchStress} MPa`);
+    assert.ok(stallStress >= hand * 0.99 && stallStress <= hand + benchStress + 0.5, `printed x1 with the stall: ${stallStress} MPa against ${hand} MPa from the stall alone`);
+    assert.ok(Math.abs(stalled.values.margins.stress / (17 / stallStress / 2) - 1) < 0.05, `its stress margin, 17 MPa spliced over its stress over 2: ${stalled.values.margins.stress}`);
+    assert.equal(stalled.refs.printable, false);
+  } finally { done(); }
+});

@@ -16,6 +16,8 @@ and head, the parts it passes through and the part it ends in.
   Frames with two moving joints solve more poses (the arm in the tests: 11 to 27), and frames with motors more cases:
   a sag, stress or join figure there can grow where a combined pose or a stall is worse than the poses before. No
   printed size moved.
+- The printed-beam options (`beam.printable`, issue 302) take a motor's stall against its stop as `frame.stress` and
+  `frame.deflection` do: a frame with a stalled motor no longer offers a printed beam with a margin it does not have.
 ### Fixed
 
 - `cad list` counted a `nut-carrier`'s nuts twice where a fasten placed them: once with the fasten and once as the
