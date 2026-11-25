@@ -75,16 +75,18 @@ test('firmware: the dry run takes the protocol\'s own ? and ! lines, and answers
   const r = send.dryRun(['e', 'm 1000 500 0 0 6000 6000 60000 300 0', 'm 200 -100 0 0 2000 0 60000 20 20', '?', '!', 'h 1 -1 1000 50', '?', 'd']);
   assert.deepEqual([r['?'], r['!'], r.h, r.position], [2, 1, 1, [1200, 0, 0]]);
   assert.deepEqual(r.said.filter((s) => /^[?!]/.test(s)), ['?  q 1200 400 0 0', '!  ok', '?  q 1200 0 0 0']);
-  // the streamer's own answer to ?, from arm.ino, is "q " then three positions each followed by a space, then the count
-  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '\?'\) \{ Serial\.print\(F\("q "\)\); for \(uint8_t i = 0; i < 3; i\+\+\) \{ Serial\.print\(position\[i\]\); Serial\.print\(' '\); \} Serial\.println\(count\(\)\)/);
+  // the streamer's own answer to ?, from arm.ino, is "q " then a position for each axis (three on the Uno) each followed by
+  // a space, then the count
+  assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '\?'\) \{ Serial\.print\(F\("q "\)\); for \(uint8_t i = 0; i < AXES; i\+\+\) \{ Serial\.print\(ax\[i\]\.position\); Serial\.print\(' '\); \} Serial\.println\(count\(\)\)/);
   assert.match(read(`${ARM}/firmware/arm/arm.ino`), /if \(c == '!'\) \{ head = tail = 0; running = false; waiting = false; chained = false; Serial\.println\(F\("ok"\)\)/);
 });
 
 test('firmware: the streamer refuses a block past MAX_RATE by name, and steps its axes on port D', () => {
   const ino = read(`${ARM}/firmware/arm/arm.ino`);
   assert.match(ino, /if \(b\.peak > MAX_RATE \|\| b\.entry > MAX_RATE \|\| b\.exit_ > MAX_RATE\) \{ Serial\.println\(F\("error: rate"\)\)/);
-  assert.match(ino, /const uint8_t STEP\[3\] = \{ 2, 3, 4 \}/, 'D2 to D4 are PD2 to PD4, as STEP_MASK has them');
-  assert.match(ino, /STEP_MASK\[3\] = \{ _BV\(PD2\), _BV\(PD3\), _BV\(PD4\) \}/);
+  assert.match(ino, /const uint8_t STEP\[AXES\] = \{ 2, 3, 4 \}/, 'D2 to D4 are PD2 to PD4, as STEP_MASK has them');
+  assert.match(ino, /STEP_MASK\[AXES\] = \{ _BV\(PD2\), _BV\(PD3\), _BV\(PD4\) \}/);
+  assert.match(ino, /#define STEP_PORT PORTD\n#define DIR_PORT PORTD/);
   assert.match(read(`${ARM}/STREAMER.md`), /\| `m` \|.*`error: rate` if a rate is past MAX_RATE \|/);
 });
 
@@ -96,25 +98,26 @@ test('firmware: the loop\'s ceiling is measured speeding up and slowing down as 
   assert.equal(ceilingLine(1, 'down', 4000), 'm 4000 0 0 50000 50000 50000 100000000 0 4000');
   // every step of an 'up' block changes the rate: a = 1e8 steps/s² over a gap of 1 / 50000 s adds 1e8 x 20e-6 = 2000
   // steps/s, and the rate is clamped back to the peak of 50000, so the division runs on all 4000 steps
-  assert.throws(() => ceilingLine(4, 'up'), /axes 4: a block steps 1, 2 or 3 axes/);
+  assert.throws(() => ceilingLine(4, 'up'), /axes 4: a block steps 1 to 3 axes/);
   assert.throws(() => ceilingLine(1, 'coast'), /phase "coast": one of cruise, up, down/);
   // the figures measured on the simulated Uno (arduino:avr 1.8.8, RATE_LIMIT=1000000), each the mean over a block's middle
-  // steps: the cruise alone is 2.65 times MAX_RATE (21237 / 8000), and the slowest, three axes slowing down, is
-  // 12428 / 8000 = 1.55 times (it was 8904, 1.11 times, before the speed was worked out every other step past 5000 steps/s)
-  const measured = { cruise: [24290, 22658, 21237], up: [13530, 13009, 12526], down: [13415, 12904, 12428] };
+  // steps, with each axis's figures worked out at a block's start (2026-11-25): the cruise alone is 3.30 times MAX_RATE
+  // (26384 / 8000), and the slowest, three axes slowing down, is 14082 / 8000 = 1.76 times (12428, 1.55 times, before;
+  // 8904, 1.11 times, before the speed was worked out every other step past 5000 steps/s)
+  const measured = { cruise: [35777, 30370, 26384], up: [16547, 15288, 14208], down: [16376, 15142, 14082] };
   const held = ceilingCheck(measured, 8000);
-  assert.deepEqual(held.slowest, { phase: 'down', axes: 3, rate: 12428 });
-  assert.equal(held.margin.toFixed(2), '1.55');
+  assert.deepEqual(held.slowest, { phase: 'down', axes: 3, rate: 14082 });
+  assert.equal(held.margin.toFixed(2), '1.76');
   assert.deepEqual(held.problems, []);
   // a loop fast at its cruise and slow while speeding up fails: the old check read the cruise's three axes only
   const slow = ceilingCheck({ ...measured, up: [8200, 7900, 7600] }, 8000);
   assert.deepEqual(slow.problems, [
     'the loop steps 2 axes at 7900 steps/s at most while speeding up, under MAX_RATE (8000)',
     'the loop steps 3 axes at 7600 steps/s at most while speeding up, under MAX_RATE (8000)']);
-  assert.throws(() => ceilingCheck({ cruise: [1, 2, 3], up: [1, 2] }, 8000), /ceilings\.up: three rates/);
+  assert.throws(() => ceilingCheck({ cruise: [1, 2, 3], up: [1, 2] }, 8000), /ceilings\.up: a rate for each count of axes from 1, as many as the cruise's \(3\)/);
   // and the simulation run in CI uses this check, not the cruise's three-axis figure alone
   const script = read('scripts/firmware.mjs');
-  assert.match(script, /ceilings: measure \? Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, \[1, 2, 3\]\.map\(\(a\) => ceiling\(fast, avr, a, p\)\)\]\)\)/);
+  assert.match(script, /ceilings: measure \? Object\.fromEntries\(PHASES\.map\(\(p\) => \[p, all\.map\(\(k\) => ceiling\(fast, avr, k \+ 1, p, board\)\)\]\)\)/);
   assert.match(script, /for \(const p of held\.problems\) fail\(p\)/);
   assert.doesNotMatch(script, /r\.ceilings\[2\] < max/);
 });
@@ -153,7 +156,7 @@ test('firmware: CI streams the shortest blocks the sender passes, and the stream
   assert.deepEqual(shortBlock(3, 'cruise', 8000, least), { n: 29, line: 'm 29 29 29 8000 8000 8000 100000 0 0', seconds: 29 / 8000 });
   assert.deepEqual(shortBlock(3, 'down', 8000, least), { n: 32, line: 'm 32 32 32 8000 8000 8000 100000000 0 32', seconds: 32 / 8000 });
   assert.throws(() => shortBlock(3, 'up', 8000, least), /phase "up": cruise or down/);
-  assert.throws(() => shortBlock(4, 'down', 8000, least), /axes 4/);
+  assert.throws(() => shortBlock(4, 'down', 8000, least), /axes 4: a block steps 1 to 3 axes/);
   const script = read('scripts/firmware.mjs');
   assert.match(script, /const least = \(l\) => send\.leastBlockTime\(l, \{ turnaround: 0 \}\)/);
   assert.match(script, /if \(b\.seconds > b\.planned \* 1\.01\) fail\(/);
@@ -175,9 +178,9 @@ test('firmware: CI streams the leg\'s gait through the streamer as well as the a
   assert.deepEqual(simulations(['--list']), []);
   assert.throws(() => simulations(['--simulate', arm[0], '--simulate', leg[0], '--machine', leg[1]]), /--simulate examples\/bench\/exports\/arm\/arm-test\.steps\.json needs --machine <file\.machine\.json> after it/);
   assert.throws(() => simulations(['--simulate', '--machine', arm[1]]), /--simulate needs a step file/);
-  // the loop's ceilings and the shortest blocks are measured once, on the first file; every file is streamed and counted
+  // the loop's ceilings and the shortest blocks are measured once on each board, on its first file; every file is streamed and counted
   const script = read('scripts/firmware.mjs');
-  assert.match(script, /measure: n === 0/);
+  assert.match(script, /const measure = !measured\.has\(board\); \/\/ the loop's ceilings and the shortest blocks: once on each board/);
   // the job writes the leg's machine and gait, then streams both files in one run
   const yml = read('.github/workflows/test.yml'), job = yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n  dimensions:'));
   assert.match(job, /cad\.mjs machine leg\/stand && node \.\.\/\.\.\/packages\/cad\/bin\/cad\.mjs plot leg\/stand\n/);
