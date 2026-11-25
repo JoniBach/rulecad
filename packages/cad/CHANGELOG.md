@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Unreleased
+## 0.7.87: robust: true
 ### Added
 
 - A problem's `robust: true` (schema first): optimised as made, a little thin and a little thick (topopt's robust

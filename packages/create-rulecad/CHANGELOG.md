@@ -5,6 +5,12 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.28: the agents' guide follows cad 0.7.87
+
+### Changed
+
+- the agents' guide follows cad 0.7.87. No printed size changes.
+
 ## 0.3.26: the agents' guide follows cad 0.7.78
 ### Changed
 

@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading.
 
-## Unreleased
+## 0.3.8: robust stress limits and mechanisms
 ### Added
 
 - `robust: true` on a problem: the design is optimised as three copies, as made, eroded (a little thin, threshold
