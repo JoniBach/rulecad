@@ -5,6 +5,20 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+### Changed
+
+- A solid (3D) optimised result's surface is thinned by default to within 0.1 mm of where it was drawn (`outline.reduce`,
+  which was off unless given). Every 3D result's mesh has fewer triangles and its volume and grams move a little: on the
+  bracket bench's printable result 75,592 triangles become 21,124, the volume 27.808 cm³ becomes 27.806 cm³ (0.007%
+  less) and the weight stays 35.04 g of PLA. `"outline": { "reduce": false }` keeps every triangle, as before. Results
+  are drawn again from their cached densities; nothing is optimised again.
+
+### Printed sizes that moved
+
+- An optimised solid's surface moves by no more than 0.1 mm (its outline's corners, as above). Bolt holes and kept
+  regions are cut and added exactly afterwards, so they do not move.
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 
