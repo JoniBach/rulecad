@@ -4,6 +4,21 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## Unreleased
+### Added
+
+- `butterflyPivot`, `butterflyPivotModel` and `butterflyBeams` (issue #74): the butterfly pivot (Henein et al. 2003),
+  four blade pairs in series turning about one axis, each a quarter of the way, their drifts cancelling. Printed flat
+  in one piece; the base has two screw holes. The model gives the stiffness, the strain, the angle a strain allows and
+  the drift from the beam solver, beside one pair's (`pair`). Bad input is refused by name.
+- `rollingJoint` and `rollingJointModel` (issue #74): the compliant rolling-contact joint (CORE). Two rollers alike,
+  printed standing, and two bands printed flat, each ending in a bead that slides into a roller's pocket. The model
+  gives the bands' strain t / 2ρ, the same at every angle, the range (where the drawn outlines first meet), the pull
+  a band takes and the grams.
+- `xyThetaStage` and `xyThetaStageModel` (issue #75): the three-axis stage, the XY stage with a cartwheel on its
+  stage (x, y and a turn about z), one piece printed flat. Its stiffness at the hub includes the guides turning.
+- No printed size of an existing part moved.
+
 ## 0.5.12: folding sheets and the Miura fold (#78)
 ### Added
 
