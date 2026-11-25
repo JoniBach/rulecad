@@ -47,10 +47,13 @@ export function leastBlockTime(line, { turnaround = TURNAROUND } = {}) {
 }
 
 /** One step file as the protocol's lines, in order. @param {object} file
- * @param {{ pen?: { up: number, down: number }, axes?: number }} [o] axes: the streamer's (3 on the Uno, 8 on the Mega), a
- * number for each in a block's line */
-export function linesOf(file, { pen = { up: 90, down: 30 }, axes = 3 } = {}) {
+ * @param {{ pen?: { up: number, down: number }, axes?: number, names?: string[] }} [o] axes: the streamer's (3 on the Uno,
+ * 8 on the Mega), a number for each in a block's line; names: the machine's axes in order (cad machine's description),
+ * which the file's must match, so a file written for one machine never drives another's motors */
+export function linesOf(file, { pen = { up: 90, down: 30 }, axes = 3, names } = {}) {
   if (file?.format !== 'rulecad.steps/1') throw new Error(`not a step file (format is ${JSON.stringify(file?.format)}, wanted rulecad.steps/1)`);
+  const own = (file.axes || []).map((a) => a?.name);
+  if (names && own.every(Boolean) && (own.length > names.length || own.some((n, k) => n !== names[k]))) throw new Error(`the file's axes are ${own.join(', ')}, and the machine's are ${names.join(', ')}: this file was written for another machine (cad plot it for this one)`);
   if (file.axes.length > axes) throw new Error(`${file.axes.length} axes in the file, and the streamer has ${axes}${axes < STREAMERS.mega.axes ? ` (on an Uno; give --machine with a Mega 2560 as its controller for up to ${STREAMERS.mega.axes})` : ''}`);
   const lines = [];
   for (const b of file.blocks) {
@@ -140,7 +143,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const file = JSON.parse(fs.readFileSync(fileName, 'utf8')), machine = opt('machine') ? JSON.parse(fs.readFileSync(opt('machine'), 'utf8')) : null;
   // the whole file is checked before anything moves: a block refused halfway through a drawing would spoil it
   let r, lines, st;
-  try { st = streamerOf(machine); lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, { ...(machine?.pen ? { pen: machine.pen } : {}), axes: st.axes }), 'd']; } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
+  try { st = streamerOf(machine); lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, { ...(machine?.pen ? { pen: machine.pen } : {}), axes: st.axes, ...(machine ? { names: machine.axes.map((a) => a.name) } : {}) }), 'd']; } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   try { r = dryRun(lines, { machine }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   if (has('dry-run')) {
     if (!has('quiet')) for (const s of r.said) console.log(s);

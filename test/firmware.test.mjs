@@ -258,3 +258,17 @@ test('firmware: the quadruped\'s eight axes on a Mega 2560, the same streamer bu
   assert.match(script, /const board = boardOf\(JSON\.parse\(fs\.readFileSync\(run\.machine, 'utf8'\)\)\), hex = built\[`\$\{arm\.dir\} \$\{board\}`\]\?\.hex;/);
   assert.match(read(`${ARM}/STREAMER.md`), /## Eight axes on a Mega 2560/);
 });
+
+test('the sender refuses a step file written for another machine: its axes must be the machine\'s, by name and in order', async () => {
+  const send = await import(pathToFileURL(`${ROOT}${ARM}/send.mjs`).href);
+  // the stand's gait (hip and knee) sent with the quadruped's machine would drive fl_hd and fl_kd, the front left leg
+  const file = (names) => ({ format: 'rulecad.steps/1', axes: names.map((name) => ({ name })), blocks: [{ type: 'move', steps: [10, 0], rate: { entry: 100, peak: 100, exit: 100, accel: 1000, up: 0, down: 0 } }] });
+  const quad = ['fl_hd', 'fl_kd', 'fr_hd', 'fr_kd', 'bl_hd', 'bl_kd', 'br_hd', 'br_kd'];
+  assert.throws(() => send.linesOf(file(['hd', 'kd']), { axes: 8, names: quad }), /the file's axes are hd, kd, and the machine's are fl_hd, fl_kd, .*written for another machine/);
+  assert.throws(() => send.linesOf(file(['fl_kd', 'fl_hd']), { axes: 8, names: quad }), /written for another machine/);
+  // the machine's own first axes, or a file with no names (older files), are sent as before
+  assert.ok(send.linesOf(file(['fl_hd', 'fl_kd']), { axes: 8, names: quad }).length > 0);
+  assert.ok(send.linesOf({ ...file(['a', 'b']), axes: [{}, {}] }, { axes: 8, names: quad }).length > 0);
+  // and the command passes the machine's names in
+  assert.match(read(`${ARM}/send.mjs`), /axes: st\.axes, \.\.\.\(machine \? \{ names: machine\.axes\.map\(\(a\) => a\.name\) \} : \{\}\) \}\)/);
+});

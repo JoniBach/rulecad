@@ -6928,3 +6928,16 @@ test('the quadruped\'s eight axes on one controller: cad machine reads the Mega 
     assert.deepEqual([qty('arduino-mega-2560'), qty('driver-breakout'), qty('drv8825')], [1, 8, 8]);
   } finally { done(); }
 });
+
+test('the wiring sheet names a Mega slot\'s enable pin, not its home switch, on a driver\'s signal wire; a shield\'s axis keeps its limit pin', async () => {
+  const { pinsAt } = await import('./lib/wires.mjs');
+  const entries = (set, map) => Object.entries(map).map(([k, value]) => ({ name: `${set}.${k}`, value }));
+  const mega = { id: 'mega', bought: { part: 'board', set: 'arduino-mega-2560' }, built: { entries: entries('arduino-mega-2560', { step_pin_s0: 'D22', dir_pin_s0: 'D37', limit_pin_s0: 'A8', enable_pin: 'D38' }) } };
+  const shield = { id: 'shield', bought: { part: 'board', set: 'cnc-shield-v3' }, built: { entries: entries('cnc-shield-v3', { step_pin_x: 'D2', dir_pin_x: 'D5', limit_pin_x: 'D9', enable_pin: 'D8' }) } };
+  const s = { objects: [mega, shield] };
+  // a breakout's EN, STEP, DIR and GND go to S0: the switch on A8 is a wire of its own, and EN is D38 for every slot
+  assert.equal(pinsAt({ from: 'fl_board1.centre', to: 'mega.S0' }, s), 'step D22, dir D37, enable D38 (every slot\'s)');
+  // the shield's X plug carries its limit switch's pin, as before
+  assert.equal(pinsAt({ from: 'm0.connector', to: 'shield.X' }, s), 'step D2, dir D5, limit D9');
+  assert.equal(pinsAt({ from: 'psu.terminals', to: 'fl_board1.bottom' }, s), null);
+});

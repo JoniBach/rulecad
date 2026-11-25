@@ -52,12 +52,17 @@ function currentOf(w, s, top, signal) {
 }
 
 // A wire ending on a board's axis connector: the board's pins for that axis, from its rule set
-function pinsAt(w, s) {
+export function pinsAt(w, s) {
   for (const end of [w.from, w.to]) {
     const [id, anchor] = String(end).split('.'), o = s.objects.find((x) => x.id === id && x.bought?.part === 'board'), e = o?.built.entries;
     if (!e || !/^[A-Z]\d?$/.test(anchor ?? '')) continue; // (a shield's X, Y, Z; a Mega's S0 to S7)
     const pin = (k) => e.find((x) => x.name === `${o.bought.set}.${k}_pin_${anchor.toLowerCase()}`)?.value;
-    if (pin('step')) return `step ${pin('step')}, dir ${pin('dir')}${pin('limit') ? `, limit ${pin('limit')}` : ''}`;
+    if (!pin('step')) continue;
+    // A Mega's slots (S0 to S7) go to driver boards of their own: the wire carries the driver's EN, STEP, DIR and GND, every
+    // slot's EN on the one enable pin, and the axis's home switch is a wire of its own. A shield's axis carries its limit pin
+    const en = /^S\d+$/.test(anchor) ? e.find((x) => x.name === `${o.bought.set}.enable_pin`)?.value : null;
+    if (en) return `step ${pin('step')}, dir ${pin('dir')}, enable ${en} (every slot's)`;
+    return `step ${pin('step')}, dir ${pin('dir')}${pin('limit') ? `, limit ${pin('limit')}` : ''}`;
   }
   return null;
 }

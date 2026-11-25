@@ -83,12 +83,19 @@ one of the Mega's slots, `S0` to `S7`, the streamer's axes 0 to 7. `cad machine 
 The drivers' EN pins all go to D38. STEP on one port (port A) lets the streamer step every axis due on a tick in one
 write, and DIR on another (port C) sets them all in one write at a block's start.
 
-1. Flash the streamer for the Mega: `arduino-cli compile --fqbn arduino:avr:mega firmware/leg` then
+1. Set each breakout's microstep switches to 1/8, as `cad machine` counts them (1600 steps a turn): M0 and M1 on,
+   M2 off (the DRV8825's mode table: MODE0 and MODE1 high is 1/8). The breakouts come with every switch on, which is
+   1/32: left like that, every joint moves a quarter as far as the file asks. Set each driver's current too, as on the
+   stand (its trimmer, Vref = current / 2 at 0.1 ohm).
+2. Wire a 12 V supply's 12 V and ground to each breakout's motor terminals. Eight motors take about 6 A, four times
+   the stand's 1.5 A for two (an estimate, until measured), past the bench supply: the quadruped lists a Mean Well
+   LRS-100-12 (8.5 A) to buy.
+3. Flash the streamer for the Mega: `arduino-cli compile --fqbn arduino:avr:mega firmware/leg` then
    `arduino-cli upload -p <port> --fqbn arduino:avr:mega firmware/leg`. It says `streamer ready, 8 axes`.
-2. `npx cad machine leg/quadruped` and `npx cad plot leg/quadruped`: three cycles of the trot from the pose `standing`.
-3. Dry run: `node projects/leg/send.mjs exports/leg/quadruped-gait.steps.json --machine exports/leg/quadruped.machine.json --dry-run`.
+4. `npx cad machine leg/quadruped` and `npx cad plot leg/quadruped`: three cycles of the trot from the pose `standing`.
+5. Dry run: `node projects/leg/send.mjs exports/leg/quadruped-gait.steps.json --machine exports/leg/quadruped.machine.json --dry-run`.
    Without `--machine` the sender writes for the Uno's three axes and refuses the file.
-4. Stand the robot in its pose, then send with `--port <port>`. A sender whose lines are for one board refuses to send
+6. Stand the robot in its pose, then send with `--port <port>`. A sender whose lines are for one board refuses to send
    to a streamer that says it was built for the other.
 
 ## Homing

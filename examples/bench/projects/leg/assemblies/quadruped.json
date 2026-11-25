@@ -110,6 +110,7 @@
     {"id": "br_shin", "object": "shin"},
     {"id": "br_pad", "object": "pad"},
     {"id": "mega", "bought": "arduino-mega-2560", "at": [0, 0, 20]},
+    {"id": "psu", "bought": "supply-12v", "at": [0, 150, 20]},
     {"id": "fl_board1", "bought": "driver-breakout", "at": [69, 19.5, 48]},
     {"id": "fl_d1", "bought": "drv8825", "at": [69, 19.5, 58.1]},
     {"id": "fl_board2", "bought": "driver-breakout", "at": [23, 19.5, 48]},
@@ -331,7 +332,15 @@
     {"id": "br_hd_motor", "from": "br_m1.connector", "to": "br_board1.top", "gauge": "awg24", "colour": "black, red, green, blue", "connectors": ["JST-XH 4 pin", "screw terminal"]},
     {"id": "br_hd_signal", "from": "br_board1.centre", "to": "mega.S6", "gauge": "awg26", "conductors": 4, "colour": "white, yellow, green, black", "connectors": ["Dupont 4 pin", "Dupont"], "note": "EN, STEP, DIR and GND: the streamer's axis 6"},
     {"id": "br_kd_motor", "from": "br_m2.connector", "to": "br_board2.top", "via": ["br_thigh.cable"], "gauge": "awg24", "colour": "black, red, green, blue", "connectors": ["JST-XH 4 pin", "screw terminal"]},
-    {"id": "br_kd_signal", "from": "br_board2.centre", "to": "mega.S7", "gauge": "awg26", "conductors": 4, "colour": "white, yellow, green, black", "connectors": ["Dupont 4 pin", "Dupont"], "note": "EN, STEP, DIR and GND: the streamer's axis 7"}
+    {"id": "br_kd_signal", "from": "br_board2.centre", "to": "mega.S7", "gauge": "awg26", "conductors": 4, "colour": "white, yellow, green, black", "connectors": ["Dupont 4 pin", "Dupont"], "note": "EN, STEP, DIR and GND: the streamer's axis 7"},
+    {"id": "fl_board1_power", "from": "psu.terminals", "to": "fl_board1.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "fl_board2_power", "from": "psu.terminals", "to": "fl_board2.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "fr_board1_power", "from": "psu.terminals", "to": "fr_board1.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "fr_board2_power", "from": "psu.terminals", "to": "fr_board2.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "bl_board1_power", "from": "psu.terminals", "to": "bl_board1.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "bl_board2_power", "from": "psu.terminals", "to": "bl_board2.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "br_board1_power", "from": "psu.terminals", "to": "br_board1.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"},
+    {"id": "br_board2_power", "from": "psu.terminals", "to": "br_board2.bottom", "gauge": "awg22", "colour": "red, black", "conductors": 2, "current": 2, "connectors": ["Ring terminal", "Screw terminal"], "note": "12 V into the breakout's motor supply terminals (VMOT and GND), with its 100 uF capacitor across them"}
   ],
   "gait": {"legs": ["fl_shin.tip", "fr_shin.tip", "bl_shin.tip", "br_shin.tip"], "pattern": "trot", "stride": "leg.stride", "lift": "leg.lift", "period": 2, "height": "leg.stance", "mass": "leg.robot_mass", "clearance": 11},
   "poses": { "standing": {"fl_hd": -3171.4, "fl_kd": 2597, "fr_hd": -5587.7, "fr_kd": -2236, "bl_hd": -5587.7, "bl_kd": -2236, "br_hd": -3171.4, "br_kd": 2597} }
