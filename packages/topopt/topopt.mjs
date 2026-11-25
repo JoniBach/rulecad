@@ -60,10 +60,15 @@ export { jsBackend };
  *   middle planes across each axis in mirror ('x', 'xz', …), and the same each half or quarter turn about its middle
  *   (about axis in 3D, z by default); keep and avoid regions stay as given
  * @property {'x' | 'y' | 'z'} [extrude] one section all along this axis: cut from a bar or plate of the profile
- * @property {string} [mill] milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is
- *   as solid as every cell between it and that side
+ * @property {string | string[]} [mill] milled from this side ('+z': the tool cuts down from above): no undercuts, so a
+ *   cell is as solid as every cell between it and that side. Or from several (['+z', '-z']: a setup each): a cell is
+ *   left where no side's tool reaches it
+ * @property {number} [tool] with mill, the tool's radius (mm, a flat end mill): no pocket narrower than the tool, and
+ *   every inside corner seen from the tool rounded to at least it. At least a cell
  * @property {string | { draw: 'x' | 'y' | 'z', parting?: number }} [cast] cast in a mould drawn off this way ('+z'),
  *   or in two halves drawn off both ways along draw from a parting plane (mm along it, default the space's middle)
+ * @property {number} [draft] with cast, the draft (degrees): the part narrows towards the side it is drawn off, a cell
+ *   every whole number of layers in 1 / tan(draft), so at least this; the grid must be deep enough for one step
  */
 
 /**
@@ -175,7 +180,7 @@ export function discretise(p) {
     if (p.input_spring) for (const m of ins) springs[dim * m + inDir] += p.input_spring / ins.length;
     output = { force: L, spring: o.spring || 0, input: loads[0].force };
   }
-  return clash({
+  return made(clash({
     grid: size, origin, passive, fixed, loads, ...(output ? { output, springs } : {}),
     material: p.material, thickness: p.thickness, volume: p.volume,
     // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
@@ -183,8 +188,17 @@ export function discretise(p) {
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (stress && !p.output ? 1000 : dim === 3 ? 500 : 300),
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(stress ? { stress, ...(p.strain != null ? { strain: p.strain } : {}) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
+    ...(p.tool ? { tool: p.tool } : {}), ...(p.draft ? { draft: p.draft } : {}),
     regions: { keep, avoid },
-  });
+  }));
+}
+
+// A milled or cast problem's process, checked by name on its grid before any maths (the filter itself is made by model)
+function made(spec) {
+  if (spec.tool != null && !(spec.tool > 0)) throw new Error(`a tool's radius is a distance above 0 mm (got ${spec.tool})`);
+  if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(spec.tool)} mm or less, or leave the tool out`);
+  processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
+  return spec;
 }
 
 // A symmetry the process can't keep: a mirror or turn that swaps the tool's side, the mould's draw or the build
@@ -192,7 +206,10 @@ export function discretise(p) {
 // sides at once, and the tie and the process would pull it lopsided. Refused by name; a mould in two halves parted at
 // the grid's middle maps onto itself under a mirror or half turn across its draw, so that one stands.
 function clash(spec) {
-  const sym = spec.symmetry, way = spec.overhang || spec.mill || spec.cast;
+  const sym = spec.symmetry;
+  // (milled from several sides: each side's tool is checked as if it were the only one)
+  if (Array.isArray(spec.mill)) { for (const side of spec.mill) clash({ ...spec, mill: side }); return spec; }
+  const way = spec.overhang || spec.mill || spec.cast;
   if (!sym || !way || way === 'none') return spec;
   const g = spec.grid, n = g.nz > 1 ? [g.nx, g.ny, g.nz] : [g.nx, g.ny], dim = n.length, names = 'xyz'.slice(0, dim);
   const two = typeof way === 'object', axis = two ? way.draw : String(way).at(-1), ax = names.indexOf(axis);
@@ -435,15 +452,23 @@ export function tieFilter({ nx, ny, nz = 1 }, { mirror = '', turns = 1, axis, ex
  * same of a casting by a sum along the line). With parting, a mould in two halves: the cells from the parting layer
  * on (towards +) are drawn off one way, those before it the other. apply gives the densities the process can make;
  * adjoint carries sensitivities back through it.
+ * With draft (degrees, a mould's), the part also narrows towards the side it is drawn off: every `every` layers in
+ * from that side, a cell is at least as solid as its neighbours (the 3 or 9 round it, across the axis) in the layer
+ * before, so a wall steps out a cell each `every` layers, `every` the whole layers in 1 / tan(draft): at least the
+ * draft asked, at the grid's resolution. Refused by name when no step fits in the grid (a degree on a coarse grid).
  * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the side the tool comes from, or (with
  * parting) the draw axis, 'z' @param {number} [parting] with a two-part mould, the first layer of the + half (0 to n)
+ * @param {{ draft?: number }} [o]
  */
-export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
+export function drawFilter({ nx, ny, nz = 1 }, from, parting, { draft } = {}) {
   const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
   const two = parting != null, sign = from[0] === '-' ? -1 : 1;
   if (ax < 0 || ax >= dim || (!two && !/^[+-]/.test(from))) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'}${two ? ', or with a parting plane the draw axis, x, y or z' : ''} (got ${from})`);
   if (two && !(Number.isInteger(parting) && parting >= 0 && parting <= n[ax])) throw new Error(`the parting plane is a layer from 0 to ${n[ax]} (got ${parting})`);
-  const stride = [1, nx, nx * ny][ax], eps = 1e-6;
+  const strides = [1, nx, nx * ny], stride = strides[ax], eps = 1e-6;
+  // A draft: a step out every `every` layers; the longest run of layers a half has must hold at least one step
+  const every = draftEvery(draft), longest = two ? Math.max(parting, n[ax] - parting) : n[ax];
+  if (every && every >= longest) throw new Error(`a draft of ${fmt(draft)}° steps out a cell every ${every} layers, and this grid has ${longest} along ${'xyz'[ax]}${two ? ' in its deeper half' : ''}: give it more than ${every} layers there (smaller cells), or more draft`);
   // Each line along the axis as a list of chains, each from the side its tool or mould half comes from inwards
   const chains = [];
   for (let e = 0; e < cells; e++) {
@@ -453,7 +478,7 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
     else chains.push(Int32Array.from(sign > 0 ? [...line].reverse() : line));
   }
   const slopeIn = new Float64Array(cells), slopePrev = new Float64Array(cells);
-  return {
+  if (!every) return {
     apply(x, out) {
       for (const c of chains) {
         let v = 0;
@@ -482,6 +507,185 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
       return out;
     },
   };
+  // With a draft, layer by layer from each half's side: what a cell takes from the layer before is that layer's cell
+  // under it, or on a step layer the smooth maximum of it and its neighbours across the axis (a chain of pairwise
+  // smooth maxima, each never below the larger, at most 1)
+  const across = [0, 1, 2].filter((a) => a < dim && a !== ax), depth = new Int32Array(cells), prev = new Int32Array(cells).fill(-1), order = [];
+  for (const c of chains) for (let k = 0; k < c.length; k++) { depth[c[k]] = k; if (k) prev[c[k]] = c[k - 1]; }
+  for (let k = 0; k < n[ax]; k++) for (const c of chains) if (k < c.length) order.push(c[k]); // layer by layer
+  const ring = new Array(cells); // a step layer's cell: the cells before it, its own first
+  for (const e of order) {
+    if (!depth[e] || depth[e] % every) continue;
+    const p = prev[e], list = [p], co = across.map((a) => Math.floor(p / strides[a]) % n[a]);
+    const offs = across.length === 1 ? [[-1], [1]] : [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+    for (const o of offs) if (o.every((d, i) => co[i] + d >= 0 && co[i] + d < n[across[i]])) list.push(p + o.reduce((s, d, i) => s + d * strides[across[i]], 0));
+    ring[e] = { list: Int32Array.from(list), a: new Float64Array(list.length), b: new Float64Array(list.length) };
+  }
+  const v = new Float64Array(cells), carry = new Float64Array(cells);
+  const smax = (a, b) => { const d = a - b, root = Math.sqrt(d * d + eps); let s = 0.5 * (a + b + root), da = 0.5 * (1 + d / root), db = 0.5 * (1 - d / root); if (s >= 1) { s = 1; da = db = 0; } return [s, da, db]; };
+  return {
+    every,
+    apply(x, out) {
+      for (const e of order) {
+        if (!depth[e]) { v[e] = x[e]; slopeIn[e] = 1; slopePrev[e] = 0; out[e] = v[e]; continue; }
+        let held = v[prev[e]];
+        const r = ring[e];
+        if (r) { held = v[r.list[0]]; for (let k = 1; k < r.list.length; k++) { const [s, da, db] = smax(held, v[r.list[k]]); r.a[k] = da; r.b[k] = db; held = s; } }
+        const [s, dp, dx] = smax(held, x[e]);
+        slopePrev[e] = dp; slopeIn[e] = dx; v[e] = out[e] = s;
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      carry.fill(0);
+      for (let i = order.length - 1; i >= 0; i--) {
+        const e = order[i], total = g[e] + carry[e];
+        out[e] = total * slopeIn[e];
+        if (!depth[e]) continue;
+        let gh = total * slopePrev[e];
+        const r = ring[e];
+        if (!r) { carry[prev[e]] += gh; continue; }
+        for (let k = r.list.length - 1; k >= 1; k--) { carry[r.list[k]] += gh * r.b[k]; gh *= r.a[k]; }
+        carry[r.list[0]] += gh;
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A milling tool's size: a flat end mill of radius r (cells) cutting from one side reaches a cell only if its whole
+ * end fits beside it, so in each layer across the tool's axis the part is closed by a disc of that radius (dilated,
+ * then eroded: Sigmund 2007's morphology filters, the smooth maximum and minimum as the log of a mean of
+ * exponentials). A pocket narrower than the tool fills, and every inside corner seen from the tool is rounded to at
+ * least its radius. After the draw filter, whose layers only grow away from the tool, this is exactly what a flat end
+ * mill can cut (Langelaar 2019 models the tool's size the same way). Beyond the grid is empty: the tool may run past
+ * its edge. apply gives the densities; adjoint carries sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the tool's side, '+z'
+ * @param {number} radius the tool's radius, in cells (at least 1)
+ */
+export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
+  if (ax < 0 || ax >= dim || !/^[+-][xyz]$/.test(from)) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'} (got ${from})`);
+  if (!(radius >= 1)) throw new Error(`a tool's radius under a cell changes nothing on the grid (got ${fmt(radius)} cells): give a bigger tool or smaller cells`);
+  // The layer's own axes (u, and v in 3D), padded by R cells each side, and the disc's offsets
+  const [ua, va] = [0, 1, 2].filter((a) => a < dim && a !== ax), R = Math.floor(radius + 1e-9), strides = [1, nx, nx * ny];
+  const nu = n[ua], nv = va == null ? 1 : n[va], pu = nu + 2 * R, pv = va == null ? 1 : nv + 2 * R, pad = va == null ? 0 : R;
+  const offs = [];
+  for (let dv = -pad; dv <= pad; dv++) for (let du = -R; du <= R; du++) if (du * du + dv * dv <= radius * radius + 1e-9) offs.push([du, dv]);
+  const N = offs.length, beta = 10 * Math.log(N) + 10; // (a lone solid cell dilates to about 1 − ln N / beta: 0.9 or more)
+  // Each cell of a layer, padded: its neighbours' places in the padded layer (for the erosion) and in the grid (for
+  // the dilation: -1 beyond it, which is empty)
+  const P = pu * pv, layers = n[ax], inGrid = new Int32Array(P * N).fill(-1);
+  const cellOf = (L, u, v) => L * strides[ax] + u * strides[ua] + (va == null ? 0 : v * strides[va]);
+  for (let pv0 = 0; pv0 < pv; pv0++) for (let pu0 = 0; pu0 < pu; pu0++) offs.forEach(([du, dv], k) => {
+    const u = pu0 - R + du, v = pv0 - pad + dv;
+    if (u >= 0 && u < nu && v >= 0 && v < nv) inGrid[(pv0 * pu + pu0) * N + k] = u + v * nu; // (the layer's own index)
+  });
+  const dil = new Float64Array(layers * P), sumD = new Float64Array(layers * P), sumE = new Float64Array(cells), lx = new Float64Array(nu * nv);
+  const gD = new Float64Array(P), xs = new Float64Array(cells); // (xs: what apply was last given, for adjoint)
+  const padded = (u, v) => (v + pad) * pu + (u + R);
+  return {
+    apply(x, out) {
+      xs.set(x);
+      for (let L = 0; L < layers; L++) {
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) lx[u + v * nu] = x[cellOf(L, u, v)];
+        // Dilated: the log of the mean of exp(beta x) over the disc, on the padded layer
+        for (let p = 0; p < P; p++) {
+          let s = 0;
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; s += q < 0 ? 1 : Math.exp(beta * lx[q]); }
+          sumD[L * P + p] = s; dil[L * P + p] = Math.log(s / N) / beta;
+        }
+        // Eroded: one less the dilation of one less, over the disc round each cell in the grid
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+          const c = padded(u, v), e = cellOf(L, u, v);
+          let s = 0;
+          for (const [du, dv] of offs) s += Math.exp(beta * (1 - dil[L * P + c + dv * pu + du]));
+          sumE[e] = s; out[e] = 1 - Math.log(s / N) / beta;
+        }
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      for (let L = 0; L < layers; L++) {
+        gD.fill(0);
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+          const c = padded(u, v), e = cellOf(L, u, v);
+          for (const [du, dv] of offs) { const p = c + dv * pu + du; gD[p] += (g[e] * Math.exp(beta * (1 - dil[L * P + p]))) / sumE[e]; }
+        }
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) out[cellOf(L, u, v)] = 0;
+        for (let p = 0; p < P; p++) {
+          if (!gD[p]) continue;
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; if (q >= 0) { const e = cellOf(L, q % nu, Math.floor(q / nu)); out[e] += (gD[p] * Math.exp(beta * xs[e])) / sumD[L * P + p]; } }
+        }
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * What a process can make, as one filter: milled from one side or more (mill: '+z' or ['+z', '-x']), each with the
+ * tool's radius (tool, cells) if given, or cast (cast: '+z', or { draw, parting } with parting a layer) with its
+ * draft (degrees). Milled from several sides (Langelaar 2019's multi-axis machining, one setup a side), a cell is
+ * left only if no side's tool can reach it: the smooth minimum of what each side leaves (never above the smaller, at
+ * least 0). One side and no tool is drawFilter itself. Null for a part neither milled nor cast.
+ * @param {{ nx: number, ny: number, nz?: number }} size
+ * @param {{ mill?: string | string[], tool?: number, cast?: string | { draw: string, parting: number }, draft?: number }} o
+ */
+export function processFilter(size, { mill, tool, cast, draft }) {
+  if (tool && !mill) throw new Error('a tool\'s radius is for a milled part (mill): a mould has no tool');
+  if (draft && !cast) throw new Error(`a draft is for a cast or moulded part (cast)${mill ? ': a milled part\'s walls come out straight down the tool\'s side' : ''}`);
+  if (!mill && !cast) return null;
+  const cells = size.nx * size.ny * (size.nz || 1), eps = 1e-6;
+  if (cast) return typeof cast === 'string' ? drawFilter(size, cast, undefined, { draft }) : drawFilter(size, cast.draw, cast.parting, { draft });
+  const sides = [mill].flat();
+  if (!sides.length) throw new Error('mill: give the side or sides the tool comes from, \'+z\' or [\'+z\', \'-x\']');
+  const twice = sides.find((s, i) => sides.indexOf(s) !== i);
+  if (twice) throw new Error(`mill: the side ${twice} is given twice`);
+  const paths = sides.map((s) => ({ draw: drawFilter(size, s), tool: tool ? toolFilter(size, s, tool) : null, a: new Float64Array(cells), b: new Float64Array(cells) }));
+  if (paths.length === 1 && !tool) return paths[0].draw;
+  // Each side's leavings, and the running smooth minimum's slopes (k: the minimum so far, against side k's)
+  const slopeRun = paths.map(() => new Float64Array(cells)), slopeSide = paths.map(() => new Float64Array(cells)), g1 = new Float64Array(cells), g2 = new Float64Array(cells);
+  const run = new Float64Array(cells), add = new Float64Array(cells);
+  const one = (p, x) => { p.draw.apply(x, p.a); if (p.tool) p.tool.apply(p.a, p.b); else p.b.set(p.a); return p.b; };
+  const oneBack = (p, g, out) => { if (p.tool) { p.tool.adjoint(g, g1); p.draw.adjoint(g1, out); } else p.draw.adjoint(g, out); return out; };
+  return {
+    sides,
+    apply(x, out) {
+      out.set(one(paths[0], x));
+      for (let k = 1; k < paths.length; k++) {
+        const b = one(paths[k], x), sr = slopeRun[k], ss = slopeSide[k];
+        for (let e = 0; e < cells; e++) {
+          const d = out[e] - b[e], root = Math.sqrt(d * d + eps);
+          let s = 0.5 * (out[e] + b[e] - root);
+          sr[e] = 0.5 * (1 - d / root); ss[e] = 0.5 * (1 + d / root);
+          if (s <= 0) { s = 0; sr[e] = ss[e] = 0; }
+          out[e] = s;
+        }
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      run.set(g); out.fill(0);
+      for (let k = paths.length - 1; k >= 1; k--) {
+        for (let e = 0; e < cells; e++) { g2[e] = run[e] * slopeSide[k][e]; run[e] *= slopeRun[k][e]; }
+        oneBack(paths[k], g2, add);
+        for (let e = 0; e < cells; e++) out[e] += add[e];
+      }
+      oneBack(paths[0], run, add);
+      for (let e = 0; e < cells; e++) out[e] += add[e];
+      return out;
+    },
+  };
+}
+
+// A draft (degrees) as the whole layers a wall takes to step out a cell: 1 / tan, rounded down, so at least the draft
+// asked (0: no draft). Refused by name outside 0 to 45°.
+function draftEvery(draft) {
+  if (draft == null || draft === 0) return 0;
+  if (!(draft > 0 && draft <= 45)) throw new Error(`a draft is an angle in degrees, more than 0 and up to 45 (got ${draft})`);
+  return Math.max(1, Math.floor(1 / Math.tan((draft * Math.PI) / 180) + 1e-9));
 }
 
 /**
@@ -503,7 +707,8 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
   const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
   // Milled or cast: no undercuts from the tool's side or the mould's draw; symmetric or extruded: cells tied together
-  const draw = spec.mill ? drawFilter(spec.grid, spec.mill) : spec.cast ? (typeof spec.cast === 'string' ? drawFilter(spec.grid, spec.cast) : drawFilter(spec.grid, spec.cast.draw, spec.cast.parting)) : null;
+  // (milled from more than one side, or with a tool's size, or cast with a draft: processFilter combines them)
+  const draw = processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
   const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
@@ -1032,13 +1237,18 @@ export function bounds(r) {
 
 /**
  * Where a result has undercuts: empty cells (below iso) with a solid one between them and the tool's side, along the
- * line to it (or, with parting, to their half's side). What drawFilter prevents, measured on densities as made.
+ * line to it (or, with parting, to their half's side). What drawFilter prevents, measured on densities as made. From
+ * several sides (from: ['+z', '-x']), the cells no side reaches; with tool (radius, cells), also the cells the tool's
+ * end can't get to (a pocket narrower than it, an inside corner tighter); with draft (degrees, a mould's), the cells
+ * a wall without that draft would leave behind. The same filters as the optimiser's, on the result made solid or empty.
  * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
- * @param {{ from: string, parting?: number, iso?: number }} o
+ * @param {{ from: string | string[], parting?: number, iso?: number, tool?: number, draft?: number }} o
  * @returns {{ count: number, cells: number[] }} the hidden cells (indices)
  */
-export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5 }) {
-  const f = drawFilter({ nx, ny, nz }, from, parting), solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
+export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5, tool, draft }) {
+  const size = { nx, ny, nz }, cast = parting != null || draft;
+  const f = cast ? processFilter(size, { cast: parting != null ? { draw: from, parting } : from, draft }) : processFilter(size, { mill: from, tool });
+  const solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
   const cells = [];
   for (let e = 0; e < solid.length; e++) if (!solid[e] && made[e] >= 0.5) cells.push(e);
   return { count: cells.length, cells };
