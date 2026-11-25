@@ -1582,7 +1582,7 @@ A part made another way says so in place of `overhang` (one process to a problem
 - **Cast or moulded:** `"cast": "+z"` for a mould drawn off one way, or `"cast": { "draw": "z", "parting": 6 }` for
   two halves drawn off both ways from a parting plane (mm along the axis; the space's middle when left out). `"draft": 15`
   (degrees) narrows the part towards the side it is drawn off: a wall steps a cell out every whole number of layers
-  in 1 / tan(draft), so at least the draft, and `cad optimise` says the angle made (15° on cells is a step every 3
+  in 1 / tan(draft), so at least the draft, and `cad optimise` says the angle made (15° is a step every 3
   layers, 18.43°). A draft too shallow for the grid (3° needs 19 layers) is refused by name: draw it on the finished
   part instead (`mould-injection`: a degree or so).
 - **Printed in a metal powder bed:** `"overhang": "+z"` with `"voids": "refused"`. Powder left in an enclosed void
