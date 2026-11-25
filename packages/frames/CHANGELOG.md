@@ -2,6 +2,16 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## 0.1.13: the printed slot-nut carrier as a guide's hardware
+### Added
+
+- Issue 308: `guideFit(m, profile, { nut: 'printed' })` puts the rail's screws into a printed carrier strip (one hex
+  nut a hole, at the rail's pitch) and passes naming it, or fails where no carrier for the thread fits the slot. Its
+  result has `carrier`. The failing text where no nut is sold now ends "or ask for it with nut: 'printed'".
+- Motedis' B-type 10 mm roll-in nuts (issue 308), M4 to M8, are in the catalogue. Rexroth's 10 mm slot
+  (4040-bosch-l, and 4040-motedis-b10, which takes Rexroth's nuts) now takes them, so it takes printed brackets and
+  gussets (on M8 nuts) where it was refused for want of any nut.
+
 ## 0.1.12: slot 10 nuts and printed carriers
 ### Added
 

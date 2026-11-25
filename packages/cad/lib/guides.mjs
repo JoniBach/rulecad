@@ -215,7 +215,16 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
     const fit = guideFit(m, B.profile, { face, from, beam: B.length, keep, ...(g.nut ? { nut: g.nut } : {}), given: givenFor(context, B.profile.name) });
     const rid = id, record = { id, kind: 'rail', beam: bid, face: q.name, from, length, model: m, fit, carriages: [], joints: [], keep, note: g.note ?? null };
     added.push({ id: rid, bought: m.set, _guide: { part: 'rail', model: m }, at: `${bid}.${q.name}@${r3(from)}`, guideOf: id });
-    // its screws into the slot, at its holes: only where a nut is made for them (else guide.fit says why)
+    // its screws into the slot, at its holes: only where a nut is made for them (else guide.fit says why); or, with
+    // "nut": "printed", into hex nuts in a printed carrier strip in the slot under the rail, a nut under each hole
+    if (fit.carrier) {
+      const nid = `${id}-nuts`, c = fit.carrier;
+      if (ids.has(nid)) throw new Error(`${what}: ${nid} is an item already: give the guide another id`);
+      ids.add(nid);
+      added.push({ id: nid, fitting: { kind: 'nut-carrier', profile: B.profile.name, face, thread: m.rail.thread, count: c.count, ...(c.count > 1 ? { pitch: c.pitch } : {}) }, at: `${bid}.${q.name}@${r3(from + m.holes[0] - c.at[0])}`, guideOf: id });
+      fasten.push({ screw: `${m.rail.thread} cap`, through: [rid], into: nid, at: m.screws.map((x) => `${rid}.${x.name}`), note: `${id}: the rail into the hex nuts in ${nid}, a screw every ${mm(m.rail.pitch)} mm`, guideOf: id });
+      fits.push({ a: nid, b: bid, fastens: true, min: -100, note: `${nid} in ${bid}'s ${q.name} slot, held there by the rail's screws` });
+    }
     if (fit.nut) fasten.push({ screw: `${m.rail.thread} cap`, through: [rid], into: `${bid}.${q.name}`, at: m.screws.map((x) => `${rid}.${x.name}`), nut: g.nut ?? fit.nut.nutKind, note: `${id}: the rail into ${bid}'s ${q.name} slot, a screw every ${mm(m.rail.pitch)} mm`, guideOf: id });
     // the carriages, each on its own slide along the beam, from the start of its share of the rail
     const normal = [q.normal[0], q.normal[1], 0], terms = (() => { try { return railTerms(m, B.profile, { beam: B.length, face, given: givenFor(context, B.profile.name) }); } catch { return m.terms; } })();
