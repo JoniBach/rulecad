@@ -10,8 +10,8 @@ it comes from and when it was checked, so a design built on it can be traced and
 
 A value that varies, as a printed plastic's does with the printer and the spool, may also give the range it is found in:
 `"low"` and `"high"`, in its unit, low at most the value and high at least it (`cad rules check` holds them to that). The
-printed plastics' ranges are their data sheets' spread either side. Expressions read the value (`pla.strength`); to design
-to the weak end, take `low` from the set.
+printed plastics' ranges are their data sheets' spread either side. Expressions read the value as `pla.strength` and
+either end as `pla.strength.low` or `pla.strength.high`, so a part can be sized to the weak end of the range.
 
 | Set | What | Values |
 |---|---|---|

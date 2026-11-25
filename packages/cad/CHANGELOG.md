@@ -14,6 +14,11 @@ and head, the parts it passes through and the part it ends in.
   less) and the weight stays 35.04 g of PLA. `"outline": { "reduce": false }` keeps every triangle, as before. Results
   are drawn again from their cached densities; nothing is optimised again.
 
+### Added
+
+- A design's expressions read the ends of a rule's range (`pa_cf.strength_z.low`), and `cad why` explains one as the
+  rule it comes from.
+
 ### Printed sizes that moved
 
 - An optimised solid's surface moves by no more than 0.1 mm (its outline's corners, as above). Bolt holes and kept

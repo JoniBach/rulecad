@@ -3,6 +3,11 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## Unreleased
+### Changed
+
+- The README says how expressions read a range's ends (`pla.strength.low`). No value changed.
+
 ## 0.3.23: ABS, ASA and PA-CF with ranges
 ### Added
 

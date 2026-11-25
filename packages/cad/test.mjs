@@ -6902,3 +6902,19 @@ export function main (v) {
     assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
   } finally { done(); }
 });
+
+test('a design reads the weak end of a printed plastic\'s range (pa_cf.strength_z.low) in cad values, with its unit, and cad why says where it comes from', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/weak', { uses: ['pa_cf'], variables: {
+      // Bambu Lab PAHT-CF across the layers: 64 ± 3 MPa, so the weak end is 61 MPa; at half of it, 30.5 MPa
+      allowed: { value: 'pa_cf.strength_z.low / 2', unit: 'MPa', rule: 'Allowed stress across the layers, twice the margin on the weak end' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const all = JSON.parse(cad('values', 'demo/weak', '--json')).values, at = (n) => all.find((v) => v.name === n);
+    assert.equal(at('allowed').value, 30.5, JSON.stringify(at('allowed')));
+    const tree = JSON.parse(cad('why', 'demo/weak.allowed', '--json')), end = tree.reads[0];
+    assert.deepEqual([end.name, end.value, end.unit, end.reads[0].name, end.reads[0].value], ['pa_cf.strength_z.low', 61, 'MPa', 'pa_cf.strength_z', 64]);
+    assert.match(end.rule, /^the low end of the range pa_cf\.strength_z is found in/);
+    assert.match(end.source, /PAHT-CF/);
+  } finally { done(); }
+});
