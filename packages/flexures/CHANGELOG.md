@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased
+## 0.5.13: the butterfly pivot, the rolling-contact joint, an x, y and turn stage
 ### Added
 
 - `butterflyPivot`, `butterflyPivotModel` and `butterflyBeams` (issue #74): the butterfly pivot (Henein et al. 2003),
