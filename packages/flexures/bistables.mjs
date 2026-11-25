@@ -449,7 +449,7 @@ function squeezeMiddle(S, sq) {
 const holdAt = (S, sq, push, start) => { const e = equilibrium(S.sys, { held: new Map([...(S.tx == null ? [] : [[S.tx, -sq], [S.tx + 1, 0], [S.tx + 2, 0]]), [S.py, -push]]), start, iterations: 80 }); return { q: e.q, ok: e.converged, force: -e.reaction.get(S.py), strain: Math.max(...Object.values(e.strain)) }; };
 
 // The strip's stiffness at its middle alone, its pad free to turn (below 0), and the spring sized to it: the leaves as
-// drawn are a little stiffer than 2 E W t³ / l³ (their rounds), so unless a length is given, a few secant steps on l
+// drawn differ a little from 2 E W t³ / l³ (their rounds, their ends in the post and carriage), so unless a length is given, a few secant steps on l
 // (stiffness goes as 1 / l³) on the leaves alone set it
 const springCache = new Map();
 function cellSpring(p, m, what) {
@@ -530,7 +530,7 @@ export function balancedStripModel(p, m, o = {}) {
   if (band(cs[i0])) { let a = i0, d = i0; while (a > 0 && band(cs[a - 1])) a--; while (d < cs.length - 1 && band(cs[d + 1])) d++; flat = { from: cs[a].push, to: cs[d].push, span: cs[d].push - cs[a].push, force: Math.max(...cs.slice(a, d + 1).map((c) => Math.abs(c.force))) }; }
   const strain = Math.max(...cs.map((c) => c.strain)), margin = m.strainLimit / strain;
   const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra });
-  f('pass', `alone, the strip squeezed ${n2(sq, 3)} mm with its pad free to turn (${n2((Math.abs(b.turn) * 180) / Math.PI, 1)}° at the middle) is ${n2(b.negative, 3)} N/mm; the spring's two leaves ${n2(s.t)} by ${k.W} mm, each ${n2(s.l)} mm long, are ${n2(kp, 3)} N/mm (2 E W t³ / l³ gives ${n2((2 * m.E * k.W * s.t ** 3) / s.l ** 3, 3)}; their rounds stiffen them)`, 'cell.balance', { values: { negative: b.negative, spring: kp } });
+  f('pass', `alone, the strip squeezed ${n2(sq, 3)} mm with its pad free to turn (${n2((Math.abs(b.turn) * 180) / Math.PI, 1)}° at the middle) is ${n2(b.negative, 3)} N/mm; the spring's two leaves ${n2(s.t)} by ${k.W} mm, each ${n2(s.l)} mm long, are ${n2(kp, 3)} N/mm (2 E W t³ / l³ gives ${n2((2 * m.E * k.W * s.t ** 3) / s.l ** 3, 3)}, the solver's on the drawn leaves is used)`, 'cell.balance', { values: { negative: b.negative, spring: kp } });
   if (flat) f(flat.span > 0 ? 'pass' : 'warn', `together they are ${n2(stiffness, 3)} N/mm at the middle, and within ${n2(within * 100, 0)}% of the spring's stiffness from ${n2(flat.from)} to ${n2(flat.to)} mm (${n2(flat.span)} mm), holding the carriage anywhere there with at most ${n2(flat.force, 3)} N`, 'cell.flat', { values: { flat, stiffness } });
   else f('fail', `together they are ${n2(stiffness, 3)} N/mm at the middle, over ${n2(within * 100, 0)}% of the spring's ${n2(kp, 3)} N/mm: no flat range. A spring nearer ${n2(-b.negative, 3)} N/mm`, 'cell.flat', { values: { stiffness, spring: kp } });
   if (stiffness < 0) f('fail', `together they are ${n2(stiffness, 3)} N/mm at the middle, below 0: the carriage will not stay there but run off to one side. A stiffer spring`, 'cell.stable', { values: { stiffness } });

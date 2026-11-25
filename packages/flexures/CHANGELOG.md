@@ -4,6 +4,30 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## Unreleased
+### Added
+
+- `kreslingTube`, `kreslingTubeModel` (issue #78): the Kresling fold printed standing in TPU, one piece: a floor, a wall
+  of triangles with a panel inside each set back from its creases and sloped 3:1, and a ring on top. The model gives
+  each crease's turn from the printed state to the second, the webs' strain, the panels' stretch and the push over the
+  barrier, the drawn solid's steepest underside against the printer's overhang, and grams. 6 sides on R 20, 30 tall at
+  100°, webs 0.8 by 4: 11.4% at most, 2.19 times under TPU's 25%; 4.68 g.
+- `waterbomb`, `waterbombModel` (issue #78): the waterbomb base printed flat (web and panels, as the Miura), its
+  symmetric fold with every sector keeping its angle, each crease's fold, strain and pinch, the furthest fold, grams.
+- `coneFourBar`, `coneFourBarModel`, `coneFourBarFindings` (issue #78): a four-bar in a cone's wall, its joints on the
+  cone's rulings, so a spherical four-bar about the apex; printed on its wide end, the inside its only overhang
+  (`developable.overhang`). It is the tube's four-bar as the cone's angle goes to 0.
+- `balancedStrip`, `balancedStripModel` (issue #79): a zero-stiffness cell drawn: the buckled switch's strip, its pad a
+  ring turning on a disc printed in place, balanced by two leaves on a post (a parallel guide). The strip goes over
+  S-shaped at a straight-line negative stiffness, so the pair is flat over 2.98 mm (90 mm strip, PETG) with 0.009 N at
+  most, 2.33 times under the strain limit, 19.4 g; the arch's balanced cell wanted 409 mm of leaf for 1.86 mm.
+- `flexureMaterial` takes a rule set's `flex_strain` as the strain limit as it stands, and refuses a rubber (strength
+  over modulus past 0.5) without one, by name. Stiff plastics are as before.
+
+### Printed sizes
+
+No existing printed size moved: the new parts are new.
+
 ## 0.5.15: kirigami, developable mechanisms, Kresling and zero-stiffness cells (#78, #79)
 ### Added
 

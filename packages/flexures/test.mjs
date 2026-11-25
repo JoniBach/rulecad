@@ -2139,7 +2139,7 @@ test('the balanced strip cell: the buckled strip, its pad free to turn on a prin
   // flat over far more than a square-held pad allows. The spring is 10% over the strip's: two leaves 0.84 by 6, 2 E W
   // t³ / l³ = 2 × 1810 × 6 × 0.592704 / l³, about 0.147 N/mm at l = 44 mm
   assert.ok(m.negative < 0, `${m.negative}`); near(m.spring.stiffness, -1.1 * m.negative, 0.002 * m.spring.stiffness, 'the spring');
-  near(m.spring.stiffness, (2 * 1810 * 6 * 0.84 ** 3) / m.spring.length ** 3, 0.05 * m.spring.stiffness, 'the leaves near their formula (their rounds make the difference)');
+  near(m.spring.stiffness, (2 * 1810 * 6 * 0.84 ** 3) / m.spring.length ** 3, 0.05 * m.spring.stiffness, 'the leaves as the solver finds them, near their formula');
   assert.ok(m.stiffness > 0 && m.stiffness < 0.1 * m.spring.stiffness, `stable, and nearly 0 at the middle: ${m.stiffness}`);
   assert.ok(m.flat && m.flat.span > 2.5 && m.flat.force < 0.02, JSON.stringify(m.flat));
   assert.ok(m.margin > 2, `strain margin ${m.margin}`);
@@ -2156,4 +2156,22 @@ test('the balanced strip cell: the buckled strip, its pad free to turn on a prin
   near(m.grams, ((measureVolume(strip) + measureVolume(frame)) / 1000) * 1.27, 0.01, 'grams');
   assert.throws(() => balancedStripModel({ ...p, within: 2 }, petg), /within is a share/);
   assert.throws(() => balancedStripModel({ ...p, spring: { gap: 2 } }, petg), /spring\.gap 2/);
+});
+
+test('the README\'s Kresling tube, waterbomb, cone and balanced strip cell figures are the code\'s', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), has = (s) => assert.ok(readme.includes(s), `the README should read: ${s}`);
+  const tpu = f.flexureMaterial({ modulus: 9.2, strength: 29.6, flex_strain: 0.25, density: 1.2, name: 'TPU' }), petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  const k = f.kreslingTubeModel({ sides: 6, radius: 20, height: 30, twist: 100, wall: 0.8, panel: { thickness: 1.6 }, hinge: { flex: 4 } }, tpu), d2 = (x) => x.toFixed(2);
+  has(`{ side: ${d2(k.turns.side)}, diagonal: ${d2(k.turns.diagonal)}, floor: ${d2(k.turns.floor)}, ring: ${d2(k.turns.ring)} }`);
+  has(`k.strain;   // ${k.strain.toFixed(4)}: ${(k.strain * 100).toFixed(1)}% on the 0.8 mm webs, ${d2(k.margin)} times`); has(`k.overhang; // ${d2(k.overhang)} degrees`); has(`k.grams;    // ${d2(k.grams)}`);
+  const w = f.waterbombModel({ sides: 4, radius: 40, thickness: 1.6, hinge: { flex: 5.2, thickness: 0.4 } }, tpu);
+  has(`at ${(w.at(w.end).strain.corner * 100).toFixed(2)}% in\nTPU, ${d2(w.margin)} times under its limit, in ${d2(w.grams)} g`);
+  const cp = { radius: 26, angle: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 7, thickness: 0.84 } }, c = f.coneFourBarModel(cp, petg), a = c.at(-3.7);
+  has(`{ input: ${d2(c.links.input)}, coupler: ${d2(c.links.coupler)}, output: ${d2(c.links.output)}, ground: ${d2(c.links.ground)} }`);
+  has(`{ stiffness: ${d2(c.hinge.stiffness)} N·mm a radian, length: ${d2(c.hinge.length)}, width: ${d2(c.hinge.width)} }`);
+  has(`strain ${d2(a.strain * 100)}% (${d2(petg.strainLimit / a.strain)} times under PETG's limit), torque ${a.torque.toFixed(1)} N·mm; the input and coupler ${d2(a.in.input)} mm in`); has(`c.grams;    // ${d2(c.grams)}`);
+  const b = f.balancedStripModel({ length: 90, thickness: 0.84, width: 6, squeeze: 0.28, base: 12 }, petg);
+  has(`c.negative; // ${b.negative.toFixed(3)} N/mm`); has(`{ stiffness: ${b.spring.stiffness.toFixed(3)}, thickness: 0.84, length: ${d2(b.spring.length)} }`);
+  has(`{ from: ${d2(b.flat.from)}, to: ${d2(b.flat.to)}, span: ${d2(b.flat.span)}, force: ${b.flat.force.toFixed(3)} N }`); has(`c.margin;   // ${d2(b.margin)}: strip, stem and leaves at ${d2(b.strain * 100)}%`); has(`c.grams;    // ${b.grams.toFixed(1)}, strip and frame`);
 });
