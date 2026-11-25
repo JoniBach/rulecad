@@ -10,6 +10,12 @@ and head, the parts it passes through and the part it ends in.
 
 - A rail guide takes `"nut": "printed"` (issue 308): a printed carrier strip `<id>-nuts` in the slot under the rail,
   a hex nut under each hole, its screws fastened into them. An MGN7 on a 2020 now checks clean this way.
+- Frame checks (issue 302): moving joints on the frame's beams are swept together as well as one at a time
+  (`frame.together`); a motor driving a joint on the frame stalls against a hard stop at each end of the travel, its
+  holding torque pushing the stop and its own mount apart; a motor turning a hinge holds its torque at its mount.
+  Frames with two moving joints solve more poses (the arm in the tests: 11 to 27), and frames with motors more cases:
+  a sag, stress or join figure there can grow where a combined pose or a stall is worse than the poses before. No
+  printed size moved.
 ### Fixed
 
 - `cad list` counted a `nut-carrier`'s nuts twice where a fasten placed them: once with the fasten and once as the

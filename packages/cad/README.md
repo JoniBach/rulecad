@@ -850,7 +850,10 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel
   and at its quarters between (`frame.sweep`, 4 steps), at every named pose and as drawn; the worst is named. A
   carriage's worst place for the sag at a point off a span's middle lies between the point and the middle, which
-  the ends alone miss.
+  the ends alone miss. Two or more such joints are also swept together (`frame.together`, 32 poses at most):
+  every combination of their places where that fits, else of their ends and middles, else all at one share of
+  their travel at once, so a carriage at the middle of a beam that itself stands at the middle of its travel is
+  found. `frame.solve` says which way they were combined (`refs.together`).
   Each `"loads"` entry on a joint (a force on a slide, a torque on a hinge) and a belt guide's push at its
   carriage's acceleration is carried through the joint, held by its motor, into the beam the joint's chain is
   mounted on: a slide's force along its axis through the joint's place, as a force and its moment at that node, a
@@ -858,6 +861,15 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   then the other (`as drawn, joint loads +`, `... joint loads -`), and `frame.solve` names them (`refs.onJoints`).
   A belt's share of its carriage's own weight along the travel is that weight, already on the frame, and is not
   counted again.
+  A motor that drives a joint mounted on the frame, the motor itself mounted on a still beam, adds two more:
+  - Stalled against a hard stop at each end of the travel, it pushes (or turns) with its holding torque through
+    its gearing: a lead screw's 2 pi T efficiency over its lead, a belt's 2 T over its pulley's pitch diameter. The
+    stop at the joint's place and the motor's mount take that push equal and opposite, along the joint's line, so
+    only the frame between them is loaded (cases `<joint> at <end>, <motor> stalled against its stop`,
+    `refs.stalls`). A NEMA 17's 0.59 N m through an 8 mm lead screw at 57% pushes 266 N.
+  - Turning a hinge, the torque it turns the arm with (its most at its working speed, through its gearing) is held
+    at its own mount, one way and then the other, as a joint load there.
+  A motor that rides on what it drives, or is on no beam, is named as not weighed on the frame.
 - `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
   along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
   rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
