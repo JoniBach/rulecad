@@ -2,6 +2,35 @@
 
 What changed in each release, for someone upgrading.
 
+## Unreleased
+### Added
+
+- `robust: true` on a problem: the design is optimised as three copies, as made, eroded (a little thin, threshold
+  0.7) and dilated (a little thick, 0.3). With a stress or strain limit and no output, the lightest layout that keeps
+  the limit on every cell of all three (da Silva, Beck and Sigmund 2019): on the tests' cantilever at 20 MPa, made
+  thin the plain layout peaks at 103 MPa, the robust one at 20.0 MPa, for 89% of the space against 76%. A mechanism
+  maximises the worst copy's travel by the bound formulation (an extra MMA variable): on the PLA inverter the worst
+  copy moves 0.93 mm against 0.023 mm. A robust mechanism with a stress or strain limit is optimised under it on the
+  three copies (limits relaxed by density cubed; cells at supports, input and output not limited): at 0.15% the
+  design as made peaks at 4.03 MPa against 4.02 MPa, where the plain layout peaks at 12.1 MPa. Refused by name with a
+  volume alone, or a value other than true or false.
+- `result.stress.copies` (`eroded`, `dilated`): every lightest layout's and every limited robust mechanism's copies'
+  peaks. `result.mechanism.copies`: every mechanism's copies' travels.
+- `densityFilter(size, radius, { pad })`: with pad, cells past the grid's edges count as empty (Clausen and
+  Andreassen 2017). A robust mechanism uses it, and keeps the cells at its supports, input and output solid.
+
+### Fixed
+
+- The stress limits' gradient was projected at the design's threshold for every copy; it now uses the copy's own
+  (no effect before: only the design as made was ever limited).
+
+### Not done
+
+- The L-bracket's inside corner still stays sharp (issue 39): robust, on 1.6 mm cells, its peak as made is 27.5 MPa
+  against 25. Limiting cells at their corners or Gauss points empties the corner cell but takes 68 to 76% of the
+  space and does not settle; not built in. The README has the figures.
+- A limited robust mechanism's dilated copy can end over the limit (66% over on the inverter at 0.15%).
+
 ## 0.3.6: fewer triangles, problems in 2D from a part
 ### Added
 

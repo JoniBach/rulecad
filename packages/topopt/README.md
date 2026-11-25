@@ -184,6 +184,41 @@ falls by 46%. Two things to know:
   corner's stress shows, in place of its centre, was tried on 2 mm cells: at 25 MPa the peak as made fell from 33.7 to
   28.9 MPa, but the corner stayed solid, and at 20 MPa the run did not settle (a peak of 109 MPa). It is not built in.
 
+### Robust stress limits
+
+A part is never printed exactly as drawn: an edge comes out a little in or a little out. Give `robust: true` with the
+limit and the layout is optimised as three copies at once: the design as made, an eroded copy (thinner, projected at
+0.7) and a dilated one (thicker, at 0.3), with the limit held on every cell of all three (Wang, Lazarov and Sigmund
+2011; with stress limits, da Silva, Beck and Sigmund 2019). The lightest of the design as made is what's sought.
+`result.stress.copies` gives the eroded and dilated copies' peaks for every lightest layout, robust or not.
+
+| The cantilever of the tests, 20 MPa, 2 mm cells | Space used | Peak as made | Made thin | Made thick |
+|---|---|---|---|---|
+| Plain | 76.1% | 20.3 MPa | 103 MPa | 19.9 MPa |
+| Robust | 89.1% | 19.9 MPa | 20.0 MPa | 19.8 MPa |
+
+The plain layout keeps a member that is just thick enough as drawn; a little thinner, its peak is five times the
+limit. On the L-bracket at 25 MPa, re-analysed as made on cells half the size:
+
+| L-bracket, 25 MPa | Space used | Peak as made (half cells) | Settled |
+|---|---|---|---|
+| Plain, 2 mm cells | 44.9% | 33.7 MPa | yes |
+| Robust, 2 mm cells | 56.9% | 32.1 MPa | yes, 619 steps |
+| Plain, 1.6 mm cells | 41.9% | 794 MPa (a member left too thin to carry) | no, 800 steps |
+| Robust, 1.6 mm cells | 52.8% | 27.5 MPa | yes, 584 steps |
+
+Robust costs three solves and three adjoints a step, and more material. What it buys is a result that is what it
+claims to be when made: on 1.6 mm cells the plain result came apart as made, the robust one stayed 10% over the limit,
+at the inside corner. That corner still stays sharp: robustness does not round the space's own corners, since the
+filter counts the cut-out as empty and the design as made keeps a solid cell there. Three more ways were tried on
+2 mm cells with the robust copies, and none is built in: limiting each cell at its four corners (the corner cell
+emptied and the peak as made fell to 23.9 MPa, but the space used rose to 76%, and 1,000 steps did not settle), at its
+four Gauss points (21.3 MPa as made, the corner cell emptied, 72% of the space, 1,500 steps unsettled, the space used
+still rising) and at the space's inside corners only (68%, unsettled). Each limit at a sharp corner is a stress that
+rises without end as cells shrink, so it keeps the augmented Lagrangian's penalty growing, and the optimiser answers it
+with material everywhere. A rounded inside corner with the peak under the limit as made, as the published results
+show, is still to be met.
+
 ## Mechanisms
 
 A compliant mechanism is a part that moves by bending: push here, and there moves, with no joints. Give the problem an
@@ -213,7 +248,25 @@ on an eroded copy of the design (projected at a threshold of 0.7), its volume on
 made between them. A hinge that survives erosion has real width, and the result is one piece, cell to cell. The
 price: the design as made is stiffer than the eroded copy it was optimised on, by a hinge width's worth of
 stiffness (which goes as the width cubed), so `result.mechanism` reports what the design as made does, and it moves
-less than the run's progress figures suggested.
+less than the run's progress figures suggested. `result.mechanism.copies` gives the eroded and dilated copies' travels.
+
+The eroded copy alone leaves the dilated one free to stiffen: made a little thick, the hinges of the PLA inverter
+below fill in and its output moves 0.023 mm against 1.81 mm as made. With `robust: true` the worst of the three copies
+is optimised, by the bound formulation (Bendsøe, Olhoff and Taylor 1983, as Wang, Lazarov and Sigmund 2011 use it):
+one more variable z is minimised under each copy's minus travel over the first step's, z for each, so whichever
+copy moves least is the one improved. Two more things come with it, as in da Silva, Beck and Sigmund (2019): the filter
+counts the cells past the grid's edges as empty (Clausen and Andreassen 2017), else a member one cell thick along an
+edge survives erosion and the copies cheat there; and so the cells at the supports, input and output are kept solid.
+
+| PLA inverter, 1 mm cells, 10 N | Travel as made | Made thin | Made thick | Space used |
+|---|---|---|---|---|
+| Eroded copy (default) | 1.81 mm | 0.92 mm | 0.023 mm | 30% |
+| Worst of three (`robust`) | 2.99 mm | 0.92 mm | 0.93 mm | 23.3% |
+
+The worst copy moves 40 times as far. The robust layout leaves its volume unused (more material would not move the
+worst copy further). On these cells, with a 1.5 mm filter, it keeps two joints where cells meet only at a corner, in all
+three copies: a hinge a node wide. A wider filter is the cure in principle; at 2.5 mm on 1 mm cells the inverter moved
+0.02 mm, so on cells this coarse the robust inverter is a layout to read, not a part to print.
 
 ### A mechanism's strength
 
@@ -232,12 +285,25 @@ linear, so both are the input force and the output's travel times limit over pea
 20 mm, 4 mm thick, pushed with 10 N against springs of 0.268 N/mm), the peak is 12.1 MPa and the output moves 1.81 mm,
 so at 0.3% (8.04 MPa) it may be pushed with 10 × 8.04 / 12.1 = 6.6 N, its output then 1.2 mm along.
 
-The limit checks the layout; it does not shape it yet. Two ways of optimising under it were tried on that inverter and
-neither held it: the lightest layout's augmented Lagrangian added to the travel (the design lost all its travel), and
-the stresses' p-norm (p = 8, relaxed by density to the power 2.5) as a second limit for the method of moving
-asymptotes, after de Leon, Alexandersen, Fonseca and Sigmund (2015), with Le et al.'s (2010) correction to the largest
-stress (on the design as made the peak jumps from step to step as hinge cells cross half solid, and the final peaks
-missed the limit by up to 80%).
+Without `robust`, the limit checks the layout and does not shape it. With `robust: true` the mechanism is optimised
+under it, as in da Silva, Beck and Sigmund (2019): every cell's limit on each of the three copies, kept by the
+augmented Lagrangian the lightest layout uses (its penalty starting at 1), added to z. Two choices make it work, each
+found by trial on the inverter: the cells at the supports, input and output are not limited (a force on a small pad
+is a stress there, whatever the layout, as the paper also sets it), and each limit is relaxed by the cell's density
+cubed rather than its density. With density alone the empty cells between moving parts, which stretch far and as if
+solid carry huge stresses, held the output still: the travel went to 0 at every limit tried, 2% included.
+
+| PLA inverter, 10 N, limit 0.15% (4.02 MPa) | Peak as made | Made thin | Made thick | Travel as made | Worst copy |
+|---|---|---|---|---|---|
+| Checked only (default) | 12.1 MPa | | | 1.81 mm | 0.023 mm |
+| Optimised under it (`robust`) | 4.03 MPa | 0.72 MPa | 6.66 MPa | 1.90 mm | 1.28 mm |
+
+The design as made keeps to the limit and still moves its output 1.9 mm. Made a little thick, its peak is 66% over:
+the dilated copy's limits are in the problem but did not hold by the time it settled (its stopping test is the travel,
+not the limit). So read `result.stress.copies` before trusting a thick print, and keep the input force under the
+`force` reported. Earlier tries, without the three copies: the augmented Lagrangian added to the eroded copy's travel
+(the travel went to 0), and the stresses' p-norm (p = 8) as a second limit after de Leon, Alexandersen, Fonseca and
+Sigmund (2015), with Le et al.'s (2010) correction (the final peaks missed the limit by up to 80%).
 
 ## Checked against the published code
 
@@ -262,6 +328,10 @@ Its gradients agree with finite differences through the filter and the projectio
   comes from or the mould is drawn off to.
 - **Parting plane:** where a two-part mould's halves meet.
 - **Draft:** a slight taper on faces along the draw, so a part slides out of its mould.
+- **Eroded, dilated:** copies of the design projected at a higher or lower threshold (0.7, 0.3): the part as if made a
+  little thin or a little thick all round.
+- **Bound formulation:** making the worst of several measures best, by minimising one extra variable that each of
+  them must stay under.
 - **Von Mises stress:** one number for how hard a point of material is worked, from all its stresses together; it's
   compared with the material's strength.
 
@@ -291,5 +361,13 @@ Its gradients agree with finite differences through the filter and the projectio
   Multidisciplinary Optimization* 41, 605–620.
 - de Leon, Alexandersen, Fonseca, Sigmund (2015). Stress-constrained topology optimization for compliant mechanism
   design. *Structural and Multidisciplinary Optimization* 52, 929–943.
+- da Silva, Beck, Sigmund (2019). Stress-constrained topology optimization considering uniform manufacturing
+  uncertainties. *Computer Methods in Applied Mechanics and Engineering* 344, 512–537.
+- da Silva, Beck, Sigmund (2019). Topology optimization of compliant mechanisms with stress constraints and
+  manufacturing error robustness. *Computer Methods in Applied Mechanics and Engineering* 354, 397–421.
+- Clausen, Andreassen (2017). On filter boundary conditions in topology optimization. *Structural and
+  Multidisciplinary Optimization* 56, 1147–1155.
+- Bendsøe, Olhoff, Taylor (1983). A variational formulation for multicriteria structural optimization. *Journal of
+  Structural Mechanics* 11, 523–544.
 - Svanberg (1987). The method of moving asymptotes: a new method for structural optimization. *International Journal
   for Numerical Methods in Engineering* 24, 359–373.

@@ -46,6 +46,11 @@ export { jsBackend };
  *   then checked against it at its input force, with the force and the output's travel that take it to the limit
  * @property {number} [strain] a strain limit in place of stress (0.02 is 2%): the stress limit is it times the material's
  *   E. A printed plastic's strain at yield is about its strength over its modulus
+ * @property {boolean} [robust] optimise the design as made a little thin and a little thick too (its eroded and dilated
+ *   copies, thresholds 0.7 and 0.3). With a stress limit: the lightest layout that keeps it on all three. A mechanism: the
+ *   layout whose worst copy moves its output furthest, and with a stress or strain limit, optimised under it on all three
+ *   (da Silva, Beck and Sigmund 2019); its supports, input and output are kept solid and the filter counts the grid's
+ *   edges as empty. About three times the solves
  * @property {number} [filter] the filter radius in mm: about the thinnest member (default 1.5 cells)
  * @property {number} [penal] the penalty (default 3)
  * @property {boolean} [projection] sharpen with Heaviside projection (default true)
@@ -871,7 +876,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
     // A mechanism is optimised robustly (after Wang, Lazarov and Sigmund 2011): its travel on an eroded copy of the
     // design (threshold ERODE), its volume on a dilated one (DILATE), the design as made between them. A hinge that
     // survives erosion has real width, so no hinge is a point. (The design as made is stiffer than the eroded copy
-    // it's optimised on, by a hinge width's worth; a worst-of-three objective would close that gap, and is to come.)
+    // it's optimised on, by a hinge width's worth; robust, the worst of the three copies is optimised instead, below.)
     const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers: multipliers?.[0] ?? synthM?.[0], ...(mechanism ? { eta: ERODE } : {}), limits: synth });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);

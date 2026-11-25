@@ -5,6 +5,19 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+### Added
+
+- A problem's `robust: true` (schema first): optimised as made, a little thin and a little thick (topopt's robust
+  formulation). With a stress or strain limit, the lightest layout that keeps it on all three; a mechanism, the layout
+  whose worst copy moves furthest, and with a limit, optimised under it. `cad optimise` prints the copies: "made a
+  little thin, peak stress X MPa; a little thick, Y MPa" (with a note where either is over the limit) and, for a
+  mechanism, "made a little thin, its output moves X mm; a little thick, Y mm". Refused by name with a volume alone.
+
+### Printed sizes that moved
+
+- None.
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 
