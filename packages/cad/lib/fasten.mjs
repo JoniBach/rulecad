@@ -899,7 +899,10 @@ export function fastenOf(s, worlds, opts = {}) {
 
       // The hardware, each piece where it sits: its own frame, the item it moves with, the way it comes out, what it may overlap
       const host = (r) => r.parts[0], up = D.map((c) => -c), piece = (kind, m, o, P, Z, r, lift, allow, X) => sc.hardware.push({ kind, shape: shapeOf(F, kind, m, o), M: standing(P, Z, X), host: host(r), lift, allow });
-      const ends = [...new Set(B.parts.map((p) => p.leaf))];
+      // (a printed nut carrier stands in a beam's slot, inside the beam's envelope, which the overlap check measures: the
+      // screw and nut in it may overlap that beam)
+      const carrierIn = (() => { const it = (s.a.items || []).find((q) => q.id === top(x.into)); if (it?.fitting?.kind !== 'nut-carrier' || typeof it.at !== 'string') return []; const b = it.at.split('.')[0]; return [...new Set(s.parts.filter((p) => p.item === b && !p.hardware).map((p) => p.leaf))]; })();
+      const ends = [...new Set([...B.parts.map((p) => p.leaf), ...carrierIn])];
       if (A) piece('screw', fx, { length: L, head: form, anyLength: true }, at(zHead), up, A, up, A.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.beam) ? [...ends, ...new Set(A.parts.map((p) => p.leaf))] : ends); // (a screw through a beam, or its head in a slot, is inside the beam's envelope, which the overlap check measures)
       else piece('screw', fx, { length: L, head: form, anyLength: true }, at(zSeat), up, B, up, ends);
       if (washer) piece('washer', fx.thread, {}, at(zSeat), up, A, up, []);
@@ -907,7 +910,7 @@ export function fastenOf(s, worlds, opts = {}) {
       else if (end.kind === 'nut') {
         let X = null;
         if (end.nut.corner) { const lp = end.nut.corner.seg.a.loop, pr = end.nut.corner.seg.of, v = lp.corner ? [lp.corner[0] - lp.c[0], lp.corner[1] - lp.c[1]] : lp.along, local = add(pr.x.map((c) => c * v[0]), pr.y, v[1]), pm = end.nut.corner.seg.part.m; X = pm ? [0, 1, 2].map((r) => pm[r] * local[0] + pm[4 + r] * local[1] + pm[8 + r] * local[2]) : local; }
-        piece('nut', fx.thread, { kind: end.nut.kind }, at(end.nut.z), D, B, D, [], X);
+        piece('nut', fx.thread, { kind: end.nut.kind }, at(end.nut.z), D, B, D, carrierIn, X);
       }
       if (end.kind === 'insert' && end.insert) piece('insert', fx.thread, {}, at(end.mouth), up, B, up, ends);
       // fasten.access: the key's way to the head, along its axis, with every other part in place (said by fastenChecks, with the order)

@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/frames",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins between beams by kind: the operations each puts on both beams, its screws, and its stiffness for a frame's solve. Printed fittings for those joins: a corner bracket (braced or not), gusset plates (L, T, cross) and a splice plate, drawn from the profile's and the thread's rules, keyed into the slot, sized from a named load by finite elements and reporting grams, stiffness and margin. Panels cut to a bay with clips at a pitch, an in-slot edge, corners, slot covers and gasket strips; a door's hinges, handle, latch and magnet catch; end caps, feet, levelling feet, castor plates and stacking feet, each printed from the same rules. Guides: miniature rails on a slotted face, their holes, screws, slot nuts and carriages' travel, the carriages' loads against their ratings, and a printed jig that centres a rail. Jigs for hand tools, generated from a beam's operations: a drill guide that puts a bush where the sheet dimensions a hole, a tap guide over an end, a cut-length stop with its gauge, and a squaring corner. Squaring a bay by its diagonals: their length and the difference to accept.",
   "type": "module",
   "exports": {
@@ -97,6 +97,6 @@
   "dependencies": {
     "@rulecad/fea": "^0.2.11",
     "@rulecad/fixings": "^0.1.7",
-    "@rulecad/rules": "^0.3.20"
+    "@rulecad/rules": "^0.3.25"
   }
 }
