@@ -3,6 +3,7 @@
 //   readMesh(file) -> triangles
 //   profiles(tris, axis) -> the stretches along an axis where the cross-section stays the same, each with its outline
 //   spans(tris, axis, at) -> where a line along an axis is inside the solid
+//   slabLevels(tris, lo, hi, step) -> heights whose sections together cover what lies between z lo and hi
 //   align(moving, fixed) -> the turn and shift that best lays moving over fixed
 //   deviation(from, to) -> how far points on one surface are from the other, signed (+ outside, - inside)
 import fs from 'node:fs';

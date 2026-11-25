@@ -1509,15 +1509,18 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
     it is where the joint's parent anchor stands in the pose.
   - `{ "sweep": "gate", "through": "swing" }` under `avoid`: an item (or `item.part`) moved through a joint's range,
     the other joints held at the pose, kept clear at every step. By default there are enough steps that no point of
-    the part moves more than half a cell between two; `"steps"` sets them. A flat problem keeps clear of the part's
-    section in the plate's middle plane (`in.z`, by default half the thickness, a plate drawn up from z 0), so a part
-    passing over or under the plate is no obstacle; holes in the section stay open, and the design cuts it exactly.
+    the part moves more than half a cell between two; `"steps"` sets them. A flat problem keeps clear of all of the
+    part that lies within the plate's thickness about its middle plane (`in.z`, by default half the thickness, a plate
+    drawn up from z 0): an arm dipping 1 mm into the plate's top is kept clear as surely as one through it. Its
+    sections are taken up the plate no more than half a cell apart, and closer where a face leans, so together they
+    cover it to half a cell; each distinct one is a region. A part passing over or under the plate, or only touching
+    its face, is no obstacle; holes in a section stay open, and the design cuts each exactly.
   The assembly is read in its pose (`in.pose`, default the one it shows). While it is read, the item itself, and any
   other built from this problem, is drawn without a result (its problem variables set to `none`), so its design must
   draw something for `none`: a blank of the space will do. Change the assembly (a joint's range, a part's size) and
   the problem follows it, so the result is optimised again. `cad check <project>/<assembly> --sweep` then shows the
   part built from the result is clear through the swing. Refused by name: a sweep outside `avoid`, a sweep of the
-  item itself, a joint that doesn't move the part against the item, a part that never crosses a flat plate's plane,
+  item itself, a joint that doesn't move the part against the item, a part that never reaches into a flat plate's thickness,
   and more than 360 default steps (give `steps`, or larger cells).
 - **Or a stress limit instead of a volume:** `"stress": "pla.strength / 3"` (MPa) finds the lightest layout that keeps
   every cell's von Mises stress under it, which rounds off the sharp inside corners where cracks start. It takes about

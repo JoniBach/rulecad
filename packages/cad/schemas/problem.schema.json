@@ -368,7 +368,7 @@
         },
         "sweep": {
           "type": "string",
-          "description": "Avoid only: an item or item.part of the assembly the problem is in (in), swept through a joint's range (through), the other joints held at the pose. Each step is a region to keep clear: the part where it is then, in the item's frame (in a flat problem, its section in the plate's middle plane, in.z). Change the assembly and the region follows"
+          "description": "Avoid only: an item or item.part of the assembly the problem is in (in), swept through a joint's range (through), the other joints held at the pose. Each step is a region to keep clear: the part where it is then, in the item's frame (in a flat problem, all of it within the plate's thickness about its middle plane, in.z: its sections up the plate, half a cell apart and closer where a face leans). Change the assembly and the region follows"
         },
         "through": {
           "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" }, "minItems": 1 }],
