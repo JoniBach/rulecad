@@ -24,3 +24,4 @@ export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifi
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve } from './bistables.mjs';
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
 export { neckFE, neckHingeModel, rotatingSquares, rotatingSquaresModel, kirigamiFindings } from './kirigami.mjs';
+export { curvedCellModel, balancedCellModel } from './cells.mjs';
