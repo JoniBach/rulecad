@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading.
 
-## Unreleased
+## 0.3.7: tool radius, draft, several sides, voids prevented, the thinnest member
 ### Added
 
 - `tool` (mm, with `mill`): a flat end mill's radius. `toolFilter` closes each layer across the tool's axis by a disc
