@@ -122,6 +122,18 @@
         "$ref": "#/$defs/load"
       }
     },
+    "in": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assembly", "item"],
+      "description": "The assembly the problem is placed in: its coordinates are the item's own there, as that item's design draws the result. Regions can then sit at the assembly's joints (joint) and keep clear of its moving parts (sweep). An item built from this problem is drawn without it (its problem variable set to none) while the assembly is read",
+      "properties": {
+        "assembly": { "type": "string", "description": "The assembly's name, in projects/<project>/assemblies" },
+        "item": { "type": "string", "description": "The item whose frame the problem is drawn in: the part being optimised" },
+        "pose": { "type": "string", "description": "The pose it is read in (default the one the assembly shows)" },
+        "z": { "$ref": "#/$defs/expr", "description": "A flat problem: the plate's middle plane, mm along the item's z (default half its thickness, a plate drawn up from z 0)" }
+      }
+    },
     "cases": {
       "type": "object",
       "additionalProperties": {
@@ -218,6 +230,11 @@
           "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
           "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
         },
+        "joint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "In place of at: a joint of the assembly the problem is in (in), where it is in the item's frame: the joint's anchor on the item when the item is one of its ends, else its parent's anchor as the pose places it (x and y of it in a flat problem). A cylinder lies along the joint's axis unless it names one"
+        },
         "r": {
           "$ref": "#/$defs/expr"
         },
@@ -266,6 +283,11 @@
           "required": [
             "anchor"
           ]
+        },
+        {
+          "required": [
+            "joint"
+          ]
         }
       ]
     },
@@ -301,6 +323,11 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
           "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
+        "joint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "In place of at: a joint of the assembly the problem is in (in), where it is in the item's frame: the joint's anchor on the item when the item is one of its ends, else its parent's anchor as the pose places it (x and y of it in a flat problem). A cylinder lies along the joint's axis unless it names one"
         },
         "r": {
           "$ref": "#/$defs/expr",
@@ -339,6 +366,19 @@
           "type": "string",
           "description": "A named part of another design in the project, as it's built: object.part. In a flat (2D) problem, its section halfway up (a plate's outline, its holes open)"
         },
+        "sweep": {
+          "type": "string",
+          "description": "Avoid only: an item or item.part of the assembly the problem is in (in), swept through a joint's range (through), the other joints held at the pose. Each step is a region to keep clear: the part where it is then, in the item's frame (in a flat problem, its section in the plate's middle plane, in.z). Change the assembly and the region follows"
+        },
+        "through": {
+          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" }, "minItems": 1 }],
+          "description": "With sweep: the joint it is swept through, from its min to its max (or joints, each in turn)"
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "With sweep: how many steps across each joint's range (default: enough that no point of the part moves more than half a cell between two)"
+        },
         "label": {
           "type": "string"
         },
@@ -370,6 +410,11 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
           "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
+        "joint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "In place of at: a joint of the assembly the problem is in (in), where it is in the item's frame: the joint's anchor on the item when the item is one of its ends, else its parent's anchor as the pose places it (x and y of it in a flat problem). A cylinder lies along the joint's axis unless it names one"
         },
         "r": {
           "$ref": "#/$defs/expr",
@@ -446,6 +491,11 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
           "description": "In place of at: another design's anchor, object.anchor, where it is as that design is built (x and y of it in a flat problem). A cylinder lies along the anchor's axis unless it names one. Move the anchor and the problem moves with it. A design built from this problem can't be named: name what it's fixed to"
+        },
+        "joint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "In place of at: a joint of the assembly the problem is in (in), where it is in the item's frame: the joint's anchor on the item when the item is one of its ends, else its parent's anchor as the pose places it (x and y of it in a flat problem). A cylinder lies along the joint's axis unless it names one"
         },
         "r": {
           "$ref": "#/$defs/expr",
