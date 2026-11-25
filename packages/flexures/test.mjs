@@ -1928,13 +1928,13 @@ test('the README\'s Young bistable, tensural bistable and split-tooth gear are t
   for (const r of rows) assert.ok(readme.includes(r), `the README should read:\n${r}`);
 });
 
-test('after check: a split-tooth gear fails when its preloads shut the slits at rest, its stop counts the sibling\'s preload, its bore is drawn the size asked; the Young ground stands on two feet', async () => {
+test('after check: a split-tooth gear fails when its preloads shut the slits at rest, its bore is drawn the size asked; the Young ground stands on two feet', async () => {
   const { splitToothGear, splitToothGearModel, youngBistable } = await import('@rulecad/flexures');
   const p = { module: 2, teeth: 24, width: 6, bore: 5 }, m = splitToothGearModel(p, pla), lv = (r, c) => r.findings.find((x) => x.code === c)?.level;
   // In mesh both halves of a tooth are pushed toward their shared slit. One half alone closes it at Fclose (5.11 N on
   // its flank by default); each carries the preload F = 1.70 N, so at rest the slit closes by 2F / Fclose of its 0.4 mm:
-  // 2 x 1.698 / 5.113 x 0.4 = 0.266 mm. Driven, the driving half closes it at Fclose - F = 5.113 - 1.698 = 3.415 N
-  assert.ok(Math.abs(m.stop.force + m.force - 5.113) < 0.01 && Math.abs(m.stop.closed - 0.2657) < 0.002, JSON.stringify({ stop: m.stop, force: m.force }));
+  // 2 x 1.698 / 5.113 x 0.4 = 0.266 mm (where the driven slit closes is the next test's)
+  assert.ok(Math.abs(m.stop.closed - 0.2657) < 0.002, JSON.stringify({ stop: m.stop, force: m.force }));
   assert.equal(lv(m, 'gear.preload'), 'pass');
   // At a preload of 0.2 mm the force is about twice (3.4 N) and 2 x 3.4 / 5.1 x 0.4 = 0.53 mm: past the slit, shut at
   // rest, a fail; at 0.39 (still under the slit's 0.4, so not refused) one half alone is past Fclose
@@ -1955,4 +1955,23 @@ test('after check: a split-tooth gear fails when its preloads shut the slits at 
   assert.ok(touch[0][0] < cx && cx < touch[1][0] && Math.abs(touch[0][0] - 5.5) < 0.01, JSON.stringify({ cx, touch }));
   assert.ok(onePiece(g));
   assert.throws(() => youngBistable({ spacing: 14, thickness: 0.84, width: 6 }), /no room between the hubs .* for the ground's second foot/);
+});
+
+test('after check 2: a split-tooth gear\'s driving half closes its slit alone, past the hold, at the force that closes it on one half', async () => {
+  const { splitToothGearModel } = await import('@rulecad/flexures');
+  const p = { module: 2, teeth: 24, width: 6, bore: 5 }, m = splitToothGearModel(p, pla), rb = 24 * Math.cos((20 * Math.PI) / 180);
+  // The half across a tooth's slit is the tooth's other flank, the trailing one. Up to the hold the driving flank takes
+  // F + T / 2rb and the trailing F - T / 2rb: they add to 2F = 2 x 1.698 = 3.396 N whatever T, so the slit stays closed
+  // by 0.266 of its 0.4 mm. Past the hold (76.59 N·mm) the trailing flank carries nothing and the driving one alone
+  // closes the slit at Fclose = 5.113 N on its flank, T = 5.113 x 22.553 = 115.3 N·mm. (Counting the trailing
+  // preload as still pushing put the stop at 5.113 - 1.698 = 3.415 N, just past the hold, and shared the load early)
+  assert.ok(Math.abs(m.stop.force - 5.113) < 0.01 && Math.abs(m.stop.force * rb - 115.3) < 0.3, JSON.stringify(m.stop));
+  // Strain is linear in the flank force: 0.3345% at the preload's 1.698 N, 0.19697% a newton. At 110 N·mm the flank
+  // takes 110 / 22.553 = 4.877 N, under the stop: one half alone, 4.877 x 0.19697 = 0.961% (2.08 times under 2%)
+  const per = m.strain / m.force, at110 = splitToothGearModel(p, pla, { torque: 110 });
+  assert.ok(Math.abs(at110.driven.strain * 100 - 0.961) < 0.003 && Math.abs(at110.driven.strain - per * 110 / rb) < 1e-9 && !/its slit closed/.test(at110.findings.find((x) => x.code === 'flexure.strain').text), JSON.stringify(at110.driven));
+  // At 140 N·mm the flank takes 6.208 N, past the stop: the stop's 5.113 x 0.19697 = 1.007% and half of the
+  // 1.095 N more, 0.5476 x 0.19697 = 0.108%, 1.115% in all (1.79 times under 2%: a warn)
+  const at140 = splitToothGearModel(p, pla, { torque: 140 }), f = at140.findings.find((x) => x.code === 'flexure.strain');
+  assert.ok(Math.abs(at140.driven.strain * 100 - 1.115) < 0.003 && f.level === 'warn' && /its slit closed/.test(f.text), JSON.stringify(at140.driven));
 });
