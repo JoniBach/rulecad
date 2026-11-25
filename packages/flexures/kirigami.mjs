@@ -150,12 +150,13 @@ export function rotatingSquares(p) {
  * @param {RotatingSquares} p
  * @param {{ E: number, strainLimit?: number, density?: number, name?: string }} m
  * @returns {{ neck: ReturnType<typeof neckHingeModel>, side: number, rest: number, necks: number, E: number, poisson: number,
- *   stiffness: number, at: (stretch: number) => { turn: number, force: number, strain: number, sheet: number },
+ *   stiffness: number, at: (stretch: number) => { turn: number, force: number, strain: number, sheet: number }, stretchFor: (force: number) => number,
  *   limit?: { stretch: number, turn: number, force: number, sheet: number }, size: [number, number, number], area: number,
  *   volume: number, solid: number, grams?: number }}
  *   side: s, the square through each square's necks; rest: α0, the squares' turn as drawn (degrees); necks: how many;
  *   E: the in-plane modulus at rest (MPa); stiffness: the sheet's pull along x at rest, N/mm; at(stretch mm): the necks'
- *   turn (degrees), the force (N), the necks' peak strain and the sheet's strain; limit: the stretch at the necks'
+ *   turn (degrees), the force (N), the necks' peak strain and the sheet's strain; stretchFor(force N): the stretch a
+ *   pull gives, mm; limit: the stretch at the necks'
  *   strain limit; solid: the share of the plate that is left after the slots
  */
 export function rotatingSquaresModel(p, m) {
@@ -182,8 +183,15 @@ export function rotatingSquaresModel(p, m) {
   let cut = 0;
   for (let j = 0; j <= rows; j++) for (let i = 0; i <= n; i++) cut += slot * (i === 0 || i === n ? 0.5 : 1) * (j === 0 || j === rows ? 0.5 : 1);
   const area = n * a * rows * a - cut;
+  // the stretch a pull gives: the force rises with the turn up to fully open, so a bisection on the turn finds it
+  const stretchFor = (F) => {
+    if (!(typeof F === 'number' && F >= 0)) refuse('kirigami.force', `rotatingSquaresModel: a pull is a force of 0 N or more (got ${said(F)})`);
+    let lo = a0, hi = Math.PI / 4 - 1e-9;
+    for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (force(mid) < F) lo = mid; else hi = mid; }
+    return X((lo + hi) / 2) - X0;
+  };
   return {
-    neck, side: s, rest: a0 / DEG, necks: N, E: (8 * K) / (s * s * b * (1 - Math.sin(2 * a0))), poisson: -1, stiffness, at,
+    neck, side: s, rest: a0 / DEG, necks: N, stretchFor, E: (8 * K) / (s * s * b * (1 - Math.sin(2 * a0))), poisson: -1, stiffness, at,
     ...(limit ? { limit } : {}), size: [n * a, rows * a, b], area, volume: area * b, solid: area / (n * a * rows * a),
     ...(m.density ? { grams: (area * b * m.density) / 1000 } : {}),
   };

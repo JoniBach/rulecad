@@ -1851,6 +1851,7 @@ test('kirigami: a one-sided neck\'s stiffness and strain are the kit\'s finite e
   const al = (8.20351 + 2.418322 / 2) * Math.PI / 180;
   near(m.limit.stretch, 6 * 8.830357 * (Math.cos(al) + Math.sin(al)) - 60, 1e-4, 'the stretch at the limit'); near(m.limit.stretch, 0.934, 1e-3, 'by hand');
   near(m.at(m.limit.stretch).strain, petg.strainLimit, 1e-6, 'the necks reach the limit there');
+  near(m.stretchFor(m.at(0.5).force), 0.5, 1e-6, 'stretchFor is the force curve read back'); assert.throws(() => m.stretchFor(-1), /kirigami\.force/);
   // grams: the plate less 36 slots, each π r² + 4r (8.32 - 0.84) = 2.2167 + 25.1328 = 27.3495 mm², half where an edge
   // runs through it and a quarter at a corner: 25 + 20 / 2 + 4 / 4 = 36 whole ones, 984.58 mm², so 2615.42 mm²
   near(m.area, 3600 - 36 * (Math.PI * 0.84 ** 2 + 4 * 0.84 * 7.48), 1e-6, 'area'); near(m.area, 2615.42, 0.01, 'by hand');
