@@ -6928,3 +6928,23 @@ test('cad\'s share of the densities key is pinned, so a change to holdEmpty or o
   // CHANGELOG; otherwise keep the change outside those two functions.
   assert.equal(crypto.createHash('sha256').update(densityCode().cad).digest('hex'), '5e4fb33bb0c71c40d22adfec2b24a8de9b8202bb292dd7d339b2a5423c81c417');
 });
+
+test('cad why explains a rule of a set named with a hyphen as an expression writes it (pla_prusament.strength_z and its low end), as cad values reads it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/hyphen', { uses: ['pla-prusament'], variables: {
+      // Prusament PLA across the layers: 37.6 ± 4 MPa, so the weak end is 33.6 MPa; at half of it, 16.8 MPa; half the
+      // middle value, 18.8 MPa
+      weak: { value: 'pla_prusament.strength_z.low / 2', unit: 'MPa', rule: 'Half the weak end across the layers' },
+      mid: { value: 'pla_prusament.strength_z / 2', unit: 'MPa', rule: 'Half the value across the layers' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const weak = JSON.parse(cad('why', 'demo/hyphen.weak', '--json')), end = weak.reads[0];
+    assert.equal(weak.value, 16.8);
+    assert.deepEqual([end.name, end.value, end.unit, end.reads[0].name, end.reads[0].value], ['pla_prusament.strength_z.low', 33.6, 'MPa', 'pla-prusament.strength_z', 37.6]);
+    assert.match(end.rule, /^the low end of the range pla-prusament\.strength_z is found in/);
+    assert.match(end.source, /Prusament PLA/);
+    const mid = JSON.parse(cad('why', 'demo/hyphen.mid', '--json')).reads[0];
+    assert.deepEqual([mid.name, mid.value, mid.unit], ['pla_prusament.strength_z', 37.6, 'MPa']);
+    assert.match(mid.source, /Prusament PLA/);
+  } finally { done(); }
+});

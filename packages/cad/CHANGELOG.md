@@ -23,6 +23,12 @@ and head, the parts it passes through and the part it ends in.
 - A design's expressions read the ends of a rule's range (`pa_cf.strength_z.low`), and `cad why` explains one as the
   rule it comes from.
 
+### Fixed
+
+- `cad why` explains a rule of a set whose name has a hyphen, written as an expression writes it
+  (`pla_prusament.strength_z`, `pla_prusament.strength_z.low`, `mx_switch.housing_top`), as `cad values` already read
+  it; it stopped with `no variable or rule` before.
+
 ### Printed sizes that moved
 
 - An optimised solid's surface moves by no more than 0.1 mm (its outline's corners, as above). Bolt holes and kept

@@ -37,10 +37,13 @@ export function valuesOf(b, names = []) {
 export async function why(ref, name, { depth = 12 } = {}) {
   const builds = new Map(), seen = new Set();
   const get = async (r) => builds.get(r) || (builds.set(r, await build(locate(r))), builds.get(r));
+  // A rule as an expression writes it (pla_prusament.strength_z) is the entry of the set named with a hyphen
+  // (pla-prusament), as variables reads it: a - is a minus in an expression
+  const entry = (b, n) => b.entries.find((x) => x.name === n) || (n.includes('.') ? b.entries.find((x) => x.name === n.slice(0, n.indexOf('.')).replace(/_/g, '-') + n.slice(n.indexOf('.'))) : undefined);
   const node = async (r, n, d) => {
-    const b = await get(r), end = /^[^.]+\.[^.]+\.(low|high)$/.exec(n)?.[1], base = end && b.entries.find((x) => x.name === n.slice(0, -end.length - 1));
+    const b = await get(r), end = /^[^.]+\.[^.]+\.(low|high)$/.exec(n)?.[1], base = end && entry(b, n.slice(0, -end.length - 1));
     // An end of a rule's range (pa_cf.strength.low): the rule's own entry, its value that end, reading the rule
-    const e = base ? { ...base, value: base[end], expr: undefined, rule: `the ${end} end of the range ${base.name} is found in (${base.rule})` } : b.entries.find((x) => x.name === n);
+    const e = base ? { ...base, value: base[end], expr: undefined, rule: `the ${end} end of the range ${base.name} is found in (${base.rule})` } : entry(b, n);
     if (!e) throw Object.assign(new Error(`${r}: no variable or rule "${n}"`), { code: 'var.unknown' });
     const out = { name: n, value: e.value, unit: e.unit || '', object: r, ...(e.expr ? { expr: e.expr } : {}), ...(e.rule ? { rule: e.rule } : {}),
       ...(e.kind ? { kind: e.kind } : {}), ...(e.source ? { source: e.source } : {}) };
