@@ -358,10 +358,10 @@ c.torque;        // 73.5 N·mm: past this it slips
   with a hole for a string or a hook, and the frame's post has a slot cut for each tick (longer at 0 and every fifth).
   Each tick is where the beam solver puts the needle under that force, so the scale follows the guide's curve, and the
   gauge needs the material to be drawn. A force along -y (toward the frame's bar) reads positive. The model checks the
-  leaves' strain at the range against half the limit, the ticks' spacing (under 1 mm warns, under two slots fails and
-  the drawing refuses it), and how far the needle drops away from the scale (3δ² / 5L). A printed leaf is often 10% to
-  20% off the datasheet modulus, so hang one known weight on it: `calibration: { load, reading }` gives the factor
-  that corrects every reading.
+  leaves' strain at the range against half the limit, the ticks' spacing (under two slots, 1.2 mm at the default 0.6 mm
+  tick, fails and the drawing refuses it; cut but under 1 mm warns), and how far the needle drops away from the
+  scale (3δ² / 5L). A printed leaf is often 10% to 20% off the datasheet modulus, so hang one known weight on it:
+  `calibration: { load, reading }` gives the factor that corrects every reading.
 - **The slip clutch** is a hub and a ring printed together, a gap apart all round. Each arm is a curved cantilever
   rooted on a lug, with a V bump on its tip in a notch of the ring. Turned past the slip torque, the bumps ride up their
   notches' flanks, the arms bend in by the depth, and the ring clicks on to the next notch. The push along the bore to

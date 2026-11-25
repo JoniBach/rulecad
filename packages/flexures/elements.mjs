@@ -153,7 +153,7 @@ export function forceGaugeModel(p, m, o = {}) {
   const s = gaugeSums(k, m), margin = lim / s.strain, straight = k.range / (s.solvedStiffness * s.travel) - 1;
   f('pass', `${n2(s.solvedStiffness, 3)} N/mm (the beam solver on the drawn leaves, rounds included); two fixed-guided leaves, 24EI/L³, give ${n2(s.stiffness, 3)} N/mm`, 'gauge.stiffness', { values: { stiffness: s.stiffness, solvedStiffness: s.solvedStiffness } });
   const drawn = s.spacing >= 2 * k.tick;
-  f(s.spacing >= 1 ? 'pass' : drawn ? 'warn' : 'fail', `a tick every ${k.step} N, the nearest two ${n2(s.spacing)} mm apart${s.spacing >= 1 ? '' : drawn ? ': under 1 mm the needle is hard to read between them. A larger step, or softer leaves (longer or thinner)' : `: under two ${k.tick} mm slots, so the scale can't be cut. A larger step, or softer leaves (longer or thinner)`}`, 'gauge.ticks', { values: { step: k.step, spacing: s.spacing } });
+  f(!drawn ? 'fail' : s.spacing >= 1 ? 'pass' : 'warn', `a tick every ${k.step} N, the nearest two ${n2(s.spacing)} mm apart${drawn && s.spacing >= 1 ? '' : drawn ? ': under 1 mm the needle is hard to read between them. A larger step, or softer leaves (longer or thinner)' : `: under two ${k.tick} mm slots, so the scale can't be cut. A larger step, or softer leaves (longer or thinner)`}`, 'gauge.ticks', { values: { step: k.step, spacing: s.spacing } });
   f(margin >= 2 ? 'pass' : s.strain <= lim ? 'warn' : 'fail', `at ${k.range} N the platform travels ${n2(s.travel)} mm and the leaves see ${n2(s.strain * 100, 2)}%, ${margin >= 2 ? `under half the limit of ${n2(lim * 100, 1)}% (${n2(margin, 1)}x)` : s.strain <= lim ? `within the limit of ${n2(lim * 100, 1)}% but with only ${n2(margin, 2)}x the margin: longer or thinner leaves, or a smaller range` : `over the limit of ${n2(lim * 100, 1)}%: longer or thinner leaves, or a smaller range`}`, 'flexure.strain', { values: { strain: s.strain, limit: lim, margin, travel: s.travel } });
   f(Math.abs(straight) <= 0.02 ? 'pass' : 'info', `the scale runs ${n2(Math.abs(straight) * 100, 1)}% from straight at the range (the guide ${straight >= 0 ? 'stiffens' : 'softens'} as it goes); the ticks follow the solver's curve, not a straight line`, 'gauge.straight', { values: { straight } });
   f('pass', `at the range the needle drops ${n2(s.drop, 2)} mm away from the scale (a parallel guide's 3δ²/5L: ${n2((3 * s.travel ** 2) / (5 * k.L), 2)})`, 'gauge.drop', { values: { drop: s.drop } });
@@ -174,7 +174,7 @@ export function forceGaugeModel(p, m, o = {}) {
  *   angle?: number, notches?: number, bore?: number, wall?: number, lug?: number, gap?: number }} SlipClutch
  *   radius: the ring's bore, where the notches open (mm); thickness, width: each arm's; depth: how far a bump lifts
  *   its arm to leave its notch (mm); arms: how many (default 3); sweep: each arm's arc, root to tip (degrees, default
- *   90); angle: the notches' and bumps' flanks from the ring's bore (degrees, default 30: steeper slips at more torque,
+ *   225 / arms, 75 for three); angle: the notches' and bumps' flanks from the ring's bore (degrees, default 30: steeper slips at more torque,
  *   past atan(1 / μ) it never slips); notches: in the ring (default four for each arm, a whole number of times the
  *   arms); bore: the hub's hole (default 5); wall: the ring beyond its notches (default 4); lug: an arm's root, along
  *   the arc (default 3); gap: the least air (default 0.3)

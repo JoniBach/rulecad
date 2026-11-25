@@ -5,6 +5,13 @@ print (a leaf's thickness, a pin's diameter, a part's outline). Each release say
 why. Releases before this file was started are described in their pull requests on GitHub.
 
 ## Unreleased
+### Fixed
+
+- `forceGaugeModel`: `gauge.ticks` fails whenever the ticks lie closer than two slots, as `forceGauge` refuses to cut
+  them. It used to pass any spacing of 1 mm or more, so ticks 1.0 to 1.2 mm apart passed while the drawing refused
+  them and the grams came back empty. No printed size moved.
+- The `SlipClutch` type's `sweep` reads its real default, 225 / arms (75° for three), not 90°.
+
 ### Added
 
 - `tiltedTristable` and `tiltedTristableModel` (issue #76): two tilted-leaf bistables in series, one piece. The frame's

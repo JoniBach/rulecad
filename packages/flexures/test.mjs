@@ -1926,3 +1926,27 @@ test('the README\'s tristable, force gauge and slip clutch are the code\'s figur
   has(`each arm ${x3(c.solvedArc)} N/mm (the curved cantilever: ${x2(c.arc)}); a 1 mm lift takes ${x2(c.lift)} N, so it slips at ${x1(c.torque)} N·mm; ${x2(c.strain * 100)}%; ${c.clicks} clicks a turn | ${x1(c.grams)} (hub and ring) |`);
   assert.equal(c.findings.find((x) => x.code === 'clutch.torque').level, 'pass');
 });
+
+test('a force gauge whose ticks are too close to cut fails gauge.ticks by name, even over 1 mm; the slip clutch\'s declared sweep default is the code\'s 225 / arms', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs');
+  // Leaves 50 × 1 × 5, no rounds: I = 5 × 1³ / 12 = 0.4167 mm⁴; two fixed-guided leaves 24EI / L³ = 24 × 2680 × 0.4167
+  // / 125000 = 0.2144 N/mm, so a tick every 0.25 N lies about 0.25 / 0.2144 = 1.17 mm apart: over 1 mm, but under two
+  // 0.6 mm slots (1.2 mm), so forceGauge refuses to cut it and the model must fail it too, not pass it with no grams
+  const p = { length: 50, thickness: 1, width: 5, range: 1, step: 0.25, fillet: 0 }, g = f.forceGaugeModel(p, plaG);
+  assert.ok(g.spacing > 1 && g.spacing < 1.2, `the ticks 1.17 mm apart (${g.spacing})`);
+  const ticks = g.findings.find((x) => x.code === 'gauge.ticks');
+  assert.equal(ticks.level, 'fail', ticks.text);
+  assert.match(ticks.text, /under two 0\.6 mm slots/);
+  assert.throws(() => f.forceGauge(p, plaG), /under two 0\.6 mm slots/);
+  assert.equal(g.grams, null);
+  // drawn and over 1 mm still passes: the README's gauge, ticks every 0.5 N
+  const ok = f.forceGaugeModel({ length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5 }, plaG);
+  assert.equal(ok.findings.find((x) => x.code === 'gauge.ticks').level, 'pass');
+  // the slip clutch: left out, the sweep is 225 / arms (75° for three, 112.5° for two), and the typedef says so
+  const c = (q) => f.slipClutchModel({ radius: 15, thickness: 1.2, width: 6, depth: 1, ...q }, plaG);
+  near(c({}).arc, c({ sweep: 75 }).arc, 1e-9, 'three arms sweep 75° by default');
+  near(c({ arms: 2, notches: 8 }).arc, c({ arms: 2, notches: 8, sweep: 112.5 }).arc, 1e-9, 'two arms sweep 112.5° by default');
+  const src = fs.readFileSync(new URL('./elements.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const doc = src.slice(src.indexOf('@typedef {{ radius: number, thickness: number, width: number, depth: number, arms?'), src.indexOf('function clutchLayout'));
+  assert.match(doc.replace(/\n \*\s+/g, ' '), /sweep: each arm's arc, root to tip \(degrees, default 225 \/ arms, 75 for three\)/);
+});
