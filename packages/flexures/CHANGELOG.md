@@ -17,6 +17,7 @@ why. Releases before this file was started are described in their pull requests 
 - `tubeFourBar`, `tubeFourBarModel`, `tubeFourBarFindings` (issue #78): a developable four-bar in a tube's wall, printed
   standing in one piece with living hinges whose axes run up the tube. The model gives each hinge's turn and strain,
   the input's torque, its travel at the strain limit, and how far each link stands out of the tube and in.
+  Each hinge bends as its drawn web, the thin middle plus what the pockets' round corners add (`hinge.length`).
 - `kreslingModel` (issue #78): the Kresling fold's two stable states in closed form, each crease's fold, the flat
   pattern, the energy and force between the states with the panels taken as bars (an estimate), and the web a crease
   needs for the material's limit.

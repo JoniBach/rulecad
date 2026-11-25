@@ -72,10 +72,11 @@ function poseOf(k, th) {
  * from the hinges' energy; the turn each way at the hinges' strain limit.
  * @param {TubeFourBar} p
  * @param {{ E: number, strainLimit?: number, density?: number }} m
- * @returns {{ hinge: { stiffness: number }, links: { input: number, coupler: number, output: number, ground: number },
+ * @returns {{ hinge: { stiffness: number, length: number }, links: { input: number, coupler: number, output: number, ground: number },
  *   at: (input: number) => null | { turns: number[], strain: number, torque: number, out: Record<string, number>, in: Record<string, number>, gap: number },
  *   travel?: [number, number], grams?: number, volume: number }}
- *   links: each one's chord between its joints (mm); at(input degrees): null where the loop no longer closes; turns:
+ *   hinge: each one's stiffness (N·mm a radian) and the length it bends as (mm: the thin web plus what its round corners
+ *   add); links: each one's chord between its joints (mm); at(input degrees): null where the loop no longer closes; turns:
  *   the four joints' turns (degrees); strain: the most any hinge sees; torque: N·mm to hold the input there; out, in:
  *   how far each moving link's wall middle stands outside the circle and inside it (mm); gap: the least between the
  *   middles of links not joined, less a wall; travel: the input's turn each way at the strain limit (degrees)
@@ -83,7 +84,9 @@ function poseOf(k, th) {
 export function tubeFourBarModel(p, m) {
   const what = 'tubeFourBarModel', k = layoutOf(what, p);
   if (!(m && m.E > 0)) refuse('developable.material', `${what}: the material needs a modulus E above 0 MPa (got ${said(m?.E)})`);
-  const hinge = livingHingeModel({ flex: k.l, thickness: k.t, width: k.H }, m), K = hinge.stiffness;
+  // the web as drawn: thin for l - 2 rr, then thickening through the pockets' round corners, so it bends as a web of the
+  // length that holds the same energy, l_eff = ∫ (t / t(x))³ dx (the peak strain, at the thin part, follows the same l_eff)
+  const lEff = webLength(k), hinge = livingHingeModel({ flex: lEff, thickness: k.t, width: k.H }, m), K = hinge.stiffness;
   const chord = (i, j) => Math.hypot(k.P[i][0] - k.P[j][0], k.P[i][1] - k.P[j][1]);
   // each body's wall middle, as points on its arc at rest (the hinges' halves with it), and where it turns about
   const arc = (from, span, n = 48) => Array.from({ length: n + 1 }, (_, i) => { const q = from + (k.dir * span * i) / n; return [k.R * Math.cos(q), k.R * Math.sin(q)]; });
@@ -109,7 +112,7 @@ export function tubeFourBarModel(p, m) {
   }
   const volume = measureArea(k) * k.H;
   return {
-    hinge: { stiffness: K }, links: { input: chord(0, 1), coupler: chord(1, 2), output: chord(2, 3), ground: chord(3, 0) }, at,
+    hinge: { stiffness: K, length: lEff }, links: { input: chord(0, 1), coupler: chord(1, 2), output: chord(2, 3), ground: chord(3, 0) }, at,
     ...(travel ? { travel } : {}), volume, ...(m.density ? { grams: (volume * m.density) / 1000 } : {}),
   };
 }
@@ -117,6 +120,15 @@ export function tubeFourBarModel(p, m) {
 // The cross-section's area: the ring less each hinge's two pockets (each a rectangle with its two corners at the web
 // rounded, the rounds' radius the pocket's depth, or half the web's length if less)
 function pocketOf(k) { const d = (k.w - k.t) / 2, rr = Math.min(d, k.l / 2); return { d, rr }; }
+// The web's length as it bends: l - 2 rr thin, and at each end a round corner of each pocket, where at s past the
+// round's start the web is t + 2 rr (1 - cos φ) thick, s = rr sin φ. Each end adds ∫ (t / t(s))³ ds = ∫ over φ from 0 to
+// π/2 of rr cos φ (t / (t + 2 rr (1 - cos φ)))³ dφ, taken by Simpson's rule (the integrand is smooth in φ)
+function webLength(k) {
+  const { rr } = pocketOf(k), n = 200, h = Math.PI / 2 / n, g = (q) => rr * Math.cos(q) * (k.t / (k.t + 2 * rr * (1 - Math.cos(q)))) ** 3;
+  let end = g(0) + g(Math.PI / 2);
+  for (let i = 1; i < n; i++) end += (i % 2 ? 4 : 2) * g(i * h);
+  return k.l - 2 * rr + 2 * (end * h) / 3;
+}
 function measureArea(k) {
   const { d, rr } = pocketOf(k), ring = 2 * Math.PI * k.R * k.w;
   // a pocket: l × d, less the two corners' rounds' outside (each (1 - π/4) rr²), measured flat (the wall's curve left out)

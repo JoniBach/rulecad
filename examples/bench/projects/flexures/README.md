@@ -115,8 +115,8 @@ of -1), and every square should turn the opposite way to its neighbours.
 
 `tube` (`npx cad export flexures/tube`) is a developable mechanism: a PETG tube, 20 mm radius and 20 mm long, whose
 wall is a four-bar, printed standing (6.69 g). Press the input link (the 60 degrees of wall between the first two thin
-hinges) inwards: turned 4.8 degrees it takes 91.6 N·mm, the hinge after it stands 1.43 mm out of the tube and the next
-1.27 mm in, at half PETG's strain limit. Measure how far each stands out with the dial gauge, against the model.
+hinges) inwards: turned 4.4 degrees in it takes 89.8 N·mm, it and the hinge after it go 1.34 mm into the tube and the
+next hinge stands 1.09 mm out, at half PETG's strain limit. Measure how far each stands out with the dial gauge, against the model.
 
 ## Results
 

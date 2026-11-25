@@ -1935,13 +1935,19 @@ test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its 
   const petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }), R = 20, th = (5 * Math.PI) / 180;
   // Joints at 210°, 150°, 30° and -30° on a 20 mm radius make a rectangle: input and output R long (60° chords), coupler
   // and ground R√3 = 34.641. A parallelogram: the coupler does not turn, so every hinge turns as far as the input, by
-  // turns +, -, +, -. Each hinge EI / l = 1810 × 20 × 0.84³ / 12 / 8 = 223.499 N·mm a radian, so holding 5° takes the four
-  // hinges' energy's slope 4 K θ = 4 × 223.499 × 0.087266 = 78.016 N·mm, at strain t θ / 2l = 0.84 × 0.087266 / 16 =
-  // 0.45815%; PETG's 1.2523% allows 2 × 8 × 0.012523 / 0.84 = 0.23854 rad = 13.667° each way
+  // turns +, -, +, -. Each web is drawn 8 long with pockets (2.5 - 0.84) / 2 = 0.83 deep whose corners at the web are
+  // rounds of rr = 0.83: thin for 8 - 1.66 = 6.34 mm, then at s along each round t + 2 (rr - √(rr² - s²)) thick. It bends
+  // as a web of l_eff = 6.34 + 2 ∫ from 0 to rr of (t / t(s))³ ds = 6.34 + 2 × 0.43108 = 7.20216 mm (the midpoint rule on
+  // s, 200000 steps, below). Each hinge EI / l_eff = 1810 × 20 × 0.84³ / 12 / 7.20216 = 248.257 N·mm a radian (it would be
+  // 223.499 on the full 8 mm), so holding 5° takes the four hinges' energy's slope 4 K θ = 4 × 248.257 × 0.087266 =
+  // 86.658 N·mm, at strain t θ / 2 l_eff = 0.84 × 0.087266 / 14.40433 = 0.50890%; PETG's 1.2523% allows
+  // 2 × 7.20216 × 0.012523 / 0.84 = 0.21475 rad = 12.304° each way
   const p = { radius: R, wall: 2.5, height: 20, joints: [210, 150, 30, -30], hinge: { flex: 8, thickness: 0.84 } }, m = f.tubeFourBarModel(p, petg), r = m.at(5);
-  near(m.links.input, R, 1e-9, 'input'); near(m.links.coupler, R * Math.sqrt(3), 1e-9, 'coupler'); near(m.hinge.stiffness, 223.4988, 1e-4, 'K by hand');
+  let ends = 0; for (let i = 0, n = 200000, rr = 0.83; i < n; i++) { const s = ((i + 0.5) * rr) / n; ends += (0.84 / (0.84 + 2 * (rr - Math.sqrt(rr * rr - s * s)))) ** 3 * (rr / n); }
+  near(ends, 0.43108, 1e-5, 'a round corner\'s share'); near(m.hinge.length, 6.34 + 2 * ends, 1e-6, 'the web bends as its drawn profile');
+  near(m.links.input, R, 1e-9, 'input'); near(m.links.coupler, R * Math.sqrt(3), 1e-9, 'coupler'); near(m.hinge.stiffness, 248.257, 1e-3, 'K by hand');
   r.turns.forEach((q, i) => near(q, [5, -5, 5, -5][i], 1e-9, `hinge ${i + 1}'s turn`));
-  near(r.torque, 78.016, 1e-3, 'torque by hand'); near(r.strain, 0.0045815, 1e-7, 'strain by hand'); near(m.travel[1], 13.667, 1e-3, 'travel'); near(m.travel[0], -13.667, 1e-3, 'travel back');
+  near(r.torque, 86.658, 1e-3, 'torque by hand'); near(r.strain, 0.0050890, 1e-7, 'strain by hand'); near(m.travel[1], 12.304, 1e-3, 'travel'); near(m.travel[0], -12.304, 1e-3, 'travel back');
   // The coupler moves without turning, by the input's end's move: B from (−R cos 30°, R sin 30°) about A by θ, so by
   // (−R sin θ, R (cos θ − 1)). A point at φ on its arc then lies √(1 + sin²θ + (cos θ − 1)² − 2 cos φ sin θ + 2 sin φ (cos θ − 1)) R
   // from the axis: the most and least over the arc from 150° to 30° (the model's 49 points) are how far it stands out and in
@@ -1954,7 +1960,7 @@ test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its 
   near(measureVolume(g) / m.volume, 1, 0.005, 'the shape weighs what the model says');
   // findings and refusals by name
   const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, by = (list, c) => list.find((x) => x.code === c);
-  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 14 }, printer, petg, m), 'developable.strain').level, 'fail');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 12.5 }, printer, petg, m), 'developable.strain').level, 'fail');
   assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 5 }, printer, petg, m), 'developable.strain').level, 'pass');
   assert.equal(by(f.tubeFourBarFindings({ ...p, hinge: { flex: 8, thickness: 0.6 } }, printer), 'developable.web').level, 'fail');
   assert.equal(by(f.tubeFourBarFindings({ ...p, height: 20.1 }, printer), 'developable.layers').level, 'warn');
@@ -1970,11 +1976,15 @@ test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its 
   const { main } = await import(pathToFileURL(fileURLToPath(new URL('tube.js', dir))).href), made = main(v), at = made.mechanism.at;
   assert.deepEqual(made.findings.filter((x) => x.level !== 'pass' && x.level !== 'info').map((x) => x.code), []);
   const margin = petg.strainLimit / at.strain; assert.ok(margin >= 1.9 && margin <= 2.5, `about twice the margin: ${margin}`);
-  assert.ok(V.turn.rule.includes(`stands ${at.out.coupler.toFixed(2)} mm out`) && V.turn.rule.includes(`${at.in.coupler.toFixed(2)} mm in`) && V.turn.rule.includes(`${at.torque.toFixed(1)} N·mm`) && V.turn.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.turn.rule);
+  // pressed inwards is a turn below 0: the input and the hinge after it go into the tube, the coupler's far hinge out
+  assert.ok(V.turn.value < 0 && at.in.input > 1 && at.out.input === 0 && at.out.coupler > 1, 'the design turn presses the input in');
+  assert.ok(V.turn.rule.includes(`${at.in.coupler.toFixed(2)} mm into the tube`) && V.turn.rule.includes(`stands ${at.out.coupler.toFixed(2)} mm out`) && V.turn.rule.includes(`${Math.abs(at.torque).toFixed(1)} N·mm`) && V.turn.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.turn.rule);
+  const bench = fs.readFileSync(new URL('../../examples/bench/projects/flexures/README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n').replace(/\s+/g, ' ');
+  assert.ok(bench.includes(`turned ${Math.abs(V.turn.value)} degrees in it takes ${Math.abs(at.torque).toFixed(1)} N·mm, it and the hinge after it go ${at.in.coupler.toFixed(2)} mm into the tube and the next hinge stands ${at.out.coupler.toFixed(2)} mm out`), 'the bench README says what the model does');
   assert.ok(onePiece(made.parts.tube), 'the bench tube is one print');
   // the README's example is the bench tube
   const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), bt = made.mechanism.travel;
-  for (const line of [`m.travel;    // [${bt[0].toFixed(1)}, ${bt[1].toFixed(1)}]`, `m.at(4.8);   // turns, strain ${(at.strain * 100).toFixed(2)}%, torque ${at.torque.toFixed(1)} N·mm`, `m.grams;     // ${made.mechanism.grams.toFixed(2)}`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  for (const line of [`m.travel;    // [${bt[0].toFixed(1)}, ${bt[1].toFixed(1)}]`, `m.at(${V.turn.value});  // turns, strain ${(at.strain * 100).toFixed(2)}%, torque ${at.torque.toFixed(1)} N·mm`, `m.grams;     // ${made.mechanism.grams.toFixed(2)}`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
 
 test('Kresling: the second stable state is the closed form\'s, the panels stretch between the two, and PETG webs cannot take its folds', async () => {
@@ -2001,4 +2011,19 @@ test('Kresling: the second stable state is the closed form\'s, the panels stretc
   assert.equal(kreslingModel({ sides: 6, radius: 20, height: 15, twist: 100 }).bistable, false);
   assert.equal(kreslingModel({ sides: 6, radius: 20, height: 22, twist: 100 }).bistable, true);
   for (const [bad, code] of [[{ ...p, sides: 2 }, 'kresling.sides'], [{ ...p, twist: 20 }, 'kresling.twist'], [{ ...p, twist: 130 }, 'kresling.twist']]) assert.throws(() => kreslingModel(bad), (e) => e.code === code);
+});
+
+test('kirigami: a neck a hair past the table\'s ends reads the end row, not a line through the far rows', async () => {
+  const { neckHingeModel } = await import('@rulecad/flexures');
+  // 0.7 × 6 = 4.2 gives r / w = 6.000000000000001 in floating point: the refusal lets it through (within 1e-9), so the
+  // table's last row, k / (E b w²) = 0.01952 and 0.1256 a radian, is what it must read. Before the fix, findIndex found no
+  // row at or over it and the lookup ran the line through the 0.5 and 0.75 rows out to 6: 0.02619 (+34%)
+  const w = 0.7, edge = neckHingeModel({ neck: w, radius: 4.2, depth: 1 }, { E: 1 }), end = neckHingeModel({ neck: 0.3, radius: 1.8, depth: 1 }, { E: 1 });
+  assert.ok(edge.rho > 6, `the case is past the end: ${edge.rho}`);
+  assert.ok(Math.abs(edge.stiffness / (w * w) - 0.01952) < 1e-9, `${edge.stiffness / (w * w)}`);
+  assert.ok(Math.abs(edge.stiffness / (w * w) - end.stiffness / 0.09) < 1e-9);
+  assert.ok(Math.abs(edge.strain(1) - end.strain(1)) < 1e-9, `the strain too: ${edge.strain(1)} against ${end.strain(1)}`);
+  // and a hair under the first row reads the first row
+  const low = neckHingeModel({ neck: 0.3, radius: 0.15 - 1e-12, depth: 1 }, { E: 1 });
+  assert.ok(Math.abs(low.stiffness / 0.09 - 0.04944) < 1e-9, `${low.stiffness / 0.09}`);
 });

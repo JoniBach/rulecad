@@ -11,7 +11,7 @@
     "tube": { "label": "The tube: ground, input, coupler and output links in its wall" }
   },
   "variables": {
-    "turn": { "value": 4.8, "unit": "degrees", "rule": "The input's design turn: the hinge between the input and the coupler stands 1.43 mm out of the tube and the one between the coupler and the output 1.27 mm in, taking 91.6 N·mm at the input, and the hinges see 0.61% strain against PETG's 1.25% (2.05 times the margin)" },
+    "turn": { "value": -4.4, "unit": "degrees", "rule": "The input's design turn, pressed inwards (a turn below 0 takes the input into the tube): the input and the hinge between it and the coupler go 1.34 mm into the tube and the hinge between the coupler and the output stands 1.09 mm out, taking 89.8 N·mm at the input, and the hinges see 0.63% strain against PETG's 1.25% (2.00 times the margin)" },
     "radius": { "value": 20, "unit": "mm", "rule": "The wall's middle radius" },
     "wall": { "value": 2.5, "unit": "mm", "rule": "The wall's thickness: six lines, stiff beside the hinges' webs" },
     "height": { "value": 20, "unit": "mm", "rule": "The tube's length up z: 100 layers. The hinges' stiffness grows with it, their strain for a turn does not" },

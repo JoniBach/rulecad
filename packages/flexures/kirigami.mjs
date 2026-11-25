@@ -40,7 +40,9 @@ const NECK = [
 ];
 const RHO = [NECK[0][0], NECK[NECK.length - 1][0]];
 // straight lines between the rows, in log rho and log value (both fall as a power of rho)
-const lookup = (rho, col) => {
+// (rho is clamped to the table first: the refusal lets a hair past either end through, which findIndex would miss)
+const lookup = (rho0, col) => {
+  const rho = Math.min(RHO[1], Math.max(RHO[0], rho0));
   const i = Math.max(0, NECK.findIndex((row) => row[0] >= rho) - 1), a = NECK[i], b = NECK[Math.min(i + 1, NECK.length - 1)];
   if (a === b) return a[col];
   const u = Math.log(rho / a[0]) / Math.log(b[0] / a[0]);

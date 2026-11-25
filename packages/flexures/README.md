@@ -878,11 +878,11 @@ import { tubeFourBar, tubeFourBarModel, tubeFourBarFindings, flexureMaterial } f
 const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
 const tube = { radius: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 8, thickness: 0.84 } };
 const m = tubeFourBarModel(tube, petg);
-m.travel;    // [-9.7, 9.8]: the input's turn each way at PETG's strain limit, degrees
-m.at(4.8);   // turns, strain 0.61%, torque 91.6 N·mm, how far each link stands out of the tube and in
+m.travel;    // [-8.8, 8.8]: the input's turn each way at PETG's strain limit, degrees
+m.at(-4.4);  // turns, strain 0.63%, torque -89.8 N·mm, how far each link stands out of the tube and in
 m.grams;     // 6.69
 tubeFourBar(tube); // the tube, standing, one piece
-tubeFourBarFindings({ ...tube, turn: 4.8 }, { line: 0.42, layer: 0.2 }, petg, m); // webs, layers, strain, gap, surface
+tubeFourBarFindings({ ...tube, turn: -4.4 }, { line: 0.42, layer: 0.2 }, petg, m); // webs, layers, strain, gap, surface
 ```
 
 `joints` gives the four hinges' places round the tube in degrees, in order: the input's hinge on the ground, the input
@@ -893,13 +893,16 @@ to the coupler, the coupler to the output, the output's hinge on the ground. The
 |---|---|
 | A link's length | the chord between its two hinges, 2 R sin(arc / 2) |
 | The coupler's far hinge | where the circles about the input's moved end and the output's ground hinge meet, on the side it lies at rest |
-| Each hinge's stiffness | E I / l, I = H t³ / 12 (a living hinge) |
-| Each hinge's strain | t ψ / 2l at a turn ψ |
+| A hinge's bending length | l_eff = l - 2 rr + 2 ∫ (t / t(s))³ ds over each round corner, t(s) = t + 2 (rr - √(rr² - s²)) |
+| Each hinge's stiffness | E I / l_eff, I = H t³ / 12 (a living hinge) |
+| Each hinge's strain | t ψ / 2 l_eff at a turn ψ (at the web's thin middle) |
 | The input's torque | the slope of Σ ½ K ψ² with the input's turn |
 | How far a link stands out or in | the most and least distance of its wall's middle from the axis, less R |
 
 Each hinge is the wall thinned to a web on its middle by a pocket from the outside and one from the inside, each
-pocket's corners at the web rounded. Printed standing, every hinge's axis is up z, so it bends within its layers, and
+pocket's corners at the web rounded (radius rr, the pocket's depth or half the web if less). The rounds thicken the
+web's ends, so it bends as a shorter one: on the bench tube the 8 mm web is 6.34 mm thin and bends as 7.20 mm, about 11%
+stiffer than the 8 mm figure (`m.hinge.length`). A positive turn takes the input out of the tube, a negative one in. Printed standing, every hinge's axis is up z, so it bends within its layers, and
 the first layer is the tube's whole ring. A web is straight on a curved wall, so its length is kept under
 √(2 R (wall - t)), where its ends stand a quarter of the pockets' cut off the wall's middle (`developable.hinge`).
 
