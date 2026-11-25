@@ -23,7 +23,7 @@ why. Releases before this file was started are described in their pull requests 
   involute of `@rulecad/gears`. Each tooth and gap slit, the gear drawn fuller by a preload; the model gives a half's
   stiffness (Castigliano with shear, checked against the beam solver), the preload's force and strain, the torque held
   with no backlash (2 F rb), how far the two halves' preloads close each slit at rest (shut is a fail,
-  `gear.preload`), the force at which the driving half closes its slit with its sibling's preload, the strain at a
+  `gear.preload`), the force at which the driving half closes its slit (past the hold, by itself: its sibling across the slit is the trailing flank, which has let go), the strain at a
   torque you give against the limit (`flexure.strain`), the halves in printed lines (`gear.halves`) and the mesh's
   contact ratio. The bore is drawn at the size asked; only the teeth are grown by the preload.
 - `@rulecad/flexures` now depends on `@rulecad/gears` (for the split-tooth gear's involute).

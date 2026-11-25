@@ -342,7 +342,7 @@ g.hold;          // 76.6 N·mm carried with no backlash
 |---|---|---|
 | `youngBistable`, spacing 46, arms 0.84 | 13.64 N·mm turns the coupler, 12° on; past 30.6° it turns on by itself and rests 60.7° round (the four-bar: 61.8°); 5.12 N·mm brings it back; 0.99% on the way, 0.5% held over (2.03 times under 2%) | 9.1 (mover 5.6, ground 3.4, pins) |
 | `tensuralBistable`, segments 18 at 7°, anchors 12 apart | 2.76 N switches it, 1.14 mm in; past 3.06 mm it snaps on and rests 5.67 mm along; 0.88 N brings it back; 33.6 N in each thin segment through the middle on a rigid slab, 22.1 N as drawn; 0.99% (2.02 times under 2%) | 21.6 |
-| `splitToothGear`, module 2, 24 teeth | each half 16.98 N/mm, pushed back 0.1 mm: 1.7 N on each flank, 0.33%; no backlash up to 76.6 N·mm; a half closes its slit at 3.41 N (0.67%); at the hold 0.67% (2.99 times under 2%) | 11.9 |
+| `splitToothGear`, module 2, 24 teeth | each half 16.98 N/mm, pushed back 0.1 mm: 1.7 N on each flank, 0.33%; no backlash up to 76.6 N·mm; a half closes its slit at 5.11 N (1.01%); at the hold 0.67% (2.99 times under 2%) | 11.9 |
 
 - **The Young bistable** is the patent's (Jensen, Howell and Roach, US 6215081, FIGS. 4a to 5b): two links. The
   ground carries two pins; the mover is two compliant arms joined by a rigid coupler, each arm turning on its pin at one
@@ -377,8 +377,10 @@ g.hold;          // 76.6 N·mm carried with no backlash
   two halves that face it back into their slits. The mesh carries 2 F rb with no backlash: the driving half takes on
   what the trailing half lets go of. Both halves of a tooth are pushed toward their shared slit, so the preloads
   close it part way at rest (0.27 of the 0.4 mm by default); a preload that shuts it is a fail (`gear.preload`), the
-  halves then locked together before any torque. Driven harder, a half closes the rest of its slit, its sibling's
-  preload helping, and bends on with its sibling. The bore is drawn the size asked: only the teeth grow. The halves
+  halves then locked together before any torque. The half across the slit is the tooth's other flank, the
+  trailing one, so up to the hold the two halves' forces add to the same 2 F and the slit closes no further. Past the
+  hold the trailing half carries nothing, and the driving half closes the slit by itself at the force that closes it
+  on one half (5.11 N on its flank by default, about 115 N·mm), then bends on with its sibling. The bore is drawn the size asked: only the teeth grow. The halves
   print as walls of whole lines at the pitch circle (`gear.halves`); a printed tooth comes out about a tenth of a
   millimetre fuller or thinner, so measure the hold before relying on it.
 
@@ -388,6 +390,7 @@ g.hold;          // 76.6 N·mm carried with no backlash
 | δ = c (1 - cos α); T = EA δ / 2a | tensural bistable through the middle | the chain's closure, the slab rigid |
 | 1/k = cos²α (∫ (r - ρ)² / EI dρ + ∫ dρ / κGA) | a split tooth's half along the flank's normal | Castigliano, Timoshenko's shear (κ 5/6) |
 | T = 2 F rb | split-tooth gear's hold | two preloaded flanks on one tooth |
+| Fclose = w / c (c the tip's movement per newton along the pitch tangent at the pitch point, bending and shear); closed at rest 2 F / Fclose of w; the stop at Fclose past the hold | split-tooth gear's slit | the two flanks of a tooth: their forces add to 2 F up to the hold, then the driving one alone |
 
 ## Composing mechanisms
 
