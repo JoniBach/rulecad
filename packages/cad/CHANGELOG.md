@@ -5,6 +5,24 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+### Added
+
+- Optimisation problems placed in an assembly (#28): `"in": { "assembly", "item", "pose", "z" }` puts a problem in
+  an item's frame. A region, support or load can sit at one of the assembly's joints (`"joint": "hinge"`, read as an
+  anchor is), and an `avoid` region can be a part swept through a joint's range (`{ "sweep": "gate", "through":
+  "swing", "steps" }`), each step kept clear; in a flat problem, the part's section in the plate's middle plane, holes
+  open. Steps by default so no point moves more than half a cell between two. Changing the assembly reruns the
+  optimisation. `cad why` names the assembly, the joints read and each sweep's range and steps. Schema first:
+  `problem.schema.json` gains `in`, `joint`, `sweep`, `through` and `steps`. Refused by name: a sweep outside avoid,
+  of the item itself or through a joint that doesn't move it against the item; a part that never crosses a flat
+  plate's plane; a joint or item the assembly has not got; more than 360 default steps.
+
+### Printed sizes that moved
+
+- None. Problems without `in` read as before (each result is drawn again once, since this file's code is in the
+  drawing's key; no densities key moves).
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 
