@@ -115,13 +115,16 @@ export function dryRun(lines, { machine, turnaround = TURNAROUND } = {}) {
 /** What a gait's step file is, for the summary: its cycles, time and start pose (nothing for a drawing). @param {object} file */
 export const gait = (file) => (file?.kind === 'gait' ? `, ${file.cycles} cycle${file.cycles === 1 ? '' : 's'} of a gait, ${Number(file.time).toFixed(1)} s${file.pose ? ` from the pose "${file.pose}" and back` : ''}` : '');
 
-async function send(port, lines, say) {
+async function send(port, lines, say, axes = 3) {
   const r = spawnSync('stty', [process.platform === 'darwin' ? '-f' : '-F', port, '115200', 'raw', '-echo', '-hupcl'], { encoding: 'utf8' });
   if (r.status) throw new Error(`stty ${port}: ${r.stderr}`);
   const rd = fs.createReadStream(port), wr = fs.createWriteStream(port);
   let buffer = '', answer = null;
-  rd.on('data', (d) => { buffer += d; let i; while ((i = buffer.indexOf('\n')) >= 0) { const l = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1); if (answer && /^(ok|error)/.test(l)) { const a = answer; answer = null; a(l); } else if (l) say(l); } });
-  await new Promise((res) => setTimeout(res, 2500)); // the Uno resets when the port opens
+  let greeting = null;
+  rd.on('data', (d) => { buffer += d; let i; while ((i = buffer.indexOf('\n')) >= 0) { const l = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1); if (answer && /^(ok|error)/.test(l)) { const a = answer; answer = null; a(l); } else if (l) { greeting = /^streamer ready, (\d+) axes$/.exec(l)?.[1] ?? greeting; say(l); } } });
+  await new Promise((res) => setTimeout(res, 2500)); // the board resets when the port opens
+  // the streamer says how many axes it was built for: lines written for another board would be misread
+  if (greeting != null && +greeting !== axes) { rd.destroy(); wr.end(); throw new Error(`the board's streamer has ${greeting} axes, and the lines are written for ${axes}: flash the streamer built for this machine's controller`); }
   for (const [i, l] of lines.entries()) {
     const reply = await new Promise((res) => { answer = res; wr.write(`${l}\n`); });
     if (reply !== 'ok') { wr.write('!\n'); throw new Error(`line ${i + 1} ("${l}"): ${reply}`); }
@@ -135,17 +138,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const fileName = args.find((a, i) => !a.startsWith('--') && !['--port', '--machine'].includes(args[i - 1]));
   if (!fileName) { console.error('usage: node send.mjs <file.steps.json> --port <device> [--machine <file>] [--no-home] | --dry-run'); process.exit(2); }
   const file = JSON.parse(fs.readFileSync(fileName, 'utf8')), machine = opt('machine') ? JSON.parse(fs.readFileSync(opt('machine'), 'utf8')) : null;
-  const lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, machine?.pen ? { pen: machine.pen } : {}), 'd'];
   // the whole file is checked before anything moves: a block refused halfway through a drawing would spoil it
-  let r;
+  let r, lines, st;
+  try { st = streamerOf(machine); lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, { ...(machine?.pen ? { pen: machine.pen } : {}), axes: st.axes }), 'd']; } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   try { r = dryRun(lines, { machine }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   if (has('dry-run')) {
     if (!has('quiet')) for (const s of r.said) console.log(s);
-    console.log(`dry run: ${r.lines} lines, ${r.m} blocks, ${r.p} pen moves, ${r.h} homes, peak ${r.peakRate} steps/s (the streamer takes ${MAX_RATE})${machine ? `, axes at most ${r.axisPeaks.slice(0, machine.axes.length).map((x, k) => `${Math.round(x)} of ${machine.axes[k].maxRate}`).join(', ')} steps/s` : ''}${gait(file)}`);
+    console.log(`dry run: ${r.lines} lines, ${r.m} blocks, ${r.p} pen moves, ${r.h} homes, peak ${r.peakRate} steps/s (the streamer on ${st.name === 'uno' ? 'an' : 'a'} ${st.board} takes ${MAX_RATE})${machine ? `, axes at most ${r.axisPeaks.slice(0, machine.axes.length).map((x, k) => `${Math.round(x)} of ${machine.axes[k].maxRate}`).join(', ')} steps/s` : ''}${gait(file)}`);
     process.exit(0);
   }
   if (!opt('port')) { console.error('--port <device>, or --dry-run'); process.exit(2); }
   // a gait has no home: the streamer counts from where the motors stand when it starts, so the leg must be in its pose
   if (file.kind === 'gait') console.log(`a gait${gait(file)}: the streamer counts from where the motors stand now, so the leg must be in ${file.pose ? `its pose "${file.pose}"` : "the cycle's first frame"}`);
-  send(opt('port'), lines, console.log).then(() => console.log('done')).catch((e) => { console.error(e.message); process.exit(1); });
+  send(opt('port'), lines, console.log, st.axes).then(() => console.log('done')).catch((e) => { console.error(e.message); process.exit(1); });
 }

@@ -52,6 +52,8 @@ to the weak end, take `low` from the set.
 | `as5600` | AS5600 magnetic encoder board and its 6 mm diametric magnet: resolution, air gap, field, board size | 15 |
 | `a4988`, `drv8825`, `tmc2209` | Stepper driver modules on the StepStick footprint: voltages, current with and without cooling, sense resistor, Vref formula and gain, microsteps, header spacing, pinout. The TMC2209's module figures are community until measured | 18, 18, 19 |
 | `cnc-shield-v3` | Arduino CNC shield V3: step, direction, enable and limit pins on the Uno, the Z limit quirk between revisions, A axis jumpers, microstep jumpers. Community until measured | 19 |
+| `arduino-mega-2560` | Arduino Mega 2560 as the streamer drives eight stepper axes with it: each axis's STEP, DIR and home switch pin (ports A, C and K), the shared enable, the clock, its outline. Pins are the streamer's choice; outline community until measured | 31 |
+| `driver-breakout` | A stepper driver expansion board for one A4988 or DRV8825: its size, motor supply range, signal header and microstep switches. Community until measured | 10 |
 | `supply-12v`, `supply-24v` | Enclosed 12 V and 24 V switching supplies by current (Mean Well's LRS series as variants): current, power, case size. Community until measured | 7, 8 |
 | `t8-screw` | T8 trapezoidal lead screw, 8 mm, 2 mm pitch: 8 mm lead (Tr8x8(P2)), with variants for 2 and 4 mm leads; helix, an efficiency note and an assumed friction. Community until measured | 10 |
 | `t8-nut` | Flanged nut for a T8 screw: brass drawing (flange, body, hole circle), POM variant by material only. Community until measured | 12 |

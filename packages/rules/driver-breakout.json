@@ -1,0 +1,84 @@
+{
+  "_doc": "A stepper driver expansion board: one StepStick driver (A4988 or DRV8825) on a small board with screw terminals for the motor and its supply, a header for EN, STEP, DIR and GND, and DIP switches for the microsteps. Sold as clones; the figures are community until measured, from one seller's listing. Board in the x-y plane.",
+  "name": "driver-breakout",
+  "part": "board",
+  "rules": {
+    "body_width": {
+      "value": 42,
+      "unit": "mm",
+      "rule": "Board length",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Dimensions: 42 x 35 x 10mm\"",
+      "checked": "2026-11-25"
+    },
+    "body_depth": {
+      "value": 35,
+      "unit": "mm",
+      "rule": "Board width",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Dimensions: 42 x 35 x 10mm\"",
+      "checked": "2026-11-25"
+    },
+    "height": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Over its terminals, with no driver in its socket",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Dimensions: 42 x 35 x 10mm\"",
+      "checked": "2026-11-25"
+    },
+    "board_thickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "The board",
+      "kind": "community",
+      "source": "The common 1.6 mm FR-4 board; measure yours",
+      "checked": "2026-11-25"
+    },
+    "motor_voltage_min": {
+      "value": 12,
+      "unit": "V",
+      "rule": "Least motor supply into its terminals, as the listing gives it (the DRV8825 itself takes 8.2 V)",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Motor Input Voltage: 12-30V\"",
+      "checked": "2026-11-25"
+    },
+    "motor_voltage_max": {
+      "value": 30,
+      "unit": "V",
+      "rule": "Most motor supply into its terminals, as the listing gives it",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Motor Input Voltage: 12-30V\"",
+      "checked": "2026-11-25"
+    },
+    "logic_voltage": {
+      "value": 5,
+      "unit": "V",
+      "rule": "Its signal level: an Arduino's pins drive it directly",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Logic Voltage: 5V (suitable with Arduino boards)\"",
+      "checked": "2026-11-25"
+    },
+    "signals": {
+      "value": "EN STEP DIR GND",
+      "rule": "The signal header, in the order its silkscreen gives as E S D G; check yours",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"ESDG respectively corresponds to Enable Step Dir Gnd\"",
+      "checked": "2026-11-25"
+    },
+    "microsteps": {
+      "value": "DIP switches, all on for 1/32 with a DRV8825 (1/16 with an A4988)",
+      "rule": "How its microsteps are set",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"Set the jumpers to ON DP position for 16 segments (4988) or 32 segments (8825)\"",
+      "checked": "2026-11-25"
+    },
+    "pinout": {
+      "value": "EN STEP DIR GND on the signal header; VMOT and GND, then the motor's A and B coils on screw terminals",
+      "rule": "Its connections; check your board's silkscreen",
+      "kind": "community",
+      "source": "Tinkersphere, \"3D Printer A4988 Stepper Motor Driver Expansion Board\" (product 2757, the common clone that takes an A4988 or a DRV8825), https://tinkersphere.com/3d-printer-parts/2757-3d-printer-a4988-stepper-motor-driver-expansion-board.html: \"ESDG respectively corresponds to Enable Step Dir Gnd\"",
+      "checked": "2026-11-25"
+    }
+  }
+}
