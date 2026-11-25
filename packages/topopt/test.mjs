@@ -708,7 +708,15 @@ test('a tool\'s radius: a slot narrower than the tool fills, a pocket as wide st
     for (const i of [0, 2, 7, 11]) assert.ok(o[j * nx + i] > 0.9, `cell ${i}: ${o[j * nx + i]}`);
   }
   assert.throws(() => toolFilter({ nx, ny }, '+y', 0.8), /a tool's radius under a cell changes nothing on the grid \(got 0\.8 cells\)/);
-  assert.throws(() => toolFilter({ nx, ny }, 'y', 2), /the tool's side is \+x, -x, \+y or -y/);
+  assert.throws(() => toolFilter({ nx, ny }, 'y', 2), /the tool's side is \+x, -x, \+y, -y, \+z or -z \(z: through the plate\) \(got y\)/);
+  // A plate (2D) cut through from +z: the tool's end moves in the plate's own plane, so the slot fills from both
+  // sides along x and y alike, the pocket stays open, and the plate's edge is beyond the grid (the tool runs free)
+  const plate = toolFilter({ nx, ny }, '+z', 1.5).apply(x, new Float64Array(nx * ny));
+  for (let j = 0; j < ny; j++) { assert.ok(plate[j * nx + 5] > 0.9, `through: the slot fills: ${plate[j * nx + 5]}`); for (let i = 8; i <= 10; i++) assert.ok(plate[j * nx + i] < 0.1, `through: the pocket stays open: ${plate[j * nx + i]}`); }
+  const { processFilter, undercuts } = await import('@rulecad/topopt');
+  assert.throws(() => processFilter({ nx, ny }, { mill: '+z' }), /a plate cut through from \+z or -z has no undercuts to keep out: give the tool's radius \(tool\)/);
+  assert.equal(undercuts({ nx, ny }, x, { from: '+z' }).count, 0);
+  assert.ok(undercuts({ nx, ny }, x, { from: '+z', tool: 1.5 }).cells.includes(5), 'the slot is too narrow for the tool');
   const size = { nx: 5, ny: 4, nz: 3 }, n = 60, y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
   for (const [from, r] of [['+z', 1.5], ['-x', 2], ['+y', 1]]) {
     const f = toolFilter(size, from, r), value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
