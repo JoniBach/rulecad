@@ -1812,3 +1812,102 @@ test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened end
   assert.ok(coils && coils.level === 'warn' && /1\.23 mm apart at rest/.test(coils.text), coils?.text);
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
+
+test('a Young bistable (US 6215081 class I): the beam solver\'s second position is the pseudo-rigid-body four-bar\'s, its arms held bent within half the limit; two prints and two pins that clear each other over the swing', async () => {
+  const { youngBistable, youngBistableModel } = await import('@rulecad/flexures');
+  const p = { spacing: 46, thickness: 0.84, width: 6 }, m = youngBistableModel(p, { ...pla, density: 1.24 }, { printer: { line: 0.42, layer: 0.2 } });
+  // The pseudo-rigid-body four-bar by hand, from the patent's FIG. 4a proportions (long arm 2.26 spacings at 131.7°,
+  // short 0.92 at 94.4°) and γ 0.85: long = 2.26 x 46 = 103.96, short = 0.92 x 46 = 42.32; r2 = 0.85 x 103.96 = 88.366,
+  // r4 = 0.85 x 42.32 = 35.972. The coupler joins the characteristic pivots P = 88.366 (cos 131.7°, sin 131.7°) =
+  // (-58.784, 65.977) and Q = (46, 0) + 35.972 (cos 94.4°, sin 94.4°) = (43.240, 35.866): r3 = √(102.024² + 30.111²) =
+  // 106.375. Shortest and longest 35.972 + 106.375 = 142.35 > 46 + 88.366 = 134.37: non-Grashof
+  assert.ok(Math.abs(m.prb.r2 - 88.366) < 1e-3 && Math.abs(m.prb.r4 - 35.972) < 1e-3 && Math.abs(m.prb.r3 - 106.375) < 1e-2, JSON.stringify(m.prb));
+  assert.equal(m.prb.grashof, false);
+  // Bistable, and where it rests again: the solver on the drawn arms (60.7°) and the four-bar's energy (61.8°) within 5°
+  assert.ok(m.bistable && m.snap.torque > 0 && m.back.torque < 0, JSON.stringify({ snap: m.snap, back: m.back }));
+  assert.ok(Math.abs(m.second - m.prb.second.coupler) < 5, `solver ${m.second}°, four-bar ${m.prb.second.coupler}°`);
+  // Held over, the long arm is bent and the short nearly straight (the patent's "force loaded" position, FIG. 4b). Its
+  // strain by the pseudo-rigid-body model: a fixed-pinned segment's moment at its fixed end is Kθ E I Θ / l, so
+  // ε = Kθ Θ t / 2l = 2.65 x 0.553 x 0.84 / (2 x 103.96) = 0.59% for Θ = 31.7° (0.553 rad); the solver within 25%
+  assert.ok(Math.abs(m.prb.second.long) > 25 && Math.abs(m.prb.second.short) < 5, JSON.stringify(m.prb.second));
+  const hand = (2.65 * (Math.abs(m.prb.second.long) * Math.PI / 180) * 0.84) / (2 * 103.96);
+  assert.ok(Math.abs(m.held / hand - 1) < 0.25, `held ${m.held}, by hand ${hand}`);
+  // Twice the strain margin on the way over, and the clearances, pins and grams
+  assert.ok(m.margin >= 2, `margin ${m.margin}`);
+  const lv = (c) => m.findings.find((x) => x.code === c)?.level;
+  assert.equal(lv('flexure.strain'), 'pass'); assert.equal(lv('young.snap'), 'pass'); assert.equal(lv('young.clear'), 'pass'); assert.equal(lv('flexure.lines'), 'pass');
+  assert.ok(m.clearance.least >= 0.3, JSON.stringify(m.clearance));
+  // The pin: 3 mm of bar, 0.3 of air and the 6 mm hub, less 0.5 off the table: 8.8 mm of filament, a slip fit in each
+  // hub and a press fit in the bar (the printer's rules)
+  assert.equal(m.pins.name, 'filament pin 1.75x8.8');
+  assert.ok(m.pins.slip > 1.75 && m.pins.press < m.pins.slip, JSON.stringify(m.pins));
+  // Two prints, each one piece, each one extrusion from the bed (a simple solid first layer); as assembled at rest the
+  // ground's bar sits over the mover, not in it
+  const mover = youngBistable(p, { part: 'mover' }), ground = youngBistable(p, { part: 'ground' });
+  assert.ok(onePiece(mover) && onePiece(ground));
+  assert.ok(Math.abs(measureVolume(mover) / 1000 * 1.24 - m.grams.mover) < 1e-9 && m.grams.total > m.grams.mover + m.grams.ground);
+  const placed = jscad.transforms.translate([0, 0, 0.3 + 6 + 3], jscad.transforms.mirrorZ(ground));
+  assert.ok(measureVolume(jscad.booleans.intersect(mover, placed)) < 1e-6, 'the ground clears the mover at rest');
+  // Refused by name
+  assert.throws(() => youngBistable({ ...p, longAngle: 200 }), /longAngle is the arm's direction/);
+  assert.throws(() => youngBistable({ ...p, spacing: 8 }), /spacing 8 leaves the two hubs/);
+  assert.throws(() => youngBistable({ ...p, pin: 'filament pin 1.75x12' }), /longer than the bar, the gap and the hub/);
+  assert.throws(() => youngBistableModel(p, { E: 2680 }), /strainLimit/);
+});
+
+test('a tensural bistable (US 7126446): through the middle its thin segments are stretched, about EA c (1 - cos α) / 2a; it snaps over and stays, one piece with everything clear over the swing', async () => {
+  const { tensuralBistable, tensuralBistableModel } = await import('@rulecad/flexures');
+  const p = { length: 18, spacing: 12, angle: 7, thickness: 0.84, width: 6 }, m = tensuralBistableModel(p, { ...pla, density: 1.24 }, { printer: { line: 0.42, layer: 0.2 } });
+  // By hand: travel 2 c sin α = 24 sin 7° = 2.9249 mm; the stretch through the middle c (1 - cos α) = 12 (1 - 0.992546)
+  // = 0.08945 mm; EA = 2680 x 6 x 0.84 = 13507.2 N; over both thin segments in series (2a = 36 mm), with the slab rigid,
+  // 13507.2 x 0.08945 / 36 = 33.56 N
+  assert.ok(Math.abs(m.travel - 2.9249) < 1e-3 && Math.abs(m.stretch - 0.08945) < 1e-4 && Math.abs(m.tension - 33.56) < 0.05, JSON.stringify({ t: m.travel, s: m.stretch, n: m.tension }));
+  // The solver's pull in the thin segments through the middle is positive (tension: what makes it tensural) and under the
+  // rigid slab's, since the slab and its feet give a little too
+  assert.ok(m.solvedTension > 0.3 * m.tension && m.solvedTension < m.tension, `solver ${m.solvedTension} N, by hand ${m.tension} N`);
+  // It snaps: the push rises, falls through 0 and comes back up; it rests again past where the line lies square
+  assert.ok(m.bistable && m.snap.force > 0 && m.back.force < 0 && m.second > m.travel / 2, JSON.stringify({ snap: m.snap, back: m.back, second: m.second }));
+  const lv = (c) => m.findings.filter((x) => x.code === c).map((x) => x.level);
+  assert.deepEqual(lv('tensural.snap'), ['pass']); assert.deepEqual(lv('tensural.clear'), ['pass']); assert.deepEqual(lv('tensural.tension'), ['info']);
+  assert.ok(m.margin > 1.9 && m.clearance.least >= 0.3, JSON.stringify({ margin: m.margin, clearance: m.clearance }));
+  // One piece, one extrusion from the bed; its grams are its volume's
+  const g = tensuralBistable(p);
+  assert.ok(onePiece(g));
+  assert.ok(Math.abs(measureVolume(g) / 1000 * 1.24 - m.grams) < 1e-9);
+  // Refused by name
+  assert.throws(() => tensuralBistable({ ...p, angle: 20 }), /angle is the thin segments' tilt/);
+  assert.throws(() => tensuralBistable({ ...p, spacing: 5 }), /spacing 5 leaves the base's and the shuttle's anchor blocks/);
+  assert.throws(() => tensuralBistable({ ...p, depth: 5 }), /depth 5 leaves no room/);
+});
+
+test('a split-tooth gear: the involute of @rulecad/gears grown by the preload, each tooth and gap slit; a half\'s stiffness is the beam solver\'s, its hold 2 F rb, and in mesh it overlaps its mate where a plain gear has play', async () => {
+  const { splitToothGear, splitToothGearModel } = await import('@rulecad/flexures');
+  const { spur, gearModel, phase } = await import('@rulecad/gears');
+  const p = { module: 2, teeth: 24, width: 6, bore: 5 }, m = splitToothGearModel(p, { ...pla, density: 1.24 }, { printer: { line: 0.42, layer: 0.2 } });
+  // Castigliano's bending on the tapered half and the beam solver on the same spans agree within 1% (the stiffness
+  // itself adds shear, so it is a little softer)
+  assert.ok(Math.abs(m.solvedBending / m.bending - 1) < 0.01 && m.stiffness < m.bending, JSON.stringify({ b: m.bending, s: m.solvedBending, k: m.stiffness }));
+  // By hand: the drawn tooth is fuller by the preload and a quarter of the mate's 0.15 mm backlash along the normal,
+  // 0.1 + 0.0375 cos 20° = 0.13524 mm a flank, 0.13524 / cos 20° = 0.14392 along the pitch circle. So a half is
+  // (π m / 2 + 2 x 0.14392) / 2 - 0.2 = (3.14159 + 0.28784) / 2 - 0.2 = 1.5147 mm wide at the pitch circle (read off the
+  // drawn outline, within its facets)
+  assert.ok(Math.abs(m.halves.pitch - 1.5147) < 0.01, `half at the pitch ${m.halves.pitch}`);
+  // The preload's force is the stiffness times 0.1 mm, and the hold is 2 F rb, rb = 24 cos 20° = 22.553 mm
+  assert.ok(Math.abs(m.force - 0.1 * m.stiffness) < 1e-9 && Math.abs(m.hold - 2 * m.force * 22.5526) < 0.01, JSON.stringify({ f: m.force, h: m.hold }));
+  assert.ok(m.force > 0.5 && m.force < 5, `a preload of ${m.force} N: firm, not a brake`);
+  // At the hold the driving half takes F + T / 2rb = 2F; past the stop (its slit closed) it shares the rest with its
+  // sibling. Both within the limit at the hold, with twice the margin
+  assert.ok(Math.abs(m.driven.force - 2 * m.force) < 1e-9 && m.driven.margin >= 2, JSON.stringify(m.driven));
+  const hard = splitToothGearModel(p, pla, { torque: 200 }), Fn = 200 / 22.5526;
+  assert.ok(Math.abs(hard.driven.force - Fn) < 1e-3 && Fn > hard.stop.force && /its slit closed/.test(hard.findings.find((x) => x.code === 'flexure.strain').text));
+  // In mesh at the standard centre (48 mm) with a plain 24-tooth gear, a tooth phased into a gap: the split gear overlaps
+  // the mate (its halves are pushed back), a plain gear of the same involute with the kit's backlash does not
+  const mate = jscad.transforms.translate([48, 0, 0], jscad.transforms.rotateZ((phase(gearModel({ module: 2, teeth: 24, backlash: 0 }), gearModel({ module: 2, teeth: 24 }), 0) * Math.PI) / 180, spur({ module: 2, teeth: 24, width: 6, chamfer: 0 })));
+  const over = measureVolume(jscad.booleans.intersect(splitToothGear(p), mate)), plain = measureVolume(jscad.booleans.intersect(spur({ module: 2, teeth: 24, width: 6, chamfer: 0 }), mate));
+  assert.ok(over > 0.05 && plain < 1e-6, `split ${over} mm³, plain ${plain} mm³`);
+  assert.ok(onePiece(splitToothGear(p)), 'the slits stop short of the rim: one piece');
+  // Refused by name
+  assert.throws(() => splitToothGear({ ...p, preload: 0.5 }), /preload 0.5 is the slit's 0.4 or more/);
+  assert.throws(() => splitToothGear({ ...p, bore: 26 }), /under two modules of rim over the 26 mm bore/);
+  assert.throws(() => splitToothGear({ ...p, depth: 20 }), /depth 20 takes the slits to the middle/);
+});

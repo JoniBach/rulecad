@@ -16,7 +16,7 @@
 //
 // Drawn flat like every flexure here: the plan in x and y, the print from z = 0 up to the width. Units: mm, N, MPa.
 import jscad from '@jscad/modeling';
-import { pinModel } from '@rulecad/fixings';
+import { pinModel, holeModel } from '@rulecad/fixings';
 import { beamProfile, printable, need } from './core.mjs';
 import { beamSystem, equilibrium } from './beams.mjs';
 import { beamOutline, spansOf, readCurve } from './bistables.mjs';
@@ -30,6 +30,7 @@ const { translate, mirrorZ } = jscad.transforms;
 const { measureVolume } = jscad.measurements;
 
 const SEG = 64;
+const M3 = () => holeModel('M3', { kind: 'clearance' }).diameter; // a screw hole to fix a ground to a board
 const dir = (deg) => [Math.cos(deg * rad), Math.sin(deg * rad)];
 const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [(x0 + x1) / 2, (y0 + y1) / 2] });
 // A pad at a beam's end, square to the beam, so the beam's rounds meet a flat face (as in bistables.mjs)
@@ -89,7 +90,7 @@ function youngGround(k) {
   const solid = jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: bw }, prof)); // the profile in x and z, bw across y
   const body = translate([0, bw / 2, 0], solid);
   const holes = [k.A, k.B].map((c) => cylinder({ radius: k.press.hole.diameter / 2, height: k.hb + 2, center: [c[0], c[1], k.hb / 2], segments: 32 }));
-  const screw = cylinder({ radius: 1.7, height: H + 2, center: [(f0 + f1) / 2, 0, H / 2], segments: 32 }); // an M3 clearance (ISO 273 medium, 3.4)
+  const screw = cylinder({ radius: M3() / 2, height: H + 2, center: [(f0 + f1) / 2, 0, H / 2], segments: 32 }); // an M3's clearance hole, as @rulecad/fixings draws it
   return { solid: subtract(body, ...holes, screw), foot: [f0, f1, -bw / 2, bw / 2], height: H };
 }
 
@@ -311,7 +312,7 @@ function tensuralFlat(k) {
   for (const sy of [1, -1]) base.push(cornerRound(X1 - wb, sy * hs, -1, sy, fr), cornerRound(xb1, sy * hs, 1, sy, fr));
   shuttle.push(rect(X2 - wb, X2, -Math.abs(ys), Math.abs(ys)), hull(rect(X2 - 0.01, X2 + 1, -3, 3), circle({ radius: 3, center: [X2 + 4, 0], segments: SEG })));
   for (const sy of [1, -1]) shuttle.push(cornerRound(X2, sy * 3, 1, sy, fr));
-  const hole = circle({ radius: 1.7, center: [(xb0 + xb1) / 2, 0], segments: 32 }); // an M3 clearance (ISO 273 medium, 3.4)
+  const hole = circle({ radius: M3() / 2, center: [(xb0 + xb1) / 2, 0], segments: 32 }); // an M3's clearance hole, as @rulecad/fixings draws it
   return { base: subtract(union(...base), hole), shuttle: union(...shuttle), slabs, thin, stem: { hs, xb0, xb1 } };
 }
 

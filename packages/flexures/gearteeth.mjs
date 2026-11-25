@@ -41,8 +41,8 @@ function splitLayout(p, what) {
   // pitch circle, cos α along the normal; split over the two flanks of the gap)
   const grow = pre + (mb / 4) * Math.cos(al), rs = rf - depth;
   if (pre >= w) throw new Error(`${what}: preload ${pre} is the slit's ${w} or more: the halves would close on each other in mesh, with nothing left to give. A wider slit or less preload`);
-  if (p.bore != null && rs - w / 2 < p.bore / 2 + 2 * mod) throw new Error(`${what}: the slits run down to ${n2(2 * (rs - w / 2))} mm across, leaving under two modules of rim over the ${p.bore} mm bore: a shallower depth or a smaller bore`);
   if (!(rs > 2 * mod)) throw new Error(`${what}: depth ${depth} takes the slits to the middle: under ${n2(rf - 2 * mod)}`);
+  if (p.bore != null && rs - w / 2 < p.bore / 2 + 2 * mod) throw new Error(`${what}: the slits run down to ${n2(2 * (rs - w / 2))} mm across, leaving under two modules of rim over the ${p.bore} mm bore: a shallower depth or a smaller bore`);
   return { W, mod, w, depth, pre, mb, spec, g, al, r, rb, ra, rf, z, grow, rs };
 }
 // The drawn outline: the involute grown by `grow`, and a slit down each tooth's middle from past the tip to rs,
@@ -92,15 +92,16 @@ function halfWidth(k, loop) {
  * on the same tapered half, for its bending.
  * @param {SplitToothGear} p
  * @param {{ E: number, strainLimit: number, nu?: number, density?: number, name?: string }} m
- * @param {{ mate?: number, printer?: { line: number, layer: number, wall_min?: number } }} [o] mate: its teeth (default
- *   as many)
+ * @param {{ mate?: number, torque?: number, printer?: { line: number, layer: number, wall_min?: number, gap?: number } }} [o] mate: its teeth (default
+ *   as many); torque: what it drives, N·mm, its strain checked against the limit (default the hold)
  * @returns {{ stiffness: number, solvedBending: number, bending: number, preload: number, force: number, hold: number, strain: number,
- *   stop: { force: number, strain: number, margin: number }, halves: { pitch: number, tip: number, root: number },
+ *   stop: { force: number, strain: number }, driven: { torque: number, force: number, strain: number, margin: number }, halves: { pitch: number, tip: number, root: number },
  *   mesh: { centre: number, contact: number }, grams: number | null, findings: object[], rests: string[] }}
  *   stiffness: a half's, N/mm along the flank's normal at the pitch point; bending: its bending part alone (no shear),
  *   and solvedBending: the beam solver's; preload: mm each half is pushed back; force: N it pushes the mate with;
- *   hold: N·mm, the torque the mesh carries with no backlash; strain: at the preload; stop: the force on a half when
- *   its slit closes, the strain then and the limit over it; halves: each half's width at the pitch, tip and slit's end
+ *   hold: N·mm, the torque the mesh carries with no backlash; strain: at the preload; stop: the force on a half's flank
+ *   when its slit closes, and the strain then; driven: at the torque, the driving half's flank force, its strain and
+ *   the limit over it; halves: each half's width at the pitch, tip and slit's end
  */
 export function splitToothGearModel(p, m, o = {}) {
   const what = 'splitToothGearModel', k = splitLayout(p, what);
@@ -123,12 +124,20 @@ export function splitToothGearModel(p, m, o = {}) {
   const tip = sys.nodes[sys.nodes.length - 1], probe = 1, eq = equilibrium(sys, { loads: new Map([[tip.dof + 1, probe]]) }), solvedBending = probe / (eq.q[tip.dof + 1] * ca * ca);
   // preload and its strain; the hold torque; the stop
   const force = stiffness * k.pre, strainAt = (Ft) => { let e = 0; for (let i = 0; i <= n; i++) { const rho = k.rs + i * step, hw = h(rho); e = Math.max(e, (6 * Ft * (r - rho)) / (m.E * k.W * hw * hw)); } return e; };
-  const strain = strainAt(force * ca), hold = 2 * force * k.rb, Fstop = k.w / (toTip + shear), stopStrain = strainAt(Fstop), margin = lim / stopStrain;
+  const strain = strainAt(force * ca), hold = 2 * force * k.rb, Fstop = k.w / (toTip + shear), stopStrain = strainAt(Fstop);
+  // Driven with a torque T on one pair of teeth: up to the hold the driving half takes its preload and half of T / rb
+  // (the trailing half lets go of the rest); past it, all of T / rb. Past the stop (its slit closed) the half and its
+  // sibling bend on together, sharing what is more: the strain then is the stop's and the half's share of the rest
+  // (more members join as each next slit closes, so this is the most it can be)
+  const T = o.torque ?? hold;
+  if (!(typeof T === 'number' && T > 0)) throw new Error(`${what}: torque is what the gear drives, N·mm above 0 (got ${JSON.stringify(o.torque)})`);
+  const Fn = T <= hold ? force + T / (2 * k.rb) : T / k.rb, Ft = Fn * ca, driven = Ft <= Fstop ? strainAt(Ft) : stopStrain + strainAt((Ft - Fstop) / 2), margin = lim / driven;
   const halves = { pitch: h(r), tip: h(k.ra - 0.05), root: h(k.rs) };
   const mate = gearModel({ module: k.mod, teeth: o.mate ?? k.z, pressureAngle: k.g.pressureAngle }), ms = mesh(k.g, mate);
   const rests = ['each half a cantilever from the slit\'s end, its width read off the drawn tooth, loaded at the pitch point along the line of action; the rim under it taken as rigid, and the radial part of the load left out', 'one pair of teeth in mesh carries the preload (the contact ratio shares it, so the hold is the least)', 'the mate\'s backlash and the preload as drawn: a printed tooth comes out fuller or thinner by about a tenth of a millimetre, so measure it before relying on the hold', `the principle (a pair of compliant members per tooth, the mating tooth wider than the gap) is US 2023/0003291 A1's; the slit on the kit's involute is ours`];
   f('pass', `a mate in mesh at ${n2(ms.centre)} mm pushes each half back ${k.pre} mm along the flank (the gear is drawn ${n2(k.grow, 3)} mm fuller each flank, the mate's ${k.mb} mm backlash taken up first): each half ${n2(stiffness)} N/mm, so ${n2(force)} N on each flank, ${n2(strain * 100, 2)}% strain. No backlash up to ${n2(hold, 1)} N·mm (2 F rb)`, 'gear.preload', { values: { stiffness, force, hold, strain, grow: k.grow } });
-  f(margin >= 2 ? 'pass' : margin >= 1 ? 'warn' : 'fail', `driven harder, a half closes its ${k.w} mm slit at ${n2(Fstop * 1 / ca)} N on its flank and is solid from there: ${n2(stopStrain * 100, 2)}% then, ${n2(margin)} times under the limit of ${n2(lim * 100, 1)}%${margin >= 2 ? '' : margin >= 1 ? ', under the twice it should have: a narrower slit or a shallower one' : ': it yields before it stops. A narrower slit'}`, 'flexure.strain', { values: { force: Fstop / ca, strain: stopStrain, limit: lim, margin } });
+  f('info', `driven harder, a half closes its ${k.w} mm slit at ${n2(Fstop / ca)} N on its flank (${n2(stopStrain * 100, 2)}% strain), and bends on with its sibling from there`, 'gear.stop', { values: { force: Fstop / ca, strain: stopStrain } });
+  f(margin >= 2 ? 'pass' : margin >= 1 ? 'warn' : 'fail', `driving ${n2(T, 1)} N·mm${o.torque == null ? ' (the hold: give torque for yours)' : ''}, the driving half takes ${n2(Fn)} N on its flank${Ft > Fstop ? ', its slit closed' : ''}: ${n2(driven * 100, 2)}%, ${n2(margin)} times under the limit of ${n2(lim * 100, 1)}%${margin >= 2 ? '' : margin >= 1 ? ', under the twice it should have: a deeper slit, a wider face or a bigger module' : ': over it'}`, 'flexure.strain', { values: { torque: T, force: Fn, strain: driven, limit: lim, margin } });
   if (o.printer) {
     const line = o.printer.line, least = (o.printer.wall_min ?? 2 * line) / line;
     f(halves.pitch / line >= least - 0.05 ? 'pass' : 'fail', `each half is ${n2(halves.pitch)} mm wide at the pitch circle, ${n2(halves.pitch / line)} lines of ${line} mm${halves.pitch / line >= least - 0.05 ? '' : `: under ${least} lines, too thin to print as a wall. A bigger module or a narrower slit`}`, 'gear.halves', { values: halves });
@@ -139,5 +148,5 @@ export function splitToothGearModel(p, m, o = {}) {
   f(ms.contact >= 1.2 ? 'pass' : 'warn', `with a ${mate.teeth}-tooth mate: centre ${n2(ms.centre)} mm, contact ratio ${n2(ms.contact)} (@rulecad/gears)`, 'gear.mesh', { values: { centre: ms.centre, contact: ms.contact } });
   let grams = null;
   if (m.density > 0) { grams = (measureVolume(splitToothGear(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}`, 'gear.mass', { values: { grams } }); }
-  return { stiffness, bending, solvedBending, preload: k.pre, force, hold, strain, stop: { force: Fstop / ca, strain: stopStrain, margin }, halves, mesh: { centre: ms.centre, contact: ms.contact }, grams, findings: out, rests };
+  return { stiffness, bending, solvedBending, preload: k.pre, force, hold, strain, stop: { force: Fstop / ca, strain: stopStrain }, driven: { torque: T, force: Fn, strain: driven, margin }, halves, mesh: { centre: ms.centre, contact: ms.contact }, grams, findings: out, rests };
 }
