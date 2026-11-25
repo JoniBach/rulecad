@@ -30,3 +30,4 @@ export { kreslingModel } from './origami.mjs';
 export { waterbomb, waterbombModel, kreslingTube, kreslingTubeModel } from './origami.mjs';
 export { coneFourBar, coneFourBarModel, coneFourBarFindings } from './developable.mjs';
 export { balancedStrip, balancedStripModel } from './bistables.mjs';
+export { butterflyPivot, butterflyPivotModel, butterflyBeams, xyThetaStage, xyThetaStageModel, rollingJoint, rollingJointModel } from './stages.mjs';

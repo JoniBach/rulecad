@@ -33,9 +33,9 @@ const MORE = {
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
 const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider', 'end-cap'];
-// parts that lie in a slot by design (an in-slot panel edge, a slot cover's strip): only what stands above the face is
+// parts that lie in a slot by design (an in-slot panel edge, a slot cover's strip, a nut carrier): only what stands above the face is
 // measured by the overlap check, as a tongue is left out
-const IN_SLOT = ['panel-edge', 'slot-cover'];
+const IN_SLOT = ['panel-edge', 'slot-cover', 'nut-carrier'];
 /** The kinds of fitting an item may name. */
 export const FITTING_KINDS = ['bracket', 'gusset', 'splice', ...Object.keys(MORE)];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));

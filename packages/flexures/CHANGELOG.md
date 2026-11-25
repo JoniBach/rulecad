@@ -52,6 +52,23 @@ No existing printed size moved: the new parts are new.
 
 No printed size of an existing part moved.
 
+## 0.5.13: the butterfly pivot, the rolling-contact joint, an x, y and turn stage
+### Added
+
+- `butterflyPivot`, `butterflyPivotModel` and `butterflyBeams` (issue #74): the butterfly pivot (Henein et al. 2003),
+  four blade pairs in series turning about one axis, each a quarter of the way, their drifts cancelling. Printed flat
+  in one piece; the base has two screw holes. The model gives the stiffness, the strain, the angle a strain allows and
+  the drift from the beam solver, beside one pair's (`pair`). Bad input is refused by name. Block 2's cap over the base
+  leaves the gap below the pocket's 2 mm top rounds, so the base's corners keep the gap at the drawn turn (67 mm
+  across the frame at the defaults, 15.2 cm³).
+- `rollingJoint` and `rollingJointModel` (issue #74): the compliant rolling-contact joint (CORE). Two rollers alike,
+  printed standing, and two bands printed flat, each ending in a bead that slides into a roller's pocket. The model
+  gives the bands' strain t / 2ρ, the same at every angle, the range (where the drawn outlines first meet), the pull
+  a band takes and the grams.
+- `xyThetaStage` and `xyThetaStageModel` (issue #75): the three-axis stage, the XY stage with a cartwheel on its
+  stage (x, y and a turn about z), one piece printed flat. Its stiffness at the hub includes the guides turning.
+- No printed size of an existing part moved.
+
 ## 0.5.12: folding sheets and the Miura fold (#78)
 ### Added
 
