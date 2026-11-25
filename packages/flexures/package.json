@@ -33,6 +33,7 @@
     "bistables.mjs",
     "lattices.mjs",
     "elements.mjs",
+    "stages.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -58,6 +59,7 @@
     "bistables.d.mts",
     "lattices.d.mts",
     "elements.d.mts",
+    "stages.d.mts",
     "README.md",
     "LICENSE"
   ],

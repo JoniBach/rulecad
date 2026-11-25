@@ -913,6 +913,9 @@ railJigModel('2020-misumi-hfs5', { rail: 'rail-mgn12' }).grams                  
   hex nuts of that thread fits the slot, `carrierModel` with its grams and hold: MISUMI sells no M2 nut for its 5
   series, so an MGN7 on a 2020 is told this), and whether its ends are on the beam
   and clear of what crosses its face (`keep`, with `GUIDE_DEFAULTS.clear` between). Each is a `guide.fit` finding.
+  With `nut: 'printed'` the screws go into that carrier, a strip of one nut a hole at the rail's pitch: the finding
+  passes naming it (`carrier` in the result, its grams and each nut's hold in the values), or fails where no carrier
+  for that thread fits the slot.
 - **Loads.** `carriageMargin` holds a carriage's loads to its ratings: the force across the rail over C0 and each
   moment over its own rating, summed. The sum's inverse is the margin: under 1 it fails, under 2 it warns. The force
   along the rail is the drive's to take.

@@ -24,3 +24,4 @@ export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifi
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve, tiltedTristable, tiltedTristableModel } from './bistables.mjs';
 export { forceGauge, forceGaugeModel, slipClutch, slipClutchModel } from './elements.mjs';
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
+export { butterflyPivot, butterflyPivotModel, butterflyBeams, xyThetaStage, xyThetaStageModel, rollingJoint, rollingJointModel } from './stages.mjs';

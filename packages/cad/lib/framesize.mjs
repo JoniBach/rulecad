@@ -183,7 +183,7 @@ export function frameSizing(s, helpers, given) {
   const limits = { ...(deflection.length ? { deflection } : {}), stress: { margin: stress }, buckling: { factor, euler: FRAME_CHECK.euler.value }, ...(Hz != null ? { frequency: { Hz } } : {}) };
   // every beam's alloy carries its strength, so the beams outside the groups are held to it too
   const withStrength = (model) => ({ ...model, materials: Object.fromEntries(Object.entries(model.materials).map(([k, v]) => [k, fm.beams.get(k)?.strength ? { ...v, strength: fm.beams.get(k).strength } : v])) });
-  const cases = [...fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values, null, c.push), inertia: fm.nodeMasses(c.values) })), ...rackCases];
+  const cases = [...fm.cases.map((c) => ({ label: c.label, loads: fm.nodeLoads(c.values, null, c.push, c.stall), inertia: fm.nodeMasses(c.values) })), ...rackCases];
   const byName = new Map(choices.map((c) => [c.name, c]));
   // every join a group's beam makes must go together with the profiles chosen (joinFit): a design where one does not is
   // never solved, and a lighter choice that breaks one is what set the group. A join as drawn is not asked again
