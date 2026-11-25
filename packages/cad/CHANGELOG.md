@@ -5,6 +5,23 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+### Added
+
+- A problem milled from several sides (`"mill": ["+z", "-z"]`), by a tool of a size (`"tool"`, mm), or cast with a
+  draft (`"draft"`, degrees): the schema first. `cad optimise` says how it is made, the draft as made at the grid
+  ("a step out every 3 layers: 18.43°"), and any cells too narrow for the tool, in the design or in avoid regions
+  (drill those holes). A tool or draft with no milling or casting is refused by name.
+- `"mill"` and `"cast"` can name a variable holding the side or sides (`"+z"`, `"+z -z"`) or `"none"`, so a variant
+  switches the process; a tool or draft goes off with it.
+- `"voids": "prevented"`: the optimiser keeps every empty pocket open to the outside; cad optimise says so, and any
+  void a keep region walls in is still an error, said to be left though prevented.
+- `"feature"` (mm): the thinnest member, from the printer's line (`x1c.wall_min`, two lines). `cad optimise` says the
+  grid holds it where a cell is as wide, or that it was held to three cells, with any cells left narrower; past three
+  cells it is refused with the cell size that would hold it.
+- The bench's lever E (`bench/lever:milled`): the lever's profile milled through a 6 mm plate by a 4 mm end mill,
+  99.6 N/mm against the printed C's 100. No existing printed size moves.
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 
