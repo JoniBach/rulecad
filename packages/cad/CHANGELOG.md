@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Unreleased
+## 0.7.84: problems at an assembly's joints, avoid regions from a sweep
 ### Added
 
 - Optimisation problems placed in an assembly (#28): `"in": { "assembly", "item", "pose", "z" }` puts a problem in

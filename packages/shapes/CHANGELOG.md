@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Unreleased
+## 0.4.9: swept parts as regions
 ### Added
 
 - `regionShape` (and so `optimisedOutline`) takes a region of `rings`: closed outlines solid on their left, holes
