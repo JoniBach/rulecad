@@ -51,9 +51,10 @@ function gaugeLayout(p, what) {
   return { L, t, W, range, step, a, s, blk, nl, tick, hb, gap, r, pw, half: beamProfile({ length: L, thickness: t, fillet: r }, 'guided') };
 }
 
-// The parallel guide in the beam solver: the back block the ground, the platform a body
+// The parallel guide in the beam solver: the back block the ground, the platform a body; each leaf in spans of 0.6 mm
+// or less, so its rounds show in its stiffness
 function gaugeSystem(k, E) {
-  const leaves = [1, -1].map((sy, i) => ({ name: `leaf ${i + 1}`, ...spansOf([0, (sy * k.a) / 2], [k.L, (sy * k.a) / 2], k.half, k.L), width: k.W, E, from: 'ground', to: 'platform' }));
+  const leaves = [1, -1].map((sy, i) => ({ name: `leaf ${i + 1}`, ...spansOf([0, (sy * k.a) / 2], [k.L, (sy * k.a) / 2], k.half, k.L, Math.max(16, Math.ceil(k.L / 0.6))), width: k.W, E, from: 'ground', to: 'platform' }));
   return beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, platform: { at: [k.L + k.s / 2, 0] } }, beams: leaves, segments: 32 });
 }
 
@@ -78,7 +79,7 @@ const across = (curve, key, v, other) => { // where the curve's `key` reaches v,
 function gaugeSums(k, m) {
   const I = (k.W * k.t ** 3) / 12, stiffness = (2 * 12 * m.E * I) / k.L ** 3;
   // the solver's curve out past the range: the formula's travel at the range and a quarter more, for the stiffening
-  const curve = gaugeCurve(k, m.E, (1.25 * k.range) / stiffness, 50);
+  const curve = gaugeCurve(k, m.E, (1.25 * k.range) / stiffness, 30);
   const reach = curve[curve.length - 1].force;
   if (!(reach >= k.range)) throw new Error(`gauge: the beam solver's guide takes only ${n2(reach)} N at ${n2(curve[curve.length - 1].at)} mm, short of the range ${k.range} N`);
   const n = Math.floor(k.range / k.step + 1e-9), ticks = [];
