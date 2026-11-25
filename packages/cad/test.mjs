@@ -6900,3 +6900,38 @@ export function main (v) {
     assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
   } finally { done(); }
 });
+
+test('guides: an MGN7 rail on a 2020 with "nut": "printed" places a printed carrier strip in the slot under it, fastens its M2 screws into the strip\'s hex nuts, lists the strip and each nut once, and checks clean (#308)', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/slide', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'slide', material: 'PLA', objects: [] }));
+    const x1 = { id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [400, 0, 0] };
+    fs.writeFileSync(at('assemblies/small.json'), JSON.stringify({ title: 'small', kind: 'fit', items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn7', on: 'x1.top', length: 200, from: 100, nut: 'printed' }] }));
+    const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs');
+      const s = await buildAssembly('slide/small'), l = shoppingList(s), centre = (p) => { const t = p.triangles.flat(); return [0, 1, 2].map((k) => t.reduce((a, q) => a + q[k], 0) / t.length); };
+      console.log(JSON.stringify({ fasteners: l.fasteners.map((x) => [x.qty, x.fastener]), printed: l.printed.map((p) => [p.id, p.grams]),
+        nuts: s.parts.filter((p) => /^fasten-\\d+-nut/.test(p.name ?? '')).map((p) => centre(p).map((c) => +c.toFixed(1))),
+        findings: checkAssembly(s).map(({ level, code, text }) => ({ level, code, text })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // the strip is the printed part, 9.3 g; thirteen M2x8 cap screws, each into one of its thirteen M2 hex nuts (listed
+    // once: by the fasten that placed them, not again as the carrier's own hardware)
+    assert.deepEqual(r.printed, [['g1-nuts', 9.3]]);
+    assert.deepEqual(r.fasteners, [[13, 'M2x8 cap'], [13, 'M2 hex nut']]);
+    // the nuts under the rail's holes: from 100 mm, the first 10 mm in, 15 mm apart, in the slot below the top face (x1's
+    // axis is at z = 0, so its face at 10): each 1.6 mm nut drawn up against its slot's roof, 3.2 mm down, so its middle
+    // 4 mm down, z = 6
+    assert.deepEqual(r.nuts.map((c) => c[0]).sort((a, b) => a - b), Array.from({ length: 13 }, (_, i) => 110 + 15 * i));
+    assert.deepEqual([...new Set(r.nuts.map((c) => c[2]))], [6], 'each nut in the slot, under the lips');
+    const by = (code) => r.findings.filter((x) => x.code === code);
+    assert.deepEqual(by('guide.fit').map((x) => x.level), ['pass', 'pass', 'pass']);
+    assert.match(by('guide.fit')[1].text, /printed carrier strip in slot-6-misumi \(carrier-6-misumi-m2-nut-x13\)/);
+    for (const code of ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'overlap', 'carrier.printable', 'carrier.first-layer']) assert.deepEqual([...new Set(by(code).map((x) => x.level))], ['pass'], code);
+    assert.match(by('fasten.end')[0].text, /ends in an M2 hex nut in its seat in g1-nuts/);
+    // nothing fails, and nothing warns but the rail's own long end holes (guide.end)
+    assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && x.code !== 'guide.end')).map((x) => `${x.code} ${x.text}`), []);
+  } finally { done(); }
+});
