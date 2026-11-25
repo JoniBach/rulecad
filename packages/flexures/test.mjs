@@ -1812,3 +1812,78 @@ test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened end
   assert.ok(coils && coils.level === 'warn' && /1\.23 mm apart at rest/.test(coils.text), coils?.text);
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
+
+test('kirigami: a one-sided neck\'s stiffness and strain are the kit\'s finite elements, re-run here; the rotating-squares sheet turns, stretches and weighs as worked by hand', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  // The table's row at r / w = 1 (k 0.04088, strain 0.2967 a radian), solved again on the same grid (25 cells across)
+  const fe = f.neckFE(1);
+  near(fe.stiffness, 0.04088, 0.0002, 'the stiffness over E b w², as tabulated'); near(fe.strain, 0.2967, 0.003, 'the peak strain a radian, as tabulated');
+  assert.ok(fe.strain > 1.2 * fe.flat, `the round side is the notch: ${fe.strain} against ${fe.flat} on the straight side`);
+  // A neck 0.84 wide, r 0.84, 2 deep in PETG (E 1810): k = 1810 × 2 × 0.84² × 0.04088 = 3620 × 0.7056 × 0.04088 = 104.42
+  // N·mm a radian. Paros and Weisbord's thin neck (a one-sided notch as a two-sided one of radius 2r):
+  // 2 E b w^2.5 / (9π √(2r)) = 2 × 1810 × 2 × 0.646695 / (28.2743 × 1.296148) = 127.76, stiffer as it leaves out the roots.
+  // PETG's limit 34 / 1810 / 1.5 = 1.2523%, so the neck turns 0.012523 / 0.2967 = 0.042208 rad = 2.418°
+  const n = f.neckHingeModel({ neck: 0.84, radius: 0.84, depth: 2 }, petg);
+  near(n.stiffness, 104.42, 0.01, 'k by hand'); near(n.thinNeck, 127.76, 0.01, 'the thin-neck formula by hand');
+  near(n.limit, 0.042208, 1e-5, 'the turn at the strain limit'); near(n.strain(0.01), 0.002967, 1e-9, 'strain a radian');
+  // the thin-neck formula comes nearer as the round end grows: at r / w = 6, 2 / (9π √12) = 0.020418 against 0.01952
+  const ratio = (rho) => f.neckHingeModel({ neck: 1, radius: rho, depth: 1 }, { E: 1 }).stiffness / f.neckHingeModel({ neck: 1, radius: rho, depth: 1 }, { E: 1 }).thinNeck;
+  near(ratio(6), 0.01952 / 0.020418, 1e-4, 'at r / w = 6'); assert.ok(ratio(1) < ratio(3) && ratio(3) < ratio(6), 'nearer as r grows');
+  // between rows, straight in log r and log k: at r / w = √1.5, halfway, √(0.04088 × 0.03507) = 0.037864
+  near(f.neckHingeModel({ neck: 1, radius: Math.sqrt(1.5), depth: 1 }, { E: 1 }).stiffness, 0.037864, 1e-6, 'between rows');
+  assert.throws(() => f.neckHingeModel({ neck: 0.84, radius: 0.25, depth: 2 }, petg), /kirigami\.radius: .*0\.298.*from 0\.42 to 5\.04 mm/);
+  assert.throws(() => f.neckHingeModel({ neck: 0, radius: 1, depth: 2 }, petg), /kirigami\.size: neckHingeModel: neck/);
+  // The sheet: pitch 10, necks 0.84, slots 1.68 (r 0.84), 2 thick, 6 by 6. Each square's necks sit d = r + w / 2 = 1.26
+  // from its corners, going round, so they make a square of side s = √(8.74² + 1.26²) = √77.9752 = 8.830357, turned
+  // α0 = atan(1.26 / 8.74) = 8.2035°; s (cos α0 + sin α0) = 8.74 + 1.26 = 10, the pitch
+  const p = { pitch: 10, neck: 0.84, slot: 1.68, depth: 2, across: 6, rows: 6 }, m = f.rotatingSquaresModel(p, petg);
+  near(m.side, 8.830357, 1e-6, 's'); near(m.rest, 8.20351, 1e-4, 'α0'); assert.equal(m.necks, 5 * 6 + 6 * 5); assert.equal(m.poisson, -1);
+  // Grima and Evans: E = 8K / (s² b (1 - sin 2α0)); sin 2α0 = 2 × 1.26 × 8.74 / 77.9752 = 0.282459, so
+  // 8 × 104.4186 / (77.9752 × 2 × 0.717541) = 835.349 / 111.900 = 7.4651 MPa: 242 times softer than PETG
+  near(m.E, 7.4651, 1e-3, 'E by hand');
+  // pulled by its sides: 60 necks' energy ½ K (2Δα)², width 6 s (cos α + sin α), so at rest 60 × 4K / (36 s² (cos α0 - sin α0)²)
+  // = 25060.5 / (36 × (8.74 - 1.26)²) = 25060.5 / 2014.21 = 12.442 N/mm; a large sheet's E b rows / across is 14.93
+  near(m.stiffness, 12.442, 1e-3, 'stiffness by hand'); near(m.at(0.001).force / 0.001, m.stiffness, 1e-3, 'the force curve starts at it');
+  // the limit: each neck 2.418°, so the squares turn 1.2092° further, to α = 9.4127°: 6 s (cos α + sin α) - 60 =
+  // 6 × 8.830357 × 1.150083 - 60 = 0.934 mm, 1.56% of the sheet
+  const al = (8.20351 + 2.418322 / 2) * Math.PI / 180;
+  near(m.limit.stretch, 6 * 8.830357 * (Math.cos(al) + Math.sin(al)) - 60, 1e-4, 'the stretch at the limit'); near(m.limit.stretch, 0.934, 1e-3, 'by hand');
+  near(m.at(m.limit.stretch).strain, petg.strainLimit, 1e-6, 'the necks reach the limit there');
+  // grams: the plate less 36 slots, each π r² + 4r (8.32 - 0.84) = 2.2167 + 25.1328 = 27.3495 mm², half where an edge
+  // runs through it and a quarter at a corner: 25 + 20 / 2 + 4 / 4 = 36 whole ones, 984.58 mm², so 2615.42 mm²
+  near(m.area, 3600 - 36 * (Math.PI * 0.84 ** 2 + 4 * 0.84 * 7.48), 1e-6, 'area'); near(m.area, 2615.42, 0.01, 'by hand');
+  const g = f.rotatingSquares(p), box = measureBoundingBox(g);
+  near(measureVolume(g) / m.volume, 1, 0.002, 'the shape weighs what the model says'); assert.ok(onePiece(g), 'one print');
+  assert.deepEqual(box.map((c) => c.map((x) => +x.toFixed(6) + 0)), [[0, 0, 0], [60, 60, 2]]);
+  // findings: the necks and slots in lines, a pull past the limit fails and says how far it may go
+  const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, by = (list, c) => list.find((x) => x.code === c);
+  const ok = f.kirigamiFindings({ ...p, stretch: 0.4 }, printer, petg, m);
+  assert.deepEqual(ok.filter((x) => x.level !== 'pass').map((x) => x.code), []);
+  assert.match(by(f.kirigamiFindings({ ...p, stretch: 1.2 }, printer, petg, m), 'kirigami.strain').text, /over PETG limit of 1\.25%: at most 0\.93 mm/);
+  assert.equal(by(f.kirigamiFindings({ ...p, neck: 0.6, slot: 1.2 }, printer), 'kirigami.neck').level, 'fail');
+  assert.equal(by(f.kirigamiFindings({ ...p, slot: 0.8 }, printer), 'kirigami.slot').level, 'fail');
+  assert.equal(by(f.kirigamiFindings({ ...p, depth: 2.1 }, printer), 'kirigami.layers').level, 'warn');
+  assert.throws(() => f.rotatingSquares({ ...p, pitch: 2.5 }), /kirigami\.pitch: .*over 2\.52 mm/);
+  assert.throws(() => f.rotatingSquaresModel({ ...p, rows: 1 }, petg), /kirigami\.count: rotatingSquaresModel: rows/);
+  // fully open at 45°: 6 s √2 - 60 = 74.93 - 60 = 14.93 mm
+  assert.throws(() => m.at(15), /kirigami\.stretch: .*fully open/);
+  // the bench panel (examples/bench flexures/kirigami): built by its own main, sized for its 6 N pull with twice the margin
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), json = JSON.parse(fs.readFileSync(new URL('kirigami.json', dir), 'utf8').replace(/\r\n/g, '\n')), V = json.variables;
+  assert.equal(V.neck.value, 'x1c.line * 2'); assert.equal(V.slot.value, 'x1c.line * 4');
+  const v = { ...Object.fromEntries(Object.entries(V).map(([k, x]) => [k, x.value])), neck: 0.84, slot: 1.68, flexures: f, petg: { modulus: 1810, strength: 34, density: 1.27 }, x1c: printer };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('kirigami.js', dir))).href), made = main(v), mech = made.mechanism;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'every finding passes');
+  const margin = by(made.findings, 'kirigami.strain').values.limit / by(made.findings, 'kirigami.strain').values.strain;
+  assert.ok(margin >= 1.9 && margin <= 2.5, `about twice the margin: ${margin}`);
+  near(by(made.findings, 'kirigami.strain').values.force, V.load.value, 1e-6, 'the stretch is the design pull\'s');
+  assert.ok(V.load.rule.includes(`stretches it ${mech.stretch.toFixed(2)} mm`) && V.load.rule.includes(`stretched ${mech.limit.toFixed(2)} mm`) && V.load.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.load.rule);
+  assert.ok(onePiece(made.parts.sheet), 'the panel is one print');
+  // the README's figures are the code's
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const line of [`m.E;            // ${m.E.toFixed(2)} MPa in its plane, ${Math.round(1810 / m.E)} times softer than PETG`, `m.stiffness;    // ${m.stiffness.toFixed(2)} N/mm pulled by its sides`,
+    `m.limit;        // { stretch: ${m.limit.stretch.toFixed(2)} mm, turn: ${m.limit.turn.toFixed(2)}° at each neck, force: ${m.limit.force.toFixed(1)} N, sheet: ${(m.limit.sheet * 100).toFixed(2)}% }`, `m.grams;        // ${m.grams.toFixed(2)}`,
+    `1.22 times at r / w = 1`, `turn further (${(petg.strainLimit / 0.1256 * 180 / Math.PI).toFixed(1)}° at r / w = 6)`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  near(n.thinNeck / n.stiffness, 1.22, 0.005, 'the README\'s 1.22');
+});

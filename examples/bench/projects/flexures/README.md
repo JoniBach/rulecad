@@ -107,6 +107,12 @@ the dial gauge: predicted 5.09 N/mm, so 5 N (510 g) presses it 0.98 mm, and its 
 2.03 mm. Watch its sides: they should draw in by 0.45 of the press's strain, where a plain honeycomb's bulge. Past
 about 30 N the walls buckle and the block gives way sharply; that is where its stiffness stops being a straight line.
 
+`kirigami` (`npx cad export flexures/kirigami`) is a stretchable panel: 25 squares of 8 mm joined at necks two
+lines wide, cut by slots four lines wide with round ends, printed flat in PETG (40 x 40 x 2 mm, 2.75 g). Clamp two
+opposite sides and pull: predicted 22.3 N/mm at first, so 6 N (610 g) stretches it 0.26 mm, and its necks reach
+PETG's strain limit at 0.57 mm. Watch the other two sides: they should move apart as it is pulled (a Poisson's ratio
+of -1), and every square should turn the opposite way to its neighbours.
+
 ## Results
 
 `results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA

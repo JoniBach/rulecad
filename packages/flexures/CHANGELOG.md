@@ -4,6 +4,20 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## Unreleased: kirigami, developable mechanisms, Kresling and zero-stiffness cells (#78, #79)
+### Added
+
+- `rotatingSquares`, `rotatingSquaresModel`, `kirigamiFindings` (issues #78 and #79): a kirigami sheet of rotating
+  squares, printed flat in one piece, which stretches both ways at once (Poisson's ratio -1). The model gives the
+  in-plane modulus, the pull and stretch with large turns counted, the stretch at the necks' strain limit, and grams.
+  The same cell is the chiral lattice of rotating squares.
+- `neckHingeModel` and `neckFE`: the one-sided notch hinge between a slot's round end and another slot's straight
+  side, its stiffness and peak strain tabulated from the kit's own plane-stress finite elements (r / w from 0.5 to 6);
+  `neckFE` regenerates any row.
+- The bench has a kirigami panel, `flexures/kirigami`.
+
+No printed size of an existing part moved.
+
 ## 0.5.12: folding sheets and the Miura fold (#78)
 ### Added
 

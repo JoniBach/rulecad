@@ -741,6 +741,76 @@ cells, more rows, or a material that bends further (TPU).
 
 The bench has this block as `flexures/lattice` (`npx cad check flexures/lattice`).
 
+## Kirigami: rotating squares
+
+A sheet cut by slots into squares, each joined to its four neighbours by a narrow neck at one corner, is a
+stretchable panel. Pulled by two opposite sides, its squares turn, alternately one way and the other, and the sheet
+grows both ways at once: a Poisson's ratio of -1 (Grima and Evans). It is also far softer in its plane than the plate
+it was cut from. The same cell tiled is the chiral lattice of rotating squares.
+
+```js
+import { rotatingSquares, rotatingSquaresModel, neckHingeModel, kirigamiFindings, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }); // strain limit 1.25%
+const sheet = { pitch: 10, neck: 0.84, slot: 1.68, depth: 2, across: 6, rows: 6 };
+const m = rotatingSquaresModel(sheet, petg);
+m.E;            // 7.47 MPa in its plane, 242 times softer than PETG
+m.stiffness;    // 12.44 N/mm pulled by its sides
+m.limit;        // { stretch: 0.93 mm, turn: 2.42° at each neck, force: 12.1 N, sheet: 1.56% }
+m.grams;        // 6.64
+rotatingSquares(sheet); // the shape: 60 x 60 x 2 mm, one piece
+kirigamiFindings({ ...sheet, stretch: 0.4 }, { line: 0.42, layer: 0.2 }, petg, m); // necks, slots, layers, strain
+```
+
+Through every vertex of the square grid runs one slot, along x and along y in turn, `slot` wide with round ends. Each
+stops a neck short of the slots either side, so every neck has a slot's round end (radius r, half the slot) on one
+side and another slot's straight side on the other: a one-sided notch hinge, `neck` (w) wide at its narrowest and
+`depth` (b) deep. Printed flat, every neck bends within its layers.
+
+`neckHingeModel` gives a neck's stiffness and its peak strain for a turn. Both come from the kit's own plane-stress
+finite elements (`@rulecad/fea`), tabulated for r / w from 0.5 to 6 (25 cells across the neck, the round end's cells
+taking the share of them that is solid). `neckFE(rho)` solves one neck and gives any row again.
+
+| r / w | Stiffness over E b w² | Peak strain per radian |
+|---|---|---|
+| 0.5 | 0.04944 | 0.401 |
+| 1 | 0.04088 | 0.297 |
+| 2 | 0.03159 | 0.211 |
+| 4 | 0.02347 | 0.153 |
+| 6 | 0.01952 | 0.126 |
+
+The thin-neck formula, 2 E b w^2.5 / (9π √(2r)) (Paros and Weisbord's, a one-sided notch taken as a two-sided one of
+twice the radius), gives the same trend but a stiffer neck: 1.22 times at r / w = 1, 1.05 times at 6. It leaves out
+the squares' give round the neck's roots. The peak strain is on the round side: 1.27 times the straight side's at
+r / w = 1.
+
+The sheet's model, for squares of pitch a:
+
+| Quantity | Formula |
+|---|---|
+| Each neck's place on its square's side, from a corner (geometry) | d = r + w / 2 |
+| The square through a square's four necks: side, turn at rest | s = √((a - d)² + d²), α0 = atan(d / (a - d)) |
+| The sheet's width across n squares, at a turn α | X = n s (cos α + sin α) |
+| Each neck's turn | 2 (α - α0): neighbours turn opposite ways |
+| In-plane modulus at rest (energy of the necks; Grima and Evans's model) | E = 8 K / (s² b (1 - sin 2α0)), ν = -1 |
+| The pull across the sheet (N necks of stiffness K) | F = (dU / dα) / (dX / dα), U = N ½ K (2 (α - α0))² |
+
+The formula for E is worked here from the necks' energy over a cell of four squares (eight necks); Grima and Evans
+give the rigid squares' Poisson's ratio of -1. Large turns are counted in the pull. The squares are taken as rigid (an
+estimate: their own bending is left out, beyond what the neck's finite elements count round its roots).
+
+`kirigamiFindings` checks that the necks are whole printed lines (`kirigami.neck`), the slots at least two lines wide
+(`kirigami.slot`), the thickness whole layers (`kirigami.layers`), the squares in the bed's plane
+(`kirigami.direction`) and the necks' strain at a stretch against the material's limit (`kirigami.strain`). A pitch
+too small for its slots and necks, a slot end outside the table, or fewer than two squares each way is refused by
+name (`kirigami.pitch`, `kirigami.radius`, `kirigami.count`).
+
+PETG's strain limit keeps the stretch small: a neck turns about 2.4° at r / w = 1, so the sheet above stretches
+1.6% before its necks reach the limit. A larger round end lets a neck turn further (5.7° at r / w = 6), at the cost
+of wide slots. Its use in PETG is a soft, auxetic panel; a stretch of tens of percent wants TPU.
+
+The bench has a 5 by 5 panel as `flexures/kirigami` (`npx cad check flexures/kirigami`).
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
@@ -763,6 +833,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear, and an open thin-walled section's (the split tube).
 - Schenk, M., and Guest, S. D., "Geometry of Miura-folded metamaterials", *Proceedings of the National Academy of Sciences* 110(9), 3276-3281, 2013: the Miura cell and its fold angle.
 - Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
+- Grima, J. N., and Evans, K. E., "Auxetic behavior from rotating squares", *Journal of Materials Science Letters* 19(17), 1563-1565, 2000: the rotating-squares mechanism and its Poisson's ratio of -1.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
