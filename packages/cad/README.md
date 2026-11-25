@@ -1336,6 +1336,12 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
   face from the beam's end a. Its screws are a fasten into the slot, one in each hole at the rail's pitch, so
   `fasten.length` chooses them, the slot nuts are placed with them (`"nut"` chooses their kind), and `cad list`
   counts both: an MGN12 cut to 300 mm takes twelve M3 cap screws 25 mm apart and twelve M3 slot nuts.
+- Where no slot nut is sold for the rail's thread (an MGN7's M2 in a 2020's 6 mm slot), `"nut": "printed"` puts a
+  printed carrier strip in the slot under the rail instead: a `nut-carrier` fitting item `<id>-nuts`, one hex nut
+  under each hole, slid in from the beam's end. The rail's screws go into its nuts as a fasten, and `cad list` counts
+  the strip with its grams and each nut once. An MGN7 cut to 200 mm on a 2020 takes a 189 mm strip of 9.3 g of PLA,
+  thirteen M2x8 cap screws and thirteen M2 hex nuts; each nut holds about 936 N straight out of the slot (an estimate
+  until tested). Where no carrier fits the slot either, `guide.fit` fails and says why.
 - Each carriage (`"carriages"`, 1 by default) is a bought item `<id>-carriage-1`, ... on its own sliding joint
   `<id>-1`, ... along the beam, from 0 to its travel: its share of the rail less its length with its seals. The
   poses `<id>-a` and `<id>-b` put every carriage at the start and the end of its share; `cad check --sweep` slides

@@ -5,6 +5,18 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased
+### Added
+
+- A rail guide takes `"nut": "printed"` (issue 308): a printed carrier strip `<id>-nuts` in the slot under the rail,
+  a hex nut under each hole, its screws fastened into them. An MGN7 on a 2020 now checks clean this way.
+### Fixed
+
+- `cad list` counted a `nut-carrier`'s nuts twice where a fasten placed them: once with the fasten and once as the
+  carrier's own hardware. They are counted once.
+- A `nut-carrier` item stands inside its beam's envelope: the overlap check measures only what stands above the face,
+  and the screws and nuts in it may overlap that beam.
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 

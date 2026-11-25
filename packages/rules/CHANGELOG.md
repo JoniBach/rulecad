@@ -3,6 +3,14 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## Unreleased
+### Added
+
+- `slot-nut-10-motedis-m4-roll-in`, `-m5-`, `-m6-` and `-m8-roll-in` (issue 308): Motedis' sprung roll-in nuts for its
+  B-type 10 mm slot, each from its own drawing (S10BSSNM4, M5, M6, M8: 20 by 14 mm, 5.3 mm under the lips, a 9.9 mm
+  tongue 1.5 mm high). Their slot is Rexroth's (community: Motedis sells B-type to Rexroth's sizes). Their hold,
+  2200 N, is an estimate: Rexroth's figure for its sprung swivel-in block in an 8 mm slot. No existing value changed.
+
 ## 0.3.23: ABS, ASA and PA-CF with ranges
 ### Added
 
