@@ -64,6 +64,10 @@
       "$ref": "#/$defs/expr",
       "description": "A strain limit in place of stress, a share of the length (0.02 is 2%), such as \"pla.strength / pla.modulus / 2\": the stress limit is it times the material's modulus. Most use for a mechanism, whose hinges bend"
     },
+    "robust": {
+      "type": "boolean",
+      "description": "Optimise the design as made a little thin and a little thick too (its eroded and dilated copies, Wang, Lazarov and Sigmund 2011). With a stress or strain limit: the lightest layout that keeps the limit on all three. A mechanism: the one whose worst copy moves its output furthest, and with a limit, kept to it on all three (da Silva, Beck and Sigmund 2019); its supports, input and output stay solid. About three times the solves. Refused with a volume alone"
+    },
     "filter": {
       "$ref": "#/$defs/expr",
       "description": "Filter radius, mm: about the thinnest member (default a cell and a half, and never under two of the printer's lines)"
