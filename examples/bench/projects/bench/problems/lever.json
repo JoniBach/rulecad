@@ -8,7 +8,7 @@
     "hole4": { "value": "(m4.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "The load bolt's hole: radius, printed" },
     "angled": { "value": 0, "tweak": { "min": 0, "max": 1 }, "rule": "The angled case's weight: 0 analyses it without optimising for it" },
     "sides": { "value": "none", "choice": ["none", "+z"], "rule": "none: printed; +z: its profile milled through a plate by an end mill along z, so no window narrower than the tool and every inside corner rounded to its radius" },
-    "tool_r": { "value": "mill_3axis.corner_per_depth * bench.thickness", "unit": "mm", "rule": "The end mill's radius: an inside corner's radius is at least a third of its depth, here the plate's 6 mm: 2 mm, a 4 mm end mill" }
+    "tool_r": { "value": "round(mill_3axis.corner_per_depth * bench.thickness, 0.5)", "unit": "mm", "rule": "The end mill's radius: an inside corner's radius is at least a third of its depth, here the plate's 6 mm: 2 mm, a 4 mm end mill (rounded to the 0.5 mm steps end mills come in, as the rule's 0.3333 gives 1.9998 mm, a hair under 2 cells, which the grid draws as a 3 mm tool)" }
   },
   "variants": {
     "both": { "angled": 1 },
