@@ -266,7 +266,8 @@ edge survives erosion and the copies cheat there; and so the cells at the suppor
 The worst copy moves 40 times as far. The robust layout leaves its volume unused (more material would not move the
 worst copy further). On these cells, with a 1.5 mm filter, it keeps two joints where cells meet only at a corner, in all
 three copies: a hinge a node wide. A wider filter is the cure in principle; at 2.5 mm on 1 mm cells the inverter moved
-0.02 mm, so on cells this coarse the robust inverter is a layout to read, not a part to print.
+0.02 mm, so on cells this coarse the robust inverter is a layout to read, not a part to print: its members are one
+and two cells wide, and the smoothed outline (`outlines`) loses them, drawing it in pieces.
 
 ### A mechanism's strength
 
