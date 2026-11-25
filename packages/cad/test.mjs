@@ -6936,3 +6936,28 @@ test('a problem milled from two sides by a tool of a size, or cast with a draft 
     assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\), left though voids were prevented \(a keep region or the space walls it in\)/);
   } finally { done(); }
 });
+
+test('a problem\'s thinnest member from the printer\'s line (#35): met by the grid where a cell is as wide, held to three cells, or refused with the cells that would hold it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'thin');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'thin', objects: [] }));
+    // A 30 × 12 mm cantilever, 4 mm thick, on 1 mm cells, held at its left end and pushed down at its right
+    const base = { uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, filter: 1.2, steps: 30, space: { at: [15, 0], size: [30, 12] },
+      supports: [{ at: [0.5, 0], size: [1, 12] }], loads: [{ at: [29.5, 0], size: [1, 2], force: [0, -10] }] };
+    const write = (name, p) => fs.writeFileSync(path.join(project, 'problems', `${name}.json`), JSON.stringify({ title: name, ...base, ...p }));
+    // x1c.wall_min is two lines, 2 × 0.42 = 0.84 mm: under a cell, so every member already is that wide
+    write('line', { feature: 'x1c.wall_min' });
+    assert.match(cad('optimise', 'thin/line'), /thinnest member 0\.84 mm: every member is at least a cell \(1 mm\), so the grid holds it/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'thin/line', '--json')).feature, { asked: 0.84, cells: 0, holds: 1, thin: 0 });
+    // 2.5 mm: (2.5 - 1) / 2 = 0.75, so a ball of 1 cell, three across: 3 mm
+    write('held', { feature: 2.5 });
+    const held = JSON.parse(cad('optimise', 'thin/held', '--json')).feature;
+    assert.deepEqual([held.asked, held.cells, held.holds], [2.5, 1, 3]);
+    assert.match(cad('optimise', 'thin/held'), /thinnest member 2\.5 mm: held to three cells \(3 mm\)/);
+    // 4 mm: (4 - 1) / 2 = 1.5, so 2 cells, past three across; 4 / 3 = 1.33 mm cells would hold it
+    write('wide', { feature: 4 });
+    assert.match(cad('optimise', 'thin/wide'), /a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.33 mm or less/);
+  } finally { done(); }
+});

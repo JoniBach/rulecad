@@ -188,6 +188,10 @@
       "$ref": "#/$defs/expr",
       "description": "With mill: the tool's radius, mm (a flat end mill). No pocket narrower than the tool, and every inside corner seen from the tool rounded to at least its radius. At the grid's resolution: the tool's end is the cells whose centres are within its radius, so give at least a cell. Rules: mill-3axis (an inside corner's radius)"
     },
+    "feature": {
+      "$ref": "#/$defs/expr",
+      "description": "The thinnest member made, mm: for a printer, its two lines (x1c.wall_min). Members narrower go as the part is optimised, and cad optimise reports any left. Where a cell is as wide or wider, every member already is and nothing changes; up to three cells across it is held by an opening filter; wider is refused by name with the cell size that would hold it. Rules: x1c (wall_min, line)"
+    },
     "draft": {
       "$ref": "#/$defs/expr",
       "description": "With cast: the draft, degrees. The part narrows towards the side it is drawn off: a wall steps out a cell every whole number of layers in 1 / tan(draft), so at least this draft; refused by name when the grid is too shallow for one step. Rules: mould-injection"

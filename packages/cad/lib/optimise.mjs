@@ -12,7 +12,7 @@ import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce, undercuts, voids, grey } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce, undercuts, voids, grey, featureCells, thin } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
 import { turn } from '@rulecad/model-link';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
@@ -144,6 +144,7 @@ async function readOne(project, ref, link) {
     // (a tool or draft with the process switched off by its variable is left out with it; one with no such process
     // at all goes on, for topopt to refuse by name)
     ...(p.tool != null && (millSides || !p.mill) ? { tool: ev(p.tool) } : {}), ...(p.draft != null && (castWay || !p.cast) ? { draft: ev(p.draft) } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
+    ...(p.feature != null ? { feature: ev(p.feature) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
     ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
@@ -204,6 +205,12 @@ function made(r, spec, density) {
   if (p.mill || p.cast || p.symmetry || p.extrude) out.grey = round(grey(density, spec.passive), 3);
   if (r.voids === 'refused' || r.voids === 'prevented') out.voids = voids(spec.grid, density, { origin: spec.origin }).map((v) => ({ volume: round(v.volume, 3), at: v.at.map((x) => round(x, 3)) }));
   if (r.voids === 'prevented') out.vented = true;
+  // The thinnest member asked: the ball's radius on the grid, the width it holds members to (a cell, where the grid
+  // already does), and the solid cells left in members narrower (or on a square outside corner)
+  if (p.feature != null) {
+    const h = spec.grid.h, cells = featureCells(p.feature, h);
+    out.feature = { asked: p.feature, cells, holds: round((2 * cells + 1) * h, 3), thin: cells ? thin(spec.grid, density, { radius: cells }).count : 0 };
+  }
   return out;
 }
 const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');

@@ -263,7 +263,7 @@ async function optimiseProblem(ref, { preview: previewing = false } = {}) {
   const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => c.moment ? `${c.name} ${sig(c.angle * 180 / Math.PI)}° (${sig(c.torsion / 1000 * Math.PI / 180)} N·m/°)` : `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
     `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}${r.dropped ? `; ${r.dropped.length} loose ${r.dropped.length === 1 ? 'piece' : 'pieces'} dropped (${sig(r.dropped.reduce((t, v) => t + v, 0))} mm³)` : ''}${r.emptied ? `; ${r.emptied} ${r.emptied === 1 ? 'cell' : 'cells'} that wouldn't print emptied` : ''}${r.cleared ? `; sliced as the printer will, ${r.cleared} ${r.cleared === 1 ? 'cell' : 'cells'} under islands emptied` : ''}`,
     ...(r.unsupported > 0.01 ? [`${fmt(r.unsupported * 100)}% of the kept regions has nothing holding it up (at ${r.overhang ? 'the printer\'s overhang limit' : '45°'} or less): give the part more material to stand them on, or keep less`] : []),
-    ...(r.process ? [processLine(r)] : []), ...(r.voids?.length ? [voidsLine(r)] : [])];
+    ...(r.process ? [processLine(r)] : []), ...(r.feature ? [featureLine(r)] : []), ...(r.voids?.length ? [voidsLine(r)] : [])];
   let out;
   if (r.dim === 3) {
     out = paths.preview(project, `${name.replace(':', '-')}-optimised.png`);
@@ -292,6 +292,7 @@ async function optimiseProblem(ref, { preview: previewing = false } = {}) {
   console.log(`  ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
   if (r.process) console.log(`  ${processLine(r)}`);
   if (r.symmetry || r.extrude) console.log(`  ${[r.symmetry?.mirror ? `mirrored across ${[...r.symmetry.mirror].join(' and ')}` : '', r.symmetry?.turns ? `the same each ${r.symmetry.turns === 4 ? 'quarter' : 'half'} turn about ${r.symmetry.axis || 'z'}` : '', r.extrude ? `one section along ${r.extrude}` : ''].filter(Boolean).join(', ')}`);
+  if (r.feature) console.log(`  ${r.feature.thin ? 'warning: ' : ''}${featureLine(r)}`);
   if (r.grey > 0.1) console.log(`  warning: ${greyLine(r)}`);
   if (r.voids?.length) { console.log(`  error: ${voidsLine(r)}`); process.exitCode = 1; } else if (r.vented) console.log('  voids prevented: none enclosed, every empty pocket open to the outside');
   console.log(out);
@@ -306,6 +307,13 @@ function processLine(r) {
   const n = r.narrow, narrow = !n ? '' : [n.design ? `${n.design} ${n.design === 1 ? 'cell' : 'cells'} of the design too narrow for the tool` : '', n.avoided ? `${n.avoided} ${n.avoided === 1 ? 'cell' : 'cells'} of avoid regions narrower than the tool: drill those holes, or give a smaller tool` : ''].filter(Boolean).join('; ');
   const tail = narrow ? `; ${narrow}` : n ? ', and nothing narrower than the tool' : '';
   return r.undercuts ? `${how}: ${r.undercuts} ${r.undercuts === 1 ? 'cell is' : 'cells are'} undercut (an avoid region, or the edge of the space, with material between it and the ${p.mill ? 'tool' : 'draw'}: move it, or make it from that side)${tail}` : `${how}: no undercuts${tail}`;
+}
+// The thinnest member asked (a printer's two lines): met by the grid itself, or held to three cells, with any cells left
+// in members narrower
+function featureLine(r) {
+  const f = r.feature, h = f.holds / (2 * f.cells + 1);
+  if (!f.cells) return `thinnest member ${fmt(f.asked)} mm: every member is at least a cell (${fmt(h)} mm), so the grid holds it`;
+  return `thinnest member ${fmt(f.asked)} mm: held to three cells (${fmt(f.holds)} mm)${f.thin ? `, and ${f.thin} solid ${f.thin === 1 ? 'cell is' : 'cells are'} still in a narrower member or a square outside corner: give a bigger filter radius` : ', none narrower'}`;
 }
 // A grey result (warned of above a tenth): its design cells between a tenth and nine tenths solid. A clear design has
 // a few per cent, on its surfaces (the 3D cantilever milled from above 5.3%, free 2D cantilevers 1 to 3%): a tenth
