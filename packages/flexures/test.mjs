@@ -1812,3 +1812,133 @@ test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened end
   assert.ok(coils && coils.level === 'warn' && /1\.23 mm apart at rest/.test(coils.text), coils?.text);
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
+
+test('a butterfly pivot: four blade pairs in series share the turn, a quarter each; the model against the beam solver and against Henein\'s titanium pivot; far less drift than one pair; one piece that prints flat', async () => {
+  const { butterflyPivot, butterflyPivotModel, butterflyBeams, equilibrium } = await import('@rulecad/flexures');
+  const p = { length: 15, thickness: 0.84, width: 8 }, m = butterflyPivotModel(p, { ...pla, density: 1.24 });
+  // inner (a) by default: the narrow and wide blades, rounds of t either side, a 0.4 mm gap apart where they meet
+  // block 1: (0.84 + 2 × 0.84 + 0.4) / sin 25° + 0.5 = 2.92 / 0.42262 + 0.5 = 7.4093 mm (over 0.4 L = 6).
+  // I = 8 × 0.84³ / 12 = 0.395136 mm⁴; 4EI/L = 4 × 2680 × 0.395136 / 15 = 282.38; a/L = 0.49395, so
+  // 1 + 3a/L + 3a²/L² = 3.21383. A pair: 2 × 282.38 × 3.21383 = 1815.1 N·mm a radian; four in series: 453.8
+  near(m.stage, 1815.1, 0.1, 'a pair'); near(m.stiffness, 453.78, 0.01, 'the pivot');
+  // The strain at the inner end: t/L (2 + 3a/L) at a quarter of the turn = 0.056 × 3.48186 / 4 = 0.048746 a radian,
+  // so 2% at 0.41029 rad (23.5°)
+  near(m.strain(1), 0.048746, 1e-6, 'the strain a radian'); near(m.angle(0.02), 0.41029, 1e-5, 'the angle at 2%');
+  // The beam solver on straight blades (no rounds), every block free but the base, the output turned a milliradian
+  const sys = butterflyBeams(p, 2680, { rounds: false }), d = sys.body.output.dof, solved = equilibrium(sys, { held: new Map([[d + 2, 1e-3]]) }).reaction.get(d + 2) / 1e-3;
+  assert.ok(Math.abs(m.stiffness / solved - 1) < 0.03, `the model ${m.stiffness} against the solver ${solved}`);
+  // Henein et al. 2003: titanium (E 113.8 GPa, ASM's Ti-6Al-4V annealed sheet), blades 0.35 × 10 × 15 mm, a hinge of two
+  // pivots side by side 2 N·m a radian, 376 MPa at ±10° with a 1.2 concentration at the blades' roots. The paper does
+  // not give where the blades' lines meet; with a = L/4 = 3.75: I = 10 × 0.35³ / 12 = 0.035729, 4EI/L = 1084.2,
+  // 1 + 0.75 + 0.1875 = 1.9375, a pair 4201, the pivot 1050 N·mm a radian, the hinge 2.10 N·m a radian (5% over).
+  // Then the stress, which a does not set alone: 0.35/15 × 2.75 × (10° / 4 = 0.043633 rad) × 113800 × 1.2 = 382 MPa,
+  // 1.7% over the paper's 376
+  const ti = butterflyPivotModel({ length: 15, thickness: 0.35, width: 10, inner: 3.75 }, { E: 113800 });
+  near((2 * ti.stiffness) / 1000, 2.1, 0.01, 'the hinge, N·m a radian'); near(1.2 * ti.stress(rad(10)), 382.3, 0.2, 'MPa at 10°');
+  assert.ok(Math.abs((1.2 * ti.stress(rad(10))) / 376 - 1) < 0.03);
+  // Drift at 10°: each pair's drift runs against the next one's, so the output's axis moves far less than one pair's
+  const th = rad(10), dr = Math.hypot(...m.drift(th)), one = Math.hypot(...m.pair(th));
+  assert.ok(dr < one / 10, `the butterfly drifts ${dr} mm, one pair ${one} mm`);
+  // The drawn part: one piece, prints flat with no support, 15.2 cm³ (18.8 g of PLA at 1.24 g/cm³, an estimate)
+  const shape = butterflyPivot(p), polys = jscad.geometries.geom3.toPolygons(shape).map((q) => q.vertices);
+  assert.ok(onePiece(shape), 'base, blocks, blades and output as one piece');
+  assert.deepEqual(printCheck(polys, { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }).filter((x) => x.level !== 'pass').map((x) => x.code), [], 'it prints flat without support');
+  assert.ok(m.grams > 15 && m.grams < 25 && m.findings.some((x) => x.code === 'pivot.mass'), `${m.grams} g`);
+  assert.equal(m.findings.find((x) => x.code === 'flexure.strain').level, 'pass', 'the drawn 20° is within 2%');
+  assert.throws(() => butterflyPivot({ ...p, inner: 5, narrow: 35 }), /butterflyPivot: the narrow and wide blades are .* mm apart where they meet block 1/);
+  assert.throws(() => butterflyPivot({ ...p, wide: 20 }), /butterflyPivot: narrow and wide are angles from the y axis/);
+  assert.throws(() => butterflyPivotModel({ ...p, thickness: 0 }, pla), /butterflyPivotModel: thickness is a size above 0/);
+});
+
+test('a three-axis stage: the XY stage carrying a cartwheel; its x, y and turn at the hub by hand and against the beam solver; one piece that prints flat', async () => {
+  const { xyThetaStage, xyThetaStageModel, beamSystem, equilibrium } = await import('@rulecad/flexures');
+  const p = { length: 30, thickness: 1.26, width: 8, gap: 10, pivot: { spoke: 10, thickness: 0.84 } }, m = xyThetaStageModel(p, pla);
+  // Each guide 2 E w t³ / L³ = 3.1769 N/mm. Turning, a guide's leaves c = (10 + 1.26) / 2 = 5.63 from its middle:
+  // 2 E A c² / L + 2 E I / L = 2 × 2680 × 10.08 × 5.63² / 30 + 2 × 2680 × 1.333584 / 30 = 57,084.9 + 238.3 = 57,323.1,
+  // the two in series 28,661.6. The cartwheel: 16 × 2680 × 0.395136 / 10 × (1 + 0.6 + 0.12) = 2914.3. About z:
+  // 1 / (1 / 2914.3 + 1 / 28661.6) = 2645.3 N·mm a radian
+  near(m.turn, 28661.6, 0.1, 'the XY stage turning'); near(m.pivot.stiffness, 2914.3, 0.1, 'the cartwheel'); near(m.stiffness[2], 2645.3, 0.1, 'about z');
+  // At the hub (cx = 30 + 12.52 / 2 = 36.26, cy = 39.26 - 0.5 + 15 = 53.76): along x the first guide turns under
+  // F × 53.76 and the second under F × (53.76 - 6.26 - 15 = 32.5): 1 / 3.1769 + (53.76² + 32.5²) / 57323.1 = 0.383616,
+  // 2.6068 N/mm. Along y only the first, F × (36.26 - 15 = 21.26): 0.314772 + 21.26² / 57323.1, 3.0993 N/mm
+  near(m.stiffness[0], 2.6068, 1e-3, 'x at the hub'); near(m.stiffness[1], 3.0993, 1e-3, 'y at the hub');
+  // The beam solver: the four guide leaves and four spokes, each body free but the ground
+  const E = 2680, line = (a, b) => Array.from({ length: 17 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / 16, a[1] + ((b[1] - a[1]) * i) / 16]);
+  const X = 36.26, top = 39.26, cy = 53.76, c = 5.63;
+  const beams = [
+    ...[-1, 1].map((s) => ({ name: `first ${s}`, path: line([0, s * c], [30, s * c]), thickness: 1.26, width: 8, E, from: 'ground', to: 'shuttle' })),
+    ...[-1, 1].map((s) => ({ name: `second ${s}`, path: line([X + s * c, 6.26], [X + s * c, 36.26]), thickness: 1.26, width: 8, E, from: 'shuttle', to: 'stage' })),
+    ...[45, 135, 225, 315].map((a, i) => { const u = [Math.cos(rad(a)), Math.sin(rad(a))]; return { name: `spoke ${i}`, path: line([X + 12 * u[0], cy + 12 * u[1]], [X + 2 * u[0], cy + 2 * u[1]]), thickness: 0.84, width: 8, E, from: 'stage', to: 'hub' }; }),
+  ];
+  const sys = beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, shuttle: { at: [X, 0] }, stage: { at: [X, top] }, hub: { at: [X, cy] } }, beams, segments: 32 }), d = sys.body.hub.dof;
+  const solve = (i, v) => equilibrium(sys, { held: new Map([[d + i, v]]) }).reaction.get(d + i) / v;
+  for (const [i, v] of [[0, 1e-3], [1, 1e-3], [2, 1e-4]]) { const s = solve(i, v); assert.ok(Math.abs(m.stiffness[i] / s - 1) < 0.01, `axis ${i}: the model ${m.stiffness[i]}, the solver ${s}`); }
+  // The drawn part, with rounds: one piece, prints flat; the cartwheel's arm out to 37.52 + 15 + 20 = 72.52 along x,
+  // its rim to 55.02 + 15 = 70.02 along y (the stage's top 7.52 + 30 + 3 = 40.52, the rim sunk 0.5 into it)
+  const shape = xyThetaStage({ ...p, fillet: 1.26 }), box = measureBoundingBox(shape), polys = jscad.geometries.geom3.toPolygons(shape).map((q) => q.vertices);
+  assert.ok(onePiece(shape), 'guides, stage, pad and cartwheel as one piece');
+  near(box[1][0], 72.52, 1e-6, 'the arm'); near(box[1][1], 70.02, 1e-6, 'the rim');
+  assert.deepEqual(printCheck(polys, { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }).filter((x) => x.level !== 'pass').map((x) => x.code), [], 'it prints flat without support');
+  near(m.strain([0, 0, 0.1]), m.pivot.strain(0.1), 1e-12, 'a turn strains the spokes'); near(m.strain([2, 0, 0]), 0.0084, 1e-12, 'a travel the leaves: 3 × 1.26 × 2 / 900');
+  assert.throws(() => xyThetaStage({ ...p, pivot: undefined }), /xyThetaStage: pivot is the cartwheel on the stage/);
+  assert.throws(() => xyThetaStageModel({ ...p, pivot: { spoke: 0 } }, pla), /xyThetaStageModel pivot: spoke is a size above 0/);
+});
+
+test('a rolling-contact joint: the bands bend to the rollers\' radius and no further at any angle; the rollers turn until a lug; four parts that fit without overlapping and each print without support', async () => {
+  const { rollingJoint, rollingJointModel } = await import('@rulecad/flexures');
+  const p = { radius: 12, width: 10 }, m = rollingJointModel(p, { ...pla, density: 1.24 });
+  // A band 0.4 thick wrapped at ρ = 12 + 0.2 = 12.2: (0.4 / 2) / 12.2 = 0.016393, at every angle in the range
+  near(m.bend, 0.016393, 1e-6, 'the bend'); near(m.strain(0), m.strain(m.range), 0, 'the same at rest and at the end of the range');
+  assert.equal(m.strain(m.range + 0.1), Infinity, 'past the range it cannot go');
+  assert.equal(m.stiffness, 0);
+  // The range: the rollers turn twice as far as the contact moves; the contact stops short of the bands' ends (90°)
+  assert.ok(m.range > rad(90) && m.contact < rad(90) && Math.abs(m.range - 2 * m.contact) < 1e-12, `${deg(m.range)}° with the contact at ${deg(m.contact)}°`);
+  // Each band 2 (ρ π/2 + 2.15) = 2 × (19.1637 + 2.15) = 42.6274 mm between its beads' middles, beads 2 across
+  const outer = rollingJoint(p, { part: 'outer' }), inner = rollingJoint(p, { part: 'inner' }), roller = rollingJoint(p, { part: 'roller' });
+  for (const band of [outer, inner]) { const b = measureBoundingBox(band); near(b[0][0], -1, 1e-6, 'the first bead'); near(b[1][0], 43.6274, 1e-4, 'the last bead'); }
+  // The pull a band takes: (0.02 - 0.016393) × 2680 × (2 × 2.15) × 0.4 = 16.63 N (strips (10 - 0.6 - 0.8) / 4 = 2.15)
+  near(m.tension, 16.63, 0.01, 'the pull');
+  // Fitted at rest, the rollers and bands do not overlap: the whole is the sum of its parts
+  const V = measureVolume, fitted = rollingJoint(p, { part: 'bands' });
+  near(V(rollingJoint(p)), 2 * V(roller) + V(fitted), 0.05, 'nothing overlaps');
+  for (const [name, g] of [['roller', roller], ['outer band', outer], ['inner band', inner]]) {
+    const polys = jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices);
+    assert.ok(onePiece(g), `${name}: one piece`);
+    assert.deepEqual(printCheck(polys, { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }).filter((x) => x.level !== 'pass').map((x) => x.code), [], `${name} prints without support`);
+  }
+  assert.ok(m.grams > 10 && m.grams < 20, `${m.grams} g`);
+  // A thicker band on the same rollers: 0.6 / 24.6 = 2.44% fails, and says what radius would do: 0.6 / 0.04 - 0.3 = 14.7
+  const thick = rollingJointModel({ ...p, thickness: 0.6 }, pla).findings.find((x) => x.code === 'flexure.strain');
+  assert.ok(thick.level === 'fail' && /radius 14\.7 mm or more/.test(thick.text), thick.text);
+  assert.throws(() => rollingJoint({ ...p, bead: 0.8 }), /rollingJoint: bead \(0\.8 mm\) must be over the band and its clearance/);
+  assert.throws(() => rollingJoint({ ...p, wrap: 150 }), /rollingJoint: wrap is 30 to 120 degrees/);
+  assert.throws(() => rollingJoint(p, { part: 'pin' }), /rollingJoint: part is all, roller, outer, inner or bands/);
+});
+
+test('a butterfly pivot keeps its gap at the base\'s turned corners: block 2\'s pocket rounds sit above the base, so the base turned through half the drawn turn stays the gap clear', async () => {
+  const { butterflyPivot } = await import('@rulecad/flexures');
+  const { cylinder } = jscad.primitives, { intersect } = jscad.booleans;
+  // At the drawn turn block 2 has turned half of it (10°) against the base. By hand, blades 15 × 0.84 with rounds of
+  // 0.84, the base 5.8 deep (a 3.4 hole and 1.2 either side):
+  //   gap 0.4: a = (0.84 + 1.68 + 0.4) / sin 25° + 0.5 = 7.4093, R = a + L = 22.4093, d2 = 2.26 / R = 0.100851,
+  //     block 2's window either side of y 45° - d2 = 0.684547 rad, the base's sides 0.684547 - (0.174533 + 0.4 / R)
+  //     = 0.492165; turned, its outer corner (radius R + 5.8 = 28.2093) at 0.666697 rad from y, 28.2093 × sin(0.684547
+  //     - 0.666697) = 0.5035 mm from the window's side.
+  //   gap 0.2: a = 6.9361, R = 21.9361, the sides 0.498721, the turned corner at 0.673254 rad, 27.7361 ×
+  //     sin(0.009117) = 0.2529 mm from the side.
+  // The window's top corners round with 2 mm (half the base's depth, at most 2). With the cap a gap and a twentieth of
+  // a blade (0.75) over the base, the rounds began 0.85 (gap 0.4) and 1.05 mm (gap 0.2) below the base's outer edge and
+  // reached the turned corner: 0.246 mm clear at gap 0.4, and 0.076 mm into block 2 at gap 0.2. The cap now leaves the
+  // gap and the larger of the round and the twentieth (2 mm), so the rounds start the gap above the base.
+  for (const gap of [0.4, 0.2]) {
+    const p = { length: 15, thickness: 0.84, width: 8, gap }, shape = butterflyPivot(p);
+    const a = (0.84 + 1.68 + gap) / Math.sin(rad(25)) + 0.5, R = a + 15, sides = rad(45) - 2.26 / R - (rad(10) + gap / R);
+    // probes of 0.95 of the gap round the base's outer corner, a point on its side and one on its outer edge 4° in from
+    // the corner (under the round, and 6°, about 3 mm, clear of the base at rest), all turned 10°
+    for (const [rr, ang] of [[R + 5.8, sides + rad(10)], [R + 5.8 - 0.5 * gap, sides + rad(10)], [R + 5.8, sides + rad(6)]]) {
+      const c = [rr * Math.cos(Math.PI / 2 + ang), rr * Math.sin(Math.PI / 2 + ang), 4];
+      const v = measureVolume(intersect(shape, cylinder({ radius: 0.95 * gap, height: 2, center: c, segments: 24 })));
+      assert.ok(v < 1e-6, `gap ${gap}: a ${0.95 * gap} mm probe at radius ${rr.toFixed(3)}, ${(ang / rad(1)).toFixed(2)}° from y meets block 2 (${v} mm³)`);
+    }
+  }
+});

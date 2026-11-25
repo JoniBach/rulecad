@@ -163,32 +163,45 @@ export function guideFit(m, profile, o = {}) {
   options(what, o ?? {}, ['face', 'from', 'beam', 'nut', 'keep', 'given']);
   const given = o.given ?? {}, p = profileOf(what, profile, given), face = o.face ?? 'top', [fname, idx] = String(face).split('.'), place = p.faces[fname]?.[(idx ? +idx : 1) - 1], out = [], f = (level, text, values = {}, refs = {}) => out.push(finding(level, text, 'guide.fit', { values, refs }));
   if (!place) throw new Error(`${what}: ${p.name} has no face ${shown(face)}: a rail goes on top, bottom, front or back, with .2 for a second slot`);
-  if (o.nut != null && !NUT_KINDS.includes(o.nut)) throw new Error(`${what}: nut is a kind of slot nut, ${NUT_KINDS.join(', ')} (got ${shown(o.nut)})`);
+  if (o.nut != null && !NUT_KINDS.includes(o.nut) && o.nut !== 'printed') throw new Error(`${what}: nut is a kind of slot nut, ${NUT_KINDS.join(', ')}, or printed (a printed carrier strip holding hex nuts) (got ${shown(o.nut)})`);
   const slot = place.slot ? p.slots[place.slot] : null, cell = Math.abs(place.along[0]) > 0.5 ? p.pitch[0] : p.pitch[1], W = m.rail.width;
   if (!slot) { f('fail', `${p.name}'s ${face} face is closed: a rail's screws go into slot nuts, so it goes on a slotted face`, {}, { profile: p.name }); return { findings: out, nut: null, face, slot: null }; }
   // its holes on the slot's centre line by construction; its width bridging the opening and within the face's cell
   if (W <= slot.opening + 1e-9) f('fail', `${m.set}'s ${mm(W)} mm rail is no wider than ${slot.name}'s ${mm(slot.opening)} mm opening: it would sink into the slot. A rail wider than the opening bridges it`, { width: W, opening: slot.opening });
   else if (W > cell + 1e-9) f('fail', `${m.set}'s ${mm(W)} mm rail is wider than the ${mm(cell)} mm face it sits on: it overhangs the beam`, { width: W, face: cell });
   else f('pass', `${m.set}'s ${mm(W)} mm rail bridges ${slot.name}'s ${mm(slot.opening)} mm opening on the ${mm(cell)} mm face, its holes on the slot's centre line`, { width: W, opening: slot.opening, face: cell });
-  // its screws into slot nuts made for this slot
-  let nut = null;
+  // its screws into slot nuts made for this slot; or, asked for (nut: 'printed'), into hex nuts in a printed carrier strip
+  // in the slot under the rail, a nut at each hole
+  let nut = null, carrier = null;
+  if (o.nut === 'printed') {
+    try { carrier = carrierModel(slot.name, { thread: m.rail.thread, count: m.holes.length, pitch: m.rail.pitch, given }); }
+    catch (e) { f('fail', `no printed carrier for an ${m.rail.thread} hex nut fits ${slot.name}: ${String(e.message).replace(/^carrierModel: /, '')}`, { thread: m.rail.thread }, { slot: slot.name }); }
+    if (carrier) {
+      const one = carrierModel(slot.name, { thread: m.rail.thread, given });
+      f('pass', `its ${m.holes.length} ${m.rail.thread} screws go into hex nuts in a printed carrier strip in ${slot.name} (${carrier.name}), one at each hole ${mm(m.rail.pitch)} mm apart: ${mm(carrier.total)} mm long, ${mm(carrier.grams)} g, slid in from the beam's end; each nut holds about ${mm(Math.round(one.hold.value))} N straight out of the slot (an estimate)`, { screws: m.holes.length, pitch: m.rail.pitch, grams: carrier.grams, hold: one.hold.value }, { carrier: carrier.name, slot: slot.name });
+    }
+    return ends(m, o, f, out, { findings: out, nut: null, carrier, face, slot: slot.name });
+  }
   try { nut = nutFor(p, face, m.rail.thread, { ...(o.nut ? { kind: o.nut } : {}), given }); }
   catch (e) {
     const there = ['M3', 'M4', 'M5', 'M6', 'M8'].filter((t) => { try { nutFor(p, face, t, { given }); return true; } catch { return false; } });
     // where no nut is sold for it, a printed carrier holding a hex nut of the rail's thread may fit the slot: named, with its figures
     let printed = null; try { printed = carrierModel(slot.name, { thread: m.rail.thread, given }); } catch { printed = null; }
-    const carrierSays = printed ? ` A printed carrier holding ${m.rail.thread} hex nuts fits ${slot.name}: carrierModel('${slot.name}', { thread: '${m.rail.thread}', count: ${m.holes.length}, pitch: ${mm(m.rail.pitch)} }), ${mm(printed.grams)} g a nut, holding about ${mm(Math.round(printed.hold.value))} N each (an estimate); give it as a slot nut set of your own in given.sets` : '';
+    const carrierSays = printed ? ` A printed carrier holding ${m.rail.thread} hex nuts fits ${slot.name}: carrierModel('${slot.name}', { thread: '${m.rail.thread}', count: ${m.holes.length}, pitch: ${mm(m.rail.pitch)} }), ${mm(printed.grams)} g a nut, holding about ${mm(Math.round(printed.hold.value))} N each (an estimate); give it as a slot nut set of your own in given.sets, or ask for it with nut: 'printed'` : '';
     f('fail', `no ${m.rail.thread}${o.nut ? ` ${o.nut}` : ''} slot nut is made for ${slot.name}: ${m.set}'s holes take ${m.rail.thread}, and the nuts there take ${there.join(', ') || 'nothing in the catalogue'}. ${String(e.message).replace(/^nutFor: /, '').replace(/; carrierModel prints one$/, printed ? '.' : '; carrierModel prints one')}${carrierSays}`, { thread: m.rail.thread }, { slot: slot.name, ...(printed ? { carrier: printed.name } : {}) });
   }
   if (nut) f('pass', `its ${m.holes.length} ${m.rail.thread} screws go into ${nut.name} (${nut.nutKind}), one at each hole ${mm(m.rail.pitch)} mm apart`, { screws: m.holes.length, pitch: m.rail.pitch }, { nut: nut.name, slot: slot.name });
-  // its ends on the beam, and clear of what crosses the face
+  return ends(m, o, f, out, { findings: out, nut, carrier: null, face, slot: slot.name });
+}
+// a rail's ends on its beam, and clear of what crosses the face (guideFit's last findings)
+function ends(m, o, f, out, result) {
   if (o.from != null) {
     const a = o.from, b = o.from + m.length, cl = GUIDE_DEFAULTS.clear.value;
     if (a < -1e-9 || (o.beam != null && b > o.beam + 1e-9)) f('fail', `the rail runs from ${mm(a)} to ${mm(b)} mm along a beam ${o.beam != null ? `${mm(o.beam)} mm long` : 'from its end a'}: past its end`, { from: a, to: b, beam: o.beam ?? null });
     for (const k of o.keep ?? []) if (k.from - cl < b && k.to + cl > a) f('fail', `the rail, ${mm(a)} to ${mm(b)} mm along the beam, runs into ${k.what} at ${mm(k.from)} to ${mm(k.to)} mm (with ${mm(cl)} mm clear): move it or cut it shorter`, { from: a, to: b, at: [k.from, k.to] }, { what: k.what });
     if (!out.some((x) => x.level === 'fail' && x.values.from != null)) f('pass', `its ends, ${mm(a)} and ${mm(b)} mm along the beam, are on it and clear of ${o.keep?.length ? (o.keep.map((k) => k.what).join(', ')) : 'anything crossing its face'}`, { from: a, to: b });
   }
-  return { findings: out, nut, face, slot: slot.name };
+  return result;
 }
 
 /**
