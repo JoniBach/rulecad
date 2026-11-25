@@ -934,7 +934,8 @@ test('a bracket refuses what it cannot draw, by name', () => {
   assert.throws(() => bracketModel('2020-misumi-hfs5', { head: 'hex' }), /head is cap or button \(got "hex"\)/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { width: 9 }), /a bracket 9 mm wide leaves no room round M5's 8.5 mm head: 10.5 mm or more/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { thread: 'M8' }), /no M8 nut is made for profile-2020-misumi-hfs5's top face/);
-  assert.throws(() => bracketModel('4040-bosch-l'), /The kit has no nut sets for that family/);
+  assert.throws(() => bracketModel('4545-misumi-hfs8'), /The kit has no nut sets for that family/);
+  assert.equal(bracketModel('4040-bosch-l').thread, 'M8', 'Rexroth\'s 10 mm slot takes Motedis\' B-type roll-in nuts now (#308): the bracket takes the largest, M8');
   assert.equal(bracketModel('4040-misumi-hfs8').thread, 'M8', 'MISUMI\'s 8 series has its own nuts now (#308): the bracket takes the largest, M8');
   assert.throws(() => bracketModel('2020-nobody'), /bracketModel: no profile "2020-nobody"/);
   assert.throws(() => bracketModel('2020-misumi-hfs5', { face: 'side' }), /face is top, bottom, front or back/);
@@ -2062,17 +2063,14 @@ test('a generated frame\'s joins against its profile: a blind or end-tap screw t
   // MISUMI's 4040 ends are tapped M12 (bore 10.5) and its slot opens 10 mm: an M12 screw, 12 mm, does not pass between
   // the lips, blind (into the cavity) or end-tap (right across the post). Bosch's 4040 L the same (bore 10, M12). A
   // thread cut in the bore must be wider than it (over 10.5 mm: M12 of M3 to M12) and pass the 10 mm opening (M10 at
-  // most): none does both, so neither profile takes a blind or an end-tap join. The kit has no slot-10-bosch nut that
-  // goes in through the opening, so no printed fitting either there: the refusals say the two ways left, and never send
-  // the user to a join that is itself refused. MISUMI's 8 series has its HNTF8 drop-in nuts (#308), so a printed
-  // bracket or gusset is the way its refusal names
-  const left = /Join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\), or give a slot nut set of your own for slot-10-\w+ in given\.sets and join with a printed bracket or gusset\. The kit has no other join for 4040-\S+ that checks clean$/;
+  // most): none does both, so neither profile takes a blind or an end-tap join. MISUMI's 8 series has its HNTF8 drop-in
+  // nuts, and Rexroth's 10 mm slot Motedis' B-type roll-in nuts (both #308), each going in through the opening, so a
+  // printed bracket or gusset is the way both refusals name
   for (const profile of ['4040-misumi-hfs8', '4040-bosch-l']) for (const kind of ['blind', 'end-tap']) {
-    assert.throws(() => box({ ...ask, profile, join: kind }), (x) => (assert.match(x.message, profile === '4040-bosch-l' ? left : /Join it with a printed bracket or gusset \(fitting printed\)$/), assert.match(x.message, new RegExp(`no screw from M3 to M12 cuts a thread in the Ø10(\\.5)? mm end bore.*, so ${profile} takes no ${kind} join`)), true));
+    assert.throws(() => box({ ...ask, profile, join: kind }), (x) => (assert.match(x.message, /Join it with a printed bracket or gusset \(fitting printed\)$/), assert.match(x.message, new RegExp(`no screw from M3 to M12 cuts a thread in the Ø10(\\.5)? mm end bore.*, so ${profile} takes no ${kind} join`)), true));
   }
-  for (const kind of ['bracket', 'gusset']) assert.equal(box({ ...ask, profile: '4040-misumi-hfs8', join: { kind, fitting: 'printed' } }).joins.length, 16, `a printed ${kind} on the 4040-misumi-hfs8, on its drop-in nuts`);
+  for (const profile of ['4040-misumi-hfs8', '4040-bosch-l']) for (const kind of ['bracket', 'gusset']) assert.equal(box({ ...ask, profile, join: { kind, fitting: 'printed' } }).joins.length, 16, `a printed ${kind} on the ${profile}, on nuts that go in through its opening`);
   assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: 'blind' }), /a blind join's M12 screw \(4040-misumi-hfs8's end thread\) passes between the lips of the post's slot, and slot-10-misumi opens 10 mm, narrower than its 12 mm/);
-  for (const kind of ['bracket', 'gusset']) assert.throws(() => box({ ...ask, profile: '4040-bosch-l', join: { kind, fitting: 'printed' } }), /the kit has none for 4040-bosch-l's slot \(slot-10-bosch\): give a nut set of your own in given\.sets, or join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\)\. The kit has no other join for 4040-bosch-l that checks clean$/);
   // the way left is taken, as the refusals say
   assert.equal(box({ ...ask, profile: '4040-misumi-hfs8', join: 'bracket' }).joins.length, 16);
   // a screw given in join.screw is cut in the end bore, so its thread must be wider than the bore: M8 (8 mm) in
@@ -2214,4 +2212,42 @@ test('slot nuts for MISUMI\'s 8 series (#308): HNTT8 and HNTF8, M4 to M8, from t
   assert.match(f15.text, /no M3 slot nut is made for slot-10-misumi: rail-mgn15's holes take M3, and the nuts there take M4, M5, M6, M8\..*M3 drop-in \(slot-nut-8-misumi-m3-drop-in\).*A printed carrier holding M3 hex nuts fits slot-10-misumi/);
   // a rail whose thread has a nut sold passes as before
   assert.equal(guideFit(railModel('rail-mgn12', { length: 200 }), 'profile-2020-misumi-hfs5').nut.name, 'slot-nut-6-misumi-m3-slide-in');
+});
+
+test('slot nuts for a 10 mm slot from a second maker (#308): Motedis\' B-type roll-in nuts, M4 to M8, from its drawings; a rail asks for a printed carrier strip by name (nut: printed) and passes', () => {
+  const { nutFor, slotNutModel, bracketModel, guideFit, railModel, carrierModel } = frames;
+  // Motedis draws each of S10BSSNM4, M5, M6 and M8 with one body: 20 along the slot, 14 across, 5,3 under the lips, a
+  // 9,9 mm tongue 1,5 high. They are sold for its B-type 10 mm slot, which is Rexroth's: a 4040 of either takes them
+  for (const t of ['M4', 'M5', 'M6', 'M8']) {
+    const n = slotNutModel(`slot-nut-10-motedis-${t.toLowerCase()}-roll-in`);
+    assert.deepEqual([n.slot, n.thread, n.nutKind, n.entry, n.length, n.width, n.height, n.tongueWidth, n.tongueHeight], ['slot-10-bosch', t, 'roll-in', 'anywhere', 20, 14, 5.3, 9.9, 1.5]);
+    // hold: Rexroth's 2200 N for its sprung swivel-in block in an 8 mm slot, an estimate; the M4's proof load,
+    // 8.78 mm² × 580 MPa = 5092 N, is over it, so 2200 N for every thread
+    assert.deepEqual([n.hold.value, n.hold.kind], [2200, 'estimate']);
+    for (const p of ['4040-motedis-b10', '4040-bosch-l']) assert.equal(nutFor(p, 'top', t).name, n.name, `${p} takes the ${t}`);
+  }
+  assert.throws(() => nutFor('4040-motedis-b10', 'top', 'M3'), /no M3 nut is made for profile-4040-motedis-b10's top face \(slot-10-motedis, nut family slot-10-bosch\)\. Made for it: M4 roll-in/);
+  // so Rexroth's 4040 L takes a printed bracket on them, as MISUMI's 4040 does on its own
+  assert.equal(bracketModel('4040-bosch-l').thread, 'M8');
+  // An MGN7's M2 screws on a 2020: no M2 slot nut is sold, so the rail asks for the printed carrier strip by name. A nut
+  // a hole, 13 at its 15 mm pitch: 189 mm long. Each nut holds what the plastic over it takes in shear before it punches
+  // through: PLA's 39 MPa over √3 = 22.517 MPa, round the nut's 4 mm flats (perimeter 2√3 × 4 = 13.856 mm), 3 mm deep
+  // (roof 3.2 less the carrier's top 0.2): 22.517 × 13.856 × 3 = 936.0 N. An MGN7C pulled off at its whole 1240 N
+  // static rating hangs on the two screws under its 22.5 mm length (15 mm apart): 620 N each, 1.51 times under that
+  const m7 = railModel('rail-mgn7', { length: 200 }), g7 = guideFit(m7, '2020-misumi-hfs5', { from: 100, beam: 400, nut: 'printed' });
+  assert.deepEqual(g7.findings.map((f) => f.level), ['pass', 'pass', 'pass']); assert.equal(g7.nut, null);
+  assert.equal(g7.carrier.name, 'carrier-6-misumi-m2-nut-x13'); assert.deepEqual([g7.carrier.count, g7.carrier.pitch, g7.carrier.total], [13, 15, 189]);
+  const hold = g7.findings[1].values.hold;
+  within(hold, (39 / Math.sqrt(3)) * 2 * Math.sqrt(3) * 4 * 3, 0.001, 'each nut punches through 3 mm of PLA round its flats');
+  assert.ok(Math.abs(hold / (1240 / 2) - 1.51) < 0.01);
+  assert.match(g7.findings[1].text, /^its 13 M2 screws go into hex nuts in a printed carrier strip in slot-6-misumi \(carrier-6-misumi-m2-nut-x13\), one at each hole 15 mm apart: 189 mm long, 9\.33 g, slid in from the beam's end; each nut holds about 936 N/);
+  within(g7.carrier.grams, (g7.carrier.volume * 1.26) / 1000, 0.001, 'grams from its volume at PLA\'s 1.26 g/cm³');
+  // an MGN15's M3 on MISUMI's 4040 the same way; and where no carrier fits the slot, it fails by name with why
+  assert.equal(guideFit(railModel('rail-mgn15', { length: 200 }), '4040-misumi-hfs8', { nut: 'printed' }).carrier.name, 'carrier-10-misumi-m3-nut-x5');
+  const tight = guideFit(railModel('rail-mgn12', { length: 200 }), '1515-openbeam', { nut: 'printed' }).findings.find((f) => f.level === 'fail');
+  assert.match(tight.text, /^no printed carrier for an M3 hex nut fits slot-3-openbeam: an M3 hex nut does not fit a carrier in slot-3-openbeam/);
+  // a rail with no nut sold says how to ask for the carrier
+  assert.match(guideFit(m7, '2020-misumi-hfs5').findings[1].text, /or ask for it with nut: 'printed'$/);
+  assert.equal(carrierModel('slot-6-misumi', { thread: 'M2' }).hold.value, hold);
+  assert.throws(() => guideFit(m7, '2020-misumi-hfs5', { nut: 'glued' }), /guideFit: nut is a kind of slot nut, slide-in, .*, or printed \(a printed carrier strip holding hex nuts\) \(got "glued"\)/);
 });

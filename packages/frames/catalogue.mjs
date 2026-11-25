@@ -142,6 +142,10 @@ import s_slot_nut_10_misumi_m6_drop_in from '@rulecad/rules/slot-nut-10-misumi-m
 import s_slot_nut_10_misumi_m6_slide_in from '@rulecad/rules/slot-nut-10-misumi-m6-slide-in.json' with { type: 'json' };
 import s_slot_nut_10_misumi_m8_drop_in from '@rulecad/rules/slot-nut-10-misumi-m8-drop-in.json' with { type: 'json' };
 import s_slot_nut_10_misumi_m8_slide_in from '@rulecad/rules/slot-nut-10-misumi-m8-slide-in.json' with { type: 'json' };
+import s_slot_nut_10_motedis_m4_roll_in from '@rulecad/rules/slot-nut-10-motedis-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_10_motedis_m5_roll_in from '@rulecad/rules/slot-nut-10-motedis-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_10_motedis_m6_roll_in from '@rulecad/rules/slot-nut-10-motedis-m6-roll-in.json' with { type: 'json' };
+import s_slot_nut_10_motedis_m8_roll_in from '@rulecad/rules/slot-nut-10-motedis-m8-roll-in.json' with { type: 'json' };
 import s_slot_nut_3_openbeam_m3_hex from '@rulecad/rules/slot-nut-3-openbeam-m3-hex.json' with { type: 'json' };
 import s_profile_1515_printed from '@rulecad/rules/profile-1515-printed.json' with { type: 'json' };
 import s_profile_2020_printed from '@rulecad/rules/profile-2020-printed.json' with { type: 'json' };
@@ -286,7 +290,7 @@ export const SETS = Object.fromEntries([
   s_slot_nut_8_misumi_m5_drop_in, s_slot_nut_8_misumi_m5_roll_in, s_slot_nut_8_misumi_m5_slide_in, s_slot_nut_8_misumi_m5_square,
   s_slot_nut_8_misumi_m6_drop_in, s_slot_nut_8_misumi_m6_roll_in, s_slot_nut_8_misumi_m6_slide_in, s_slot_nut_8_misumi_m6_square,
   s_slot_nut_8_motedis_m4_hammer, s_slot_nut_8_motedis_m4_roll_in, s_slot_nut_8_motedis_m5_hammer, s_slot_nut_8_motedis_m5_roll_in,
-  s_slot_nut_8_motedis_m6_hammer, s_slot_nut_8_motedis_m6_roll_in, s_slot_nut_8_motedis_m8_roll_in, s_unc_10_24,
+  s_slot_nut_8_motedis_m6_hammer, s_slot_nut_8_motedis_m6_roll_in, s_slot_nut_8_motedis_m8_roll_in, s_slot_nut_10_motedis_m4_roll_in, s_slot_nut_10_motedis_m5_roll_in, s_slot_nut_10_motedis_m6_roll_in, s_slot_nut_10_motedis_m8_roll_in, s_unc_10_24,
   s_unc_1_4_20, s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
 ].map((s) => [s.name, s]));
 /** The kit's own outlines, by the name of the set each belongs to (rules/outlines/<name>.json). @type {Record<string, { name?: string, source: string, licence: string, loops: number[][][] }>} */

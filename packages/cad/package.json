@@ -75,7 +75,7 @@
     "@rulecad/motors": "^0.1.6",
     "@rulecad/fixings": "^0.1.7",
     "@rulecad/robots": "^0.1.4",
-    "@rulecad/frames": "^0.1.12"
+    "@rulecad/frames": "^0.1.13"
   },
   "peerDependencies": {
     "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0"
