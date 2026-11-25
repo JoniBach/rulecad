@@ -11,8 +11,10 @@ why. Releases before this file was started are described in their pull requests 
   arms fixed-pinned segments in one link), as two prints, a mover and a ground, joined by two filament pins. The model
   turns the coupler in the beam solver with each hub free on its pin: the moment that switches it, the moment back,
   where it rests again (beside the patent's pseudo-rigid-body four-bar), the strain on the way and held over, the air
-  over the whole swing (`young.clear`), the pins' holes and the grams. Refused by name: arms not on one side of the
-  pins' line, hubs too close, a pin longer than the stack (`youngBistable:`).
+  over the whole swing (`young.clear`), the pins' holes and the grams. The ground stands on two feet, one at its end
+  with a screw hole and one between the pins, so it stands without the screw. Refused by name: arms not on one side of
+  the pins' line, hubs too close (or too close for the second foot between them), a pin longer than the stack
+  (`youngBistable:`).
 - `tensuralBistable` and `tensuralBistableModel` (issue #76): the coupling of US 7126446 with its tensural pivots,
   drawn as a mirrored pair so the pulls through the middle meet in the shuttle. The model gives the stretch c (1 - cos
   α) and the thin segments' tension, by hand and from the solver (`tensural.tension`), the snap, the strain, the
@@ -20,8 +22,10 @@ why. Releases before this file was started are described in their pull requests 
 - `splitToothGear` and `splitToothGearModel` (issue #77): gear teeth on flexures for a mesh without backlash, on the
   involute of `@rulecad/gears`. Each tooth and gap slit, the gear drawn fuller by a preload; the model gives a half's
   stiffness (Castigliano with shear, checked against the beam solver), the preload's force and strain, the torque held
-  with no backlash (2 F rb), the force at which a slit closes, the strain at a torque you give against the limit
-  (`flexure.strain`), the halves in printed lines (`gear.halves`) and the mesh's contact ratio.
+  with no backlash (2 F rb), how far the two halves' preloads close each slit at rest (shut is a fail,
+  `gear.preload`), the force at which the driving half closes its slit with its sibling's preload, the strain at a
+  torque you give against the limit (`flexure.strain`), the halves in printed lines (`gear.halves`) and the mesh's
+  contact ratio. The bore is drawn at the size asked; only the teeth are grown by the preload.
 - `@rulecad/flexures` now depends on `@rulecad/gears` (for the split-tooth gear's involute).
 - `beamOutline`, `spansOf` and `readCurve` are exported from `bistables.mjs` (not from the package) for the new parts.
 

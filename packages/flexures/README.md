@@ -340,9 +340,9 @@ g.hold;          // 76.6 N·mm carried with no backlash
 
 | Part | What the model says | Grams |
 |---|---|---|
-| `youngBistable`, spacing 46, arms 0.84 | 13.64 N·mm turns the coupler, 12° on; past 30.6° it turns on by itself and rests 60.7° round (the four-bar: 61.8°); 5.12 N·mm brings it back; 0.99% on the way, 0.5% held over (2.03 times under 2%) | 8.5 (mover 5.6, ground 2.8, pins) |
+| `youngBistable`, spacing 46, arms 0.84 | 13.64 N·mm turns the coupler, 12° on; past 30.6° it turns on by itself and rests 60.7° round (the four-bar: 61.8°); 5.12 N·mm brings it back; 0.99% on the way, 0.5% held over (2.03 times under 2%) | 9.1 (mover 5.6, ground 3.4, pins) |
 | `tensuralBistable`, segments 18 at 7°, anchors 12 apart | 2.76 N switches it, 1.14 mm in; past 3.06 mm it snaps on and rests 5.67 mm along; 0.88 N brings it back; 33.6 N in each thin segment through the middle on a rigid slab, 22.1 N as drawn; 0.99% (2.02 times under 2%) | 21.6 |
-| `splitToothGear`, module 2, 24 teeth | each half 16.98 N/mm, pushed back 0.1 mm: 1.7 N on each flank, 0.33%; no backlash up to 76.6 N·mm; a half closes its slit at 5.11 N (1.01%); at the hold 0.67% (2.99 times under 2%) | 11.9 |
+| `splitToothGear`, module 2, 24 teeth | each half 16.98 N/mm, pushed back 0.1 mm: 1.7 N on each flank, 0.33%; no backlash up to 76.6 N·mm; a half closes its slit at 3.41 N (0.67%); at the hold 0.67% (2.99 times under 2%) | 11.9 |
 
 - **The Young bistable** is the patent's (Jensen, Howell and Roach, US 6215081, FIGS. 4a to 5b): two links. The
   ground carries two pins; the mover is two compliant arms joined by a rigid coupler, each arm turning on its pin at one
@@ -350,11 +350,13 @@ g.hold;          // 76.6 N·mm carried with no backlash
   it is a four-bar with springs at the coupler's two joints only, since the pins are free, each γ Kθ EI / l with the
   patent's γ 0.85 and Kθ 2.65. Turned over, the long arm bends and holds the coupler there (the patent's "force loaded"
   second position). The patent gives no dimensions, so the default proportions are measured off its FIG. 4a: an
-  estimate of its layout. The mover prints flat; the ground prints on its back, a bar with a foot; two filament pins
+  estimate of its layout. The mover prints flat; the ground prints on its back, a bar on two feet; two filament pins
   pass through the hubs (a slip fit) into the bar (a press fit). Assembled, the mover lies on the table and the bar sits
-  0.3 mm over its hubs, so they can't lift off. The foot has a screw hole to fix it to a board. The model turns the
+  0.3 mm over its hubs, so they can't lift off. One foot is at the bar's end, past the short arm's pin, with a screw
+  hole to fix it to a board; the other stands between the pins, clear of both hubs, so the ground stands on the table
+  by itself, its centre of mass between the two. The model turns the
   coupler with a moment in the beam solver (each hub free on its pin), finds where it rests again, and checks the air
-  between the arms, the coupler, the hubs and the foot over the whole swing (`young.clear`).
+  between the arms, the coupler, the hubs and the feet over the whole swing (`young.clear`).
 - **The tensural bistable** is the coupling of US 7126446 (Howell and Masters, FIGS. 1 to 3), whose thin segments
   the patent calls tensural pivots: loaded in bending and axial tension. Wilcox and Howell named the class (FTBM, 2005).
   The coupling is a thin segment from the base's anchor out to one foot of a thick compressive segment, which runs
@@ -373,7 +375,10 @@ g.hold;          // 76.6 N·mm carried with no backlash
   modules below the root circle by default, so every half is a long member standing on the rim. The gear is drawn
   fuller by the preload, plus what the mate's own backlash leaves. A plain mate at the standard centre then pushes the
   two halves that face it back into their slits. The mesh carries 2 F rb with no backlash: the driving half takes on
-  what the trailing half lets go of. Driven harder, a half closes its slit and bends on with its sibling. The halves
+  what the trailing half lets go of. Both halves of a tooth are pushed toward their shared slit, so the preloads
+  close it part way at rest (0.27 of the 0.4 mm by default); a preload that shuts it is a fail (`gear.preload`), the
+  halves then locked together before any torque. Driven harder, a half closes the rest of its slit, its sibling's
+  preload helping, and bends on with its sibling. The bore is drawn the size asked: only the teeth grow. The halves
   print as walls of whole lines at the pitch circle (`gear.halves`); a printed tooth comes out about a tenth of a
   millimetre fuller or thinner, so measure the hold before relying on it.
 
