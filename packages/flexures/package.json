@@ -34,6 +34,7 @@
     "lattices.mjs",
     "kirigami.mjs",
     "cells.mjs",
+    "developable.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -60,6 +61,7 @@
     "lattices.d.mts",
     "kirigami.d.mts",
     "cells.d.mts",
+    "developable.d.mts",
     "README.md",
     "LICENSE"
   ],
