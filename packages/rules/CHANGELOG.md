@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## Unreleased
+## 0.3.27: TPU
 ### Added
 
 - `tpu`: Bambu Lab TPU 95A (data sheet V3.0), printed, for analysis: modulus 9.2 ± 0.4 MPa and strength 29.6 ± 0.6 MPa
