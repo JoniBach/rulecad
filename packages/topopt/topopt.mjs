@@ -180,7 +180,7 @@ export function discretise(p) {
     if (p.input_spring) for (const m of ins) springs[dim * m + inDir] += p.input_spring / ins.length;
     output = { force: L, spring: o.spring || 0, input: loads[0].force };
   }
-  return made(clash({
+  return howMade(clash({
     grid: size, origin, passive, fixed, loads, ...(output ? { output, springs } : {}),
     material: p.material, thickness: p.thickness, volume: p.volume,
     // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
@@ -194,7 +194,7 @@ export function discretise(p) {
 }
 
 // A milled or cast problem's process, checked by name on its grid before any maths (the filter itself is made by model)
-function made(spec) {
+function howMade(spec) {
   if (spec.tool != null && !(spec.tool > 0)) throw new Error(`a tool's radius is a distance above 0 mm (got ${spec.tool})`);
   if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(spec.tool)} mm or less, or leave the tool out`);
   processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
@@ -628,8 +628,8 @@ export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
  * What a process can make, as one filter: milled from one side or more (mill: '+z' or ['+z', '-x']), each with the
  * tool's radius (tool, cells) if given, or cast (cast: '+z', or { draw, parting } with parting a layer) with its
  * draft (degrees). Milled from several sides (Langelaar 2019's multi-axis machining, one setup a side), a cell is
- * left only if no side's tool can reach it: the smooth minimum of what each side leaves (never above the smaller, at
- * least 0). One side and no tool is drawFilter itself. Null for a part neither milled nor cast.
+ * left only if no side's tool can reach it: the smooth minimum of what each side leaves (the smaller where they are
+ * alike, so a full cell stays full; within ½√ε = 0.0005 of it elsewhere; at least 0). One side and no tool is drawFilter itself. Null for a part neither milled nor cast.
  * @param {{ nx: number, ny: number, nz?: number }} size
  * @param {{ mill?: string | string[], tool?: number, cast?: string | { draw: string, parting: number }, draft?: number }} o
  */
@@ -637,7 +637,7 @@ export function processFilter(size, { mill, tool, cast, draft }) {
   if (tool && !mill) throw new Error('a tool\'s radius is for a milled part (mill): a mould has no tool');
   if (draft && !cast) throw new Error(`a draft is for a cast or moulded part (cast)${mill ? ': a milled part\'s walls come out straight down the tool\'s side' : ''}`);
   if (!mill && !cast) return null;
-  const cells = size.nx * size.ny * (size.nz || 1), eps = 1e-6;
+  const cells = size.nx * size.ny * (size.nz || 1), eps = 1e-6, halfRootEps = 0.5 * Math.sqrt(eps);
   if (cast) return typeof cast === 'string' ? drawFilter(size, cast, undefined, { draft }) : drawFilter(size, cast.draw, cast.parting, { draft });
   const sides = [mill].flat();
   if (!sides.length) throw new Error('mill: give the side or sides the tool comes from, \'+z\' or [\'+z\', \'-x\']');
@@ -658,7 +658,7 @@ export function processFilter(size, { mill, tool, cast, draft }) {
         const b = one(paths[k], x), sr = slopeRun[k], ss = slopeSide[k];
         for (let e = 0; e < cells; e++) {
           const d = out[e] - b[e], root = Math.sqrt(d * d + eps);
-          let s = 0.5 * (out[e] + b[e] - root);
+          let s = 0.5 * (out[e] + b[e] - root) + halfRootEps;
           sr[e] = 0.5 * (1 - d / root); ss[e] = 0.5 * (1 + d / root);
           if (s <= 0) { s = 0; sr[e] = ss[e] = 0; }
           out[e] = s;
