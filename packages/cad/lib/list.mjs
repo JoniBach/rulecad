@@ -77,7 +77,9 @@ export function shoppingList(s) {
     add(m.name, m.count, `${m.item} on ${m.other} (its mount, a fit that fastens)`, { kind: 'screw', thread: m.thread, length: m.length, head: m.head, grams });
   }
   // what a printed fitting takes besides its screws: a hinge's pin and its nut, a catch's magnet and strike (lib/fittings.mjs)
-  for (const o of s.objects) if (o.fitting?.hardware && !o.unplaced) for (const h of o.fitting.hardware) add(h.name, h.count ?? 1, `${o.id} (${h.why ?? 'its fitting'})`, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: null });
+  // (a nut carrier's nuts that a fasten placed in it are listed with that fasten, not again)
+  const placedIn = (o, h) => (o.fitting.fitting === 'nut-carrier' ? s.parts.filter((p) => p.hardware?.kind === h.kind && p.hardware.thread === h.thread && p.moves === o.id).length : 0);
+  for (const o of s.objects) if (o.fitting?.hardware && !o.unplaced) for (const h of o.fitting.hardware) { const n = (h.count ?? 1) - placedIn(o, h); if (n > 0) add(h.name, n, `${o.id} (${h.why ?? 'its fitting'})`, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: null }); }
   // (pins and magnets a fit names by the schema's form: by name, with their mass and whether they are bought, cut from filament or printed)
   for (const x of s.fits) if (x.fastener && x.fasten == null) {
     let more = {}; if (x.pin) try { const m = pinModel(x.fastener, { material: mat.name }); more = { kind: 'pin', made: m.made, thread: null, length: m.length, grams: m.grams }; } catch {}

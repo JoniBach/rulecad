@@ -25,3 +25,4 @@ export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel,
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
 export { youngBistable, youngBistableModel, tensuralBistable, tensuralBistableModel } from './clicks.mjs';
 export { splitToothGear, splitToothGearModel } from './gearteeth.mjs';
+export { butterflyPivot, butterflyPivotModel, butterflyBeams, xyThetaStage, xyThetaStageModel, rollingJoint, rollingJointModel } from './stages.mjs';

@@ -34,6 +34,7 @@
     "lattices.mjs",
     "clicks.mjs",
     "gearteeth.mjs",
+    "stages.mjs",
     "flexures.d.mts",
     "core.d.mts",
     "compose.d.mts",
@@ -60,6 +61,7 @@
     "lattices.d.mts",
     "clicks.d.mts",
     "gearteeth.d.mts",
+    "stages.d.mts",
     "README.md",
     "LICENSE"
   ],
