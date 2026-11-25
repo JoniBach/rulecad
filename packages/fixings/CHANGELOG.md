@@ -4,6 +4,18 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## Unreleased
+### Added
+
+- The printed plastics ABS, ASA and PA-CF (`abs`, `asa`, `pa_cf`, from `@rulecad/rules` 0.3.23) are materials of the
+  kit for engagement, stripping, seating and the other strength sums. Each is a plastic by its stiffness (2.5 diameters
+  of thread) and is stripped at its strength across the layers: an M3 screw 6 mm into PA-CF strips at about 1828 N,
+  0.63 of a class 8.8 screw's proof load. `@rulecad/rules` is needed at 0.3.23 or later.
+
+### Printed sizes that moved
+
+- None.
+
 ## 0.1.7: a slotted snap skirt and printed bolts into slot nuts
 ### Added
 
