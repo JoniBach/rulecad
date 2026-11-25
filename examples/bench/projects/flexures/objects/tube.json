@@ -1,0 +1,25 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tube",
+  "title": "A developable four-bar: a tube whose wall stands out when pressed",
+  "version": "0.1.0",
+  "uses": ["x1c", "petg"],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "Standing on its end, one piece, no supports: every hinge's axis is up z, so each bends within its layers, and the first layer is the whole ring.",
+  "parts": {
+    "tube": { "label": "The tube: ground, input, coupler and output links in its wall" }
+  },
+  "variables": {
+    "turn": { "value": 4.8, "unit": "degrees", "rule": "The input's design turn: the hinge between the input and the coupler stands 1.43 mm out of the tube and the one between the coupler and the output 1.27 mm in, taking 91.6 N·mm at the input, and the hinges see 0.61% strain against PETG's 1.25% (2.05 times the margin)" },
+    "radius": { "value": 20, "unit": "mm", "rule": "The wall's middle radius" },
+    "wall": { "value": 2.5, "unit": "mm", "rule": "The wall's thickness: six lines, stiff beside the hinges' webs" },
+    "height": { "value": 20, "unit": "mm", "rule": "The tube's length up z: 100 layers. The hinges' stiffness grows with it, their strain for a turn does not" },
+    "joint_a": { "value": 200, "unit": "degrees", "rule": "The input's hinge on the ground, round the tube from x" },
+    "joint_b": { "value": 140, "unit": "degrees", "rule": "The hinge from the input to the coupler: the input is the 60 degrees of wall between" },
+    "joint_c": { "value": 60, "unit": "degrees", "rule": "The hinge from the coupler to the output: the coupler is 80 degrees of wall" },
+    "joint_d": { "value": -20, "unit": "degrees", "rule": "The output's hinge on the ground: the output is 80 degrees of wall, and the ground the 140 degrees left" },
+    "flex": { "value": 8, "unit": "mm", "rule": "Each hinge's web, its length round the wall: a longer web turns further for a strain" },
+    "web": { "value": "x1c.line * 2", "unit": "mm", "rule": "Each hinge's web thickness: two lines, the thinnest that prints solid" }
+  }
+}

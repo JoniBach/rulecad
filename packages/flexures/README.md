@@ -851,6 +851,52 @@ whole force, so its strain allows only a few millimetres of leaf. A balanced cel
 compact answer is a strip printed straight and squeezed into its frame at assembly, balanced at its straight middle
 where every spring is near rest; that is a two-print part.
 
+## Developable mechanisms: a four-bar in a tube's wall
+
+A developable mechanism is made of pieces of a surface: at rest it is the surface and nothing stands out of it; moved,
+its links leave the surface, outward or inward (Nelson and others). On a cylinder whose joints' axes run
+along it, the mechanism is a planar one seen end on: a four-bar whose joints are four points on the wall's circle,
+its links the arcs of wall between them, the rest of the tube its ground. A grip's housing that grows a bump under the
+fingers, or a tube whose side opens, is one.
+
+```js
+import { tubeFourBar, tubeFourBarModel, tubeFourBarFindings, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+const tube = { radius: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 8, thickness: 0.84 } };
+const m = tubeFourBarModel(tube, petg);
+m.travel;    // [-9.7, 9.8]: the input's turn each way at PETG's strain limit, degrees
+m.at(4.8);   // turns, strain 0.61%, torque 91.6 N·mm, how far each link stands out of the tube and in
+m.grams;     // 6.69
+tubeFourBar(tube); // the tube, standing, one piece
+tubeFourBarFindings({ ...tube, turn: 4.8 }, { line: 0.42, layer: 0.2 }, petg, m); // webs, layers, strain, gap, surface
+```
+
+`joints` gives the four hinges' places round the tube in degrees, in order: the input's hinge on the ground, the input
+to the coupler, the coupler to the output, the output's hinge on the ground. The links move as the rigid four-bar's
+(the pseudo-rigid-body model, Howell), each hinge a torsion spring at its web's middle:
+
+| Quantity | Formula |
+|---|---|
+| A link's length | the chord between its two hinges, 2 R sin(arc / 2) |
+| The coupler's far hinge | where the circles about the input's moved end and the output's ground hinge meet, on the side it lies at rest |
+| Each hinge's stiffness | E I / l, I = H t³ / 12 (a living hinge) |
+| Each hinge's strain | t ψ / 2l at a turn ψ |
+| The input's torque | the slope of Σ ½ K ψ² with the input's turn |
+| How far a link stands out or in | the most and least distance of its wall's middle from the axis, less R |
+
+Each hinge is the wall thinned to a web on its middle by a pocket from the outside and one from the inside, each
+pocket's corners at the web rounded. Printed standing, every hinge's axis is up z, so it bends within its layers, and
+the first layer is the tube's whole ring. A web is straight on a curved wall, so its length is kept under
+√(2 R (wall - t)), where its ends stand a quarter of the pockets' cut off the wall's middle (`developable.hinge`).
+
+`tubeFourBarFindings` checks the webs in whole printed lines (`developable.web`), the length in whole layers
+(`developable.layers`), the hinges' strain at the input's turn (`developable.strain`), the links that are not joined
+apart (`developable.gap`), and says how far each link stands out and in (`developable.surface`). Joints out of order,
+arcs too short for two hinges, or a wall thicker than the radius are refused by name (`developable.*`).
+
+The bench has this tube as `flexures/tube`.
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
@@ -874,6 +920,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Schenk, M., and Guest, S. D., "Geometry of Miura-folded metamaterials", *Proceedings of the National Academy of Sciences* 110(9), 3276-3281, 2013: the Miura cell and its fold angle.
 - Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
 - Grima, J. N., and Evans, K. E., "Auxetic behavior from rotating squares", *Journal of Materials Science Letters* 19(17), 1563-1565, 2000: the rotating-squares mechanism and its Poisson's ratio of -1.
+- Nelson, T. G., Zimmerman, T. K., Magleby, S. P., Lang, R. J., and Howell, L. L., "Developable mechanisms on developable surfaces", *Science Robotics* 4(27), 2019: mechanisms whose links are pieces of a cylinder or cone, at rest the surface.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.

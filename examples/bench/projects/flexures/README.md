@@ -113,6 +113,11 @@ opposite sides and pull: predicted 22.3 N/mm at first, so 6 N (610 g) stretches 
 PETG's strain limit at 0.57 mm. Watch the other two sides: they should move apart as it is pulled (a Poisson's ratio
 of -1), and every square should turn the opposite way to its neighbours.
 
+`tube` (`npx cad export flexures/tube`) is a developable mechanism: a PETG tube, 20 mm radius and 20 mm long, whose
+wall is a four-bar, printed standing (6.69 g). Press the input link (the 60 degrees of wall between the first two thin
+hinges) inwards: turned 4.8 degrees it takes 91.6 N·mm, the hinge after it stands 1.43 mm out of the tube and the next
+1.27 mm in, at half PETG's strain limit. Measure how far each stands out with the dial gauge, against the model.
+
 ## Results
 
 `results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA

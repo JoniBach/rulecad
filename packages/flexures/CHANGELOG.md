@@ -14,7 +14,10 @@ why. Releases before this file was started are described in their pull requests 
 - `neckHingeModel` and `neckFE`: the one-sided notch hinge between a slot's round end and another slot's straight
   side, its stiffness and peak strain tabulated from the kit's own plane-stress finite elements (r / w from 0.5 to 6);
   `neckFE` regenerates any row.
-- The bench has a kirigami panel, `flexures/kirigami`.
+- `tubeFourBar`, `tubeFourBarModel`, `tubeFourBarFindings` (issue #78): a developable four-bar in a tube's wall, printed
+  standing in one piece with living hinges whose axes run up the tube. The model gives each hinge's turn and strain,
+  the input's torque, its travel at the strain limit, and how far each link stands out of the tube and in.
+- The bench has a kirigami panel, `flexures/kirigami`, and a developable tube, `flexures/tube`.
 - `curvedCellModel` and `balancedCellModel` (issue #79): the curved-beam cell's force curve from the beam solver, the
   range where its stiffness is negative, and with a positive spring as stiff, the range of travel over which the pair
   holds about the same force (zero stiffness), with the leaves a printed spring of that stiffness takes.

@@ -1927,3 +1927,51 @@ test('cells: a curved-beam cell\'s stiffness turns negative past its snap, Qiu\'
     `${(b.leaves.count * b.leaves.length).toFixed(0)} mm of leaf against the arches' 160 mm`]) assert.ok(readme.includes(line), `the README should read ${line}`);
   assert.match(balancedCellModel(p, petg, { spring: 0.5 }).findings.find((x) => x.code === 'cell.flat').text, /does not cancel .* a spring nearer 1\.3\d\d N\/mm/);
 });
+
+test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its links leave the surface as worked by hand, and the bench tube is sized with twice the margin', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }), R = 20, th = (5 * Math.PI) / 180;
+  // Joints at 210°, 150°, 30° and -30° on a 20 mm radius make a rectangle: input and output R long (60° chords), coupler
+  // and ground R√3 = 34.641. A parallelogram: the coupler does not turn, so every hinge turns as far as the input, by
+  // turns +, -, +, -. Each hinge EI / l = 1810 × 20 × 0.84³ / 12 / 8 = 223.499 N·mm a radian, so holding 5° takes the four
+  // hinges' energy's slope 4 K θ = 4 × 223.499 × 0.087266 = 78.016 N·mm, at strain t θ / 2l = 0.84 × 0.087266 / 16 =
+  // 0.45815%; PETG's 1.2523% allows 2 × 8 × 0.012523 / 0.84 = 0.23854 rad = 13.667° each way
+  const p = { radius: R, wall: 2.5, height: 20, joints: [210, 150, 30, -30], hinge: { flex: 8, thickness: 0.84 } }, m = f.tubeFourBarModel(p, petg), r = m.at(5);
+  near(m.links.input, R, 1e-9, 'input'); near(m.links.coupler, R * Math.sqrt(3), 1e-9, 'coupler'); near(m.hinge.stiffness, 223.4988, 1e-4, 'K by hand');
+  r.turns.forEach((q, i) => near(q, [5, -5, 5, -5][i], 1e-9, `hinge ${i + 1}'s turn`));
+  near(r.torque, 78.016, 1e-3, 'torque by hand'); near(r.strain, 0.0045815, 1e-7, 'strain by hand'); near(m.travel[1], 13.667, 1e-3, 'travel'); near(m.travel[0], -13.667, 1e-3, 'travel back');
+  // The coupler moves without turning, by the input's end's move: B from (−R cos 30°, R sin 30°) about A by θ, so by
+  // (−R sin θ, R (cos θ − 1)). A point at φ on its arc then lies √(1 + sin²θ + (cos θ − 1)² − 2 cos φ sin θ + 2 sin φ (cos θ − 1)) R
+  // from the axis: the most and least over the arc from 150° to 30° (the model's 49 points) are how far it stands out and in
+  const ds = Array.from({ length: 49 }, (_, i) => { const ph = ((150 - (120 * i) / 48) * Math.PI) / 180; return R * Math.sqrt(1 + Math.sin(th) ** 2 + (Math.cos(th) - 1) ** 2 - 2 * Math.cos(ph) * Math.sin(th) + 2 * Math.sin(ph) * (Math.cos(th) - 1)) - R; });
+  near(r.out.coupler, Math.max(0, ...ds), 1e-9, 'out, by hand'); near(r.in.coupler, Math.max(0, ...ds.map((x) => -x)), 1e-9, 'in, by hand');
+  assert.ok(r.out.coupler > 1 && r.in.coupler > 1, 'it leaves the surface both ways'); near(m.at(0).out.coupler, 0, 1e-9, 'at rest it is the tube');
+  // the shape: one piece, the tube's outline, its volume the model's (the pockets measured flat: within half a percent)
+  const g = f.tubeFourBar(p), box = measureBoundingBox(g);
+  assert.ok(onePiece(g), 'one print'); near(box[1][0], R + 1.25, 0.01, 'outer radius'); near(box[1][2], 20, 1e-9, 'height');
+  near(measureVolume(g) / m.volume, 1, 0.005, 'the shape weighs what the model says');
+  // findings and refusals by name
+  const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, by = (list, c) => list.find((x) => x.code === c);
+  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 14 }, printer, petg, m), 'developable.strain').level, 'fail');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 5 }, printer, petg, m), 'developable.strain').level, 'pass');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, hinge: { flex: 8, thickness: 0.6 } }, printer), 'developable.web').level, 'fail');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, height: 20.1 }, printer), 'developable.layers').level, 'warn');
+  assert.throws(() => f.tubeFourBarModel({ ...p, joints: [0, 90, 180] }, petg), /developable\.joints: .*four angles/);
+  assert.throws(() => f.tubeFourBarModel({ ...p, joints: [0, 10, 180, 270] }, petg), /developable\.joints: .*the input's arc, 3\.49 mm, is under two hinges' length/);
+  // a straight web on a curved wall: 10 mm on 20 mm stands 100 / 160 = 0.625 mm off, over a quarter of the 1.66 mm cut;
+  // the longest is √(2 R (w - t)) = √(40 × 1.66) = 8.149 mm
+  assert.throws(() => f.tubeFourBar({ ...p, hinge: { flex: 10, thickness: 0.84 } }), /developable\.hinge: .*0\.63 mm.*under 8\.15 mm long/);
+  // the bench tube (examples/bench flexures/tube): built by its own main, every finding passes, about twice the margin
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), V = JSON.parse(fs.readFileSync(new URL('tube.json', dir), 'utf8').replace(/\r\n/g, '\n')).variables;
+  assert.equal(V.web.value, 'x1c.line * 2');
+  const v = { ...Object.fromEntries(Object.entries(V).map(([k, x]) => [k, x.value])), web: 0.84, flexures: f, petg: { modulus: 1810, strength: 34, density: 1.27 }, x1c: { ...printer, fit: 0.2 } };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('tube.js', dir))).href), made = main(v), at = made.mechanism.at;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass' && x.level !== 'info').map((x) => x.code), []);
+  const margin = petg.strainLimit / at.strain; assert.ok(margin >= 1.9 && margin <= 2.5, `about twice the margin: ${margin}`);
+  assert.ok(V.turn.rule.includes(`stands ${at.out.coupler.toFixed(2)} mm out`) && V.turn.rule.includes(`${at.in.coupler.toFixed(2)} mm in`) && V.turn.rule.includes(`${at.torque.toFixed(1)} N·mm`) && V.turn.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.turn.rule);
+  assert.ok(onePiece(made.parts.tube), 'the bench tube is one print');
+  // the README's example is the bench tube
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), bt = made.mechanism.travel;
+  for (const line of [`m.travel;    // [${bt[0].toFixed(1)}, ${bt[1].toFixed(1)}]`, `m.at(4.8);   // turns, strain ${(at.strain * 100).toFixed(2)}%, torque ${at.torque.toFixed(1)} N·mm`, `m.grams;     // ${made.mechanism.grams.toFixed(2)}`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+});
