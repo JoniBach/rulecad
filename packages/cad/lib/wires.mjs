@@ -55,7 +55,7 @@ function currentOf(w, s, top, signal) {
 function pinsAt(w, s) {
   for (const end of [w.from, w.to]) {
     const [id, anchor] = String(end).split('.'), o = s.objects.find((x) => x.id === id && x.bought?.part === 'board'), e = o?.built.entries;
-    if (!e || !/^[A-Z]$/.test(anchor ?? '')) continue;
+    if (!e || !/^[A-Z]\d?$/.test(anchor ?? '')) continue; // (a shield's X, Y, Z; a Mega's S0 to S7)
     const pin = (k) => e.find((x) => x.name === `${o.bought.set}.${k}_pin_${anchor.toLowerCase()}`)?.value;
     if (pin('step')) return `step ${pin('step')}, dir ${pin('dir')}${pin('limit') ? `, limit ${pin('limit')}` : ''}`;
   }

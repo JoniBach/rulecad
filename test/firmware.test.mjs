@@ -10,10 +10,11 @@ import { sketches, sizes, hexBytes, sketchMaxRate, ceilingLine, ceilingCheck, sh
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (f) => fs.readFileSync(`${ROOT}${f}`, 'utf8').replace(/\r\n/g, '\n');
 const ARM = 'examples/bench/projects/arm', COPY = 'packages/create-rulecad/machines/arm/projects/arm';
+const LEG = 'examples/bench/projects/leg', LEG_COPY = 'packages/create-rulecad/machines/leg/projects/leg';
 
 test('firmware: every sketch in the kit is found, and the CI job compiles them and fails on an error', () => {
   const found = sketches().map((s) => s.file);
-  assert.deepEqual(found, [`${ARM}/firmware/arm/arm.ino`, 'examples/bench/projects/benchmarks/firmware/bench/bench.ino', `${COPY}/firmware/arm/arm.ino`]);
+  assert.deepEqual(found, [`${ARM}/firmware/arm/arm.ino`, 'examples/bench/projects/benchmarks/firmware/bench/bench.ino', `${LEG}/firmware/leg/leg.ino`, `${COPY}/firmware/arm/arm.ino`, `${LEG_COPY}/firmware/leg/leg.ino`]);
   const yml = read('.github/workflows/test.yml'), job = yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n  dimensions:'));
   assert.ok(job.length > 100, 'a firmware job');
   for (const want of ['arduino/setup-arduino-cli@v2', 'arduino-cli core install arduino:avr@', 'arduino-cli lib install Servo@', 'avr8js@'])
@@ -42,8 +43,13 @@ test('firmware: an Intel HEX file read into flash, and a broken one refused by l
   assert.throws(() => hexBytes('hello\n', 16), /not an Intel HEX record/);
 });
 
-test('firmware: the arm streamer, its sender and its write-up are the same in the example and in create-rulecad', () => {
+test('firmware: the streamer, its sender and its write-up are the same in the example and in create-rulecad, the arm\'s and the leg\'s', () => {
   for (const f of ['firmware/arm/arm.ino', 'send.mjs', 'STREAMER.md']) assert.equal(read(`${COPY}/${f}`), read(`${ARM}/${f}`), f);
+  // the leg's projects carry the same programs: the streamer under its own sketch name, so a leg flashes firmware/leg
+  for (const dir of [LEG, LEG_COPY]) {
+    assert.equal(read(`${dir}/firmware/leg/leg.ino`), read(`${ARM}/firmware/arm/arm.ino`), `${dir}/firmware/leg/leg.ino`);
+    for (const f of ['send.mjs', 'STREAMER.md']) assert.equal(read(`${dir}/${f}`), read(`${ARM}/${f}`), `${dir}/${f}`);
+  }
 });
 
 test('firmware: the sender holds a block to the streamer\'s MAX_RATE and to each axis\'s rate in the machine description', async () => {
@@ -197,4 +203,58 @@ test('firmware: the sender names a gait file\'s cycles, time and start pose, and
   // a file with more axes than the streamer's three is refused before anything is sent: the quadruped's eight
   assert.throws(() => send.linesOf({ format: 'rulecad.steps/1', axes: new Array(8).fill({}), blocks: [] }), /8 axes in the file, and the streamer has 3/);
   assert.match(read(`${ARM}/STREAMER.md`), /## A leg on the same streamer/);
+});
+
+test('firmware: the quadruped\'s eight axes on a Mega 2560, the same streamer built for it, its sender and its simulation', async () => {
+  const { BOARDS, boardOf, megaSketch } = await import('../scripts/firmware.mjs');
+  const ino = read(`${ARM}/firmware/arm/arm.ino`);
+  // the Mega's pins: STEP on D22 to D29, which are port A bits 0 to 7, DIR on D37 down to D30, port C bits 0 to 7, the
+  // switches on A8 to A15, port K (ArduinoCore-avr 1.8.8, variants/mega/pins_arduino.h)
+  assert.match(ino, /#if defined\(__AVR_ATmega2560__\)\n#define AXES 8\n#define STEP_PORT PORTA\n#define DIR_PORT PORTC/);
+  assert.match(ino, /const uint8_t STEP\[AXES\] = \{ 22, 23, 24, 25, 26, 27, 28, 29 \}, DIR\[AXES\] = \{ 37, 36, 35, 34, 33, 32, 31, 30 \};/);
+  assert.match(ino, /STEP_MASK\[AXES\] = \{ _BV\(PA0\), _BV\(PA1\), _BV\(PA2\), _BV\(PA3\), _BV\(PA4\), _BV\(PA5\), _BV\(PA6\), _BV\(PA7\) \}/);
+  assert.match(ino, /DIR_MASK\[AXES\] = \{ _BV\(PC0\), _BV\(PC1\), _BV\(PC2\), _BV\(PC3\), _BV\(PC4\), _BV\(PC5\), _BV\(PC6\), _BV\(PC7\) \}/);
+  assert.match(ino, /#error "the streamer is written for an Arduino Uno/, 'any other board is refused when it compiles');
+  assert.match(ino, /Serial\.print\(F\("streamer ready, "\)\); Serial\.print\(AXES\);/);
+  assert.ok(megaSketch(ino) && !megaSketch(read('examples/bench/projects/benchmarks/firmware/bench/bench.ino')), 'the streamer is built for the Mega too, the bench sketch only for the Uno');
+  // the rule set's pins are the sketch's
+  const rules = JSON.parse(read('packages/rules/arduino-mega-2560.json')).rules;
+  for (let k = 0; k < 8; k++) assert.deepEqual([rules[`step_pin_s${k}`].value, rules[`dir_pin_s${k}`].value, rules[`limit_pin_s${k}`].value], [`D${22 + k}`, `D${37 - k}`, `A${8 + k}`]);
+  // the simulated Mega's interrupt vectors, word addresses twice avr-libc's vector numbers (iomxx0_1.h): TIMER0_OVF is
+  // vector 23, so 46 = 0x2e; USART0_RX 25, so 0x32; on the Uno TIMER0_OVF is vector 16, 0x20, as avr8js has it. Its data
+  // space ends at RAMEND 0x21ff: 0x2100 bytes past avr8js's 0x100 of registers
+  assert.deepEqual([BOARDS.mega.vectors.timer0.ovfInterrupt, BOARDS.mega.vectors.usart0.rxCompleteInterrupt, BOARDS.mega.sram + 0x100 - 1], [23 * 2, 25 * 2, 0x21ff]);
+  assert.deepEqual([BOARDS.mega.axes, BOARDS.mega.fqbn, BOARDS.uno.axes], [8, 'arduino:avr:mega', 3]);
+  assert.equal(boardOf({ controller: { board: 'mega' } }), 'mega'); assert.equal(boardOf({}), 'uno');
+  assert.throws(() => boardOf({ controller: { board: 'due' } }), /controller\.board "due": the streamer runs on uno or mega/);
+  assert.equal(ceilingLine(8, 'down', 4000, 8), 'm 4000 4000 4000 4000 4000 4000 4000 4000 50000 50000 50000 100000000 0 4000');
+  assert.throws(() => ceilingLine(9, 'up', 4000, 8), /axes 9: a block steps 1 to 8 axes/);
+  // the shortest eight-axis block with no USB link: the 51-character cruise line, its newline and the answer are 56 bytes,
+  // 56 x 10 / 115200 = 4.861 ms; 38 steps at 8000 steps/s last 4.75 ms, too few, and 39 last 4.875 ms
+  const least = (l) => ((l.length + 1 + 4) * 10) / 115200;
+  assert.deepEqual(shortBlock(8, 'cruise', 8000, least, 8), { n: 39, line: 'm 39 39 39 39 39 39 39 39 8000 8000 8000 100000 0 0', seconds: 39 / 8000 });
+  // the sender writes eight numbers a block for a machine whose controller is the Mega, and refuses the file for the Uno
+  const send = await import(pathToFileURL(`${ROOT}${ARM}/send.mjs`).href);
+  const mega = { controller: { board: 'mega' }, axes: Array.from({ length: 8 }, (_, k) => ({ name: `a${k}`, maxRate: 5333 })) };
+  const file = { format: 'rulecad.steps/1', axes: mega.axes, blocks: [{ type: 'move', steps: [800, -400, 0, 0, 0, 0, 0, 100], rate: { entry: 0, peak: 4000, exit: 0, accel: 20000 }, accelSteps: 400, decelSteps: 400 }] };
+  const lines = send.linesOf(file, { axes: send.streamerOf(mega).axes });
+  assert.deepEqual(lines, ['m 800 -400 0 0 0 0 0 100 0 4000 0 20000 400 400']);
+  assert.throws(() => send.linesOf(file), /8 axes in the file, and the streamer has 3 \(on an Uno; give --machine with a Mega 2560 as its controller for up to 8\)/);
+  // axis 1 steps 400 of the major 800: at 4000 steps/s on the major axis, 4000 x 400 / 800 = 2000 steps/s
+  const r = send.dryRun(['e', ...lines, 'h 7 -1 666 13', '?', 'd'], { machine: mega });
+  assert.deepEqual([r.m, r.h, r.axisPeaks.slice(0, 2), r.position], [1, 1, [4000, 2000], [800, -400, 0, 0, 0, 0, 0, 0]]);
+  assert.equal(r.said.at(-2), '?  q 800 -400 0 0 0 0 0 0 0');
+  assert.throws(() => send.dryRun(['m 1 0 0 0 0 0 0 0 0 1 0 1 0 0'], { machine: { controller: { board: 'uno' } } }), /a block is 9 numbers/);
+  assert.throws(() => send.dryRun(['m 800 0 0 0 4000 0 20000 400 400'], { machine: mega }), /a block is 14 numbers \(a step count for each of the streamer's 8 axes/);
+  assert.throws(() => send.dryRun(['h 8 1 1000 50'], { machine: mega }), /a home is an axis 0 to 7/);
+  assert.throws(() => send.streamerOf({ controller: { board: 'due' } }), /controller\.board is "due", and the streamer runs on uno or mega/);
+  // the sender refuses a streamer that says it was built for the other board
+  assert.match(read(`${ARM}/send.mjs`), /if \(greeting != null && \+greeting !== axes\) \{ rd\.destroy\(\); wr\.end\(\); throw new Error\(`the board's streamer has \$\{greeting\} axes/);
+  // CI writes the quadruped's machine and trot, and streams it last, on the simulated Mega
+  const yml = read('.github/workflows/test.yml'), job = yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n  dimensions:'));
+  assert.match(job, /cad\.mjs machine leg\/quadruped && node \.\.\/\.\.\/packages\/cad\/bin\/cad\.mjs plot leg\/quadruped\n/);
+  assert.match(job.slice(job.lastIndexOf('      - ')), /--machine examples\/bench\/exports\/leg\/stand\.machine\.json\n\s+--simulate examples\/bench\/exports\/leg\/quadruped-gait\.steps\.json --machine examples\/bench\/exports\/leg\/quadruped\.machine\.json/);
+  const script = read('scripts/firmware.mjs');
+  assert.match(script, /const board = boardOf\(JSON\.parse\(fs\.readFileSync\(run\.machine, 'utf8'\)\)\), hex = built\[`\$\{arm\.dir\} \$\{board\}`\]\?\.hex;/);
+  assert.match(read(`${ARM}/STREAMER.md`), /## Eight axes on a Mega 2560/);
 });

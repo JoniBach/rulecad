@@ -36,14 +36,15 @@ jobs:
       - run: npm ci
       - run: node --test test/fixings-inventory.test.mjs test/dimension-diff.test.mjs
   firmware:
-    # The Arduino sketches (every folder with a .ino of its own name) compiled for an Uno: a compile error fails the run.
-    # Then the arm's streamer runs on a simulated Uno (avr8js, installed for this job only), homed and fed the worked arm's
+    # The Arduino sketches (every folder with a .ino of its own name) compiled for an Uno, and the streamer for a Mega 2560
+    # too: a compile error fails the run. Then the streamer runs on a simulated Uno (avr8js, installed for this job only), homed and fed the worked arm's
     # step file through send.mjs's own lines: every line answered "ok", every step counted against the file, a block past
     # MAX_RATE refused, and the loop's fastest rate, at the cruise, speeding up and slowing down on one to three axes, above
     # MAX_RATE and what the machine description asks. Then the shortest blocks the sender passes are streamed at MAX_RATE on
     # three axes, at the cruise and slowing down every step, each line sent when the last was answered: they must keep to
     # their planned time within 1%, or the streamer falls behind on short blocks. The leg's gait (cad plot leg/stand) is
-    # streamed the same way, from its standing pose through three cycles and back, every step counted. A toolchain download that
+    # streamed the same way, from its standing pose through three cycles and back, every step counted, and the quadruped's trot
+    # (cad plot leg/quadruped) on a simulated Mega 2560, its eight axes, ceilings and short blocks measured there too. A toolchain download that
     # still fails after three tries is a warning and skips the rest: the compile is what this job is for, not the download.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -76,10 +77,12 @@ jobs:
         run: |
           node ../../packages/cad/bin/cad.mjs machine arm/arm && node ../../packages/cad/bin/cad.mjs plot arm/arm projects/arm/drawings/test.svg
           node ../../packages/cad/bin/cad.mjs machine leg/stand && node ../../packages/cad/bin/cad.mjs plot leg/stand
+          node ../../packages/cad/bin/cad.mjs machine leg/quadruped && node ../../packages/cad/bin/cad.mjs plot leg/quadruped
       - if: steps.toolchain.outcome == 'success'
         run: >-
           node scripts/firmware.mjs --simulate examples/bench/exports/arm/arm-test.steps.json --machine examples/bench/exports/arm/arm.machine.json
           --simulate examples/bench/exports/leg/stand-gait.steps.json --machine examples/bench/exports/leg/stand.machine.json
+          --simulate examples/bench/exports/leg/quadruped-gait.steps.json --machine examples/bench/exports/leg/quadruped.machine.json
         env:
           AVR8JS: .cache/avr8js/node_modules/avr8js
   dimensions:

@@ -6900,3 +6900,31 @@ export function main (v) {
     assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
   } finally { done(); }
 });
+
+test('the quadruped\'s eight axes on one controller: cad machine reads the Mega 2560 and follows each motor\'s wire to its breakout and on to the Mega\'s slot', async () => {
+  const { controllerOf, slotsOf, CONTROLLERS } = await import('./lib/machine.mjs');
+  // the controller is the bought board the streamer runs on; none is the Uno under a CNC shield, as before the Mega
+  assert.deepEqual([controllerOf({ items: [] }).board, controllerOf({ items: [] }).item], ['uno', null]);
+  assert.deepEqual([controllerOf({ items: [{ id: 'mega', bought: 'arduino-mega-2560' }] }).board, CONTROLLERS['arduino-mega-2560'].slots.length], ['mega', 8]);
+  assert.throws(() => controllerOf({ items: [{ id: 'shield', bought: 'cnc-shield-v3' }, { id: 'mega', bought: 'arduino-mega-2560' }] }), /items shield \(cnc-shield-v3\), mega \(arduino-mega-2560\): a machine streams through one controller/);
+  // a motor's slot: its own wire straight to a shield's slot; or its wire to a breakout and the breakout's signal wire on to
+  // the Mega; or its driver item's signal wire
+  const a = { items: [{ id: 'm1', motor: {} }, { id: 'm2', motor: { driver: 'd2' } }, { id: 'm3', motor: {} }], wires: [
+    { from: 'm1.connector', to: 'board1.top' }, { from: 'board1.centre', to: 'mega.S3' }, { from: 'd2.header', to: 'mega.S0' }, { from: 'm3.connector', to: 'shield.Y' }] };
+  assert.deepEqual(slotsOf(a, CONTROLLERS['arduino-mega-2560']), { m1: 'S3', m2: 'S0' });
+  assert.deepEqual(slotsOf(a, CONTROLLERS['cnc-shield-v3']), { m3: 'Y' });
+  // the bench quadruped: the Mega, its eight axes in the slots' order, each on its own DRV8825
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/leg']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    const m = JSON.parse(cad('machine', 'leg/quadruped', '--json'));
+    assert.deepEqual([m.controller.board, m.controller.set, m.controller.item], ['mega', 'arduino-mega-2560', 'mega']);
+    assert.deepEqual(m.axes.map((x) => `${x.name} ${x.slot} ${x.driver}`), ['fl_hd S0 fl_d1', 'fl_kd S1 fl_d2', 'fr_hd S2 fr_d1', 'fr_kd S3 fr_d2', 'bl_hd S4 bl_d1', 'bl_kd S5 bl_d2', 'br_hd S6 br_d1', 'br_kd S7 br_d2']);
+    // the stand stays on its shield
+    assert.deepEqual(JSON.parse(cad('machine', 'leg/stand', '--json')).controller, { board: 'uno', set: 'cnc-shield-v3', item: 'shield', slots: ['X', 'Y', 'Z'] });
+    // the buy list: the Mega, eight breakouts, eight DRV8825s
+    const l = JSON.parse(cad('list', 'leg/quadruped', '--json')), qty = (set) => l.bought.filter((b) => b.set === set).reduce((t, b) => t + b.qty, 0);
+    assert.deepEqual([qty('arduino-mega-2560'), qty('driver-breakout'), qty('drv8825')], [1, 8, 8]);
+  } finally { done(); }
+});
