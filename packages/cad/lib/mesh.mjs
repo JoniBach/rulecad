@@ -140,6 +140,29 @@ export function section(tris, axis, v) {
   return segs;
 }
 
+// Where to take sections along z so that, together, they hold all of a solid that lies within the slab from lo to hi
+// (open: a part only touching a face of it is outside) to half of `step`, the grid's cell. They are no more than half a
+// step apart up the slab, the first and last just inside its faces, so a feature as thick as half a cell is caught as
+// a cell of the grid catches it. Where a face leans, the outline it makes moves across as the section rises, by its
+// lean (its normal's z over its normal across) for each mm up, so a stretch is cut finer until no face's outline moves
+// more than half a step from one section to the next. A face lying flat moves no outline: the sections either side of
+// it hold what it covers.
+export function slabLevels(tris, lo, hi, step) {
+  const eps = 1e-5, a = lo + eps, b = hi - eps, n0 = Math.max(1, Math.ceil((b - a) / (step / 2))), gap = (b - a) / n0, need = new Float64Array(n0);
+  for (const [p, q, r] of tris) {
+    const z0 = Math.max(a, Math.min(p[2], q[2], r[2])), z1 = Math.min(b, Math.max(p[2], q[2], r[2]));
+    if (!(z1 > z0)) continue;
+    const u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]];
+    const nx = u[1] * v[2] - u[2] * v[1], ny = u[2] * v[0] - u[0] * v[2], nz = u[0] * v[1] - u[1] * v[0], across = Math.hypot(nx, ny);
+    if (!(across > 1e-12)) continue;
+    const lean = Math.abs(nz) / across;
+    for (let i = Math.max(0, Math.floor((z0 - a) / gap)); i < n0 && a + i * gap < z1; i++) need[i] = Math.max(need[i], lean * (Math.min(z1, a + (i + 1) * gap) - Math.max(z0, a + i * gap)));
+  }
+  const out = [a];
+  for (let i = 0; i < n0; i++) { const m = Math.max(1, Math.ceil((2 * need[i]) / step)); for (let k = 1; k <= m; k++) out.push(a + gap * (i + k / m)); }
+  return out;
+}
+
 // Where a line through a section, at height h, is inside: [[from, to], …] across
 export function crossings(segs, h) {
   const xs = [];

@@ -15,7 +15,7 @@ import { located } from './errors.mjs';
 import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce, undercuts, voids, grey } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
 import { turn, mul, inv, placeItems, jointValues } from '@rulecad/model-link';
-import { section, loops } from './mesh.mjs';
+import { section, loops, slabLevels } from './mesh.mjs';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
@@ -135,8 +135,10 @@ async function readOne(project, ref, link) {
   };
   // A part of the assembly swept through a joint's range, as regions to keep clear: the part at each step, in the
   // item's frame (the other joints held at the pose). Steps by default so no point of it moves more than half a cell
-  // between two (its travel measured in 32 pieces of the range). In a flat problem, each step is the part's section
-  // in the plate's middle plane (in.z, default half its thickness), so a part passing over or under the plate is clear.
+  // between two (its travel measured in 32 pieces of the range). In a flat problem, each step is all of the part that
+  // lies within the plate's thickness (about in.z, default half its thickness, a plate drawn up from z 0): its sections
+  // at heights close enough that, together, they cover it to half a cell, each distinct one a region. A part dipping
+  // into the plate's top or bottom is kept clear; one only passing over or under it, or touching a face, is not.
   const sweeps = [];
   const swept = async (r) => {
     const { s, k, W0 } = await inAssembly(`the sweep of "${r.sweep}"`), item = p.in.item, cell = ev(p.cell);
@@ -150,7 +152,7 @@ async function readOne(project, ref, link) {
     const local = moving.map((q, i) => { const L = inv(W0[idx[i]]); return q.triangles.map((t) => t.map((v) => apply(L, v))); }); // each in its own item's frame
     const sample = local.map((tris) => { const v = tris.flat(), n = Math.ceil(v.length / 400); return v.filter((_, i) => i % n === 0); }); // (no more than about 400 points a part)
     const held = Object.fromEntries(Object.entries(s.jointValues).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow));
-    const z = flat ? (p.in.z != null ? ev(p.in.z) : ev(p.thickness) / 2) : null, out = [];
+    const z = flat ? (p.in.z != null ? ev(p.in.z) : ev(p.thickness) / 2) : null, zlo = flat ? z - ev(p.thickness) / 2 : null, zhi = flat ? z + ev(p.thickness) / 2 : null, out = [];
     for (const id of through) {
       const j = free.find((x) => x.id === id);
       if (!j) throw new Error(`${fileName}: ${p.in.assembly} has no joint "${id}" that moves on its own to sweep "${r.sweep}" through (joints: ${free.map((x) => x.id).join(', ') || 'none'})`);
@@ -172,26 +174,34 @@ async function readOne(project, ref, link) {
           for (const [m, tris] of local.entries()) {
             const moved = tris.map((t) => t.map((q) => apply(Ms[m], q).map(clean)));
             if (!flat) { out.push({ triangles: moved, sweep: r.sweep, joint: id, value: round(v, 6) }); made++; continue; }
-            // The section's outlines, each a ring turned solid on its left (an outline counter-clockwise, a hole in it
+            // Each section's outlines, each a ring turned solid on its left (an outline counter-clockwise, a hole in it
             // clockwise), for the design to cut exactly (rings); and for the solver one polygon of them all, each closed and
             // back to the first one's start, so a point is inside where it is inside an odd number of them (a hole in the
-            // part stays open) and the joins cancel out
-            const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
-            const rings = loops(section(moved, 2, z)).map((l) => (same(l[0], l.at(-1)) ? l.slice(0, -1) : l).map((q) => q.map(clean))).filter((l) => l.length >= 3);
-            if (!rings.length) continue;
-            const within = (q, P) => { let c = false; for (let a = 0, b = P.length - 1; a < P.length; b = a++) if ((P[a][1] > q[1]) !== (P[b][1] > q[1]) && q[0] < ((P[b][0] - P[a][0]) * (q[1] - P[a][1])) / (P[b][1] - P[a][1]) + P[a][0]) c = !c; return c; };
-            const turned = rings.map((l, n) => {
-              const depth = rings.filter((o, m) => m !== n && within(l[0], o)).length, ccw = l.reduce((t, q, a) => t + q[0] * l[(a + 1) % l.length][1] - l[(a + 1) % l.length][0] * q[1], 0) > 0;
-              return ccw === (depth % 2 === 0) ? l : [...l].reverse();
-            });
-            const start = turned[0][0], points = turned.flatMap((l, n) => [...l, l[0], ...(n ? [start] : [])]);
-            out.push({ points, rings: turned, sweep: r.sweep, joint: id, value: round(v, 6) }); made++;
+            // part stays open) and the joins cancel out. A point within 0.001 mm of the line through its neighbours (where a face's diagonal is
+            // cut, or a boolean left a sliver) is dropped, and a section whose corners all lie within 0.01 mm of one already taken at this step is left out.
+            const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9, kept = [];
+            const off = (q, a, b) => { const d = [b[0] - a[0], b[1] - a[1]], L = Math.hypot(...d); return L < 1e-12 ? Math.hypot(q[0] - a[0], q[1] - a[1]) : Math.abs(d[0] * (q[1] - a[1]) - d[1] * (q[0] - a[0])) / L; };
+            const straight = (ring) => { const l = [...ring]; for (let n = 0; n < l.length && l.length > 3;) if (off(l[n], l[(n + l.length - 1) % l.length], l[(n + 1) % l.length]) < 1e-3) { l.splice(n, 1); n = Math.max(0, n - 1); } else n++; return l; };
+            for (const h of slabLevels(moved, zlo, zhi, cell)) {
+              const rings = loops(section(moved, 2, h)).map((l) => straight((same(l[0], l.at(-1)) ? l.slice(0, -1) : l).map((q) => q.map(clean)))).filter((l) => l.length >= 3);
+              if (!rings.length) continue;
+              const within = (q, P) => { let c = false; for (let a = 0, b = P.length - 1; a < P.length; b = a++) if ((P[a][1] > q[1]) !== (P[b][1] > q[1]) && q[0] < ((P[b][0] - P[a][0]) * (q[1] - P[a][1])) / (P[b][1] - P[a][1]) + P[a][0]) c = !c; return c; };
+              const turned = rings.map((l, n) => {
+                const depth = rings.filter((o, m) => m !== n && within(l[0], o)).length, ccw = l.reduce((t, q, a) => t + q[0] * l[(a + 1) % l.length][1] - l[(a + 1) % l.length][0] * q[1], 0) > 0;
+                return ccw === (depth % 2 === 0) ? l : [...l].reverse();
+              });
+              const near = (l, o) => l.length === o.length && l.every((q) => o.some((w) => Math.hypot(q[0] - w[0], q[1] - w[1]) < 0.01));
+              if (kept.some((k) => k.length === turned.length && turned.every((l) => k.some((o) => near(l, o))))) continue;
+              kept.push(turned);
+              const start = turned[0][0], points = turned.flatMap((l, n) => [...l, l[0], ...(n ? [start] : [])]);
+              out.push({ points, rings: turned, sweep: r.sweep, joint: id, value: round(v, 6) }); made++;
+            }
           }
         }
         sweeps.push({ sweep: r.sweep, through: what, from: round(lo, 6), to: round(hi, 6), steps, regions: made });
       });
     }
-    if (!out.length) throw new Error(`${fileName}: "${r.sweep}" never crosses the plate's middle plane (z ${round(z)} mm in ${item}) through ${through.join(', ')}: nothing to keep clear there (set in.z if the plate lies elsewhere)`);
+    if (!out.length) throw new Error(`${fileName}: "${r.sweep}" never reaches into the plate (z ${round(zlo)} to ${round(zhi)} mm in ${item}) through ${through.join(', ')}: nothing to keep clear there (set in.z, the plate's middle, if it lies elsewhere)`);
     return out;
   };
   // The build direction: a direction ('+z'), or a variable holding one
