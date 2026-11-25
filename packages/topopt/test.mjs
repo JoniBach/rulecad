@@ -877,3 +877,50 @@ test('voids prevented: a twisted block optimised freely closes into a tube round
   assert.throws(() => discretise({ ...p, voids: 'refused' }), /voids: allowed, or prevented .*got "refused"/);
   assert.throws(() => optimise(discretise({ ...p, voids: 'prevented', stress: 5, volume: undefined })), /voids are prevented for the stiffest part that fills a volume, not under a stress limit/);
 });
+
+test('the thinnest member: a bar narrower than the ball goes and one as wide stays, refused past three cells, and the gradient matches finite differences', async () => {
+  const { featureFilter, featureCells, thin } = await import('@rulecad/topopt');
+  // A 20 × 12 grid: a bar one cell thick (j = 2) and one three thick (j = 5 to 7), both i = 2 to 17. A ball of 1 cell
+  // is the cell and its four neighbours, three across: the thin bar goes, the thick one stays but for its four square
+  // outside corners, rounded off (so thin finds the 16 cells of the bar and the 4 corners: 20)
+  const nx = 20, ny = 12, x = new Float64Array(nx * ny);
+  for (let i = 2; i < 18; i++) { x[2 * nx + i] = 1; for (let j = 5; j <= 7; j++) x[j * nx + i] = 1; }
+  const o = featureFilter({ nx, ny }, 1).apply(x, new Float64Array(nx * ny));
+  for (let i = 2; i < 18; i++) { assert.ok(o[2 * nx + i] < 0.1, `the thin bar goes: ${o[2 * nx + i]}`); assert.ok(o[6 * nx + i] > 0.9, `the thick bar stays: ${o[6 * nx + i]}`); }
+  assert.ok(o[5 * nx + 2] < 0.5 && o[5 * nx + 3] > 0.5, 'a square outside corner is rounded off');
+  assert.equal(thin({ nx, ny }, x, { radius: 1 }).count, 20);
+  // From mm: the least whole r whose 2r + 1 cells are as wide. A printer's two 0.42 mm lines (0.84 mm) on 1 mm cells:
+  // 0, a cell is wider; 2.4 mm on 0.8 mm cells: (3 - 1) / 2 = 1; 3 mm on 1 mm cells: 1; 3.5 mm on 1 mm: (3.5 - 1) / 2 =
+  // 1.25, so 2, refused (cells of 3.5 / 3 = 1.17 mm or less would do)
+  assert.deepEqual([featureCells(0.84, 1), featureCells(2.4, 0.8), featureCells(3, 1)], [0, 1, 1]);
+  assert.throws(() => featureCells(3.5, 1), /a feature of 3\.5 mm is more than three cells \(3 mm\) across: .* give cells of 1\.17 mm or less/);
+  assert.throws(() => featureCells(0, 1), /a feature is the thinnest member, a distance above 0 mm \(got 0\)/);
+  assert.throws(() => featureFilter({ nx, ny }, 1.5), /a feature's radius is a whole number of cells from 1 \(got 1\.5\)/);
+  // The gradient, 2D and 3D: a weighted sum of the filtered densities against finite differences
+  for (const size of [{ nx: 6, ny: 5 }, { nx: 4, ny: 4, nz: 3 }]) {
+    const n = size.nx * size.ny * (size.nz || 1), y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+    const f = featureFilter(size, 1), value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = f.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-6; down[e] -= 1e-6;
+      const fd = (value(up) - value(down)) / 2e-6;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-6 * Math.max(1, Math.abs(fd)), `${JSON.stringify(size)}, cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('a problem\'s feature: a cantilever optimised with a small filter has members a cell or two wide; with a 3 mm feature on 1 mm cells, none under three, for a little stiffness', async () => {
+  const { thin } = await import('@rulecad/topopt');
+  // A 60 × 20 mm cantilever on 1 mm cells, held along its left edge and pushed down at its right middle, its filter
+  // (1.2 mm) small enough for thin members. At 200 steps: free 191.75 with 114 cells in members
+  // under three cells; a 3 mm feature 208.54 (8.8% more flexible) with none
+  const p = { space: { at: [30, 10], size: [60, 20] }, thickness: 1, supports: [{ at: [0.5, 10], size: [1, 20] }], loads: [{ at: [59.5, 10], size: [1, 2], force: [0, -1] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.4, filter: 1.2, steps: 200 };
+  const free = discretise(p), held = discretise({ ...p, feature: 3 }), a = optimise(free), b = optimise(held);
+  assert.equal(held.feature, 3);
+  assert.ok(thin(free.grid, a.density, { radius: 1 }).count > 50, `free: ${thin(free.grid, a.density, { radius: 1 }).count}`);
+  assert.equal(thin(held.grid, b.density, { radius: 1 }).count, 0);
+  assert.ok(b.compliance > a.compliance && b.compliance < 1.15 * a.compliance, `${b.compliance} against ${a.compliance}`);
+  // A feature the grid already holds (two 0.42 mm lines on 1 mm cells) changes nothing; one past three cells is refused
+  assert.equal(optimise(discretise({ ...p, feature: 0.84, steps: 20 })).compliance, optimise(discretise({ ...p, steps: 20 })).compliance);
+  assert.throws(() => discretise({ ...p, feature: 4 }), /a feature of 4 mm is more than three cells \(3 mm\) across/);
+});

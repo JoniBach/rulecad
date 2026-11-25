@@ -70,6 +70,9 @@ export { jsBackend };
  *   (virtualTemperature) kept under a cap. For the stiffest part that fills a volume
  * @property {string | { draw: 'x' | 'y' | 'z', parting?: number }} [cast] cast in a mould drawn off this way ('+z'),
  *   or in two halves drawn off both ways along draw from a parting plane (mm along it, default the space's middle)
+ * @property {number} [feature] the thinnest member made, mm (a printer's two lines): members narrower go as the part is
+ *   optimised (featureFilter, a ball of the least whole number of cells r whose 2r + 1 cells across are as wide);
+ *   nothing to do where a cell is already as wide
  * @property {number} [draft] with cast, the draft (degrees): the part narrows towards the side it is drawn off, a cell
  *   every whole number of layers in 1 / tan(draft), so at least this; the grid must be deep enough for one step
  */
@@ -193,6 +196,7 @@ export function discretise(p) {
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(stress ? { stress, ...(p.strain != null ? { strain: p.strain } : {}) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
     ...(p.tool ? { tool: p.tool } : {}), ...(p.draft ? { draft: p.draft } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
+    ...(p.feature != null ? { feature: p.feature } : {}),
     regions: { keep, avoid },
   }));
 }
@@ -202,6 +206,7 @@ function howMade(spec) {
   if (spec.tool != null && !(spec.tool > 0)) throw new Error(`a tool's radius is a distance above 0 mm (got ${spec.tool})`);
   if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(spec.tool)} mm or less, or leave the tool out`);
   processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
+  if (spec.feature != null) featureCells(spec.feature, spec.grid.h);
   return spec;
 }
 
@@ -636,6 +641,93 @@ export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
 }
 
 /**
+ * The thinnest member a process makes (a printer's two lines, a resin printer's smallest feature): the part opened by
+ * a ball of radius r cells (eroded, then dilated: Sigmund 2007's morphology filters, the smooth minimum and maximum as
+ * the log of a mean of exponentials, as toolFilter). A member narrower than the ball's 2r + 1 cells goes; one as wide
+ * or wider stays, and every outside corner is rounded to r. Beyond the grid is empty, so a member along the grid's
+ * edge is held to the same width. A disc in 2D, a ball in 3D. apply gives the densities; adjoint carries
+ * sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {number} radius in cells, a whole number from 1
+ */
+export function featureFilter({ nx, ny, nz = 1 }, radius) {
+  if (!(Number.isInteger(radius) && radius >= 1)) throw new Error(`a feature's radius is a whole number of cells from 1 (got ${radius})`);
+  const R = radius, dim = nz > 1 ? 3 : 2, Rz = dim === 3 ? R : 0, cells = nx * ny * nz;
+  const px = nx + 2 * R, py = ny + 2 * R, pz = nz + 2 * Rz, P = px * py * pz;
+  const ball = [];
+  for (let dz = -Rz; dz <= Rz; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy + dz * dz <= R * R + 1e-9) ball.push([dx, dy, dz]);
+  const N = ball.length, beta = 10 * Math.log(N) + 10, offAt = Int32Array.from(ball, ([dx, dy, dz]) => dx + dy * px + dz * px * py);
+  // Each padded cell's ball in the grid (-1 beyond it: empty), and each grid cell's padded place
+  const inGrid = new Int32Array(P * N).fill(-1), at = new Int32Array(cells);
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) at[i + j * nx + k * nx * ny] = i + R + (j + R) * px + (k + Rz) * px * py;
+  for (let k = 0; k < pz; k++) for (let j = 0; j < py; j++) for (let i = 0; i < px; i++) {
+    const p = i + j * px + k * px * py;
+    for (let q = 0; q < N; q++) {
+      const [dx, dy, dz] = ball[q], gi = i - R + dx, gj = j - R + dy, gk = k - Rz + dz;
+      if (gi >= 0 && gi < nx && gj >= 0 && gj < ny && gk >= 0 && gk < nz) inGrid[p * N + q] = gi + gj * nx + gk * nx * ny;
+    }
+  }
+  const eB = Math.exp(beta), F = new Float64Array(cells), T = new Float64Array(P), E = new Float64Array(P), S = new Float64Array(cells), gE = new Float64Array(P);
+  return {
+    radius: R,
+    apply(x, out) {
+      for (let e = 0; e < cells; e++) F[e] = Math.exp(beta * (1 - x[e]));
+      // Eroded, on the padded grid: one less the smooth maximum of one less (beyond the grid: empty, exp(beta))
+      for (let p = 0; p < P; p++) {
+        let t = 0;
+        for (let q = 0; q < N; q++) { const g = inGrid[p * N + q]; t += g < 0 ? eB : F[g]; }
+        T[p] = t; E[p] = Math.exp(beta * (1 - Math.log(t / N) / beta));
+      }
+      // Dilated, back on the grid
+      for (let e = 0; e < cells; e++) {
+        const c = at[e];
+        let s = 0;
+        for (let q = 0; q < N; q++) s += E[c + offAt[q]];
+        S[e] = s; out[e] = Math.log(s / N) / beta;
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      gE.fill(0);
+      for (let e = 0; e < cells; e++) { const c = at[e], w = g[e] / S[e]; for (let q = 0; q < N; q++) gE[c + offAt[q]] += w * E[c + offAt[q]]; }
+      out.fill(0);
+      for (let p = 0; p < P; p++) {
+        if (!gE[p]) continue;
+        const w = gE[p] / T[p];
+        for (let q = 0; q < N; q++) { const e = inGrid[p * N + q]; if (e >= 0) out[e] += w * F[e]; }
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A feature (the thinnest member, mm) on a grid of cells h mm: the ball's radius in cells, the least whose 2r + 1
+ * cells across are at least the feature. 0 where a cell is already as wide (every member on the grid is at least
+ * one), 1 up to three cells. Refused by name past three cells: optimised under a ball of 2 cells, a cantilever came
+ * out speckled with loose cells and over twice as flexible (450 against 199), so give smaller cells instead.
+ * @param {number} feature mm @param {number} h mm
+ */
+export function featureCells(feature, h) {
+  if (!(feature > 0)) throw new Error(`a feature is the thinnest member, a distance above 0 mm (got ${feature})`);
+  const r = Math.max(0, Math.ceil((feature / h - 1) / 2 - 1e-9));
+  if (r > 1) throw new Error(`a feature of ${fmt(feature)} mm is more than three cells (${fmt(3 * h)} mm) across: the optimiser holds members to three cells at most, so give cells of ${fmt(feature / 3)} mm or less`);
+  return r;
+}
+
+/**
+ * The solid cells of a result in members thinner than 2r + 1 cells: those the feature filter would take away.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
+ * @param {{ radius: number, iso?: number }} o
+ * @returns {{ count: number, cells: number[] }}
+ */
+export function thin(size, density, { radius, iso = 0.5 }) {
+  const f = featureFilter(size, radius), solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), kept = f.apply(solid, new Float64Array(solid.length));
+  const cells = [];
+  for (let e = 0; e < solid.length; e++) if (solid[e] && kept[e] < 0.5) cells.push(e);
+  return { count: cells.length, cells };
+}
+
+/**
  * What a process can make, as one filter: milled from one side or more (mill: '+z' or ['+z', '-x']), each with the
  * tool's radius (tool, cells) if given, or cast (cast: '+z', or { draw, parting } with parting a layer) with its
  * draft (degrees). Milled from several sides (Langelaar 2019's multi-axis machining, one setup a side), a cell is
@@ -730,6 +822,9 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const draw = processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
   // Enclosed voids prevented: the virtual temperature of the part as made, kept under a limit
   const heat = spec.voids === 'prevented' ? virtualTemperature(spec.grid) : null;
+  // The thinnest member (a printer's two lines): opened by a ball, before the overhang or process filter; none where a
+  // cell is already as wide
+  const r = spec.feature != null ? featureCells(spec.feature, spec.grid.h) : 0, open = r ? featureFilter(spec.grid, r) : null, opened = open ? new Float64Array(cells) : null;
   const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
@@ -744,6 +839,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const physical = (x, beta, eta = ETA) => {
     filter.apply(tie ? tie.apply(x, tied) : x, tilde);
     for (let e = 0; e < cells; e++) if (passive[e]) tilde[e] = fixedValue(passive[e]);
+    if (open) { open.apply(tilde, opened); for (let e = 0; e < cells; e++) tilde[e] = passive[e] ? fixedValue(passive[e]) : opened[e]; }
     if (print) print.apply(tilde, made); else if (draw) draw.apply(tilde, made); else made.set(tilde);
     for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta, eta);
     return phys;
@@ -767,6 +863,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const toDesign = (d) => {
     if (print) { print.adjoint(d, back); d.set(back); } else if (draw) { draw.adjoint(d, back); d.set(back); }
     for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
+    if (open) { open.adjoint(d, back); for (let e = 0; e < cells; e++) d[e] = passive[e] ? 0 : back[e]; }
     filter.adjoint(d, back); d.set(back);
     if (tie) { tie.adjoint(d, back); d.set(back); }
   };
