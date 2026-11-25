@@ -23,7 +23,11 @@ export { fourBar, fourBarModel, sliderCrank, sliderCrankModel } from './linkages
 export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifierModel, leverAmplifier, leverAmplifierModel } from './amplifiers.mjs';
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve } from './bistables.mjs';
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
+<<<<<<< HEAD
 export { neckFE, neckHingeModel, rotatingSquares, rotatingSquaresModel, kirigamiFindings } from './kirigami.mjs';
 export { curvedCellModel, balancedCellModel } from './cells.mjs';
 export { tubeFourBar, tubeFourBarModel, tubeFourBarFindings } from './developable.mjs';
 export { kreslingModel } from './origami.mjs';
+=======
+export { butterflyPivot, butterflyPivotModel, butterflyBeams, xyThetaStage, xyThetaStageModel, rollingJoint, rollingJointModel } from './stages.mjs';
+>>>>>>> origin/main
