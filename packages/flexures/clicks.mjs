@@ -20,7 +20,7 @@ import { pinModel } from '@rulecad/fixings';
 import { beamProfile, printable, need } from './core.mjs';
 import { beamSystem, equilibrium } from './beams.mjs';
 import { beamOutline, spansOf, readCurve } from './bistables.mjs';
-import { size, n2, rad, sub, add, mul, unit, len, wrap } from './pivots.mjs';
+import { size, n2, rad, sub, add, mul, len, wrap, cornerRound } from './pivots.mjs';
 
 const { polygon, rectangle, circle, cylinder, cuboid } = jscad.primitives;
 const { union, subtract } = jscad.booleans;
@@ -225,4 +225,201 @@ export function youngBistableModel(p, m, o = {}) {
   }
   return { sense, snap: { turn: sc.snap.push, torque: sc.snap.force }, back: { turn: sc.back.push, torque: sc.back.force }, middle: sc.middle, second: sc.second, bistable: sc.bistable, strain: most, held, margin, hubs, clearance: { least, where },
     prb: { r1: prb.r1, r2: prb.r2, r3: prb.r3, r4: prb.r4, grashof: prb.grashof, second: prb.second }, pins: { name: k.slip.name, slip: k.slip.hole.diameter, press: k.press.hole.diameter, grams: k.slip.grams }, curve, grams, findings: out, rests };
+}
+
+// ---------------------------------------------------------------------------------------------- tensural bistable
+
+// The least distance from a point to an outline's edges (0 inside it)
+function outlineDist(pt, outlines) {
+  let best = Infinity;
+  for (const o of outlines) {
+    let inside = false;
+    for (let i = 0, j = o.length - 1; i < o.length; j = i++) {
+      const a = o[i], b = o[j];
+      if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < ((b[0] - a[0]) * (pt[1] - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+      best = Math.min(best, segDist(pt, a, b));
+    }
+    if (inside) return 0;
+  }
+  return best;
+}
+const FOOT = 6; // mm: each foot of the compressive segment, along the line
+const ccw = (pts) => (pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0) > 0 ? pts : pts.slice().reverse());
+
+/**
+ * @typedef {{ length: number, spacing: number, angle: number, thickness: number, width: number, depth?: number,
+ *   fillet?: number, offset?: number, gap?: number }} TensuralBistable
+ *   length: each thin segment, anchor to the compressive segment (mm); spacing: the two anchors (the base's and the
+ *   shuttle's) apart along the segments' line; angle: the line's tilt from square to the shuttle's travel at rest
+ *   (degrees, above 0 and at most 15); thickness, width: the thin segments'; depth: the compressive segment's, out
+ *   from the line (default 12: stiff beside the thin segments' stretch; across from the anchor blocks it is cut back
+ *   by 1.5 times the travel, 2 c sin α, so they pass it); fillet: the thin segments' rounds (default
+ *   1); offset: the chain's nearest end from the travel's axis (default 6, room for the base's stem between the two
+ *   chains); gap: the least air (default 0.3)
+ */
+function tensuralLayout(p, what) {
+  if (!p || typeof p !== 'object') throw new Error(`${what}: give the bistable's parameters (length, spacing, angle, thickness, width)`);
+  const a = size(what, p, 'length'), c = size(what, p, 'spacing'), t = size(what, p, 'thickness'), W = size(what, p, 'width'), D = size(what, p, 'depth', 'depth', 12), h0 = size(what, p, 'offset', 'offset', 6), gap = size(what, p, 'gap', 'gap', 0.3), r = p.fillet ?? 1;
+  const al = p.angle;
+  if (typeof al !== 'number' || !(al > 0 && al <= 15)) throw new Error(`${what}: angle is the thin segments' tilt from square to the travel, degrees above 0 and at most 15 (got ${JSON.stringify(p.angle)}): steeper, they bend more than they stretch`);
+  if (!(typeof r === 'number' && r >= 0 && 2 * r < a)) throw new Error(`${what}: fillet is the thin segments' rounds, 0 or more and under half a segment (got ${JSON.stringify(p.fillet)})`);
+  const pw = t + 2 * r + 2, g0 = 1.5; // a pad's width across the line; half the air between the base's and the shuttle's anchors
+  if (c < 2 * g0 + 4) throw new Error(`${what}: spacing ${c} leaves the base's and the shuttle's anchor blocks under 2 mm each along the line: ${2 * g0 + 4} or more`);
+  if (h0 < 2 + gap + 3) throw new Error(`${what}: offset ${h0} leaves the base's stem between the chains under 1.5 mm each side of the axis: ${n2(5 + gap)} or more`);
+  const A = al * rad, ym = h0 + FOOT + c / 2 + a, o1 = pw / 2 + gap; // the chain's middle, 4 mm of foot below its lower end; the slab's inner face from the line
+  // each chain, up (sy 1) and its mirror (sy -1): the line through (0, sy ym) along v; n toward the compressive side (-x)
+  const chains = [1, -1].map((sy) => {
+    const v = [Math.sin(A), sy * Math.cos(A)], n = [-Math.cos(A), sy * Math.sin(A)], C = [0, sy * ym], P = (s, m = 0) => add(add(C, mul(v, s)), mul(n, m));
+    return { sy, v, n, C, P, Ab: P(-c / 2), As: P(c / 2), Q1: P(-c / 2 - a), Q2: P(c / 2 + a) };
+  });
+  const notch = Math.min(1.5 * 2 * c * Math.sin(A), D - 6); // how far the slab's face is cut back across from the anchor blocks
+  if (notch <= 0) throw new Error(`${what}: depth ${D} leaves no room to cut the slab back across from the anchor blocks: over 6`);
+  const X1 = 12, wb = 5, X2 = 26; // the base's bar (its right face) and the shuttle's (its right face), both wb wide
+  return { a, c, t, W, D, h0, gap, r, al, A, pw, g0, ym, o1, notch, chains, X1, wb, X2, half: beamProfile({ length: a, thickness: t, fillet: r }, 'guided') };
+}
+// The flat parts: the base (two anchor blocks on a bar, a stem along the axis to a block with a screw hole), the
+// shuttle (two anchor blocks on a bar, a round tab to push), the two compressive segments (each a slab beside its
+// line, with a foot at each end reaching back to it) and the four thin segments
+function tensuralFlat(k) {
+  const { a, c, pw, g0, o1, D, X1, wb, X2, gap } = k, fr = 1.5;
+  const base = [], shuttle = [], slabs = [], thin = [];
+  const yb = k.chains[0].P(-g0, -pw / 2)[1], ys = k.chains[0].P(c / 2, -pw / 2)[1]; // the base bar's ends and the shuttle bar's
+  for (const ch of k.chains) {
+    const { P, sy } = ch, s0 = -c / 2 - a, s1 = c / 2 + a;
+    // anchor blocks: from the pad across the line out to the bar (the base's on s from -c/2 to -g0, the shuttle's from g0 to c/2)
+    const block = (sa, sb, X) => polygon({ points: ccw([P(sa, pw / 2), P(sa, -pw / 2), [X, P(sa, -pw / 2)[1]], [X, P(sb, -pw / 2)[1]], P(sb, -pw / 2), P(sb, pw / 2)]) });
+    base.push(block(-c / 2, -g0, X1));
+    shuttle.push(block(g0, c / 2, X2));
+    // each bar's inside corner under (or over) its block, rounded
+    const lowB = P(-c / 2, -pw / 2)[1], lowS = P(g0, -pw / 2)[1];
+    base.push(cornerRound(X1 - wb, lowB, -1, -sy, fr));
+    shuttle.push(cornerRound(X2 - wb, lowS, -1, -sy, fr));
+    // the compressive segment: a slab from o1 out to o1 + D beside the line, with a foot 4 mm long at each end back
+    // across the line to the thin segment's end; the window between the feet rounded where it meets the slab
+    const L = (pts) => polygon({ points: ccw(pts.map(([s, m]) => P(s, m))) });
+    const outer = L([[s0 - FOOT, -pw / 2], [s1 + FOOT, -pw / 2], [s1 + FOOT, o1 + D], [s0 - FOOT, o1 + D]]);
+    const ww = o1 + pw / 2 + 3, wc = P((s0 + s1) / 2, o1 - ww / 2), win = translate([wc[0], wc[1], 0], jscad.transforms.rotateZ(Math.atan2(ch.v[1], ch.v[0]), jscad.primitives.roundedRectangle({ size: [s1 - s0, ww], roundRadius: fr, segments: 32 })));
+    // and a notch in its inner face across from the anchor blocks, which move along the line's square by up to about
+    // half the shuttle's travel against it
+    const nw = k.notch + 2, nc = P(0, o1 + k.notch - nw / 2), notch = translate([nc[0], nc[1], 0], jscad.transforms.rotateZ(Math.atan2(ch.v[1], ch.v[0]), jscad.primitives.roundedRectangle({ size: [c + 3, nw], roundRadius: fr, segments: 32 })));
+    slabs.push(subtract(outer, win, notch));
+    thin.push(beamOutline(ch.Ab, ch.Q1, k.half, a, k.t, 0.5, k.r), beamOutline(ch.Q2, ch.As, k.half, a, k.t, 0.5, k.r));
+  }
+  // the bars, the base's stem along the axis to its block, the shuttle's tab
+  const hs = k.h0 - 2 - 1.5, xb1 = -(o1 + D) - 5, xb0 = xb1 - 10;
+  base.push(rect(X1 - wb, X1, -Math.abs(yb), Math.abs(yb)), rect(xb1 - 0.01, X1 - wb + 0.01, -hs, hs), rect(xb0, xb1, -9, 9));
+  for (const sy of [1, -1]) base.push(cornerRound(X1 - wb, sy * hs, -1, sy, fr), cornerRound(xb1, sy * hs, 1, sy, fr));
+  shuttle.push(rect(X2 - wb, X2, -Math.abs(ys), Math.abs(ys)), hull(rect(X2 - 0.01, X2 + 1, -3, 3), circle({ radius: 3, center: [X2 + 4, 0], segments: SEG })));
+  for (const sy of [1, -1]) shuttle.push(cornerRound(X2, sy * 3, 1, sy, fr));
+  const hole = circle({ radius: 1.7, center: [(xb0 + xb1) / 2, 0], segments: 32 }); // an M3 clearance (ISO 273 medium, 3.4)
+  return { base: subtract(union(...base), hole), shuttle: union(...shuttle), slabs, thin, stem: { hs, xb0, xb1 } };
+}
+
+/**
+ * A tensural bistable (TensuralBistable above), drawn at rest, one piece printed flat: two of US 7126446's couplings,
+ * mirror images about the shuttle's travel (along x), so the pulls they take through the middle meet inside the
+ * shuttle and no guide has to carry them. Each coupling: a thin segment from the base's anchor out to one foot of the
+ * compressive segment (a slab beside the line), the slab back past both anchors, and a second thin segment in to the
+ * shuttle's anchor. Pushed by its tab along -x, the shuttle snaps over and stays.
+ * @param {TensuralBistable} p
+ * @param {{ part?: 'all' | 'base' | 'shuttle' }} [o]
+ * @returns {object} a JSCAD geom3
+ */
+export function tensuralBistable(p, { part = 'all' } = {}) {
+  const k = tensuralLayout(p, 'tensuralBistable');
+  if (!['all', 'base', 'shuttle'].includes(part)) throw new Error(`tensuralBistable: part is all, base or shuttle (got ${JSON.stringify(part)})`);
+  const f = tensuralFlat(k);
+  return extrudeLinear({ height: k.W }, part === 'all' ? union(f.base, f.shuttle, ...f.slabs, ...f.thin) : f[part]);
+}
+
+/**
+ * What a tensural bistable does, from the beam solver on its drawn segments: each chain one beam from the base to the
+ * shuttle (thin segment, foot, slab, foot, thin segment, the slab and feet as deep as drawn, so they give too), the
+ * shuttle pushed along -x and free to move across and turn. The force curve, the push that switches it, the pull back,
+ * where it rests again, the thin segments' tension through the middle (what makes it tensural), the strain, the
+ * clearances over the swing and the grams. Beside it the hand sum for the stretch: through the middle the anchors are
+ * c (1 - cos α) nearer each other along the line than the chain is long.
+ * @param {TensuralBistable} p
+ * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m
+ * @param {{ steps?: number, printer?: { line: number, layer: number, wall_min?: number } }} [o] steps: the curve's
+ *   (default 60, over 2.6 times 2 c sin α)
+ * @returns {{ travel: number, stretch: number, tension: number, solvedTension: number, snap: { push: number, force: number }, back: { push: number, force: number },
+ *   middle: number | null, second: number | null, bistable: boolean, strain: number, margin: number, clearance: { least: number, where: string },
+ *   curve: object[], grams: number | null, findings: object[], rests: string[] }}
+ *   travel: 2 c sin α, where the chain would lie straight again were it free to; stretch: c (1 - cos α); tension: a
+ *   thin segment's pull through the middle, EA stretch / 2a (the slab rigid); solvedTension: the solver's, at the
+ *   middle of its curve
+ */
+export function tensuralBistableModel(p, m, o = {}) {
+  const what = 'tensuralBistableModel', k = tensuralLayout(p, what);
+  need(what, {}, m);
+  if (!(m.strainLimit > 0)) throw new Error(`${what}: the material needs a strainLimit (flexureMaterial(rules) gives one)`);
+  const steps = o.steps ?? 60;
+  if (!(Number.isInteger(steps) && steps >= 10)) throw new Error(`${what}: steps is a whole number, 10 or more (got ${JSON.stringify(o.steps)})`);
+  const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra }), lim = m.strainLimit, flat = tensuralFlat(k);
+  const travel = 2 * k.c * Math.sin(k.A), stretch = k.c * (1 - Math.cos(k.A)), EA = m.E * k.W * k.t, tension = (EA * stretch) / (2 * k.a);
+  // Each chain one beam from the base to the shuttle: thin a (Ab to Q1), on along the line 2 mm into the foot, out
+  // across to the slab's middle, along the slab, back, in, and thin b (Q2 to As)
+  const beams = [];
+  for (const ch of k.chains) {
+    const { P } = ch, s0 = -k.c / 2 - k.a, s1 = k.c / 2 + k.a, mid = k.o1 + k.D / 2, ta = spansOf(ch.Ab, ch.Q1, k.half, k.a, 16), tb = spansOf(ch.Q2, ch.As, k.half, k.a, 16);
+    const path = [...ta.path, P(s0 - FOOT / 2), P(s0 - FOOT / 2, mid), P(s1 + FOOT / 2, mid), P(s1 + FOOT / 2), ...tb.path], thickness = [...ta.thickness, k.pw, FOOT, k.D, FOOT, k.pw, ...tb.thickness];
+    beams.push({ name: ch.sy > 0 ? 'chain up' : 'chain down', path, thickness, width: k.W, E: m.E, from: 'base', to: 'shuttle' });
+  }
+  const sys = beamSystem({ bodies: { base: { at: [0, 0], fixed: true }, shuttle: { at: [k.X2, 0] } }, beams, segments: 120 });
+  const d = sys.body.shuttle.dof, to = 2.6 * travel, curve = [], qs = [];
+  let q, ok = true;
+  for (let i = 1; i <= steps; i++) {
+    const r = equilibrium(sys, { held: new Map([[d, (-to * i) / steps]]), start: q, iterations: 100 });
+    q = r.q; ok = ok && r.converged; qs.push(r.q);
+    curve.push({ push: (to * i) / steps, force: -r.reaction.get(d), strain: Math.max(...Object.values(r.strain)) });
+  }
+  const rc = readCurve(curve);
+  // The thin segments' pull through the middle: an element in the middle of each, its stretch EA (L - L0) / L0
+  const iMid = rc.middle != null ? Math.max(0, Math.round((rc.middle / to) * steps) - 1) : Math.round(steps / 3), qm = qs[iMid];
+  const pulls = sys.elements.filter((e) => e.a.dof != null && e.b.dof != null && e.t === k.t).map((e) => { const pa = [e.a.at[0] + qm[e.a.dof], e.a.at[1] + qm[e.a.dof + 1]], pb = [e.b.at[0] + qm[e.b.dof], e.b.at[1] + qm[e.b.dof + 1]]; return (e.EA * (len(sub(pb, pa)) - e.L0)) / e.L0; });
+  const solvedTension = pulls.length ? Math.min(...pulls) : 0;
+  // Clearances over the swing (to the second rest, or the whole curve): the slabs and thin segments from the base and
+  // the shuttle (each thin segment from the one it is not fixed to), the shuttle from the base, the two slabs apart
+  const last = rc.bistable ? Math.min(steps, Math.ceil((rc.second / to) * steps) + 1) : steps, baseO = jscad.geometries.geom2.toOutlines(flat.base), shO = jscad.geometries.geom2.toOutlines(flat.shuttle);
+  const shPts = shO.flat(), slabO = flat.slabs.map((g) => jscad.geometries.geom2.toOutlines(g)), dot = (x, y) => x[0] * y[0] + x[1] * y[1];
+  // each chain's thin segments' nodes (on the line, between an anchor and a foot) and the two nodes at the slab's ends,
+  // whose moves carry its outline (the slab is near rigid beside the thin segments)
+  const per = k.chains.map((ch) => {
+    const mine = sys.nodes.filter((nd) => nd.beam === (ch.sy > 0 ? 'chain up' : 'chain down')), local = (pt) => [dot(sub(pt, ch.C), ch.v), dot(sub(pt, ch.C), ch.n)];
+    const s0 = -k.c / 2 - k.a, s1 = k.c / 2 + k.a, mid = k.o1 + k.D / 2, nearest = (pt) => mine.reduce((b, nd) => (len(sub(nd.at, pt)) < len(sub(b.at, pt)) ? nd : b));
+    const thin = mine.filter((nd) => { const [ss, mm] = local(nd.at); return Math.abs(mm) < 1e-6 && ((ss > s0 && ss < -k.c / 2) || (ss > k.c / 2 && ss < s1)); }).map((nd) => ({ nd, a: local(nd.at)[0] < 0, near: Math.min(len(sub(nd.at, ch.Ab)), len(sub(nd.at, ch.As)), len(sub(nd.at, ch.Q1)), len(sub(nd.at, ch.Q2))) < k.pw }));
+    return { ch, thin, g1: nearest(ch.P(s0 - FOOT / 2, mid)), g2: nearest(ch.P(s1 + FOOT / 2, mid)) };
+  });
+  let least = Infinity, where = '';
+  const note = (v, w) => { if (v < least) { least = v; where = w; } };
+  for (let i = 0; i < last; i++) {
+    const qq = qs[i], shMoved = (pt) => moved(pt, [k.X2, 0], [qq[d], qq[d + 1], qq[d + 2]]), shNow = shO.map((ol) => ol.map(shMoved)), at = (nd) => [nd.at[0] + qq[nd.dof], nd.at[1] + qq[nd.dof + 1]];
+    per.forEach(({ ch, thin, g1, g2 }, j) => {
+      const name = ch.sy > 0 ? 'upper' : 'lower', m1 = at(g1), m2 = at(g2), phi = Math.atan2(m2[1] - m1[1], m2[0] - m1[0]) - Math.atan2(g2.at[1] - g1.at[1], g2.at[0] - g1.at[0]);
+      const slabNow = slabO[j].map((ol) => ol.map((pt) => { const o = sub(pt, g1.at), c = Math.cos(phi), sn = Math.sin(phi); return add(m1, [c * o[0] - sn * o[1], sn * o[0] + c * o[1]]); }));
+      for (const pt of slabNow.flat()) { note(outlineDist(pt, baseO), `the ${name} compressive segment and the base`); note(outlineDist(pt, shNow), `the ${name} compressive segment and the shuttle`); }
+      for (const pt of [...baseO.flat(), ...shNow.flat()]) note(outlineDist(pt, slabNow), `the ${name} compressive segment and the base or shuttle`);
+      for (const { nd, a: onBase, near } of thin) {
+        if (near) continue;
+        const p0 = at(nd), h = k.t / 2;
+        note(outlineDist(p0, slabNow) - h, `the ${name} thin segments and their compressive segment`);
+        note(outlineDist(p0, onBase ? shNow : baseO) - h, `the ${name} thin segment ${onBase ? 'from the base and the shuttle' : 'to the shuttle and the base'}`);
+      }
+    });
+    for (const pt of shPts) note(outlineDist(shMoved(pt), baseO), 'the shuttle and the base');
+  }
+  const most = rc.strain, margin = lim / most;
+  const rests = ['the force curve is the beam solver\'s on the drawn chains (the slabs and feet as beams as deep as drawn, so their give is in it), the shuttle pushed along its travel and free to move across and turn; the base rigid', 'two of the patent\'s couplings, mirror images about the travel, so their pulls along the line meet in the shuttle: one coupling on a flexure guide would load the guide\'s leaves along their length (tens of newtons, past a printed leaf\'s buckling load when they are in compression)', 'the layout (thin segments on one line at rest, the compressive segment beside them with a foot at each end) is the patent\'s FIGS. 1 to 3; its sizes are ours, the patent being a MEMS device of microns'];
+  f('info', `through the middle the anchors are c (1 - cos α) = ${n2(stretch, 3)} mm nearer each other along the line than the chain is long, so the thin segments stretch: about ${n2(tension, 1)} N each with the slab rigid (EA δ / 2a). The solver's, the slab giving too: ${n2(solvedTension, 1)} N`, 'tensural.tension', { values: { stretch, tension, solvedTension } });
+  if (solvedTension <= 0) f('fail', `through the middle the thin segments are not in tension (${n2(solvedTension, 2)} N): it is not working as a tensural bistable`, 'tensural.tension', { values: { solvedTension } });
+  if (rc.bistable) f('pass', `pushed ${n2(rc.snap.push)} mm it takes ${n2(rc.snap.force)} N, the most; past ${n2(rc.middle)} mm it snaps on by itself, pulling with up to ${n2(-rc.back.force)} N, and rests ${n2(rc.second)} mm from where it started. Back the other way takes about ${n2(-rc.back.force)} N`, 'tensural.snap', { values: { snap: rc.snap, back: rc.back, middle: rc.middle, second: rc.second } });
+  else f('fail', `it does not stay over: pushed ${n2(to)} mm the force never falls below 0 (its least ${n2(rc.back.force)} N), so it springs back: a steeper line, or shorter thin segments`, 'tensural.snap', { values: { snap: rc.snap, back: rc.back } });
+  f(margin >= 2 ? 'pass' : margin >= 1 ? 'warn' : 'fail', `on the way over the thin segments see at most ${n2(most * 100, 2)}%: ${n2(margin)} times under the limit of ${n2(lim * 100, 1)}%${margin >= 2 ? '' : margin >= 1 ? ', under the twice it should have: longer thin segments or a smaller angle' : ': over it'}`, 'flexure.strain', { values: { strain: most, limit: lim, margin } });
+  f(least >= k.gap ? 'pass' : 'fail', `over the swing the least air is ${n2(least)} mm, between ${where}${least >= k.gap ? '' : `: under the ${k.gap} mm gap, they meet`}`, 'tensural.clear', { values: { least, where } });
+  if (!ok) f('warn', 'the beam solver did not settle at every step: the force curve is a guide only', 'tensural.solver');
+  if (o.printer) for (const x of printable({ thickness: k.t, width: k.W }, o.printer, m)) out.push(x);
+  let grams = null;
+  if (m.density > 0) { grams = (measureVolume(tensuralBistable(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, one piece`, 'tensural.mass', { values: { grams } }); }
+  return { travel, stretch, tension, solvedTension, snap: rc.snap, back: rc.back, middle: rc.middle, second: rc.second, bistable: rc.bistable, strain: most, margin, clearance: { least, where }, curve, grams, findings: out, rests };
 }
