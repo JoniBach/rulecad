@@ -49,12 +49,12 @@ function beamOutline(a, b, half, L, t, into, r = 0) {
 function butterflyLayout(p, what) {
   need(what, p);
   const L = p.length, t = p.thickness, g1 = (p.narrow ?? 20) * rad, g2 = (p.wide ?? 45) * rad, turn = (p.turn ?? 20) * rad;
+  if (!(g1 > 0 && g2 > g1 && g2 < (75 * Math.PI) / 180)) throw new Error(`${what}: narrow and wide are angles from the y axis with 0 < narrow < wide < 75 degrees (got ${p.narrow ?? 20} and ${p.wide ?? 45})`);
   const w = p.width, hole = p.hole ?? 3.4, B = p.block ?? Math.max(3 * t, hole + 2.4), F = p.frame ?? Math.max(3, 3 * t), gap = p.gap ?? 0.4, r = p.fillet ?? t, arm = p.arm ?? L;
   // the inner ends far enough out that the narrow and wide blades, with their rounds, are a gap apart where they meet block 1
   const a = p.inner ?? Math.max(0.4 * L, (t + 2 * r + gap) / Math.sin(g2 - g1) + 0.5);
   for (const [k, v] of [['inner', a], ['block', B], ['frame', F], ['gap', gap], ['arm', arm], ['hole', hole]]) if (!(typeof v === 'number' && v > 0 && Number.isFinite(v))) throw new Error(`${what}: ${k} is a size above 0 (got ${JSON.stringify(v)})`);
   if (!(r >= 0)) throw new Error(`${what}: fillet is 0 or more (got ${JSON.stringify(p.fillet)})`);
-  if (!(g1 > 0 && g2 > g1 && g2 < (75 * Math.PI) / 180)) throw new Error(`${what}: narrow and wide are angles from the y axis with 0 < narrow < wide < 75 degrees (got ${p.narrow ?? 20} and ${p.wide ?? 45})`);
   if (!(turn > 0 && turn < Math.PI / 2)) throw new Error(`${what}: turn is the most the output turns either way, above 0 and under 90 degrees (got ${p.turn})`);
   if (B < hole + 2.4) throw new Error(`${what}: block (${B} mm) must be at least the hole (${hole} mm) and 1.2 mm either side of it`);
   const R = a + L, foot = t / 2 + r + 1; // a blade's end with its rounds, and a millimetre more
@@ -179,6 +179,8 @@ function xyThetaLayout(p, what) {
   if (!p.pivot || typeof p.pivot !== 'object') throw new Error(`${what}: pivot is the cartwheel on the stage, { spoke, thickness?, hub?, rim?, arm?, opening? } (got ${JSON.stringify(p.pivot)})`);
   const cw = { ...p.pivot, thickness: p.pivot.thickness ?? p.thickness, width: p.width };
   need(`${what} pivot`, cw);
+  for (const key of ['spoke', 'hub', 'rim', 'arm']) if (cw[key] !== undefined && !(typeof cw[key] === 'number' && cw[key] > 0 && Number.isFinite(cw[key]))) throw new Error(`${what} pivot: ${key} is a size above 0 (got ${JSON.stringify(cw[key])})`);
+  if (cw.spoke === undefined) throw new Error(`${what} pivot: spoke is a size above 0 (got undefined)`);
   const t = p.thickness, end = Math.max(3, 2 * t), across = p.gap + 2 * t + 2 * (p.fillet || 0), s = p.stage ?? end;
   const r = cw.hub ?? Math.max(2, 2 * cw.thickness), rim = cw.rim ?? 3, Ro = r + cw.spoke + rim;
   const cx = p.length + across / 2, top = across / 2 + p.length + s, sink = 0.5, cy = top - sink + Ro; // the rim sunk half a millimetre into the stage block
@@ -298,7 +300,6 @@ function ribbon(path, t) {
   path.forEach((q, i) => { const u = unit(sub(path[Math.min(i + 1, path.length - 1)], path[Math.max(i - 1, 0)])), n = [-u[1], u[0]]; top.push(add(q, mul(n, t / 2))); bottom.push(sub(q, mul(n, t / 2))); });
   return polygon({ points: [...bottom, ...top.reverse()] });
 }
-const pathLength = (pts) => pts.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]), 0);
 
 // A band as it prints: flat on the bed, its length along x between its beads, its strips' places across y (which is up
 // z when fitted, measured from the pocket's floor), t thick; the beads full height, a circle with its underside cut
@@ -345,18 +346,19 @@ const innerStrips = (k) => [[k.wq + k.g, k.H - k.f - k.wq - k.g]];
  * slot on the band's line, so the band leaves the roller straight with no kink. The pockets have floors; the tops are
  * open, so something over them (the part they mount in, or tape) keeps the beads in.
  * @param {Rolling} p
- * @param {{ part?: 'all' | 'roller' | 'outer' | 'inner' }} [o] all: fitted, at rest, roller A's centre at (-ρ, 0) and
- *   B's at (ρ, 0); roller: one roller standing, as it prints; outer, inner: a band flat, as it prints
+ * @param {{ part?: 'all' | 'roller' | 'outer' | 'inner' | 'bands' }} [o] all: fitted, at rest, roller A's centre at
+ *   (-ρ, 0) and B's at (ρ, 0); roller: one roller standing, as it prints; outer, inner: a band flat, as it prints;
+ *   bands: both bands as fitted, without the rollers
  * @returns {object} a JSCAD geom3
  */
 export function rollingJoint(p, { part = 'all' } = {}) {
   const k = rollingLayout(p, 'rollingJoint');
-  if (!['all', 'roller', 'outer', 'inner'].includes(part)) throw new Error(`rollingJoint: part is all, roller, outer or inner (got ${JSON.stringify(part)})`);
+  if (!['all', 'roller', 'outer', 'inner', 'bands'].includes(part)) throw new Error(`rollingJoint: part is all, roller, outer, inner or bands (got ${JSON.stringify(part)})`);
   const plan = rollerPlan(k), roller = subtract(extrudeLinear({ height: k.H }, plan.outline), translate([0, 0, k.f], extrudeLinear({ height: k.H }, plan.cuts)));
-  const lengths = [1, -1].map((side) => pathLength(bandPath(k, side)) - k.stretch);
+  const length = 2 * (k.rho * k.beta + k.sb) - k.stretch; // between the beads' middles: round each roller and out along its line
   if (part === 'roller') return roller;
-  if (part === 'outer') return bandPrint(k, lengths[0], outerStrips(k));
-  if (part === 'inner') return bandPrint(k, lengths[1], innerStrips(k));
+  if (part === 'outer') return bandPrint(k, length, outerStrips(k));
+  if (part === 'inner') return bandPrint(k, length, innerStrips(k));
   const fitted = [];
   for (const [side, strips] of [[1, outerStrips(k)], [-1, innerStrips(k)]]) {
     const path = bandPath(k, side), r2 = ribbon(path, k.t);
@@ -367,6 +369,7 @@ export function rollingJoint(p, { part = 'all' } = {}) {
       fitted.push(translate([0, 0, k.f], extrudeLinear({ height: k.H - k.f }, circle({ radius: k.rb, center: centre, segments: 32 }))));
     }
   }
+  if (part === 'bands') return union(...fitted);
   return union(translate([-k.rho, 0, 0], roller), translate([k.rho, 0, 0], rotateZ(Math.PI, roller)), ...fitted);
 }
 
@@ -386,7 +389,7 @@ export function rollingJoint(p, { part = 'all' } = {}) {
 export function rollingJointModel(p, m) {
   const what = 'rollingJointModel', k = rollingLayout(p, what);
   need(what, {}, m);
-  const bend = k.t / (2 * k.rho), lengths = [1, -1].map((side) => pathLength(bandPath(k, side))), stretch = k.stretch / Math.min(...lengths);
+  const bend = k.t / (2 * k.rho), stretch = k.stretch / (2 * (k.rho * k.beta + k.sb));
   const each = bend + stretch;
   // The range: step the contact round A until roller B (its outline, turned and moved) meets roller A's
   const plan = rollerPlan(k), outline = (g) => jscad.geometries.geom2.toOutlines(g).sort((x, y) => y.length - x.length)[0];
