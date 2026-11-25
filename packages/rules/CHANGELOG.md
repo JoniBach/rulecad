@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## Unreleased
+## 0.3.25: slot 10 nuts from a second maker
 ### Added
 
 - `slot-nut-10-motedis-m4-roll-in`, `-m5-`, `-m6-` and `-m8-roll-in` (issue 308): Motedis' sprung roll-in nuts for its

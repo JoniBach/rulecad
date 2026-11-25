@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
+## 0.1.13: the printed slot-nut carrier as a guide's hardware
 ### Added
 
 - Issue 308: `guideFit(m, profile, { nut: 'printed' })` puts the rail's screws into a printed carrier strip (one hex
