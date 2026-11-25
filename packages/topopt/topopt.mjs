@@ -175,9 +175,11 @@ export function discretise(p) {
     if (p.input_spring) for (const m of ins) springs[dim * m + inDir] += p.input_spring / ins.length;
     output = { force: L, spring: o.spring || 0, input: loads[0].force };
   }
-  // Robust: the filter counts the grid's edges as empty, so the cells where the part is held, pushed and moved are kept
-  // solid, as in da Silva, Beck and Sigmund (2019); else an edge would thin away from its supports
-  if (p.robust) {
+  // A robust mechanism: the filter counts the grid's edges as empty, so the cells where it is held, pushed and moved are
+  // kept solid, as in da Silva, Beck and Sigmund (2019); else an edge would thin away from its supports
+  if (p.robust != null && p.robust !== true && p.robust !== false) throw new Error(`robust is true or false (got ${JSON.stringify(p.robust)})`);
+  if (p.robust && !p.output && !(stress > 0)) throw new Error('robust is for a mechanism (with output: the worst of its eroded, as-made and dilated copies) or a stress limit (the lightest layout that keeps it on all three); a volume alone has neither');
+  if (p.robust && p.output) {
     const acted = new Uint8Array(g.nodes);
     for (let q = 0; q < g.dofs; q++) if (fixed[q] || loads.some((l) => l.force[q]) || output?.force[q]) acted[Math.floor(q / dim)] = 1;
     for (let e = 0; e < g.cells; e++) if (passive[e] === 0) for (let k = 0; k < corners; k++) if (acted[g.edof[e * g.cellDofs + dim * k] / dim]) { passive[e] = 1; break; }
@@ -511,7 +513,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
   const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, ETA = 0.5, size = dim === 3 ? g.h : spec.thickness;
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
-  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h, { pad: !!spec.robust }), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
+  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h, { pad: !!(spec.robust && spec.output) }), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
   // Milled or cast: no undercuts from the tool's side or the mould's draw; symmetric or extruded: cells tied together
   const draw = spec.mill ? drawFilter(spec.grid, spec.mill) : spec.cast ? (typeof spec.cast === 'string' ? drawFilter(spec.grid, spec.cast) : drawFilter(spec.grid, spec.cast.draw, spec.cast.parting)) : null;
   const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
@@ -556,7 +558,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   };
   let last = null;
   // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
-  const evaluate = (x, beta, { all = false, multipliers, eta = ETA } = {}) => {
+  const evaluate = (x, beta, { all = false, multipliers, eta = ETA, limits = false } = {}) => {
     physical(x, beta, eta);
     for (let e = 0; e < cells; e++) scale[e] = size * (Emin + Math.pow(phys[e], penal) * (E - Emin));
     const active = spec.loads.map((l, c) => (all || l.weight > 0 ? c : -1)).filter((c) => c >= 0);
@@ -584,7 +586,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta, eta); dc[e] *= s; dv[e] = s; }
     if (print && keptCells.length) { const w = (SUPPORT * Math.max(compliance, 1e-12)) / keptCells.length; for (const e of keptCells) dc[e] = -w * slope(made[e], beta); }
     toDesign(dc); toDesign(dv);
-    const stress = Ss && (!spec.output || all) ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
+    const stress = Ss && (!spec.output || all || limits) ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     // A mechanism: how far the output moves along its direction under the input (travel), and its gradient: with the
     // adjoint λ from K λ = L (the output's direction), d travel / dρ = −λₑᵀ (dkₑ/dρ) uₑ (Sigmund 1997)
     let mechanism = null;
@@ -618,7 +620,17 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   // solve per load case. Every cell in the space is limited, those where supports and loads act too: a load on a
   // point is a stress there, so give supports and loads some area (a hole's edge, a pad).
   const rows = dim === 3 ? 6 : 3, Ss = spec.stress ? [centreStress(g.h, spec.material.nu, dim)] : null;
+  // (a robust mechanism's cells where it is held, pushed and moved are not limited, as in da Silva, Beck and Sigmund
+  // 2019: a force on a small pad is a stress there whatever the layout)
   const limited = Uint8Array.from(passive, (p) => (p >= 0 ? 1 : 0));
+  if (spec.robust && spec.output) {
+    const acted = new Uint8Array(g.nodes);
+    for (let q = 0; q < g.dofs; q++) if (spec.fixed[q] || spec.loads.some((l) => l.force[q]) || spec.output.force[q]) acted[Math.floor(q / dim)] = 1;
+    for (let e = 0; e < cells; e++) for (let k = 0; k < m / dim; k++) if (acted[g.edof[e * m + dim * k] / dim]) limited[e] = 0;
+  }
+  // (a robust mechanism's limits are relaxed by density cubed, not density: the empty cells between its moving parts
+  // stretch far, and as if solid their stress is huge; by density alone those limits held the output still)
+  const RQ = spec.robust && spec.output ? 3 : 1;
   const stressLimits = (u, active, again, { lam, mu }) => {
     const P = Ss.length, N = Math.max(1, limited.reduce((a, b) => a + b, 0) * active.length * P), st = new Float64Array(rows), gr = new Float64Array(rows);
     const d = new Float64Array(cells), h = active.map(() => new Float64Array(cells * P));
@@ -630,12 +642,12 @@ export function model(spec, { method, backend = jsBackend } = {}) {
         const o = e * m;
         Ss.forEach((S, pi) => {
           for (let q = 0; q < rows; q++) { let t = 0; for (let a = 0; a < m; a++) t += S[q * m + a] * u[c][g.edof[o + a]]; st[q] = E * t; }
-          const vm = vonMises(st, dim, gr), over = vm / spec.stress, ge = phys[e] * (over - 1), j = e * P + pi, l = lam[k][j], he = Math.max(ge, -l / mu);
+          const vm = vonMises(st, dim, gr), over = vm / spec.stress, rq = phys[e] ** RQ, ge = rq * (over - 1), j = e * P + pi, l = lam[k][j], he = Math.max(ge, -l / mu);
           h[k][j] = he; J += (l * he + (mu / 2) * he * he) / N;
           if (phys[e] >= 0.5) peak = Math.max(peak, vm);
           if (ge <= -l / mu) return;
-          const w = (l + mu * he) / N, f = (w * phys[e] * E) / spec.stress;
-          d[e] += w * (over - 1);
+          const w = (l + mu * he) / N, f = (w * rq * E) / spec.stress;
+          d[e] += w * RQ * (phys[e] > 0 ? rq / phys[e] : RQ === 1 ? 1 : 0) * (over - 1);
           for (let a = 0; a < m; a++) { let t = 0; for (let q = 0; q < rows; q++) t += S[q * m + a] * gr[q]; r[g.edof[o + a]] += f * t; }
         });
       }
@@ -849,6 +861,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   // Robust (da Silva, Beck and Sigmund 2019): the limits hold on the eroded and dilated copies as well as the design as
   // made, each with its own multipliers, and the dilated copy's material is what's made least
   const copies = lightest && spec.robust ? [ETA_MADE, DILATE, ERODE] : [ETA_MADE];
+  const synth = worst && spec.stress > 0, synthM = synth ? [0, 1, 2].map(() => ({ lam: [new Float64Array(m.limits)], mu: 1 })) : null;
   const multipliers = lightest ? copies.map(() => ({ lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 })) : undefined;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
   let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, targetD = target;
@@ -859,7 +872,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
     // design (threshold ERODE), its volume on a dilated one (DILATE), the design as made between them. A hinge that
     // survives erosion has real width, so no hinge is a point. (The design as made is stiffer than the eroded copy
     // it's optimised on, by a hinge width's worth; a worst-of-three objective would close that gap, and is to come.)
-    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers: multipliers?.[0], ...(mechanism ? { eta: ERODE } : {}) });
+    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers: multipliers?.[0] ?? synthM?.[0], ...(mechanism ? { eta: ERODE } : {}), limits: synth });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);
     if (lightest) {
@@ -888,14 +901,19 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
       if (step % DILATE_EVERY === 1) { const usedI = m.physical(x, beta).reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0); targetD = (target * usedD) / Math.max(usedI, 1e-9); }
       if (worst) {
         // The eroded copy's travel (already analysed), then the design as made's and the dilated copy's
-        const three = [mech, m.evaluate(x, beta).mechanism, m.evaluate(x, beta, { eta: DILATE }).mechanism];
+        const evs = [{ mechanism: mech, stress }, m.evaluate(x, beta, { multipliers: synthM?.[1], limits: synth }), m.evaluate(x, beta, { eta: DILATE, multipliers: synthM?.[2], limits: synth })], three = evs.map((v) => v.mechanism);
+        // Under a stress limit (da Silva, Beck and Sigmund 2019): each copy's limits on every cell, kept by an augmented
+        // Lagrangian added to z, as the lightest layout's are
+        const Jm = synth ? evs.reduce((t, v) => t + v.stress.J, 0) : 0, dJ = synth ? evs.reduce((t, v) => { for (let e = 0; e < cells; e++) t[e] += v.stress.d[e]; return t; }, new Float64Array(cells)) : new Float64Array(cells);
+        if (synth) peak = Math.max(...evs.map((v) => v.stress.peak));
         if (!scaleT) { scaleT = Math.max(...three.map((t) => Math.abs(t.travel))) || 1; xz[n] = -Math.min(...three.map((t) => t.travel)) / scaleT; }
         xz.set(pick(x));
         const grad = (d, last) => { const g = new Float64Array(n + 1); g.set(pick(d)); g[n] = last; return g; };
         const dvz = new Float64Array(n + 1); dvz.set(pick(dvD).map((v) => v / targetD));
-        mmaStep(xz, xz[n], grad(new Float64Array(cells), 1), [...three.map((t) => -t.travel / scaleT - xz[n]), usedD / targetD - 1], [...three.map((t) => grad(t.d.map((v) => -v / scaleT), -1)), dvz], limit);
+        mmaStep(xz, xz[n] + Jm, grad(dJ, 1), [...three.map((t) => -t.travel / scaleT - xz[n]), usedD / targetD - 1], [...three.map((t) => grad(t.d.map((v) => -v / scaleT), -1)), dvz], limit);
         xf.set(xz.subarray(0, n));
         history[history.length - 1] = Math.min(...three.map((t) => t.travel));
+        if (synth && step % INNER === 0) synthM.forEach((mu, c) => { mu.lam.forEach((l, k) => { for (let j = 0; j < l.length; j++) l[j] += mu.mu * evs[c].stress.h[k][j]; }); mu.mu = Math.min(1.1 * mu.mu, 1e4); });
       } else {
         xf.set(pick(x));
         mmaStep(xf, -mech.travel, pick(mech.d).map((v) => -v), [usedD / targetD - 1], [pick(dvD).map((v) => v / targetD)], limit); // (minimising −travel)
@@ -940,9 +958,10 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   }
   // The final design, analysed as it is
   const final = m.evaluate(x, beta, { all: true }), phys = Float64Array.from(m.physical(x, beta));
-  // (robust: the eroded and dilated copies' peaks too, each on its own cells)
+  // (the eroded and dilated copies' travels and, under a limit, peaks too, each on its own cells: what the design does
+  // if it is made a little thin or a little thick)
   if (mechanism && final.mechanism) { final.mechanism.copies = { eroded: m.evaluate(x, beta, { all: true, eta: ERODE }).mechanism.travel, dilated: m.evaluate(x, beta, { all: true, eta: DILATE }).mechanism.travel }; m.physical(x, beta); }
-  if (final.stress && copies.length > 1) { final.stress.copies = Object.fromEntries(copies.slice(1).map((eta) => [eta < ETA_MADE ? 'dilated' : 'eroded', m.evaluate(x, beta, { all: true, eta }).stress.peak])); m.physical(x, beta); }
+  if (final.stress && (lightest || synth)) { final.stress.copies = { eroded: m.evaluate(x, beta, { all: true, eta: ERODE }).stress.peak, dilated: m.evaluate(x, beta, { all: true, eta: DILATE }).stress.peak }; m.physical(x, beta); }
   // (the final physical call is after evaluate's, so unsupported comes from the evaluation of this design)
   return {
     density: phys, compliance: final.compliance, cases: final.cases, unsupported: final.unsupported,
@@ -957,7 +976,7 @@ function stressReport(spec, final) {
   const { peak } = final.stress, limit = spec.stress, strain = spec.strain != null ? { strain: peak / spec.material.E, strainLimit: spec.strain } : {};
   if (!final.mechanism) return { peak, limit, ...strain, ...(final.stress.copies ? { copies: final.stress.copies } : {}) };
   const k = peak > 0 ? limit / peak : Infinity;
-  return { peak, limit, ...strain, force: spec.loads[0].size * k, travel: final.mechanism.travel * k };
+  return { peak, limit, ...strain, force: spec.loads[0].size * k, travel: final.mechanism.travel * k, ...(final.stress.copies ? { copies: final.stress.copies } : {}) };
 }
 
 /**
