@@ -24,6 +24,26 @@ and head, the parts it passes through and the part it ends in.
 - None. Problems without `in` read as before (each result is drawn again once, since this file's code is in the
   drawing's key; no densities key moves).
 
+## 0.7.83: stalled motors and joints swept together on the frame
+### Added
+
+- A rail guide takes `"nut": "printed"` (issue 308): a printed carrier strip `<id>-nuts` in the slot under the rail,
+  a hex nut under each hole, its screws fastened into them. An MGN7 on a 2020 now checks clean this way.
+- Frame checks (issue 302): moving joints on the frame's beams are swept together as well as one at a time
+  (`frame.together`); a motor driving a joint on the frame stalls against a hard stop at each end of the travel, its
+  holding torque pushing the stop and its own mount apart; a motor turning a hinge holds its torque at its mount.
+  Frames with two moving joints solve more poses (the arm in the tests: 11 to 27), and frames with motors more cases:
+  a sag, stress or join figure there can grow where a combined pose or a stall is worse than the poses before. No
+  printed size moved.
+- The printed-beam options (`beam.printable`, issue 302) take a motor's stall against its stop as `frame.stress` and
+  `frame.deflection` do: a frame with a stalled motor no longer offers a printed beam with a margin it does not have.
+### Fixed
+
+- `cad list` counted a `nut-carrier`'s nuts twice where a fasten placed them: once with the fasten and once as the
+  carrier's own hardware. They are counted once.
+- A `nut-carrier` item stands inside its beam's envelope: the overlap check measures only what stands above the face,
+  and the screws and nuts in it may overlap that beam.
+
 ## 0.7.81: a folding sheet checked in an assembly's poses (#78)
 ### Tests
 
