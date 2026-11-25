@@ -921,16 +921,16 @@ const cell = { length: 90, thickness: 0.84, width: 6, squeeze: 0.28, base: 12 };
 const c = balancedStripModel(cell, petg);
 c.negative; // -0.133 N/mm: the strip alone at its middle, its pad turned 6°
 c.spring;   // { stiffness: 0.147, thickness: 0.84, length: 44.03 }: two leaves, 10% over the strip
-c.flat;     // { from: -1.17, to: 1.82, span: 2.98, force: 0.009 N }: within 10% of 0 stiffness
+c.flat;     // { from: -1.30, to: 1.82, span: 3.11, force: 0.012 N }: within 10% of 0 stiffness
 c.margin;   // 2.33: strip, stem and leaves at 0.54% against PETG's 1.25%
-c.grams;    // 19.4, strip and frame
+c.grams;    // 19.0, strip and frame
 balancedStrip(cell, petg); // the strip (its disc and stem printed in place in the ring) and the frame, side by side
 ```
 
 `balancedStripModel` runs the beam solver on the strip, the pin, the stem and the leaves together: squeezed with the
 knob at the middle, then pushed the strip's rise either way. The spring is sized to the strip (10% over, so the middle
 stays stable; a softer one fails by name, `cell.stable`) and its leaves to stay within half the strain limit over the
-rise. Flat over 2.98 mm with two 44 mm leaves, where the arch above wanted 409 mm of leaf for 1.86 mm. The pin's
+rise. Flat over 3.11 mm with two 44 mm leaves, where the arch above wanted 409 mm of leaf for 1.86 mm. The pin's
 0.3 mm of play and its rub are left out of the model, and the knob is taken as held without play (a press fit, an
 estimate).
 

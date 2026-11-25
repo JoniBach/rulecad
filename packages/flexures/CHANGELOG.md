@@ -19,8 +19,8 @@ why. Releases before this file was started are described in their pull requests 
   (`developable.overhang`). It is the tube's four-bar as the cone's angle goes to 0.
 - `balancedStrip`, `balancedStripModel` (issue #79): a zero-stiffness cell drawn: the buckled switch's strip, its pad a
   ring turning on a disc printed in place, balanced by two leaves on a post (a parallel guide). The strip goes over
-  S-shaped at a straight-line negative stiffness, so the pair is flat over 2.98 mm (90 mm strip, PETG) with 0.009 N at
-  most, 2.33 times under the strain limit, 19.4 g; the arch's balanced cell wanted 409 mm of leaf for 1.86 mm.
+  S-shaped at a straight-line negative stiffness, so the pair is flat over 3.11 mm (90 mm strip, PETG) with 0.012 N at
+  most, 2.33 times under the strain limit, 19.0 g; the arch's balanced cell wanted 409 mm of leaf for 1.86 mm.
 - `flexureMaterial` takes a rule set's `flex_strain` as the strain limit as it stands, and refuses a rubber (strength
   over modulus past 0.5) without one, by name. Stiff plastics are as before.
 

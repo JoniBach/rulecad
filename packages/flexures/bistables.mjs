@@ -396,28 +396,32 @@ function springOf(k, sp, kpos, reach, m, what) {
 
 // Both prints' outlines. The strip: tabs, half beams, the pad as a ring with an opening at its top, the disc in it on
 // the stem, the knob. The frame: a C as the switch's, its window room for the ring to go the rise either way; on its
-// top a deck, the post on the left, the spring's two leaves and the carriage with the knob's hole
+// top the post on the left, the spring's two leaves and the carriage with the knob's hole, clear of the top by its travel
 function cellGeometry(k, s) {
   const x0 = -k.L / 2, x1 = k.L / 2, [ta, tc] = k.tab, rise = riseOf(k.L - k.sq, k.t, k.sq), room = 1.25 * rise + Math.max(k.ro, k.ph / 2) + k.gap + 1;
   const beams = [beamOutline([x0, 0], [x0 + k.lb, 0], k.half, k.lb, k.t, 0.5, k.r), beamOutline([k.pl / 2, 0], [x1, 0], k.half, k.lb, k.t, 0.5, k.r)];
-  const top = room + k.wall, cy = top + k.knob, open = STEM / 2 + k.gap + k.ro * Math.sin(10 * Math.PI / 180); // the stem's way out of the ring, room for the pad to turn 10° either way
+  const hole = k.knobR + k.fit, side = Math.max(2 * hole + 4, s.gap + s.t + 3), top = room + k.wall;
+  // the carriage clear of the frame's top by the rise and a quarter, and the air, with the pad over at its far side
+  const cy = top + Math.max(k.knob, 1.25 * rise + k.gap + side / 2), open = STEM / 2 + k.gap + k.ro * Math.sin(10 * Math.PI / 180); // the stem's way out of the ring, room for the pad to turn 10° either way
   const tabAt = (xa, xb) => roundedRectangle({ size: [xb - xa, tc], center: [(xa + xb) / 2, 0], roundRadius: 0.8, segments: 16 });
   const ring = subtract(union(rect(-k.pl / 2, k.pl / 2, -k.ph / 2, k.ph / 2), circle({ radius: k.ro, segments: 64 })), circle({ radius: k.rd + k.gap, segments: 64 }), roundedRectangle({ size: [2 * open, k.ro + 2], center: [0, k.ro / 2 + 1.5], roundRadius: 0.5, segments: 16 }));
   const pin = union(circle({ radius: k.rd, segments: 64 }), rect(-STEM / 2, STEM / 2, 0, cy), circle({ radius: k.knobR, center: [0, cy], segments: 64 }));
   const strip = union(tabAt(x0 - ta, x0), tabAt(x1, x1 + ta), ring, ...beams, pin);
   const f0 = x0 + k.sq / 2, f1 = x1 - k.sq / 2, outer = f1 + ta + k.wall, yb = -room - k.hb;
-  const c = { cy, hole: k.knobR + k.fit }; c.w = Math.max(2 * c.hole + 4, s.gap + s.t + 3); c.h = c.w;
+  const c = { cy, hole, w: side, h: side };
   const xa = -c.w / 2, xb = xa - s.l, postTop = cy + c.h / 2 + 1; // the leaves run from the carriage's left side (xa) to the post (xb)
-  const body = roundedRectangle({ size: [2 * outer, top - yb], center: [0, (top + yb) / 2], roundRadius: 2, segments: 16 });
+  // the frame's body reaches out under the post where the post stands past it, so no ledge hangs off its side
+  const left = Math.min(xb - s.post, -outer), body = roundedRectangle({ size: [outer - left, top - yb], center: [(outer + left) / 2, (top + yb) / 2], roundRadius: 2, segments: 16 });
   const pocketL = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f0 - ta / 2 + 0.5, 0], roundRadius: 0.5, segments: 32 });
   const pocketR = roundedRectangle({ size: [ta + 1, tc + 2 * k.fit], center: [f1 + ta / 2 - 0.5, 0], roundRadius: 0.5, segments: 32 });
   const window = roundedRectangle({ size: [f1 - f0, 2 * room], center: [0, 0], roundRadius: 1.5, segments: 16 });
   const way = roundedRectangle({ size: [2 * (STEM / 2 + k.gap + 1), 2 * top], center: [0, top], roundRadius: 0.5, segments: 16 }); // clear of the stem, which bends a little
-  const left = Math.min(xb - s.post, -outer), deck = roundedRectangle({ size: [-left + 2, 6], center: [left / 2 + 1, top - 1], roundRadius: 1, segments: 16 });
   const post = roundedRectangle({ size: [s.post, postTop - top + 2], center: [xb - s.post / 2, top + (postTop - top) / 2 - 1], roundRadius: 1, segments: 16 });
   const leaves = [-s.gap / 2, s.gap / 2].map((dy) => beamOutline([xb, cy + dy], [xa, cy + dy], s.half, s.l, s.t, 0.5, s.r));
   const carriage = subtract(roundedRectangle({ size: [c.w, c.h], center: [0, cy], roundRadius: 1.5, segments: 16 }), circle({ radius: c.hole, center: [0, cy], segments: 64 }));
-  const frame = union(subtract(union(body, deck, post, ...leaves), pocketL, pocketR, window, way), carriage);
+  // a round where the post's inner side meets the frame's top, so no inside corner is square
+  const r = 1.5, round = subtract(rect(xb, xb + r, top - 0.01, top + r), circle({ radius: r, center: [xb + r, top + r], segments: 32 }));
+  const frame = union(subtract(union(body, post, round, ...leaves), pocketL, pocketR, window, way), carriage);
   return { strip, frame, c, xa, xb, top, yb, postTop, room };
 }
 
