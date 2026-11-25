@@ -169,6 +169,19 @@ material that stretches, such as TPU or polypropylene, or a web much wider than 
 | Living hinge pinch | π - 2 max(atan(t / l), atan((h - t / 2) / (l / 2 + h - t))), the panels sloped back 45° | geometry |
 | Miura cell at a tilt θ | H = a sin θ sin γ, L = √(a² - H²), V = a b cos γ / L, S = √(b² - V²); vertex (i, j) at (i L + (j mod 2) V, j S, (i mod 2) H) | derived here; the same cell as Schenk and Guest 2013 |
 | Miura crease turns | between columns 2θ; between rows acos((H²S² - H²V² + L²S²) / (H² b² + L²S²)) | the facets' normals |
+| Kresling sides | a² = h² + 2R²(1 - cos φ), b² = h² + 2R²(1 - cos(φ - 2π/n)), polygon side 2R sin(π/n) | geometry |
+| Kresling's second stable state | twist π + 2π/n - φ0, height² = a² - 2R²(1 - cos φ1) (both states keep a and b) | derived here from Guest and Pellegrino 1994's geometry |
+| Kresling's panels between the states | each side and diagonal a bar E t (2A / L) / L, A its triangle's area: an estimate | estimate |
+
+**The Kresling fold.** `kreslingModel({ sides, radius, height, twist }, material)` is a tube of triangles between two
+polygons, the top turned against the bottom. Its triangles are fixed by one stable state; with the same triangles it
+stands again at a second, shorter and turned further, and between the two its panels must stretch, so it snaps from one
+to the other (it is bistable, not rigid-foldable). The model gives both states with each crease's fold, the flat
+pattern, and with a `panel` thickness the energy and force at any height, the barrier between the states and the most
+stretch on the way. With a `hinge` it gives each state's crease strain and the web width a crease would need for the
+material's limit. Six sides on a 20 mm radius, 30 tall turned 100°, stands again at 20.64 mm turned 140°; its
+diagonals fold over 150° there, which a 0.4 mm PETG web would need over 40 mm of width to take. A printed Kresling
+cell wants a material that bends far (TPU), so this is a model and a flat pattern, not a part drawn.
 
 ## Pinned where it must be: the constant-force mechanism
 
@@ -921,6 +934,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
 - Grima, J. N., and Evans, K. E., "Auxetic behavior from rotating squares", *Journal of Materials Science Letters* 19(17), 1563-1565, 2000: the rotating-squares mechanism and its Poisson's ratio of -1.
 - Nelson, T. G., Zimmerman, T. K., Magleby, S. P., Lang, R. J., and Howell, L. L., "Developable mechanisms on developable surfaces", *Science Robotics* 4(27), 2019: mechanisms whose links are pieces of a cylinder or cone, at rest the surface.
+- Guest, S. D., and Pellegrino, S., "The folding of triangulated cylinders, Part I: Geometric considerations", *Journal of Applied Mechanics* 61, 773-777, 1994: the triangulated cylinder (the Kresling pattern) and its two stable states.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.

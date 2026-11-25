@@ -1975,3 +1975,29 @@ test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its 
   const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), bt = made.mechanism.travel;
   for (const line of [`m.travel;    // [${bt[0].toFixed(1)}, ${bt[1].toFixed(1)}]`, `m.at(4.8);   // turns, strain ${(at.strain * 100).toFixed(2)}%, torque ${at.torque.toFixed(1)} N·mm`, `m.grams;     // ${made.mechanism.grams.toFixed(2)}`]) assert.ok(readme.includes(line), `the README should read ${line}`);
 });
+
+test('Kresling: the second stable state is the closed form\'s, the panels stretch between the two, and PETG webs cannot take its folds', async () => {
+  const { kreslingModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), r = (d) => (d * Math.PI) / 180;
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' });
+  // Six sides on R 20 (each 20 mm), standing 30 tall turned 100°: the side B_i T_i a² = 900 + 800 (1 - cos 100°) =
+  // 1838.918, a = 42.8826; the diagonal b² = 900 + 800 (1 - cos 40°) = 1087.165, b = 32.9722. The second state turns
+  // 180 + 60 - 100 = 140°, at h² = a² - 800 (1 - cos 140°) = 1838.918 - 1412.836 = 426.082, h = 20.6418
+  const p = { sides: 6, radius: 20, height: 30, twist: 100, panel: { thickness: 0.6 }, hinge: { flex: 2, thickness: 0.4 } }, k = kreslingModel(p, petg);
+  near(k.sides.polygon, 20, 1e-9, 'polygon side'); near(k.sides.side, 42.8826, 1e-4, 'a'); near(k.sides.diagonal, 32.9722, 1e-4, 'b');
+  assert.equal(k.bistable, true); near(k.states[1].twist, 140, 1e-9, 'the second twist'); near(k.states[1].height, 20.6418, 1e-4, 'the second height');
+  // at the second state every side and diagonal is its length again: the same a and b from the second height and twist
+  near(Math.sqrt(k.states[1].height ** 2 + 800 * (1 - Math.cos(r(140)))), k.sides.side, 1e-9, 'a again'); near(Math.sqrt(k.states[1].height ** 2 + 800 * (1 - Math.cos(r(80)))), k.sides.diagonal, 1e-9, 'b again');
+  // flat: the top row x0 = (a² - b² + s²) / 2s = (1838.918 - 1087.165 + 400) / 40 = 28.7938 along, √(a² - x0²) = 31.7778 up
+  near(k.flat[1][0][0], 28.7938, 1e-4, 'x0'); near(k.flat[1][0][1], 31.7778, 1e-4, 'y0'); assert.equal(k.flat[0].length, 7);
+  // both states rest (no stretch, no force); between them the panels stretch and it takes a push to cross
+  for (const st of k.states) { const a = k.at(st.height); near(a.stretch, 0, 1e-6, `no stretch at ${st.height}`); near(a.energy, 0, 1e-6, 'no energy'); }
+  assert.ok(k.barrier.height < 30 && k.barrier.height > 20.64, 'the barrier lies between'); assert.ok(k.barrier.energy > 0 && k.barrier.force > 0 && k.barrier.stretch > 0.005, JSON.stringify(k.barrier));
+  // a crease folded ψ on a web t thick and l wide sees t ψ / 2l: the second state's diagonal folds over 150°, so a 0.4 mm
+  // PETG web would want 0.4 × ψ / (2 × 0.012523) mm, over 40 mm, where the panels are 20
+  const w = k.web[1]; near(w.strain, (0.4 * r(w.fold)) / 4, 1e-12, 'web strain'); near(w.length, (0.4 * r(w.fold)) / (2 * petg.strainLimit), 1e-9, 'web length'); assert.ok(w.fold > 150 && w.length > 40);
+  // too short for a second state: 15 tall at 100° (needs h² over 800 (cos 100° - cos 140°) = 474.0)
+  assert.equal(kreslingModel({ sides: 6, radius: 20, height: 15, twist: 100 }).bistable, false);
+  assert.equal(kreslingModel({ sides: 6, radius: 20, height: 22, twist: 100 }).bistable, true);
+  for (const [bad, code] of [[{ ...p, sides: 2 }, 'kresling.sides'], [{ ...p, twist: 20 }, 'kresling.twist'], [{ ...p, twist: 130 }, 'kresling.twist']]) assert.throws(() => kreslingModel(bad), (e) => e.code === code);
+});
