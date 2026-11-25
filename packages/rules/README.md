@@ -46,6 +46,7 @@ to the weak end, take `low` from the set.
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
 | `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them, and what a kilogram costs (its EU store's price with VAT) | 7, 8 |
 | `abs`, `asa`, `pa_cf` | Polymaker PolyLite ABS, Bambu Lab ASA and Bambu Lab PAHT-CF (carbon-filled nylon, dry and annealed), printed, for analysis: stiffness and strength along the layers and across them, each with the data sheet's range (`low`, `high`) | 6 or 7 each |
+| `tpu` | Bambu Lab TPU 95A, printed, for analysis: a rubber for hinges and folds. Stiffness and strength each way with the data sheet's range, strain at break, a second maker's stress at 100% strain, and `flex_strain`, the strain a flexure in it is sized to (25%, an estimate: neither sheet gives a fatigue limit) | 10 |
 | `bearing-608`, `bearing-625`, `bearing-6800`, `bearing-f623`, `bearing-51104` | Ball bearings from NTN's figures: 608, 625, 6800, the flanged F623 and the 51104 thrust bearing: bore, outer diameter, width, chamfer, ratings, radial play class | 9, 9, 9, 10, 10 |
 | `bearing-mr105` | MR105 miniature bearing, 5 x 10 mm (4 wide shielded, 3 open), distributor figures: community until measured | 8 |
 | `endstop-10t85` | The lever microswitch endstop marked 10T85: body, holes, force. Community until measured, and its lever travel is not published anywhere found | 12 |
