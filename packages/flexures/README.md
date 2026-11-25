@@ -811,6 +811,46 @@ of wide slots. Its use in PETG is a soft, auxetic panel; a stretch of tens of pe
 
 The bench has a 5 by 5 panel as `flexures/kirigami` (`npx cad check flexures/kirigami`).
 
+## Negative- and zero-stiffness cells
+
+A shallow arch clamped at both ends, pushed at its middle, gives less push back the further it goes over part of its
+travel: its stiffness there is negative. Two cosine arches side by side, joined at the middle (`bistable`, after Qiu,
+Lang and Slocum), make the cell. Put a positive spring beside it, as stiff as that negative stiffness, and the two
+cancel: the pair holds about the same force over a range of travel. That is a zero-stiffness, statically balanced
+cell, a weight carried anywhere in the range.
+
+```js
+import { curvedCellModel, balancedCellModel, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' });
+const arch = { length: 80, rise: 2.5, thickness: 0.84, width: 6 };
+const b = balancedCellModel(arch, petg);
+b.cell.stiffness;  // 5.12 N/mm at rest
+b.cell.negative;   // { from: 1.03, to: 3.99, least: -1.319 N/mm, at: 2.54 } mm pushed
+b.spring;          // 1.319 N/mm: the positive spring that cancels it
+b.flat;            // { from: 1.58, to: 3.44, span: 1.86, force: 4.39 N }: within 10% of 0 stiffness
+b.leaves;          // { length: 37.2, count: 11 }: what a printed spring of leaves takes
+```
+
+`curvedCellModel` runs the beam solver (`beams.mjs`, large deflections) on the two drawn arches, the shuttle pushed
+along -y with its slide and turn left free, and gives the force curve with its slope at each step, the stiffness at
+rest, the push where it gives (`snap`), the range where the slope is negative, whether it stays over (`bistable`) and
+where (`second`), and the beams' most strain. It stays over when the rise is over 2.31 thicknesses (Qiu et al.); below
+that it springs back, though its stiffness still turns negative past the snap. A rise under about a thickness has no
+negative stiffness at all, and says so (`cell.negative`).
+
+`balancedCellModel` adds a straight-line spring (by default as stiff as the arches' least slope) and finds the travel
+round that point where the pair's slope stays within 10% of the spring's (`within`), and the force there. It also
+sizes a printed spring for it: fixed-guided leaves side by side, each 12 E I / l³ with strain 3 t δ / l² (Howell),
+each as long as it must be to stay within half the strain limit at the far end of the range.
+
+That sizing is why the balanced cell is a model here and its spring is not drawn: a spring soft enough (1.3 N/mm) yet
+carrying 4.4 N at a low strain must hold its energy in a lot of plastic. The cell above wants eleven leaves of 37 mm,
+409 mm of leaf against the arches' 160 mm. Leaves in series (a wave spring) cannot do it at all: each leaf carries the
+whole force, so its strain allows only a few millimetres of leaf. A balanced cell in PETG is a large part. The usual
+compact answer is a strip printed straight and squeezed into its frame at assembly, balanced at its straight middle
+where every spring is near rest; that is a two-print part.
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,

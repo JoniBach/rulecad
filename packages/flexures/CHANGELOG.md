@@ -15,6 +15,9 @@ why. Releases before this file was started are described in their pull requests 
   side, its stiffness and peak strain tabulated from the kit's own plane-stress finite elements (r / w from 0.5 to 6);
   `neckFE` regenerates any row.
 - The bench has a kirigami panel, `flexures/kirigami`.
+- `curvedCellModel` and `balancedCellModel` (issue #79): the curved-beam cell's force curve from the beam solver, the
+  range where its stiffness is negative, and with a positive spring as stiff, the range of travel over which the pair
+  holds about the same force (zero stiffness), with the leaves a printed spring of that stiffness takes.
 
 No printed size of an existing part moved.
 

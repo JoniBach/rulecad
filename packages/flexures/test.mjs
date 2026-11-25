@@ -1887,3 +1887,43 @@ test('kirigami: a one-sided neck\'s stiffness and strain are the kit\'s finite e
     `1.22 times at r / w = 1`, `turn further (${(petg.strainLimit / 0.1256 * 180 / Math.PI).toFixed(1)}° at r / w = 6)`]) assert.ok(readme.includes(line), `the README should read ${line}`);
   near(n.thinNeck / n.stiffness, 1.22, 0.005, 'the README\'s 1.22');
 });
+
+test('cells: a curved-beam cell\'s stiffness turns negative past its snap, Qiu\'s rise over thickness sets whether it stays over, and a spring as stiff cancels it over a range', async () => {
+  const { curvedCellModel, balancedCellModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }); // strain limit 34 / 1810 / 1.5 = 1.2523%
+  // Qiu, Lang and Slocum: two cosine beams joined at the middle stay over when the rise is over 2.31 thicknesses.
+  // 60 mm, 0.84 thick: a rise of 1.5 (Q 1.79) springs back, though its stiffness still turns negative past the snap;
+  // a rise of 3 (Q 3.57) stays over, resting again short of the mirror (2 × 3 = 6 mm) and past 1.5 rises
+  const low = curvedCellModel({ length: 60, rise: 1.5, thickness: 0.84, width: 6 }, petg), high = curvedCellModel({ length: 60, rise: 3, thickness: 0.84, width: 6 }, petg);
+  assert.equal(low.bistable, false); assert.ok(low.negative && low.negative.least < 0, 'Q 1.79: negative past the snap');
+  assert.equal(high.bistable, true); assert.ok(high.second > 4.5 && high.second < 6, `rests again at ${high.second}`);
+  // the slope is the force curve's own: centred differences between steps
+  const c = high.curve, i = 20; near(c[i].slope, (c[i + 1].force - c[i - 1].force) / (c[i + 1].push - c[i - 1].push), 1e-9, 'a centred slope');
+  // a rise under a thickness has none to balance: the finding fails and the balanced cell is refused by name
+  const flat = curvedCellModel({ length: 60, rise: 0.8, thickness: 0.84, width: 6 }, petg);
+  assert.equal(flat.negative, null); assert.equal(flat.findings.find((x) => x.code === 'cell.negative').level, 'fail');
+  assert.throws(() => balancedCellModel({ length: 60, rise: 0.8, thickness: 0.84, width: 6 }, petg), /cell\.negative: balancedCellModel/);
+  assert.throws(() => curvedCellModel({ length: 60, rise: 13, thickness: 0.84, width: 6 }, petg), /cell\.rise: .*up to 12\.00 mm/);
+  assert.throws(() => curvedCellModel({ length: 60, rise: 3, thickness: 0, width: 6 }, petg), /cell\.size: curvedCellModel: thickness/);
+  // The balanced cell: 80 mm, rise 2.5, two lines thick, 6 wide. A spring as stiff as the beams' least slope (about
+  // -1.32 N/mm at 2.57 mm pushed) cancels it there: the pair's force is the beams' plus k × push, its slope theirs plus k
+  const p = { length: 80, rise: 2.5, thickness: 0.84, width: 6 }, b = balancedCellModel(p, petg), k = b.spring;
+  near(k, -b.cell.negative.least, 1e-12, 'the spring matches the least slope'); near(k, 1.32, 0.02, 'about 1.32 N/mm');
+  const j = 30; near(b.curve[j].force, b.cell.curve[j].force + k * b.cell.curve[j].push, 1e-12, 'forces add'); near(b.curve[j].slope, b.cell.curve[j].slope + k, 1e-12, 'slopes add');
+  assert.ok(b.flat && b.flat.from < b.cell.negative.at && b.flat.to > b.cell.negative.at, 'the flat range is round the cancelling point');
+  for (const q of b.curve.filter((q) => q.push >= b.flat.from && q.push <= b.flat.to)) assert.ok(Math.abs(q.slope) <= 0.1 * k + 1e-12, `within 10% at ${q.push}`);
+  assert.ok(b.flat.span > 1.5, `a range of ${b.flat.span} mm`); assert.equal(b.findings.find((x) => x.code === 'cell.flat').level, 'pass');
+  // the printed spring: leaves 0.84 by 6 that stay within half the limit to the range's end δ: l = √(3 t δ / (0.012523 / 2)),
+  // each 12 E I / l³ = E w t³ / l³, as many as reach k. With δ = 3.4375 (the solver's): l = √(8.6625 / 0.0062615) = 37.195,
+  // each 1810 × 6 × 0.592704 / 37.195³ = 6436.8 / 51458 = 0.12509 N/mm, so ⌈1.3195 / 0.12509⌉ = 11 leaves
+  const d = b.flat.to, l = Math.sqrt((3 * 0.84 * d) / (petg.strainLimit / 2));
+  near(b.leaves.length, l, 1e-9, 'leaf length'); near(b.leaves.each, (1810 * 6 * 0.84 ** 3) / l ** 3, 1e-12, 'each leaf'); assert.equal(b.leaves.count, Math.ceil(k / b.leaves.each));
+  if (Math.abs(d - 3.4375) < 1e-9) { near(l, 37.195, 1e-3, 'by hand'); assert.equal(b.leaves.count, 11); }
+  // a spring too soft never cancels: the finding fails and names the stiffness wanted
+  const readme = (await import('node:fs')).readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), N = b.cell.negative;
+  for (const line of [`b.cell.stiffness;  // ${b.cell.stiffness.toFixed(2)} N/mm at rest`, `b.cell.negative;   // { from: ${N.from.toFixed(2)}, to: ${N.to.toFixed(2)}, least: ${N.least.toFixed(3)} N/mm, at: ${N.at.toFixed(2)} } mm pushed`,
+    `b.flat;            // { from: ${b.flat.from.toFixed(2)}, to: ${b.flat.to.toFixed(2)}, span: ${b.flat.span.toFixed(2)}, force: ${b.flat.force.toFixed(2)} N }`, `b.leaves;          // { length: ${b.leaves.length.toFixed(1)}, count: ${b.leaves.count} }`,
+    `${(b.leaves.count * b.leaves.length).toFixed(0)} mm of leaf against the arches' 160 mm`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  assert.match(balancedCellModel(p, petg, { spring: 0.5 }).findings.find((x) => x.code === 'cell.flat').text, /does not cancel .* a spring nearer 1\.3\d\d N\/mm/);
+});
