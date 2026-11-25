@@ -43,6 +43,9 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `pinnedLeaf` | A stiff link on two corner-filleted pivots: moves as a link on two pins, stiff along itself where a plain leaf buckles | the profile as a guided beam; near 2K / Lp² for pivots K = EI / l, Lp apart | the profile's, at the pivots' necks |
 | `xyStage` | Two parallel guides in series at right angles: a stage that moves along x and y | `xyStageModel`: 2 E w t³ / L³ each axis; 2 E w t / L along the leaves | a guide's 3tδ / L², the worse axis; each guide's drop 3δ² / 5L strays the other axis |
 | `splitTube` | A thin tube slotted along its length between closed collars, printed standing: a torsion pivot | G (2πr − s) t³ / 3L (Roark: an open section), about a hundredth of the closed tube's | √3 G t θ / L E (the shear as a tensile strain); warns that its twist shears the layers |
+| `butterflyPivot` | Four blade pairs in series, all turning about one axis, the drift of each pair running against the next's (Henein et al. 2003): a pivot that keeps its axis | `butterflyPivotModel`: a pair 8EI/L × (1 + 3a/L + 3a²/L²), a the blades' inner ends from the axis; the pivot a quarter of that; `drift` from the beam solver | t/L × (2 + 3a/L) at a quarter of the turn |
+| `rollingJoint` | Two rollers held by crossed bands, one each way: they roll on each other with no friction or play (a CORE). Four parts: two rollers standing, two bands flat | `rollingJointModel`: none of its own; it turns twice as far as the contact moves, until a roller meets a lug | t / 2ρ at every angle, ρ = R + t/2 (Halverson et al. 2007) |
+| `xyThetaStage` | The XY stage with a cartwheel on its stage: x, y and a turn about z | `xyThetaStageModel`: the guides' 2 E w t³ / L³ (a little less at the hub, as the guides turn); about z the cartwheel in series with the stage turning, 2 E A c² / L + 2 E I / L a guide | the guides' 3tδ / L² or the spokes', the worse |
 | `snapHook` | A cantilever with a hook: pushed in it deflects and springs back behind the catch | the leaf's; `force` at the undercut, `insertion` and `removal` with friction μ (BASF, Bayer) | 3ty / 2L² at the undercut y |
 | `ratchetWheel`, `ratchetPawl` | Saw teeth on a pin and a leaf pawl: a one-way click | `ratchetModel`: the pawl's `lift` a tooth high and the `click` along the rim | the pawl's, at the tooth height |
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
@@ -590,6 +593,33 @@ push-push latch is built from a plunger module and a track module placed at the 
   closed. It prints only standing, and then its twist shears the wall along the layers: test it, or allow it less
   than the strain limit says. The LET joint is the flat alternative.
 
+### Pivots that keep their axis, a joint that rolls, and a stage that turns
+
+- **The butterfly pivot.** One pair of blades whose lines meet on an axis turns about that axis only roughly: as it
+  turns, the axis drifts. `butterflyPivot` puts four such pairs in series (Henein, Spanoudakis, Droz, Myklebust and
+  Onillon 2003): every blade alike, so each pair turns a quarter of the way, and laid out so each pair's drift runs
+  against the next's. With blades 15 mm long and 0.84 mm thick, turned 10°, the beam solver puts its axis 0.013 mm
+  from where it started, against 0.28 mm for one pair turned as far. The model reproduces the paper's titanium pivot:
+  its stiffness within 5% and its blade stress within 2%. The base sits inside the frame with two screw holes; the
+  output's arm leaves through the frame's opening.
+- **The cross-axis pivot, printed flat.** A cross-axis flexural pivot's two leaves cross each other in different
+  planes, so printed flat one of them hangs in the air. The `cartwheel` is the flat answer: its leaves cross in the
+  same plane and join where they cross.
+- **The rolling-contact joint.** `rollingJoint` is two rollers that roll on each other, held by thin bands wrapped in
+  an S, one band each way (a CORE: Cannon, Lusk and Howell 2005). A band printed straight bends to the roller's
+  radius wherever it lies, so its strain is t / 2ρ however far the joint turns, with no notch to concentrate it: 0.4 mm
+  bands on 12 mm rollers see 1.64%. It has no spring of its own. The bands cross between the rollers at different
+  heights, so the joint prints as four parts: two rollers alike, standing, and two bands flat on the bed. Each band ends
+  in a bead that slides down a pocket in a roller from the top. The pockets are open at the top: the part the joint
+  mounts in, or tape, keeps the beads in. On 12 mm rollers it turns 132° either way before a roller meets the other's
+  lug.
+- **A stage that turns.** `xyThetaStage` stands a cartwheel on the XY stage, for x, y and a turn about z in one flat
+  piece. A z axis would need leaves lying one over another, which cannot print flat without support. Pushed at the
+  hub, the guides also turn a little under the push's moment, so the hub is about 18% softer along x than one guide;
+  the model includes it and agrees with the beam solver within 1%.
+- **A straight stage.** The parallel guide (`parallelGuide`), and the compound guide that cancels its drop, are the
+  straight stages: a cross-spring stage adds nothing to them.
+
 ### Shaped by the solver: curves
 
 A `curve` flexure is a spline through a few points, its thickness easing from point to point. It has no straight runs
@@ -766,4 +796,9 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
+- Henein, S., Spanoudakis, P., Droz, S., Myklebust, L. I., and Onillon, E., "Flexure pivot for aerospace mechanisms", *10th European Space Mechanisms and Tribology Symposium*, ESA SP-524, 2003: the butterfly pivot, its four stages and its titanium prototype.
+- Cannon, J. R., Lusk, C. P., and Howell, L. L., "Compliant rolling-contact element mechanisms", ASME DETC2005-84073, 2005: the CORE.
+- Halverson, P. A., Howell, L. L., and Magleby, S. P., "Tension-based multi-stable compliant rolling-contact elements", *13th National Conference on Mechanisms and Machines* (NaCoMM 2007): a band's bending stress E h / 2R on a rolling surface, its tension stress E ε.
+- Jeanneau, A., Herder, J., Laliberté, T., and Gosselin, C., "A compliant rolling contact joint and its application in a 3-dof planar parallel mechanism with kinematic analysis", ASME DETC2004-57264, 2004.
+- ASM Aerospace Specification Metals, Ti-6Al-4V (Grade 5), annealed: E 113.8 GPa, for the check against Henein's pivot.
 - Norton, R. L., *Design of Machinery*, McGraw-Hill: Grashof's condition and the transmission angle.
