@@ -178,12 +178,22 @@
       "description": "One section all along this axis: a part cut from a bar, an extrusion or a plate of the profile"
     },
     "mill": {
-      "type": "string",
-      "pattern": "^[+-][xyz]$",
-      "description": "Milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is as solid as every cell between it and the tool. Not with overhang or cast. Rules: mill-3axis"
+      "description": "Milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is as solid as every cell between it and the tool. Or from several sides, a setup each (['+z', '-z']: turned over for the second): a cell is left where no side's tool reaches it. Not with overhang or cast. Rules: mill-3axis",
+      "oneOf": [
+        { "type": "string", "pattern": "^[+-][xyz]$" },
+        { "type": "array", "items": { "type": "string", "pattern": "^[+-][xyz]$" }, "minItems": 1, "uniqueItems": true }
+      ]
+    },
+    "tool": {
+      "$ref": "#/$defs/expr",
+      "description": "With mill: the tool's radius, mm (a flat end mill). No pocket narrower than the tool, and every inside corner seen from the tool rounded to at least its radius. At the grid's resolution: the tool's end is the cells whose centres are within its radius, so give at least a cell. Rules: mill-3axis (an inside corner's radius)"
+    },
+    "draft": {
+      "$ref": "#/$defs/expr",
+      "description": "With cast: the draft, degrees. The part narrows towards the side it is drawn off: a wall steps out a cell every whole number of layers in 1 / tan(draft), so at least this draft; refused by name when the grid is too shallow for one step. Rules: mould-injection"
     },
     "cast": {
-      "description": "Cast or moulded: in a mould drawn off one way ('+z'), or in two halves drawn off both ways along an axis from a parting plane. No undercuts from the draw; draft is left to the drawing. Not with overhang or mill. Rules: mould-injection",
+      "description": "Cast or moulded: in a mould drawn off one way ('+z'), or in two halves drawn off both ways along an axis from a parting plane. No undercuts from the draw, and with draft the walls taper. Not with overhang or mill. Rules: mould-injection",
       "oneOf": [
         { "type": "string", "pattern": "^[+-][xyz]$" },
         {

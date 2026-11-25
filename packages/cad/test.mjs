@@ -6900,3 +6900,31 @@ export function main (v) {
     assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
   } finally { done(); }
 });
+
+test('a problem milled from two sides by a tool of a size, or cast with a draft (#35): cad optimise says how, with the draft made at the grid, and refuses a tool or a draft the grid cannot show', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'made');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'made', objects: [] }));
+    // A 12 mm cube held at its foot and pushed sideways at its top, on 1.5 mm cells (8 × 8 × 8)
+    const base = { uses: ['mill-3axis'], material: 'al6061', cell: 1.5, volume: 0.5, filter: 2.25, steps: 12, space: { at: [0, 0, 6], size: [12, 12, 12] },
+      supports: [{ at: [0, 0, 0.75], size: [12, 12, 1.5] }], loads: [{ at: [0, 0, 11.25], size: [12, 12, 1.5], force: [100, 0, 0] }] };
+    const write = (name, p) => fs.writeFileSync(path.join(project, 'problems', `${name}.json`), JSON.stringify({ title: name, ...base, ...p }));
+    write('two', { mill: ['+z', '-z'], tool: 1.5 });
+    assert.match(cad('optimise', 'made/two'), /milled from \+z and -z by a tool of 1\.5 mm radius: no undercuts/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'made/two', '--json')).process, { mill: ['+z', '-z'], tool: 1.5 });
+    // 15°: 1 / tan 15° = 3.73, so a step out every 3 layers of the 8, which is atan(1 / 3) = 18.43°
+    write('draft', { uses: ['mould-injection'], cast: '+z', draft: 15 });
+    const draft = cad('optimise', 'made/draft');
+    assert.match(draft, /cast, drawn off \+z with a 15° draft \(a step out every 3 layers: 18\.43°\): no undercuts/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'made/draft', '--json')).process, { cast: '+z', draft: 15, every: 3, made: 18.43 });
+    // 3°: a step every 19 layers (1 / tan 3° = 19.1), and the cube has 8; a 1 mm tool on 1.5 mm cells; a draft on a milled part
+    write('shallow', { uses: ['mould-injection'], cast: '+z', draft: 3 });
+    assert.match(cad('optimise', 'made/shallow'), /a draft of 3° steps out a cell every 19 layers, and this grid has 8 along z: give it more than 19 layers there \(smaller cells\), or more draft/);
+    write('small', { mill: '+z', tool: 1 });
+    assert.match(cad('optimise', 'made/small'), /a tool's radius of 1 mm is under a cell \(1\.5 mm\) and changes nothing on the grid/);
+    write('milldraft', { mill: '+z', draft: 5 });
+    assert.match(cad('optimise', 'made/milldraft'), /a draft is for a cast or moulded part \(cast\): a milled part's walls come out straight down the tool's side/);
+  } finally { done(); }
+});

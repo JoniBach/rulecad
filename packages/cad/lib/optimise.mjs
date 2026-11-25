@@ -136,6 +136,7 @@ async function readOne(project, ref, link) {
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
     // How it's made other than printed: milled from a side, cast in a mould; symmetric, extruded (topopt's filters)
     ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: typeof p.cast === 'string' ? p.cast : { draw: p.cast.draw, ...(p.cast.parting != null ? { parting: ev(p.cast.parting) } : {}) } } : {}),
+    ...(p.tool != null ? { tool: ev(p.tool) } : {}), ...(p.draft != null ? { draft: ev(p.draft) } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
     ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
@@ -176,8 +177,11 @@ function holdEmpty(spec) {
 function made(r, spec, density) {
   const p = r.problem, out = {};
   if (p.mill || p.cast) {
-    const c = spec.cast, from = p.mill || (typeof c === 'string' ? c : c.draw), u = undercuts(spec.grid, density, { from, ...(c && typeof c === 'object' ? { parting: c.parting } : {}) });
-    out.process = p.mill ? { mill: p.mill } : { cast: typeof c === 'string' ? c : { draw: c.draw, parting: round(c.at, 3) } };
+    const c = spec.cast, from = p.mill || (typeof c === 'string' ? c : c.draw), tool = p.tool ? p.tool / spec.grid.h : undefined;
+    const u = undercuts(spec.grid, density, { from, ...(c && typeof c === 'object' ? { parting: c.parting } : {}), ...(tool ? { tool } : {}), ...(p.draft ? { draft: p.draft } : {}) });
+    // (a draft at the grid: a step out every whole number of layers in 1 / tan, so the angle made is atan of one over it)
+    const every = p.draft ? Math.max(1, Math.floor(1 / Math.tan((p.draft * Math.PI) / 180) + 1e-9)) : 0;
+    out.process = p.mill ? { mill: p.mill, ...(p.tool ? { tool: p.tool } : {}) } : { cast: typeof c === 'string' ? c : { draw: c.draw, parting: round(c.at, 3) }, ...(every ? { draft: p.draft, every, made: round((Math.atan(1 / every) * 180) / Math.PI, 2) } : {}) };
     out.undercuts = u.count;
   }
   if (p.symmetry) out.symmetry = p.symmetry;
