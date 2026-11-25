@@ -27,6 +27,10 @@
       "down": 99.3,
       "angled": 191
     },
+    "lever:milled": {
+      "down": 99.6,
+      "angled": 184
+    },
     "bracket-web": {
       "down": 95.2,
       "angled": 24.4
@@ -61,6 +65,11 @@
       []
     ],
     "lever:both": [
+      [],
+      [],
+      []
+    ],
+    "lever:milled": [
       [],
       [],
       []
