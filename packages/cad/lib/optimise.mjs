@@ -98,6 +98,11 @@ async function readOne(project, ref, link) {
   };
   // The build direction: a direction ('+z'), or a variable holding one
   const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
+  // The sides it is milled from, and a one-way mould's draw, likewise: or a variable holding them ('+z', '+z +x', or
+  // 'none': not milled, not cast), so a variant can switch the process
+  const named = (v) => (typeof v === 'string' && typeof values[v] === 'string' ? values[v] : v);
+  const millSides = (() => { const v = named(p.mill); if (typeof v !== 'string') return v; const list = v.trim().split(/[\s,]+/).filter(Boolean); return v === 'none' ? null : list.length > 1 ? list : v; })();
+  const castWay = (() => { const v = named(p.cast); return v === 'none' ? null : v; })();
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
@@ -135,8 +140,9 @@ async function readOne(project, ref, link) {
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
     // How it's made other than printed: milled from a side, cast in a mould; symmetric, extruded (topopt's filters)
-    ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: typeof p.cast === 'string' ? p.cast : { draw: p.cast.draw, ...(p.cast.parting != null ? { parting: ev(p.cast.parting) } : {}) } } : {}),
-    ...(p.tool != null ? { tool: ev(p.tool) } : {}), ...(p.draft != null ? { draft: ev(p.draft) } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
+    ...(millSides ? { mill: millSides } : {}), ...(castWay ? { cast: typeof castWay === 'string' ? castWay : { draw: castWay.draw, ...(castWay.parting != null ? { parting: ev(castWay.parting) } : {}) } } : {}),
+    // (a tool or draft with the process switched off by its variable is left out with it)
+    ...(p.tool != null && millSides ? { tool: ev(p.tool) } : {}), ...(p.draft != null && castWay ? { draft: ev(p.draft) } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}),
     // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
     ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
