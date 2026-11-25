@@ -27,3 +27,6 @@ export { neckFE, neckHingeModel, rotatingSquares, rotatingSquaresModel, kirigami
 export { curvedCellModel, balancedCellModel } from './cells.mjs';
 export { tubeFourBar, tubeFourBarModel, tubeFourBarFindings } from './developable.mjs';
 export { kreslingModel } from './origami.mjs';
+export { waterbomb, waterbombModel, kreslingTube, kreslingTubeModel } from './origami.mjs';
+export { coneFourBar, coneFourBarModel, coneFourBarFindings } from './developable.mjs';
+export { balancedStrip, balancedStripModel } from './bistables.mjs';

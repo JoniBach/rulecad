@@ -405,12 +405,14 @@ export function kreslingTube(p) {
   }
   const poly = (r, q0, z) => Array.from({ length: n }, (_, i) => pt(r, i * al + q0, z));
   parts.push(extrudeLinear({ height: cap }, polygon({ points: poly(R, 0, 0).map((x) => [x[0], x[1]]) })));
-  // the ring: its outside the top polygon from h0 up by rim; its underside rises 45° in from the wall's top
-  const ringIn = Math.min(rim, R / 3), lo = poly(R, phi, h0), up = poly(R, phi, h0 + rim), ilo = poly(R - ringIn, phi, h0 + ringIn), iup = poly(R - ringIn, phi, h0 + rim);
-  const ringPts = [...lo, ...up, ...ilo, ...iup], faces = [];
+  // the ring: on the wall's top (w wide) from h0 up by rim, and a third of rim further in, its underside rising 2:1 in
+  // from the wall's inside edge, so every layer of it is at least the wall's width and stands on the one below
+  const ri = Math.min(rim / 3, R / 3), prof = [[R, h0], [R, h0 + rim], [R - w - ri, h0 + rim], [R - w - ri, h0 + 2 * ri], [R - w, h0]], np = prof.length;
+  const ringPts = [], faces = [];
+  for (let i = 0; i < n; i++) for (const [r, z] of prof) ringPts.push(pt(r, i * al + phi, z));
   for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n, L = (x) => x, U = (x) => n + x, IL = (x) => 2 * n + x, IU = (x) => 3 * n + x;
-    faces.push([L(i), L(j), U(j), U(i)], [IL(i), IU(i), IU(j), IL(j)], [U(i), U(j), IU(j), IU(i)], [L(i), IL(i), IL(j), L(j)]);
+    const j = (i + 1) % n, at = (c, k) => c * np + k;
+    for (let k = 0; k < np; k++) { const k1 = (k + 1) % np; faces.push([at(i, k), at(j, k), at(j, k1), at(i, k1)]); }
   }
   parts.push(polyhedron({ points: ringPts, faces, orientation: 'outward' }));
   return union(...parts);
