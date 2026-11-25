@@ -6922,7 +6922,7 @@ test('a problem placed in an assembly: a support at one of its joints, and a par
     bench();
     const problem = { title: 'The plate under the arm, clear of the gate', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.4, steps: 30,
       in: { assembly: 'bench', item: 'plate' }, space: { at: [10, 0], size: [40, 30] },
-      supports: [{ joint: 'hinge', r: 2 }], loads: [{ at: [-8, -12], r: 1.5, force: [0, -10] }], avoid: [{ sweep: 'gate', through: 'swing' }] };
+      supports: [{ joint: 'hinge', r: 2 }, { at: [28, -10], r: 2 }], loads: [{ at: [14, 14], r: 1.5, force: [0, -10] }], avoid: [{ sweep: 'gate', through: 'swing' }] };
     const write = (n, x) => fs.writeFileSync(path.join(project, 'problems', `${n}.json`), JSON.stringify(x));
     write('plate', problem);
     const read = (ref) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -6938,7 +6938,7 @@ test('a problem placed in an assembly: a support at one of its joints, and a par
     const r = read('plate');
     assert.equal(r.error, undefined, r.error);
     // The support sits at the hinge: the plate's own end of it, its pivot anchor at (0, 0, 4), x and y in this flat problem
-    assert.deepEqual(r.supports, [{ at: [0, 0], axis: undefined }]);
+    assert.deepEqual(r.supports, [{ at: [0, 0] }, { at: [28, -10] }]);
     assert.deepEqual(r.inputs.assembly.joints, [{ joint: 'hinge', at: [0, 0, 4] }]);
     // Steps, by hand: the bar's far corners (20, +-2) are sqrt(20^2 + 2^2) = 20.0998 mm from the post, so over 90 degrees
     // in 32 pieces of pi / 64 each moves a chord of 2 x 20.0998 x sin(pi / 128) = 0.98655 mm, 31.570 mm in all; no point
@@ -6952,13 +6952,22 @@ test('a problem placed in an assembly: a support at one of its joints, and a par
     // Inside the swept quarter, on the bar at 180 degrees, and two outside it: beyond its reach, and below the bar
     assert.deepEqual(r.cells, [-1, -1, 0, 0]);
     // The same problem solid: each step the bar's own triangles, every one of the 4 layers clear as the flat section was
-    write('solid', { ...problem, thickness: undefined, space: { at: [10, 0, 2], size: [40, 30, 4] }, supports: [{ joint: 'hinge', r: 2, length: 4 }], loads: [{ at: [-8, -12, 2], r: 1.5, length: 4, force: [0, -10, 0] }] });
+    write('solid', { ...problem, thickness: undefined, space: { at: [10, 0, 2], size: [40, 30, 4] }, supports: [{ joint: 'hinge', r: 2, length: 4 }, { at: [28, -10, 2], r: 2, length: 4 }], loads: [{ at: [14, 14, 2], r: 1.5, length: 4, force: [0, -10, 0] }] });
     const solid = read('solid');
-    assert.deepEqual(solid.supports, [{ at: [0, 0, 4], axis: 'z' }], 'a cylinder at the hinge lies along its axis');
+    assert.equal(solid.error, undefined, solid.error);
+    assert.deepEqual(solid.supports[0], { at: [0, 0, 4], axis: 'z' }, 'a cylinder at the hinge lies along its axis');
     assert.equal(solid.avoided, 4 * r.avoided);
     // Optimised as any problem is, kept until the assembly moves what it read; cad why names the assembly and the sweep
     assert.match(cad('optimise', 'swing/plate'), /moves [\d.]+ mm along its load/);
     assert.match(cad('optimise', 'swing/plate'), /\(cached\)/);
+    assert.match(cad('check', 'swing/plate'), /✓ closed solid/);
+    // The load at (14, 14) and the support at (28, -10) lie either side of the gate's swing: the plate goes round it, and
+    // the assembly, the plate drawn from its result, is clear all through the swing. Without the sweep it is struck.
+    assert.match(cad('check', 'swing/bench', '--sweep'), /✓ sweep swing, 90 to 180° in 24 steps: nothing collides/);
+    write('bare', { ...problem, avoid: [] });
+    cad('set', 'swing/plate', 'problem=bare');
+    assert.match(cad('check', 'swing/bench', '--sweep'), /✗ sweep swing, 90 to 180° in 24 steps: [^\n]*gate[^\n]* hits plate|plate[^\n]* hits gate/);
+    cad('set', 'swing/plate', 'problem=plate');
     const why = cad('why', 'swing/plate.problem');
     assert.match(why, /in the assembly bench, item plate: joints read: hinge at \(0, 0, 4\); swept: gate through swing, 90 to 180 in 64 steps/);
     bench(135);
@@ -6976,7 +6985,7 @@ test('a problem placed in an assembly: a support at one of its joints, and a par
     assert.match(read('nojoint').error, /nojoint\.json: bench has no joint "elbow" \(joints: hinge, swing\)/);
     write('kept', { ...problem, keep: [{ sweep: 'gate', through: 'swing' }] });
     assert.match(read('kept').error, /kept\.json: a swept part \("gate"\) is a region to keep clear: put it under avoid/);
-    write('loose', { ...problem, in: undefined });
+    write('loose', { ...problem, in: undefined, avoid: [] });
     assert.match(read('loose').error, /loose\.json: the joint "hinge" needs the problem placed in an assembly: "in": \{ "assembly": "<name>", "item": "<the item it is drawn in>" \}/);
   } finally { done(); }
 });

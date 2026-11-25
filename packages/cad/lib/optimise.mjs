@@ -99,8 +99,8 @@ async function readOne(project, ref, link) {
   };
   // The assembly the problem is placed in ("in": { "assembly", "item", "pose", "z" }): its coordinates are that item's
   // own there, as the item's design draws the result. Built once, in its pose (default the one it shows), for its
-  // joints and its moving parts; an item made from this very problem is drawn without it (its problem variable set to
-  // none), since the result can't be needed to place the problem it comes from.
+  // joints and its moving parts; the item itself, and any other made from this very problem, is drawn without a result
+  // (its problem variables set to none), since the result can't be needed to place the problem it comes from.
   const fileName = path.basename(file);
   let placing = null;
   const inAssembly = (what) => {
@@ -112,7 +112,7 @@ async function readOne(project, ref, link) {
       for (const it of readJson(assemblyPath(ref)).items || []) if (typeof it.object === 'string') {
         let vars = {};
         try { vars = readObject(locate(`${project}/${it.object.split(/[:@]/)[0]}`)).variables || {}; } catch { continue; }
-        for (const [k, v] of Object.entries(vars)) if (v.type === 'problem' && String(it.set?.[k] ?? v.value).split(':')[0] === name) (overrides[it.id] ||= {})[k] = 'none';
+        for (const [k, v] of Object.entries(vars)) if (v.type === 'problem' && (it.id === p.in.item || String(it.set?.[k] ?? v.value).split(':')[0] === name)) (overrides[it.id] ||= {})[k] = 'none';
       }
       const chain = reading.getStore();
       const s = await reading.run([...chain.slice(0, -1), { ...link, object: `the assembly ${p.in.assembly}` }], () => buildAssembly(ref, [], overrides, { pose: p.in.pose, onePose: true }));
@@ -172,12 +172,20 @@ async function readOne(project, ref, link) {
           for (const [m, tris] of local.entries()) {
             const moved = tris.map((t) => t.map((q) => apply(Ms[m], q).map(clean)));
             if (!flat) { out.push({ triangles: moved, sweep: r.sweep, joint: id, value: round(v, 6) }); made++; continue; }
-            // The section's outlines as one polygon, each closed and back to the first one's start, so a point inside
-            // is inside an odd number of them (a hole in the part stays open) and the joins cancel out
-            const rings = loops(section(moved, 2, z)).filter((l) => l.length > 3);
+            // The section's outlines, each a ring turned solid on its left (an outline counter-clockwise, a hole in it
+            // clockwise), for the design to cut exactly (rings); and for the solver one polygon of them all, each closed and
+            // back to the first one's start, so a point is inside where it is inside an odd number of them (a hole in the
+            // part stays open) and the joins cancel out
+            const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+            const rings = loops(section(moved, 2, z)).map((l) => (same(l[0], l.at(-1)) ? l.slice(0, -1) : l).map((q) => q.map(clean))).filter((l) => l.length >= 3);
             if (!rings.length) continue;
-            const start = rings[0][0], points = rings.flatMap((l, n) => [...l, ...(round(l[0][0], 6) !== round(l.at(-1)[0], 6) || round(l[0][1], 6) !== round(l.at(-1)[1], 6) ? [l[0]] : []), ...(n ? [start] : [])]);
-            out.push({ points: points.map((q) => q.map(clean)), sweep: r.sweep, joint: id, value: round(v, 6) }); made++;
+            const within = (q, P) => { let c = false; for (let a = 0, b = P.length - 1; a < P.length; b = a++) if ((P[a][1] > q[1]) !== (P[b][1] > q[1]) && q[0] < ((P[b][0] - P[a][0]) * (q[1] - P[a][1])) / (P[b][1] - P[a][1]) + P[a][0]) c = !c; return c; };
+            const turned = rings.map((l, n) => {
+              const depth = rings.filter((o, m) => m !== n && within(l[0], o)).length, ccw = l.reduce((t, q, a) => t + q[0] * l[(a + 1) % l.length][1] - l[(a + 1) % l.length][0] * q[1], 0) > 0;
+              return ccw === (depth % 2 === 0) ? l : [...l].reverse();
+            });
+            const start = turned[0][0], points = turned.flatMap((l, n) => [...l, l[0], ...(n ? [start] : [])]);
+            out.push({ points, rings: turned, sweep: r.sweep, joint: id, value: round(v, 6) }); made++;
           }
         }
         sweeps.push({ sweep: r.sweep, through: what, from: round(lo, 6), to: round(hi, 6), steps, regions: made });

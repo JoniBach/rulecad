@@ -126,7 +126,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["assembly", "item"],
-      "description": "The assembly the problem is placed in: its coordinates are the item's own there, as that item's design draws the result. Regions can then sit at the assembly's joints (joint) and keep clear of its moving parts (sweep). An item built from this problem is drawn without it (its problem variable set to none) while the assembly is read",
+      "description": "The assembly the problem is placed in: its coordinates are the item's own there, as that item's design draws the result. Regions can then sit at the assembly's joints (joint) and keep clear of its moving parts (sweep). While the assembly is read, the item, and any other built from this problem, is drawn without a result (its problem variables set to none)",
       "properties": {
         "assembly": { "type": "string", "description": "The assembly's name, in projects/<project>/assemblies" },
         "item": { "type": "string", "description": "The item whose frame the problem is drawn in: the part being optimised" },
