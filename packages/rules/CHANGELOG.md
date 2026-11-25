@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## Unreleased
+## 0.3.24: a second maker's sheets, ranges readable
 ### Added
 
 - A second maker's sheet beside three printed plastics, each in the same rules with its sheet's range:

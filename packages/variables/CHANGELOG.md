@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased
+## 0.3.7: range ends in expressions
 ### Added
 
 - An expression reads either end of a rule's range: `pa_cf.strength.low`, `pa_cf.strength.high`, in the rule's unit.

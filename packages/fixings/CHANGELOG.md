@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Unreleased
+## 0.1.8: ABS, ASA and PA-CF in thread engagement
 ### Added
 
 - The printed plastics ABS, ASA and PA-CF (`abs`, `asa`, `pa_cf`, from `@rulecad/rules` 0.3.23) are materials of the
