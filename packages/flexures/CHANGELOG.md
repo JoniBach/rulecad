@@ -4,7 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
-## Unreleased: kirigami, developable mechanisms, Kresling and zero-stiffness cells (#78, #79)
+## 0.5.15: kirigami, developable mechanisms, Kresling and zero-stiffness cells (#78, #79)
 ### Added
 
 - `rotatingSquares`, `rotatingSquaresModel`, `kirigamiFindings` (issues #78 and #79): a kirigami sheet of rotating
