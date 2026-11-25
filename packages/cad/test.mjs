@@ -6632,8 +6632,10 @@ test('frame checks: a force on a slide and a torque on a hinge are carried into 
     assert.ok(Math.abs((force.sag.values.sag - none.sag.values.sag) / ((100 * 600 ** 3) / (3 * EI)) - 1) < 0.01, `force: ${force.sag.values.sag} less ${none.sag.values.sag} mm against ${(100 * 600 ** 3) / (3 * EI)}`);
     assert.ok(Math.abs((torque.sag.values.sag - none.sag.values.sag) / ((10000 * 600 ** 2) / (2 * EI)) - 1) < 0.01, `torque: ${torque.sag.values.sag} less ${none.sag.values.sag} mm against ${(10000 * 600 ** 2) / (2 * EI)}`);
     // Each joint is swept in quarters (frame.sweep): as drawn, then the press at 0 and 40 and the three steps between,
-    // and the hinge at 0 and 90 and the three between: 11 poses, each one way and the other
-    assert.match(force.solve.text, /with 100 N on press carried into x1 through its joint, one way and then the other, in 11 poses \(22 cases\)/);
+    // and the hinge at 0 and 90 and the three between: 11 poses; then the two together (frame.together), every
+    // combination of their 5 places, 25, of which 9 are among those (the press at 0 with each hinge place, and the
+    // hinge at 0 with each press place): 27 poses, each one way and the other
+    assert.match(force.solve.text, /with 100 N on press carried into x1 through its joint, one way and then the other, in 27 poses \(press, hinge each swept and then together: every combination of their 5 places each\) \(54 cases\)/);
     assert.match(torque.solve.text, /with 10 N m on hinge carried into x1 through its joint, one way and then the other/);
     assert.deepEqual(force.solve.refs.onJoints, [{ joint: 'press', value: 100, unit: 'N', beam: 'x1', note: null }]);
     assert.match(force.sag.refs.pose, /joint loads -$/);
@@ -6933,5 +6935,63 @@ test('guides: an MGN7 rail on a 2020 with "nut": "printed" places a printed carr
     assert.match(by('fasten.end')[0].text, /ends in an M2 hex nut in its seat in g1-nuts/);
     // nothing fails, and nothing warns but the rail's own long end holes (guide.end)
     assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && x.code !== 'guide.end')).map((x) => `${x.code} ${x.text}`), []);
+  } finally { done(); }
+});
+
+test('frame checks (#302): joints mounted on the frame are swept together; a motor stalled against a hard stop pushes the stop and its own mount apart, and a motor turning a hinge holds its torque at its mount, each as hand formulas say', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const probe = (name, a) => {
+      fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify(a));
+      return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+        const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+        const s = await buildAssembly('frame/${name}');
+        console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    };
+    const P = '2020-misumi-hfs5', EI = 69972 * 7420, G = 9.80665, sagAt = (r, where) => r.find((x) => x.code === 'frame.deflection' && x.refs.where === where);
+    // 1. Swept together. A 600 mm 2020 held fixed at both ends, two slides along it, each from 0 to 580 mm, each a
+    // 20 mm stub carrying 2 kg, both drawn at 0 (over the support). One at a time, the other stays at 0; together, both
+    // stand at the middle at once. Fixed-fixed with P at the middle, the sag there is P L^3 / 192 E I (Roark, table 8.1,
+    // case 1d), so the two together sag 2 x 19.613 x 600^3 / (192 x 5.192e8) = 0.0850 mm, twice what one alone does
+    const slide = (id) => ({ id, type: 'prismatic', parent: { item: 'x1', at: [0, 10, 0], axis: [0, 0, 1] }, child: { item: id, at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 580 });
+    const two = (loads) => ({ title: 'Two', kind: 'fit', items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'c1', beam: { profile: P, length: 20 } }, { id: 'c2', beam: { profile: P, length: 20 } }],
+      joints: [slide('c1'), slide('c2')], loads, frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, points: ['x1.top@300'] } });
+    const loaded = probe('two', two([{ mass: 2, at: { item: 'c1', at: [0, 0, 10] } }, { mass: 2, at: { item: 'c2', at: [0, 0, 10] } }])), bare = probe('bare', two([]));
+    const mid = sagAt(loaded, 'x1.top@300'), share = mid.values.sag - sagAt(bare, 'x1.top@300').values.sag, hand = (2 * 2 * G * 600 ** 3) / (192 * EI);
+    assert.match(mid.refs.pose, /^c1 at 290, c2 at 290$/, 'the worst pose has both carriages at the middle (their stubs\' 2 kg at 290 + 10 = 300 mm)');
+    assert.ok(Math.abs(share / hand - 1) < 0.01, `both at the middle: ${share} against ${hand}`);
+    assert.match(loaded.find((x) => x.code === 'frame.solve').text, /in 27 poses \(c1, c2 each swept and then together: every combination of their 5 places each\)/);
+    // 2. A stall against a hard stop. A 600 mm 2020 fixed at its end a, a press at its end b sliding square to it (world
+    // z), driven through an 8 mm lead screw (8 mm across, friction 0.2) by a NEMA 17 mounted on the beam at 300 mm.
+    // Its holding torque, 0.59 N m, through the screw's efficiency, tan(l) / tan(l + f) with l = atan(8 / (pi x 8)) =
+    // 17.657 deg and f = atan(0.2) = 11.310 deg: 0.31831 / 0.55375 = 0.5748, pushes 2 pi x 590 x 0.5748 / 8 = 266.4 N at
+    // the stop. The stop takes it at the tip, the motor's mount 300 mm in takes it back along the same line, so only the
+    // outer 300 mm bends: the tip moves F a^3 / 3 E I = 266.4 x 300^3 / (3 x 5.192e8) = 4.619 mm. A motor on the bench
+    // (drives nothing) weighs the same, so the difference is the stall's own share
+    const arm = (m) => ({ title: 'Arm', kind: 'fit', items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'p', beam: { profile: P, length: 100 } }, { id: 'm1', motor: m, at: 'x1.top@300' }],
+      joints: [{ id: 'press', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 600], axis: [0, 1, 0] }, child: { item: 'p', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 40 }], frame: { supports: { 'x1.a': 'fixed' }, points: ['x1.top@600'] } });
+    const stalled = probe('stall', arm({ model: 'nema17', drives: 'press', leadscrew: { lead: 8, diameter: 8, friction: 0.2 } })), bench = probe('bench', arm({ model: 'nema17' }));
+    const eta = Math.tan(Math.atan(8 / (Math.PI * 8))) / Math.tan(Math.atan(8 / (Math.PI * 8)) + Math.atan(0.2)), F = (2 * Math.PI * 590 * eta) / 8;
+    const solve = stalled.find((x) => x.code === 'frame.solve'), st = solve.refs.stalls;
+    assert.deepEqual(st.map((x) => [x.joint, x.motor, x.end, x.unit, x.hold, x.stop, x.mount]), [['press', 'm1', 0, 'N', 0.59, 'x1', 'x1'], ['press', 'm1', 40, 'N', 0.59, 'x1', 'x1']]);
+    assert.ok(Math.abs(st[0].value / F - 1) < 0.001, `stall push ${st[0].value} against ${F}`);
+    assert.match(solve.text, /m1 stalled against press's stop at each end of its travel \(266\.\d+ N from its 0\.59 N m holding torque, on the stop and back on its mount on x1\)/);
+    const tip = sagAt(stalled, 'x1.top@600'), push = tip.values.sag - sagAt(bench, 'x1.top@600').values.sag;
+    assert.match(tip.refs.pose, /m1 stalled against its stop$/);
+    assert.ok(Math.abs(push / ((F * 300 ** 3) / (3 * EI)) - 1) < 0.01, `stall: ${push} against ${(F * 300 ** 3) / (3 * EI)}`);
+    // 3. A motor turning a hinge at the tip, mounted there too: the arm's inertia pushes its most torque back through its
+    // mount, so the tip takes that torque each way: T L^2 / 2 E I. Its stall at a stop on the same node cancels
+    const hinge = (m) => ({ title: 'Hinge', kind: 'fit', items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 300], to: [600, 0, 300] }, { id: 'h', beam: { profile: P, length: 100 } }, { id: 'm2', motor: m, at: 'x1.top@600' }],
+      joints: [{ id: 'hinge', type: 'revolute', parent: { item: 'x1', at: [0, 10, 600], axis: [1, 0, 0] }, child: { item: 'h', at: [0, 0, 50], axis: [0, 0, 1] }, min: 0, max: 90 }], frame: { supports: { 'x1.a': 'fixed' }, points: ['x1.top@600'] } });
+    const turned = probe('turned', hinge({ model: 'nema17', drives: 'hinge' })), still = probe('still', hinge({ model: 'nema17' }));
+    const r = turned.find((x) => x.code === 'frame.solve').refs.onJoints[0], T = r.value * 1000;
+    assert.deepEqual([r.joint, r.unit, r.beam], ['hinge', 'N m', 'x1']); assert.match(r.note, /^m2's reaction, the most torque it turns hinge with$/);
+    assert.ok(r.value > 0 && r.value <= 0.59, `its torque at its working speed, ${r.value} N m, is no more than its holding torque`);
+    const turn = sagAt(turned, 'x1.top@600').values.sag - sagAt(still, 'x1.top@600').values.sag;
+    assert.ok(Math.abs(turn / ((T * 600 ** 2) / (2 * EI)) - 1) < 0.01, `reaction: ${turn} against ${(T * 600 ** 2) / (2 * EI)}`);
   } finally { done(); }
 });
