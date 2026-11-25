@@ -22,4 +22,5 @@ export { miura, miuraModel } from './origami.mjs';
 export { fourBar, fourBarModel, sliderCrank, sliderCrankModel } from './linkages.mjs';
 export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifierModel, leverAmplifier, leverAmplifierModel } from './amplifiers.mjs';
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve } from './bistables.mjs';
+export { forceGauge, forceGaugeModel, slipClutch, slipClutchModel } from './elements.mjs';
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';

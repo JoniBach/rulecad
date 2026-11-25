@@ -24,7 +24,7 @@ const { measureVolume } = jscad.measurements;
 const STEM = 2; // mm: the knob's stem, across
 const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [(x0 + x1) / 2, (y0 + y1) / 2] });
 // A beam's outline from a to b, its profile's half-thickness along it, running on `into` past both ends
-function beamOutline(a, b, half, L, t, into, r = 0) {
+export function beamOutline(a, b, half, L, t, into, r = 0) {
   const u = unit(sub(b, a)), n = [-u[1], u[0]], m = 120, top = [], bottom = [], fine = r ? Array.from({ length: 33 }, (_, i) => (r * i) / 32) : []; // the rounds, finely
   const ss = [-into, ...[...new Set([...Array.from({ length: m + 1 }, (_, i) => (L * i) / m), ...fine, ...fine.map((x) => L - x)])].sort((x, y) => x - y), L + into];
   for (const s of ss) { const h = s < 0 || s > L ? t / 2 : half(s); const c = add(a, mul(u, s)); top.push(add(c, mul(n, h))); bottom.push(sub(c, mul(n, h))); }
@@ -33,7 +33,7 @@ function beamOutline(a, b, half, L, t, into, r = 0) {
 // A pad at a beam's end, square to the beam, so the beam's rounds meet a flat face
 const pad = (at, u, along, across) => { const n = [-u[1], u[0]], c = add(at, mul(u, along / 2)); return polygon({ points: [add(sub(c, mul(u, along / 2)), mul(n, across / 2)), sub(sub(c, mul(u, along / 2)), mul(n, across / 2)), sub(add(c, mul(u, along / 2)), mul(n, across / 2)), add(add(c, mul(u, along / 2)), mul(n, across / 2))] }); };
 // The beam as the solver's spans, its thickness from the rounded profile
-const spansOf = (a, b, half, L, n = 16) => ({ path: Array.from({ length: n + 1 }, (_, i) => add(a, mul(sub(b, a), i / n))), thickness: Array.from({ length: n }, (_, i) => 2 * half(((i + 0.5) * L) / n)) });
+export const spansOf = (a, b, half, L, n = 16) => ({ path: Array.from({ length: n + 1 }, (_, i) => add(a, mul(sub(b, a), i / n))), thickness: Array.from({ length: n }, (_, i) => 2 * half(((i + 0.5) * L) / n)) });
 
 /**
  * The force curve of a pushed shuttle, from the beam solver: its y held at each step from rest to `to` (the push,
