@@ -61,6 +61,9 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `leverAmplifier` | One link on one flexure, pushed a from its pivot, its far end b out moving b / a times as far | K / a² at the input | t (u / a) / 2l |
 | `tiltedBistable` | A shuttle on two straight leaves tilted toward it: pushed past the roots' line it snaps on and stays (Jensen and Howell) | 2 (EA/L sin²α + 12EI/L³ cos²α) at rest; the snap from the beam solver | the solver's, along the way over |
 | `buckledSwitch` | A strip printed longer than its frame, squeezed past buckling when fitted: it bows either way, and switches with the same push each way (Vangbo) | buckles at 4π²EI / L²; rises (2/π) √(L s - π²t²/3); the snap from the beam solver | the solver's, fitted and switched |
+| `tiltedTristable` | Two tilted-leaf bistables in series: the frame's leaves carry a stage, the stage's leaves carry the shuttle. It rests in three places: as printed, one pair over, both over (Oh and Kota) | each pair's rise L sin α; the rests and the pushes from the beam solver | the solver's, along the way through both |
+| `forceGauge` | A platform on a parallel guide with a needle, and a post with a tick cut every `step` newtons where the beam solver puts the needle: a spring balance printed in one piece | 24EI / L³ (two fixed-guided leaves); the solver's with the rounds | 3tδ / L² at the range, kept under half the limit |
+| `slipClutch` | A hub with curved arms, a bump on each tip in a notch of the ring round it: past a set torque the bumps ride out and it clicks round. A torque limiter and a detent | each arm EI / r³ (φ/2 - sin 2φ / 4) at its tip; slips at n r P (μ + tan α) / (1 - μ tan α) | the solver's at the bump's lift, kept under half the limit |
 
 L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, s a spoke's length, r a hub's radius, y a hook's undercut, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
@@ -324,8 +327,57 @@ The figures for that four-bar, and for one of each of the others, all in PLA, 6 
 | δ / H = a² l / EI | tilted bistable's frame: a root's move out for its thrust H | the bar a cantilever from its middle under the moment H a |
 | P = 4π²EI / L²; h = (2/π) √(L s - π²t²/3) | buckled switch | Euler, clamped ends; first buckled mode |
 
-Left for later: the Young bistable and tristable mechanisms, the tensural bistable, compliant gear teeth and clutches,
-and force-sensing beams.
+### Three rests, a scale and a clutch
+
+```js
+import { tiltedTristableModel, forceGauge, forceGaugeModel, slipClutch, slipClutchModel } from '@rulecad/flexures';
+
+const pla = { E: 2680, strainLimit: 0.02, density: 1.24, name: 'PLA' };
+const t = tiltedTristableModel({ outer: { length: 45, angle: 7 }, inner: { length: 32, angle: 7 }, thickness: 0.84, width: 6 }, pla);
+t.places;        // [0, 7.93, 13.31] mm down: where it rests
+const g = forceGaugeModel({ length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5 }, pla);
+g.ticks;         // [{ force: -1.5, at: 5.39, long: false }, ...]: a tick for each step, mm along y
+const c = slipClutchModel({ radius: 15, thickness: 1.2, width: 6, depth: 1 }, pla, { torque: 30 });
+c.torque;        // 73.5 N·mm: past this it slips
+```
+
+| Part | What the model says | Grams |
+|---|---|---|
+| `tiltedTristable`, leaves 45 and 32 at 7° | rises 5.48 and 3.90 mm; 2.83 N takes it to its middle rest, 7.93 mm down, and 5.08 N to its last, 13.31 mm down; 0.55 N and 0.43 N bring it back; 1.84% on the way | 42.6 |
+| `forceGauge`, leaves 40 by 0.8, to 1.5 N | 0.276 N/mm (24EI / L³ without the rounds: 0.257); 5.39 mm and 0.93% at 1.5 N; ticks 1.78 mm apart; the needle drops 0.45 mm | 7.5 |
+| `slipClutch`, bore 15, three arms 1.2 thick | each arm 1.559 N/mm (the curved cantilever: 1.56); a 1 mm lift takes 1.49 N, so it slips at 73.5 N·mm; 0.55%; 12 clicks a turn | 7.9 (hub and ring) |
+
+- **The tristable** is two tilted-leaf bistables in series. The outer pair carries a stage, a bar 16 mm deep that holds
+  the inner pair's roots, and the inner pair carries the shuttle. Each pair snaps over on its own, so the shuttle rests
+  as printed, with one pair over, and with both: three places. The pair that switches at the lower push goes first,
+  and `tristable.order` warns when the two pushes are within a tenth of each other, where a finger might take it
+  straight through. The model is the beam solver on the drawn leaves, the stage's bar and the frame's bar, with the
+  same small nudge on every leaf as the bistable. Shallow pairs rest in fewer places, and `tristable.rests` fails by
+  name: leaves 36 and 28 at 6°, 0.8 thick, rest in only two (the inner pair springs back).
+- **The force gauge** is a spring balance in one piece. A parallel guide carries a platform with a needle and a tab
+  with a hole for a string or a hook, and the frame's post has a slot cut for each tick (longer at 0 and every fifth).
+  Each tick is where the beam solver puts the needle under that force, so the scale follows the guide's curve, and the
+  gauge needs the material to be drawn. A force along -y (toward the frame's bar) reads positive. The model checks the
+  leaves' strain at the range against half the limit, the ticks' spacing (under 1 mm warns, under two slots fails and
+  the drawing refuses it), and how far the needle drops away from the scale (3δ² / 5L). A printed leaf is often 10% to
+  20% off the datasheet modulus, so hang one known weight on it: `calibration: { load, reading }` gives the factor
+  that corrects every reading.
+- **The slip clutch** is a hub and a ring printed together, a gap apart all round. Each arm is a curved cantilever
+  rooted on a lug, with a V bump on its tip in a notch of the ring. Turned past the slip torque, the bumps ride up their
+  notches' flanks, the arms bend in by the depth, and the ring clicks on to the next notch. The push along the bore to
+  ride a bump up is the snap-fit guides' wedge, P (μ + tan α) / (1 - μ tan α), with P the arm's force at the full
+  lift; friction between printed plastics is 0.2 to 0.6, so `torque` (what it must carry) passes only at twice that
+  under the slip torque. A flank at or past atan(1 / μ) never slips, and is refused by name.
+
+| Formula | Where it is used | Source |
+|---|---|---|
+| 1 / k = r³ (φ/2 - sin 2φ / 4) / EI | a slip clutch's arm, a radial load at its tip | Castigliano on a circular arc, M = P r sin θ |
+| T = n r P (μ + tan α) / (1 - μ tan α) | a slip clutch's slip torque | the BASF and Bayer snap-fit guides' wedge |
+| k = 24EI / L³; drop 3δ² / 5L | a force gauge's guide | two fixed-guided beams (Howell 2001) |
+
+Left for later: the Young bistable (a four-bar whose two ground joints are pins and its coupler's two joints
+compliant, Jensen's thesis), the tensural bistable (Wilcox and Howell 2005), and compliant gear teeth (teeth on
+flexures, for gears without backlash).
 
 ## Composing mechanisms
 
@@ -767,3 +819,4 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
 - Norton, R. L., *Design of Machinery*, McGraw-Hill: Grashof's condition and the transmission angle.
+- Oh, Y. S., and Kota, S., "Synthesis of multistable equilibrium compliant mechanisms using combinations of bistable mechanisms", *Journal of Mechanical Design* 131(2), 2009: bistable mechanisms combined in series and in parallel for more stable states.

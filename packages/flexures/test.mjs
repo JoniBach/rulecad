@@ -1910,3 +1910,19 @@ test('a tristable: two tilted-leaf bistables in series rest in three places, the
   assert.throws(() => tiltedTristableModel({ ...p, inner: { length: 32 } }, plaG), /inner\.angle is the leaves' tilt in degrees/);
   assert.throws(() => tiltedTristable({ ...p, outer: 3 }), /outer is an object \{ length, angle, thickness\? \}/);
 });
+
+test('the README\'s tristable, force gauge and slip clutch are the code\'s figures', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), has = (s) => assert.ok(readme.includes(s), `the README should read: ${s}`);
+  const x1 = (v) => v.toFixed(1), x2 = (v) => v.toFixed(2), x3 = (v) => v.toFixed(3);
+  const t = f.tiltedTristableModel({ outer: { length: 45, angle: 7 }, inner: { length: 32, angle: 7 }, thickness: 0.84, width: 6 }, plaG);
+  has(`t.places;        // [${t.places.map((x) => (x ? x2(x) : '0')).join(', ')}] mm down: where it rests`);
+  has(`rises ${x2(t.rises.outer)} and ${x2(t.rises.inner)} mm; ${x2(t.snaps[0].force)} N takes it to its middle rest, ${x2(t.places[1])} mm down, and ${x2(t.snaps[1].force)} N to its last, ${x2(t.places[2])} mm down; ${x2(-t.backs[0].force)} N and ${x2(-t.backs[1].force)} N bring it back; ${x2(t.strain * 100)}% on the way | ${x1(t.grams)} |`);
+  const g = f.forceGaugeModel({ length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5 }, plaG);
+  has(`g.ticks;         // [{ force: -1.5, at: ${x2(g.ticks[0].at)}, long: false }, ...]`);
+  has(`${x3(g.solvedStiffness)} N/mm (24EI / L³ without the rounds: ${x3(g.stiffness)}); ${x2(g.travel)} mm and ${x2(g.strain * 100)}% at 1.5 N; ticks ${x2(g.spacing)} mm apart; the needle drops ${x2(g.drop)} mm | ${x1(g.grams)} |`);
+  const c = f.slipClutchModel({ radius: 15, thickness: 1.2, width: 6, depth: 1 }, plaG, { torque: 30 });
+  has(`c.torque;        // ${x1(c.torque)} N·mm: past this it slips`);
+  has(`each arm ${x3(c.solvedArc)} N/mm (the curved cantilever: ${x2(c.arc)}); a 1 mm lift takes ${x2(c.lift)} N, so it slips at ${x1(c.torque)} N·mm; ${x2(c.strain * 100)}%; ${c.clicks} clicks a turn | ${x1(c.grams)} (hub and ring) |`);
+  assert.equal(c.findings.find((x) => x.code === 'clutch.torque').level, 'pass');
+});
