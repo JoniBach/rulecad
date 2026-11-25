@@ -303,7 +303,9 @@ function processLine(r) {
   const p = r.process, sides = [p.mill].flat(), tool = p.tool ? ` by a tool of ${fmt(p.tool)} mm radius` : '';
   const draft = p.draft ? ` with a ${fmt(p.draft)}° draft (a step out every ${p.every} layers: ${fmt(p.made)}°)` : '';
   const how = p.mill ? `milled from ${sides.length > 1 ? `${sides.slice(0, -1).join(', ')} and ${sides.at(-1)}` : sides[0]}${tool}` : typeof p.cast === 'string' ? `cast, drawn off ${p.cast}${draft}` : `cast in two halves drawn off along ${p.cast.draw} from ${fmt(p.cast.parting)} mm${draft}`;
-  return r.undercuts ? `${how}: ${r.undercuts} ${r.undercuts === 1 ? 'cell is' : 'cells are'} undercut (an avoid region, or the edge of the space, with material between it and the ${p.mill ? `tool${tool ? ', or too narrow for it' : ''}` : 'draw'}: move it, or make it from that side)` : `${how}: no undercuts`;
+  const n = r.narrow, narrow = !n ? '' : [n.design ? `${n.design} ${n.design === 1 ? 'cell' : 'cells'} of the design too narrow for the tool` : '', n.avoided ? `${n.avoided} ${n.avoided === 1 ? 'cell' : 'cells'} of avoid regions narrower than the tool: drill those holes, or give a smaller tool` : ''].filter(Boolean).join('; ');
+  const tail = narrow ? `; ${narrow}` : n ? ', and nothing narrower than the tool' : '';
+  return r.undercuts ? `${how}: ${r.undercuts} ${r.undercuts === 1 ? 'cell is' : 'cells are'} undercut (an avoid region, or the edge of the space, with material between it and the ${p.mill ? 'tool' : 'draw'}: move it, or make it from that side)${tail}` : `${how}: no undercuts${tail}`;
 }
 // A grey result (warned of above a tenth): its design cells between a tenth and nine tenths solid. A clear design has
 // a few per cent, on its surfaces (the 3D cantilever milled from above 5.3%, free 2D cantilevers 1 to 3%): a tenth

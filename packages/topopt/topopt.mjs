@@ -564,16 +564,18 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting, { draft } = {}) {
  * exponentials). A pocket narrower than the tool fills, and every inside corner seen from the tool is rounded to at
  * least its radius. After the draw filter, whose layers only grow away from the tool, this is exactly what a flat end
  * mill can cut (Langelaar 2019 models the tool's size the same way). Beyond the grid is empty: the tool may run past
- * its edge. apply gives the densities; adjoint carries sensitivities back through it.
+ * its edge. In 2D, from +z or -z: the plate's profile cut through its thickness (a router or end mill along z), its
+ * one layer the whole grid. apply gives the densities; adjoint carries sensitivities back through it.
  * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the tool's side, '+z'
  * @param {number} radius the tool's radius, in cells (at least 1)
  */
 export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
   const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
-  if (ax < 0 || ax >= dim || !/^[+-][xyz]$/.test(from)) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'} (got ${from})`);
+  if (ax < 0 || !/^[+-][xyz]$/.test(from)) throw new Error(`the tool's side is +x, -x, +y, -y, +z or -z${dim === 2 ? ' (z: through the plate)' : ''} (got ${from})`);
   if (!(radius >= 1)) throw new Error(`a tool's radius under a cell changes nothing on the grid (got ${fmt(radius)} cells): give a bigger tool or smaller cells`);
-  // The layer's own axes (u, and v in 3D), padded by R cells each side, and the disc's offsets
+  // The layer's own axes (u, and v in 3D or through a plate), padded by R cells each side, and the disc's offsets
   const [ua, va] = [0, 1, 2].filter((a) => a < dim && a !== ax), R = Math.floor(radius + 1e-9), strides = [1, nx, nx * ny];
+  n[2] = n[2] || 1; // (a plate's one layer through its thickness)
   const nu = n[ua], nv = va == null ? 1 : n[va], pu = nu + 2 * R, pv = va == null ? 1 : nv + 2 * R, pad = va == null ? 0 : R;
   const offs = [];
   for (let dv = -pad; dv <= pad; dv++) for (let du = -R; du <= R; du++) if (du * du + dv * dv <= radius * radius + 1e-9) offs.push([du, dv]);
@@ -587,24 +589,27 @@ export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
     if (u >= 0 && u < nu && v >= 0 && v < nv) inGrid[(pv0 * pu + pu0) * N + k] = u + v * nu; // (the layer's own index)
   });
   const dil = new Float64Array(layers * P), sumD = new Float64Array(layers * P), sumE = new Float64Array(cells), lx = new Float64Array(nu * nv);
-  const gD = new Float64Array(P), xs = new Float64Array(cells); // (xs: what apply was last given, for adjoint)
+  // (each exponential once a cell, not once an offset: the optimality criteria's bisection applies this some 30 times a step)
+  const gD = new Float64Array(P), ex = new Float64Array(cells), eD = new Float64Array(layers * P); // exp(beta x), exp(beta (1 - dilated)), for adjoint
+  const offAt = Int32Array.from(offs, ([du, dv]) => dv * pu + du), cellAt = new Int32Array(nu * nv * layers);
+  for (let L = 0; L < layers; L++) for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) cellAt[L * nu * nv + u + v * nu] = cellOf(L, u, v);
   const padded = (u, v) => (v + pad) * pu + (u + R);
   return {
     apply(x, out) {
-      xs.set(x);
       for (let L = 0; L < layers; L++) {
-        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) lx[u + v * nu] = x[cellOf(L, u, v)];
-        // Dilated: the log of the mean of exp(beta x) over the disc, on the padded layer
+        const base = L * nu * nv, LP = L * P;
+        for (let q = 0; q < nu * nv; q++) { const e = cellAt[base + q]; ex[e] = Math.exp(beta * x[e]); lx[q] = ex[e]; }
+        // Dilated: the log of the mean of exp(beta x) over the disc, on the padded layer (beyond the grid: empty, exp 0 = 1)
         for (let p = 0; p < P; p++) {
           let s = 0;
-          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; s += q < 0 ? 1 : Math.exp(beta * lx[q]); }
-          sumD[L * P + p] = s; dil[L * P + p] = Math.log(s / N) / beta;
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; s += q < 0 ? 1 : lx[q]; }
+          sumD[LP + p] = s; dil[LP + p] = Math.log(s / N) / beta; eD[LP + p] = Math.exp(beta * (1 - dil[LP + p]));
         }
         // Eroded: one less the dilation of one less, over the disc round each cell in the grid
         for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
-          const c = padded(u, v), e = cellOf(L, u, v);
+          const c = LP + padded(u, v), e = cellAt[base + u + v * nu];
           let s = 0;
-          for (const [du, dv] of offs) s += Math.exp(beta * (1 - dil[L * P + c + dv * pu + du]));
+          for (let k = 0; k < N; k++) s += eD[c + offAt[k]];
           sumE[e] = s; out[e] = 1 - Math.log(s / N) / beta;
         }
       }
@@ -612,15 +617,17 @@ export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
     },
     adjoint(g, out) {
       for (let L = 0; L < layers; L++) {
+        const base = L * nu * nv, LP = L * P;
         gD.fill(0);
         for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
-          const c = padded(u, v), e = cellOf(L, u, v);
-          for (const [du, dv] of offs) { const p = c + dv * pu + du; gD[p] += (g[e] * Math.exp(beta * (1 - dil[L * P + p]))) / sumE[e]; }
+          const c = padded(u, v), e = cellAt[base + u + v * nu], w = g[e] / sumE[e];
+          for (let k = 0; k < N; k++) { const p = c + offAt[k]; gD[p] += w * eD[LP + p]; }
         }
-        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) out[cellOf(L, u, v)] = 0;
+        for (let q = 0; q < nu * nv; q++) out[cellAt[base + q]] = 0;
         for (let p = 0; p < P; p++) {
           if (!gD[p]) continue;
-          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; if (q >= 0) { const e = cellOf(L, q % nu, Math.floor(q / nu)); out[e] += (gD[p] * Math.exp(beta * xs[e])) / sumD[L * P + p]; } }
+          const w = gD[p] / sumD[LP + p];
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; if (q >= 0) { const e = cellAt[base + q]; out[e] += w * ex[e]; } }
         }
       }
       return out;
@@ -647,13 +654,20 @@ export function processFilter(size, { mill, tool, cast, draft }) {
   if (!sides.length) throw new Error('mill: give the side or sides the tool comes from, \'+z\' or [\'+z\', \'-x\']');
   const twice = sides.find((s, i) => sides.indexOf(s) !== i);
   if (twice) throw new Error(`mill: the side ${twice} is given twice`);
-  const paths = sides.map((s) => ({ draw: drawFilter(size, s), tool: tool ? toolFilter(size, s, tool) : null, a: new Float64Array(cells), b: new Float64Array(cells) }));
+  // (a plate, 2D, cut through from +z or -z: every cell is a column through it, so no undercuts, only the tool's size)
+  const through = (s) => !size.nz || size.nz === 1 ? /^[+-]z$/.test(s) : false;
+  if (sides.some(through) && !tool) throw new Error('a plate cut through from +z or -z has no undercuts to keep out: give the tool\'s radius (tool), the one thing that limits its profile');
+  const paths = sides.map((s) => ({ draw: through(s) ? null : drawFilter(size, s), tool: tool ? toolFilter(size, s, tool) : null, a: new Float64Array(cells), b: new Float64Array(cells) }));
   if (paths.length === 1 && !tool) return paths[0].draw;
   // Each side's leavings, and the running smooth minimum's slopes (k: the minimum so far, against side k's)
   const slopeRun = paths.map(() => new Float64Array(cells)), slopeSide = paths.map(() => new Float64Array(cells)), g1 = new Float64Array(cells), g2 = new Float64Array(cells);
   const run = new Float64Array(cells), add = new Float64Array(cells);
-  const one = (p, x) => { p.draw.apply(x, p.a); if (p.tool) p.tool.apply(p.a, p.b); else p.b.set(p.a); return p.b; };
-  const oneBack = (p, g, out) => { if (p.tool) { p.tool.adjoint(g, g1); p.draw.adjoint(g1, out); } else p.draw.adjoint(g, out); return out; };
+  const one = (p, x) => { if (p.draw) p.draw.apply(x, p.a); else p.a.set(x); if (p.tool) p.tool.apply(p.a, p.b); else p.b.set(p.a); return p.b; };
+  const oneBack = (p, g, out) => {
+    if (p.tool) p.tool.adjoint(g, g1); else g1.set(g);
+    if (p.draw) p.draw.adjoint(g1, out); else out.set(g1);
+    return out;
+  };
   return {
     sides,
     apply(x, out) {
@@ -1277,6 +1291,8 @@ export function bounds(r) {
  */
 export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5, tool, draft }) {
   const size = { nx, ny, nz }, cast = parting != null || draft;
+  // (a plate cut through from +z or -z: every cell a column through it, nothing hidden, unless a tool's size is asked)
+  if (!cast && !tool && nz === 1 && [from].flat().some((s) => /^[+-]z$/.test(s))) return { count: 0, cells: [] };
   const f = cast ? processFilter(size, { cast: parting != null ? { draw: from, parting } : from, draft }) : processFilter(size, { mill: from, tool });
   const solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
   const cells = [];
