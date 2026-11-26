@@ -23,13 +23,15 @@ export function fromOutlines(loops) {
 }
 
 /**
- * A region of a problem (a circle, a centred rectangle or a polygon) as a JSCAD 2D shape; a design's part is null (it
- * is the design's own to add or cut, as it is in 3D).
- * @param {{ at?: [number, number], r?: number, size?: [number, number], points?: [number, number][], part?: string }} r
+ * A region of a problem (a circle, a centred rectangle, a polygon, or rings: closed outlines solid on their left, holes
+ * clockwise, as a part swept past the plate is cut) as a JSCAD 2D shape; a design's part is null (it is the design's own
+ * to add or cut, as it is in 3D).
+ * @param {{ at?: [number, number], r?: number, size?: [number, number], points?: [number, number][], rings?: [number, number][][], part?: string }} r
  * @param {number} [segments]
  */
 export function regionShape(r, segments = 48) {
   if (r.part || r.triangles) return null;
+  if (r.rings) return fromOutlines(r.rings); // a section of several outlines (a part swept past, its holes open), each solid on its left
   if (r.points) return polygon({ points: r.points });
   if (r.size) return rectangle({ center: r.at, size: r.size });
   return circle({ center: r.at, radius: r.r, segments });

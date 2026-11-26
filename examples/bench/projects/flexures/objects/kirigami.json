@@ -1,0 +1,22 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "kirigami",
+  "title": "A kirigami panel: rotating squares that stretch both ways",
+  "version": "0.1.0",
+  "uses": ["x1c", "petg"],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "Flat on the bed, one piece, no supports: the squares lie in the bed's plane, so every neck bends within its layers. Pull it by two opposite sides.",
+  "parts": {
+    "sheet": { "label": "The sheet: 25 squares joined at their necks" }
+  },
+  "variables": {
+    "load": { "value": 6, "unit": "N", "rule": "The design pull across the sheet: 6 N stretches it 0.26 mm, and its necks may turn until it has stretched 0.57 mm before PETG's strain limit (2.18 times the margin)" },
+    "pitch": { "value": 8, "unit": "mm", "rule": "The squares' size, centre to centre: smaller squares make a stiffer sheet that strains its necks less for the same pull" },
+    "neck": { "value": "x1c.line * 2", "unit": "mm", "rule": "Each neck's narrowest width: two lines, the thinnest that prints solid" },
+    "slot": { "value": "x1c.line * 4", "unit": "mm", "rule": "Every slot's width, its ends round: four lines, so each neck's round side is as wide as the neck (r / w = 1) and the squares print well apart" },
+    "depth": { "value": 2, "unit": "mm", "rule": "The sheet's thickness: ten layers. Stiffness grows with it, the necks' strain for a stretch does not" },
+    "across": { "value": 5, "rule": "Whole squares along x, the way it is pulled" },
+    "rows": { "value": 5, "rule": "Whole squares along y" }
+  }
+}
