@@ -22,13 +22,44 @@ function axisOf(s, id) {
 }
 
 /** The slots of a CNC shield each motor is wired to, by motor item: from a wire "<motor>.<anchor>" to "<item>.X" (X, Y, Z or A). */
-export function shieldSlots(a) {
-  const out = {};
-  for (const w of a.wires || []) { const [from, to] = [String(w.from), String(w.to)], m = /^[^.]+\.([XYZA])$/.exec(to); if (m) out[from.split('.')[0]] = m[1]; }
-  return out;
-}
+export function shieldSlots(a) { return slotsOf(a, CONTROLLERS['cnc-shield-v3']); }
 /** The step and direction slots of the streamer (arm.ino on a CNC Shield V3), in its axis order: axis 0 on X, 1 on Y, 2 on Z. */
 export const STREAMER_SLOTS = ['X', 'Y', 'Z'];
+
+/** The boards the streamer runs on, by the bought part that is the machine's controller: its build (board, as send.mjs and
+ * scripts/firmware.mjs name it), its step and direction slots in its axis order, the anchor a wire ends on for each, and
+ * how a finding names them. The Mega's slots S0 to S7 are its pins for axes 0 to 7 (arduino-mega-2560's rules). */
+export const CONTROLLERS = {
+  'cnc-shield-v3': { board: 'uno', title: 'an Uno under a CNC Shield V3', of: "the shield's", any: "a shield's slot", slots: STREAMER_SLOTS, wired: /^[^.]+\.([XYZA])$/ },
+  'arduino-mega-2560': { board: 'mega', title: 'a Mega 2560', of: "the Mega's", any: "a slot of the Mega", slots: ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'], wired: /^[^.]+\.(S[0-7])$/ },
+};
+
+/** The machine's controller: the bought board in its assembly that the streamer runs on, or the Uno under a CNC shield where
+ * it has none (as every machine had before the Mega). Two different ones are refused by name.
+ * @param {object} a the assembly's JSON @returns {{ set: string, item: string | null, board: string, title: string, of: string, any: string, slots: string[], wired: RegExp }} */
+export function controllerOf(a) {
+  const found = (a.items || []).filter((it) => typeof it.bought === 'string' && CONTROLLERS[it.bought]);
+  if (new Set(found.map((it) => it.bought)).size > 1) throw new Error(`items ${found.map((it) => `${it.id} (${it.bought})`).join(', ')}: a machine streams through one controller, ${Object.keys(CONTROLLERS).join(' or ')}`);
+  const set = found[0]?.bought ?? 'cnc-shield-v3';
+  return { set, item: found[0]?.id ?? null, ...CONTROLLERS[set] };
+}
+
+/** The controller's slot each motor is wired to, by motor item: a wire from "<motor>.<anchor>" to "<board>.<slot>" (a CNC
+ * shield's slot), or a signal wire to the slot from the motor's driver (its "driver" item) or from the board its own wire
+ * ends on (an external driver's breakout: the motor's wire to it, its STEP and DIR on to the controller).
+ * @param {object} a the assembly's JSON @param {{ wired: RegExp }} c a controller (CONTROLLERS) */
+export function slotsOf(a, c) {
+  const out = {}, motors = new Set((a.items || []).filter((it) => it.motor).map((it) => it.id)), top = (x) => String(x).split('.')[0];
+  const driverOf = Object.fromEntries((a.items || []).filter((it) => it.motor?.driver).map((it) => [it.motor.driver, it.id]));
+  for (const w of a.wires || []) for (const [m, o] of [[top(w.from), top(w.to)], [top(w.to), top(w.from)]]) if (motors.has(m) && !motors.has(o) && !(o in driverOf)) driverOf[o] = m;
+  for (const w of a.wires || []) {
+    for (const [from, to] of [[String(w.from), String(w.to)], [String(w.to), String(w.from)]]) {
+      const m = c.wired.exec(to), id = from.split('.')[0];
+      if (m && from.includes('.')) out[driverOf[id] ?? id] = m[1];
+    }
+  }
+  return out;
+}
 
 /** The machine as plain data. Every figure's origin is said in _why, by the name of the figure. A machine with a gait and no
  * task is its legs: an axis for each joint a motor turns, in the order the shield's slots are wired. @param {object} s a built assembly with a task or a gait */
@@ -39,22 +70,26 @@ export function machineOf(s) {
   const axes = c.names.map((id) => axisOf(s, id));
   const kinematics = c.names.length === 2 && motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'revolute') ? 'scara' : motion.joints.filter((j) => c.names.includes(j.id)).every((j) => j.type === 'prismatic') ? 'cartesian' : 'serial';
   const pen = s.a.task.pen ?? null;
-  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics, tool: s.task.tool, elbow: sample(s).elbow, axes, task: { sheet: s.a.task.sheet ?? null, region: s.a.task.region ?? null, volume: s.a.task.volume ?? null, speed: s.task.speed, accuracy: s.task.accuracy, accel: s.task.accel ?? 500, ...(s.task.blockTime ? { blockTime: s.task.blockTime } : {}) }, ...(pen ? { pen } : {}) };
+  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics, tool: s.task.tool, elbow: sample(s).elbow, axes, controller: controllerSummary(controllerOf(s.a)), task: { sheet: s.a.task.sheet ?? null, region: s.a.task.region ?? null, volume: s.a.task.volume ?? null, speed: s.task.speed, accuracy: s.task.accuracy, accel: s.task.accel ?? 500, ...(s.task.blockTime ? { blockTime: s.task.blockTime } : {}) }, ...(pen ? { pen } : {}) };
 }
 
+// The controller as the machine description carries it: its build, and the bought item it is
+const controllerSummary = (c) => ({ board: c.board, set: c.set, item: c.item, slots: c.slots });
+
 function gaitMachineOf(s) {
-  const seq = gaitSequence(s), slots = shieldSlots(s.a);
+  const seq = gaitSequence(s), c = controllerOf(s.a), slots = slotsOf(s.a, c);
   let axes = seq.names.map((id) => { const a = axisOf(s, id); return { ...a, ...(slots[a.motor] ? { slot: slots[a.motor] } : {}) }; });
-  if (axes.every((a) => STREAMER_SLOTS.includes(a.slot))) axes = [...axes].sort((a, b) => STREAMER_SLOTS.indexOf(a.slot) - STREAMER_SLOTS.indexOf(b.slot));
+  if (axes.every((a) => c.slots.includes(a.slot))) axes = [...axes].sort((a, b) => c.slots.indexOf(a.slot) - c.slots.indexOf(b.slot));
   const g = s.gait, pattern = typeof s.a.gait.pattern === 'string' ? s.a.gait.pattern : `duty ${s.a.gait.pattern?.duty}`;
-  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics: 'legged', tool: null, axes, task: null,
+  return { format: 'rulecad.machine/1', name: `${s.project}/${s.name}`, kinematics: 'legged', tool: null, axes, task: null, controller: controllerSummary(c),
     gait: { legs: g.legs.map((l) => l.name), pattern, period: g.period, stride: g.stride, lift: g.lift, height: g.height, frames: seq.q.length } };
 }
 
 /**
  * A gait as a step file: its cycle played for some cycles from a pose of the assembly and back to it, every leg's joints
  * in the same blocks. Findings say how long a cycle takes on the motors against the gait's period, and whether the
- * streamer can take the file: three axes at most, each on the shield's slot of its own number.
+ * streamer can take the file: as many axes as its controller has slots (three on an Uno under a CNC shield, eight on a
+ * Mega 2560), each on the slot of its own number.
  * @param {object} s a built assembly with a gait @param {{ cycles?: number, period?: number, from?: string }} [o] from: a pose's name (default the pose the assembly shows)
  */
 export function plotGait(s, { cycles = 3, period, from } = {}) {
@@ -68,11 +103,12 @@ export function plotGait(s, { cycles = 3, period, from } = {}) {
   if (poseName && !start) findings.push({ level: 'info', text: `the pose "${poseName}" does not set ${names.filter((n) => !num(pose?.[n])).join(', ')}, so the file starts and ends at the cycle's first frame`, code: 'gait.from', values: {} });
   const r = gaitBlocks(ordered, { axes: m.axes.map((a) => ({ name: a.name, stepsPerUnit: a.stepsPerUnit, maxRate: a.maxRate, unit: a.unit })), cycles, ...(period != null ? { period } : {}), ...(start ? { from: start } : {}) });
   findings.push(...r.findings);
-  // the streamer: three axes, axis k on the shield's slot X, Y or Z in that order
-  if (names.length > STREAMER_SLOTS.length) findings.push({ level: 'warn', text: `${names.length} axes, and the streamer steps ${STREAMER_SLOTS.length} (an Uno under a CNC Shield V3): the file is written, and send.mjs refuses it`, code: 'stream.axes', values: { axes: names.length, streamer: STREAMER_SLOTS.length } });
+  // the streamer: as many axes as the controller has slots, axis k on its slot k (the shield's X, Y, Z; the Mega's S0 to S7)
+  const c = CONTROLLERS[m.controller.set], slots = c.slots;
+  if (names.length > slots.length) findings.push({ level: 'warn', text: `${names.length} axes, and the streamer steps ${slots.length} on ${c.title}: the file is written, and send.mjs refuses it${c.board === 'uno' ? ' (an arduino-mega-2560 in the assembly streams up to 8)' : ''}`, code: 'stream.axes', values: { axes: names.length, streamer: slots.length } });
   else for (const [k, a] of m.axes.entries()) {
-    if (!a.slot) findings.push({ level: 'info', text: `${a.name}'s motor ${a.motor} has no wire to a shield's slot: the streamer steps it as axis ${k}, on ${STREAMER_SLOTS[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
-    else if (a.slot !== STREAMER_SLOTS[k]) findings.push({ level: 'fail', text: `${a.name}'s motor ${a.motor} is wired to the shield's ${a.slot}, and the streamer steps axis ${k} on ${STREAMER_SLOTS[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
+    if (!a.slot) findings.push({ level: 'info', text: `${a.name}'s motor ${a.motor} has no wire to ${c.any}: the streamer steps it as axis ${k}, on ${slots[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
+    else if (a.slot !== slots[k]) findings.push({ level: 'fail', text: `${a.name}'s motor ${a.motor} is wired to ${c.of} ${a.slot}, and the streamer steps axis ${k} on ${slots[k]}`, code: 'stream.wiring', refs: { item: a.motor } });
   }
   const n = r.blocks.length;
   findings.push({ level: 'info', text: `${cycles} cycle${cycles === 1 ? '' : 's'} of the gait (${m.gait.pattern}) in ${n} blocks, ${n3(r.time, 1)} s${start ? `, from the pose "${poseName}" and back to it` : ''}`, code: 'plot.time', values: { time: r.time, cycles, blocks: n } });

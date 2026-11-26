@@ -127,12 +127,30 @@ shield's X slot and its knee's on Y:
 ```sh
 npx cad machine leg/stand              # exports/leg/stand.machine.json: an axis for each motor's shaft, in the shield's slot order
 npx cad plot leg/stand                 # exports/leg/stand-gait.steps.json: three cycles of its gait, from its standing pose and back
-node projects/arm/send.mjs exports/leg/stand-gait.steps.json --machine exports/leg/stand.machine.json --dry-run
+node projects/leg/send.mjs exports/leg/stand-gait.steps.json --machine exports/leg/stand.machine.json --dry-run
 ```
 
 `cad plot` on an assembly with a gait needs no drawing. It plays the gait's frames in time, each block every axis's move
 from one frame to the next, slowed where a motor cannot keep up and where a joint turns back, and says how long a cycle
 takes against the gait's period. The stand has no home switches: stand the leg in its pose before you send the file.
+The leg's project carries its own copy of the streamer (`projects/leg/firmware/leg`) and the sender, the same programs
+as the arm's.
+
+## Eight axes on one board
+
+The quadruped's eight motors are more than the shield's three slots. Its assembly carries an Arduino Mega 2560 (the
+`arduino-mega-2560` rule set) and a DRV8825 for each motor on a driver breakout (`driver-breakout`), each breakout's
+signal wire on one of the Mega's slots `S0` to `S7`. `cad machine` reads the board and writes it as the machine's
+`controller`; the same streamer, compiled for `arduino:avr:mega`, steps all eight axes in each block, and the sender
+writes eight numbers a block for it:
+
+```sh
+npx cad machine leg/quadruped          # controller: the Mega; fl_hd on S0, fl_kd on S1, ... br_kd on S7
+npx cad plot leg/quadruped             # exports/leg/quadruped-gait.steps.json: three cycles of the trot
+node projects/leg/send.mjs exports/leg/quadruped-gait.steps.json --machine exports/leg/quadruped.machine.json --dry-run
+```
+
+`projects/leg/STREAMER.md` has the Mega's pins and how the trot was checked on a simulated Mega.
 `projects/arm/STREAMER.md` explains how the gait becomes blocks. A machine with more than three motors, such as the
 quadruped, needs more than one Uno: the sender refuses its file by name.
 
