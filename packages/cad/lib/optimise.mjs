@@ -14,7 +14,8 @@ import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
 import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike, reduce, undercuts, voids, grey } from '@rulecad/topopt';
 import { islands } from '@rulecad/printcheck';
-import { turn } from '@rulecad/model-link';
+import { turn, mul, inv, placeItems, jointValues } from '@rulecad/model-link';
+import { section, loops, slabLevels } from './mesh.mjs';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
@@ -102,16 +103,126 @@ async function readOne(project, ref, link) {
     }
     return anchors.get(ref);
   };
+  // The assembly the problem is placed in ("in": { "assembly", "item", "pose", "z" }): its coordinates are that item's
+  // own there, as the item's design draws the result. Built once, in its pose (default the one it shows), for its
+  // joints and its moving parts; the item itself, and any other made from this very problem, is drawn without a result
+  // (its problem variables set to none), since the result can't be needed to place the problem it comes from.
+  const fileName = path.basename(file);
+  let placing = null;
+  const inAssembly = (what) => {
+    if (!p.in) throw new Error(`${fileName}: ${what} needs the problem placed in an assembly: "in": { "assembly": "<name>", "item": "<the item it is drawn in>" }`);
+    return (placing ||= (async () => {
+      const { buildAssembly, assemblyPath } = await import('./assembly.mjs'), { locate, readObject } = await import('./design.mjs');
+      const ref = `${project}/${p.in.assembly}`, overrides = {};
+      if (!host.exists(assemblyPath(ref))) throw new Error(`${fileName}: no assembly "${p.in.assembly}" to place the problem in (projects/${project}/assemblies/${p.in.assembly}.json)`);
+      for (const it of readJson(assemblyPath(ref)).items || []) if (typeof it.object === 'string') {
+        let vars = {};
+        try { vars = readObject(locate(`${project}/${it.object.split(/[:@]/)[0]}`)).variables || {}; } catch { continue; }
+        for (const [k, v] of Object.entries(vars)) if (v.type === 'problem' && (it.id === p.in.item || String(it.set?.[k] ?? v.value).split(':')[0] === name)) (overrides[it.id] ||= {})[k] = 'none';
+      }
+      const chain = reading.getStore();
+      const s = await reading.run([...chain.slice(0, -1), { ...link, object: `the assembly ${p.in.assembly}` }], () => buildAssembly(ref, [], overrides, { pose: p.in.pose, onePose: true }));
+      const k = s.motion.items.findIndex((x) => x[0] === p.in.item);
+      if (k < 0) throw new Error(`${fileName}: ${p.in.assembly} has no item "${p.in.item}" (items: ${s.motion.items.map((x) => x[0]).join(', ')})`);
+      return { s, k, W0: placeItems(s.motion, s.jointValues) };
+    })());
+  };
+  // A joint of that assembly, where it is in the item's frame: the joint's anchor on the item when the item is one of
+  // its ends (the same in every pose), else the parent's anchor as the pose places it. Its axis is the anchor's z.
+  const joints = new Map(), clean = (c) => (Math.abs(c) < 1e-9 ? 0 : round(c, 9));
+  const jointAt = async (id) => {
+    if (!joints.has(id)) {
+      const { s, k, W0 } = await inAssembly(`the joint "${id}"`), j = s.motion.joints.find((x) => x.id === id);
+      if (!j) throw new Error(`${fileName}: ${p.in.assembly} has no joint "${id}" (joints: ${s.motion.joints.map((x) => x.id).join(', ') || 'none'})`);
+      const F = j.child === k ? j.b : j.parent === k ? j.a : mul(inv(W0[k]), j.parent < 0 ? j.a : mul(W0[j.parent], j.a));
+      joints.set(id, { joint: id, at: [F[3], F[7], F[11]].map(clean), axis: [F[2], F[6], F[10]].map(clean) });
+    }
+    return joints.get(id);
+  };
+  // A part of the assembly swept through a joint's range, as regions to keep clear: the part at each step, in the
+  // item's frame (the other joints held at the pose). Steps by default so no point of it moves more than half a cell
+  // between two (its travel measured in 32 pieces of the range). In a flat problem, each step is all of the part that
+  // lies within the plate's thickness (about in.z, default half its thickness, a plate drawn up from z 0): its sections
+  // at heights close enough that, together, they cover it to half a cell, each distinct one a region. A part dipping
+  // into the plate's top or bottom is kept clear; one only passing over or under it, or touching a face, is not.
+  const sweeps = [];
+  const swept = async (r) => {
+    const { s, k, W0 } = await inAssembly(`the sweep of "${r.sweep}"`), item = p.in.item, cell = ev(p.cell);
+    const isNamed = (q, n) => q.name === n || q.leaf === n || q.item === n || q.name.startsWith(`${n}.`), moving = s.parts.filter((q) => isNamed(q, r.sweep));
+    if (!moving.length) throw new Error(`${fileName}: ${p.in.assembly} has no item or part "${r.sweep}" to sweep (items: ${s.motion.items.map((x) => x[0]).join(', ')})`);
+    if (moving.some((q) => (q.moves ?? q.item) === item)) throw new Error(`${fileName}: "${r.sweep}" is ${item} itself, the item this problem is in: sweep a part that moves against it`);
+    const free = s.motion.joints.filter((j) => !j.follow && j.dofs.length), through = [r.through ?? []].flat();
+    if (!through.length) throw new Error(`${fileName}: the sweep of "${r.sweep}" needs the joint it moves through: "through": "<joint>" (joints: ${free.map((j) => j.id).join(', ') || 'none'})`);
+    const apply = (M, [x, y, z]) => [M[0] * x + M[1] * y + M[2] * z + M[3], M[4] * x + M[5] * y + M[6] * z + M[7], M[8] * x + M[9] * y + M[10] * z + M[11]];
+    const idx = moving.map((q) => s.motion.items.findIndex((x) => x[0] === (q.moves ?? q.item)));
+    const local = moving.map((q, i) => { const L = inv(W0[idx[i]]); return q.triangles.map((t) => t.map((v) => apply(L, v))); }); // each in its own item's frame
+    const sample = local.map((tris) => { const v = tris.flat(), n = Math.ceil(v.length / 400); return v.filter((_, i) => i % n === 0); }); // (no more than about 400 points a part)
+    const held = Object.fromEntries(Object.entries(s.jointValues).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow));
+    const z = flat ? (p.in.z != null ? ev(p.in.z) : ev(p.thickness) / 2) : null, zlo = flat ? z - ev(p.thickness) / 2 : null, zhi = flat ? z + ev(p.thickness) / 2 : null, out = [];
+    for (const id of through) {
+      const j = free.find((x) => x.id === id);
+      if (!j) throw new Error(`${fileName}: ${p.in.assembly} has no joint "${id}" that moves on its own to sweep "${r.sweep}" through (joints: ${free.map((x) => x.id).join(', ') || 'none'})`);
+      j.dofs.forEach(([lo, hi], d) => {
+        const at = (v) => { const W = placeItems(s.motion, jointValues(s.motion, { ...held, [id]: held[id].map((x, i) => (i === d ? v : x)) })), T = inv(W[k]); return idx.map((m) => mul(T, W[m])); };
+        let travel = 0, before = at(lo).map((M, m) => sample[m].map((v) => apply(M, v)));
+        for (let i = 1; i <= 32; i++) {
+          const now = at(lo + ((hi - lo) * i) / 32).map((M, m) => sample[m].map((v) => apply(M, v)));
+          travel += Math.max(0, ...now.flatMap((pts, m) => pts.map((q, n) => Math.hypot(...q.map((c, a) => c - before[m][n][a])))));
+          before = now;
+        }
+        const what = `${id}${j.dofs.length > 1 ? ` (its value ${d + 1})` : ''}`;
+        if (!(travel > 1e-6)) throw new Error(`${fileName}: ${what} doesn't move "${r.sweep}" against ${item} (from ${round(lo)} to ${round(hi)}): sweep it through a joint between them`);
+        const steps = r.steps ?? Math.max(1, Math.ceil((2 * travel) / cell));
+        if (r.steps == null && steps > 360) throw new Error(`${fileName}: sweeping "${r.sweep}" through ${what} would take ${steps} steps on ${cell} mm cells (its farthest point travels ${round(travel, 1)} mm): give the sweep its steps, or larger cells`);
+        let made = 0;
+        for (let i = 0; i <= steps; i++) {
+          const v = lo + ((hi - lo) * i) / steps, Ms = at(v);
+          for (const [m, tris] of local.entries()) {
+            const moved = tris.map((t) => t.map((q) => apply(Ms[m], q).map(clean)));
+            if (!flat) { out.push({ triangles: moved, sweep: r.sweep, joint: id, value: round(v, 6) }); made++; continue; }
+            // Each section's outlines, each a ring turned solid on its left (an outline counter-clockwise, a hole in it
+            // clockwise), for the design to cut exactly (rings); and for the solver one polygon of them all, each closed and
+            // back to the first one's start, so a point is inside where it is inside an odd number of them (a hole in the
+            // part stays open) and the joins cancel out. A point within 0.001 mm of the line through its neighbours (where a face's diagonal is
+            // cut, or a boolean left a sliver) is dropped, and a section whose corners all lie within 0.01 mm of one already taken at this step is left out.
+            const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9, kept = [];
+            const off = (q, a, b) => { const d = [b[0] - a[0], b[1] - a[1]], L = Math.hypot(...d); return L < 1e-12 ? Math.hypot(q[0] - a[0], q[1] - a[1]) : Math.abs(d[0] * (q[1] - a[1]) - d[1] * (q[0] - a[0])) / L; };
+            const straight = (ring) => { const l = [...ring]; for (let n = 0; n < l.length && l.length > 3;) if (off(l[n], l[(n + l.length - 1) % l.length], l[(n + 1) % l.length]) < 1e-3) { l.splice(n, 1); n = Math.max(0, n - 1); } else n++; return l; };
+            for (const h of slabLevels(moved, zlo, zhi, cell)) {
+              const rings = loops(section(moved, 2, h)).map((l) => straight((same(l[0], l.at(-1)) ? l.slice(0, -1) : l).map((q) => q.map(clean)))).filter((l) => l.length >= 3);
+              if (!rings.length) continue;
+              const within = (q, P) => { let c = false; for (let a = 0, b = P.length - 1; a < P.length; b = a++) if ((P[a][1] > q[1]) !== (P[b][1] > q[1]) && q[0] < ((P[b][0] - P[a][0]) * (q[1] - P[a][1])) / (P[b][1] - P[a][1]) + P[a][0]) c = !c; return c; };
+              const turned = rings.map((l, n) => {
+                const depth = rings.filter((o, m) => m !== n && within(l[0], o)).length, ccw = l.reduce((t, q, a) => t + q[0] * l[(a + 1) % l.length][1] - l[(a + 1) % l.length][0] * q[1], 0) > 0;
+                return ccw === (depth % 2 === 0) ? l : [...l].reverse();
+              });
+              const near = (l, o) => l.length === o.length && l.every((q) => o.some((w) => Math.hypot(q[0] - w[0], q[1] - w[1]) < 0.01));
+              if (kept.some((k) => k.length === turned.length && turned.every((l) => k.some((o) => near(l, o))))) continue;
+              kept.push(turned);
+              const start = turned[0][0], points = turned.flatMap((l, n) => [...l, l[0], ...(n ? [start] : [])]);
+              out.push({ points, rings: turned, sweep: r.sweep, joint: id, value: round(v, 6) }); made++;
+            }
+          }
+        }
+        sweeps.push({ sweep: r.sweep, through: what, from: round(lo, 6), to: round(hi, 6), steps, regions: made });
+      });
+    }
+    if (!out.length) throw new Error(`${fileName}: "${r.sweep}" never reaches into the plate (z ${round(zlo)} to ${round(zhi)} mm in ${item}) through ${through.join(', ')}: nothing to keep clear there (set in.z, the plate's middle, if it lies elsewhere)`);
+    return out;
+  };
   // The build direction: a direction ('+z'), or a variable holding one
   const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
-    if (r.anchor) { // at an anchor: its place (x and y in a flat problem), and a cylinder along the anchor's axis unless it names one
-      if (r.at) throw new Error(`${path.basename(file)}: a region at an anchor ("${r.anchor}") takes no at: the anchor places it`);
-      const a = await anchor(r.anchor), along = a.axis.map((c) => Math.abs(c) > 1e-9);
-      if (r.length != null && !r.axis && along.filter(Boolean).length !== 1) throw new Error(`${path.basename(file)}: the anchor "${r.anchor}" points along [${a.axis.map((c) => round(c, 3)).join(', ')}], not along x, y or z: give the cylinder an axis`);
-      return region({ ...r, anchor: undefined, at: flat ? a.at.slice(0, 2) : a.at, ...(r.length != null && !r.axis ? { axis: 'xyz'[along.indexOf(true)] } : {}) });
+    if (r.sweep != null) throw new Error(`${path.basename(file)}: a swept part ("${r.sweep}") is a region to keep clear: put it under avoid`);
+    if (r.anchor || r.joint) { // at an anchor, or an assembly's joint: its place (x and y in a flat problem), and a cylinder along its axis unless it names one
+      const kind = r.anchor ? 'anchor' : 'joint', named = `the ${kind} "${r.anchor || r.joint}"`;
+      if (r.anchor && r.joint) throw new Error(`${path.basename(file)}: a region is at an anchor or at a joint, not both ("${r.anchor}", "${r.joint}")`);
+      if (r.at) throw new Error(`${path.basename(file)}: a region at an ${kind} ("${r.anchor || r.joint}") takes no at: the ${kind} places it`);
+      const a = r.anchor ? await anchor(r.anchor) : await jointAt(r.joint), along = a.axis.map((c) => Math.abs(c) > 1e-9);
+      if (r.length != null && !r.axis && along.filter(Boolean).length !== 1) throw new Error(`${path.basename(file)}: ${named} points along [${a.axis.map((c) => round(c, 3)).join(', ')}], not along x, y or z: give the cylinder an axis`);
+      return region({ ...r, anchor: undefined, joint: undefined, at: flat ? a.at.slice(0, 2) : a.at, ...(r.length != null && !r.axis ? { axis: 'xyz'[along.indexOf(true)] } : {}) });
     }
     if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
       const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
@@ -132,7 +243,7 @@ async function readOne(project, ref, link) {
   const printer = printerOf(project), line = printer ? resolve({ uses: [printer] }).values[printer]?.line : null, lines = typeof line === 'number' ? 2 * line : 0;
   const space = await regions(p.space), dim = flat ? 2 : space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
   const problem = {
-    space, keep: await regions(p.keep), avoid: await regions(p.avoid),
+    space, keep: await regions(p.keep), avoid: (await Promise.all([p.avoid || []].flat().map(async (r) => (r.sweep != null ? swept(r) : [await region(r)])))).flat(),
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
     loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
@@ -156,7 +267,7 @@ async function readOne(project, ref, link) {
   // What the result is made from, for cad why: the rule sets, the problem's own values, the parts and anchors of other
   // designs it reads, and where its filter came from
   const inputs = { uses, variables: Object.fromEntries(Object.keys(p.variables || {}).map((k) => [k, values[k]])), ...(variant ? { set: p.variants[variant] } : {}),
-    parts: [...parts.keys()].sort(), anchors: [...anchors.values()].sort((a, b) => (a.anchor < b.anchor ? -1 : 1)).map(({ anchor: a, at }) => ({ anchor: a, at: at.map((c) => round(c, 4)) })),
+    parts: [...parts.keys()].sort(), ...(p.in ? { assembly: { name: p.in.assembly, item: p.in.item, pose: placing ? (await placing).s.pose : p.in.pose ?? null, joints: [...joints.values()].sort((a, b) => (a.joint < b.joint ? -1 : 1)).map(({ joint: j, at }) => ({ joint: j, at: at.map((c) => round(c, 4)) })), sweeps } } : {}), anchors: [...anchors.values()].sort((a, b) => (a.anchor < b.anchor ? -1 : 1)).map(({ anchor: a, at }) => ({ anchor: a, at: at.map((c) => round(c, 4)) })),
     filter: p.filter != null ? { value: problem.filter, from: `the problem: ${p.filter}` } : problem.filter ? { value: problem.filter, from: `two of ${printer}'s lines (2 × ${line} mm), more than a cell and a half` } : { value: round(problem.cell * 1.5), from: 'a cell and a half' } };
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical, inputs, voids: p.voids || 'allowed' };
 }
