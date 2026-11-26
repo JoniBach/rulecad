@@ -6905,6 +6905,82 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('a problem milled from two sides by a tool of a size, or cast with a draft (#35): cad optimise says how, with the draft made at the grid, and refuses a tool or a draft the grid cannot show', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'made');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'made', objects: [] }));
+    // A 12 mm cube held at its foot and pushed sideways at its top, on 1.5 mm cells (8 × 8 × 8)
+    const base = { uses: ['mill-3axis'], material: 'al6061', cell: 1.5, volume: 0.5, filter: 2.25, steps: 12, space: { at: [0, 0, 6], size: [12, 12, 12] },
+      supports: [{ at: [0, 0, 0.75], size: [12, 12, 1.5] }], loads: [{ at: [0, 0, 11.25], size: [12, 12, 1.5], force: [100, 0, 0] }] };
+    const write = (name, p) => fs.writeFileSync(path.join(project, 'problems', `${name}.json`), JSON.stringify({ title: name, ...base, ...p }));
+    write('two', { mill: ['+z', '-z'], tool: 1.5 });
+    assert.match(cad('optimise', 'made/two'), /milled from \+z and -z by a tool of 1\.5 mm radius: no undercuts/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'made/two', '--json')).process, { mill: ['+z', '-z'], tool: 1.5 });
+    // 15°: 1 / tan 15° = 3.73, so a step out every 3 layers of the 8, which is atan(1 / 3) = 18.43°
+    write('draft', { uses: ['mould-injection'], cast: '+z', draft: 15 });
+    const draft = cad('optimise', 'made/draft');
+    assert.match(draft, /cast, drawn off \+z with a 15° draft \(a step out every 3 layers: 18\.43°\): no undercuts/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'made/draft', '--json')).process, { cast: '+z', draft: 15, every: 3, made: 18.43 });
+    // 3°: a step every 19 layers (1 / tan 3° = 19.1), and the cube has 8; a 1 mm tool on 1.5 mm cells; a draft on a milled part
+    write('shallow', { uses: ['mould-injection'], cast: '+z', draft: 3 });
+    assert.match(cad('optimise', 'made/shallow'), /a draft of 3° steps out a cell every 19 layers, and this grid has 8 along z: give it more than 19 layers there \(smaller cells\), or more draft/);
+    write('small', { mill: '+z', tool: 1 });
+    assert.match(cad('optimise', 'made/small'), /a tool's radius of 1 mm is under a cell \(1\.5 mm\) and changes nothing on the grid/);
+    write('milldraft', { mill: '+z', draft: 5 });
+    assert.match(cad('optimise', 'made/milldraft'), /a draft is for a cast or moulded part \(cast\): a milled part's walls come out straight down the tool's side/);
+    // Voids prevented: the optimiser keeps every pocket open (topopt's test twists a block into a tube and vents it),
+    // and says so; one a keep region walls in can't be opened, and is still an error, said to be left though prevented
+    write('vented', { uses: ['dmls'], voids: 'prevented' });
+    assert.match(cad('optimise', 'made/vented'), /voids prevented: none enclosed, every empty pocket open to the outside/);
+    write('walled', { uses: ['dmls'], voids: 'prevented', keep: [{ at: [0, 0, 6], size: [6, 6, 6] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] });
+    const r = spawnSync(process.execPath, [BIN, 'optimise', 'made/walled'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\), left though voids were prevented \(a keep region or the space walls it in\)/);
+  } finally { done(); }
+});
+
+test('a problem\'s thinnest member from the printer\'s line (#35): met by the grid where a cell is as wide, held to three cells, or refused with the cells that would hold it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'thin');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'thin', objects: [] }));
+    // A 30 × 12 mm cantilever, 4 mm thick, on 1 mm cells, held at its left end and pushed down at its right
+    const base = { uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, filter: 1.2, steps: 30, space: { at: [15, 0], size: [30, 12] },
+      supports: [{ at: [0.5, 0], size: [1, 12] }], loads: [{ at: [29.5, 0], size: [1, 2], force: [0, -10] }] };
+    const write = (name, p) => fs.writeFileSync(path.join(project, 'problems', `${name}.json`), JSON.stringify({ title: name, ...base, ...p }));
+    // x1c.wall_min is two lines, 2 × 0.42 = 0.84 mm: under a cell, so every member already is that wide
+    write('line', { feature: 'x1c.wall_min' });
+    assert.match(cad('optimise', 'thin/line'), /thinnest member 0\.84 mm: every member is at least a cell \(1 mm\), so the grid holds it/);
+    assert.deepEqual(JSON.parse(cad('optimise', 'thin/line', '--json')).feature, { asked: 0.84, cells: 0, holds: 1, thin: 0 });
+    // 2.5 mm: (2.5 - 1) / 2 = 0.75, so a ball of 1 cell, three across: 3 mm
+    write('held', { feature: 2.5 });
+    const held = JSON.parse(cad('optimise', 'thin/held', '--json')).feature;
+    assert.deepEqual([held.asked, held.cells, held.holds], [2.5, 1, 3]);
+    assert.match(cad('optimise', 'thin/held'), /thinnest member 2\.5 mm: held to three cells \(3 mm\)/);
+    // 4 mm: (4 - 1) / 2 = 1.5, so 2 cells, past three across; 4 / 3 = 1.333, so cells of 1.34 mm hold it (4 / 1.34 =
+    // 2.985 cells, (2.985 - 1) / 2 = 0.99, a ball of 1), and do
+    write('wide', { feature: 4 });
+    assert.match(cad('optimise', 'thin/wide'), /a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.34 mm or more, or a feature of 3 mm or less/);
+    write('wide', { feature: 4, cell: 1.34 });
+    assert.deepEqual(JSON.parse(cad('optimise', 'thin/wide', '--json')).feature.cells, 1);
+  } finally { done(); }
+});
+
+test('the bench lever milled (examples/bench lever E): its tool is the 4 mm end mill it names, 2 mm of radius, two whole cells, not the 1.9998 mm the third of the depth gives', () => {
+  // mill_3axis.corner_per_depth (0.3333) × the 6 mm plate = 1.9998 mm: on 1 mm cells the disc then loses the four cells
+  // 2 cells out and draws a 3 × 3 square, about a 3 mm tool (topopt's test of a refusal's sizes shows a 4 mm slot open
+  // under it and filled under 2). Rounded to the 0.5 mm steps end mills come in: 3.9996 halves, so 4, 2 mm
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+    const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+    const r = await readProblem('bench', 'lever:milled'); console.log(JSON.stringify({ tool: r.problem.tool, mill: r.problem.mill, cell: r.problem.cell }));
+  `], { cwd: bench, encoding: 'utf8' }));
+  assert.deepEqual(r, { tool: 2, mill: '+z', cell: 1 });
+});
+
 test('the quadruped\'s eight axes on one controller: cad machine reads the Mega 2560 and follows each motor\'s wire to its breakout and on to the Mega\'s slot', async () => {
   const { controllerOf, slotsOf, CONTROLLERS } = await import('./lib/machine.mjs');
   // the controller is the bought board the streamer runs on; none is the Uno under a CNC shield, as before the Mega
