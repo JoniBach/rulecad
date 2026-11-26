@@ -26,4 +26,8 @@ export { forceGauge, forceGaugeModel, slipClutch, slipClutchModel } from './elem
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
 export { youngBistable, youngBistableModel, tensuralBistable, tensuralBistableModel } from './clicks.mjs';
 export { splitToothGear, splitToothGearModel } from './gearteeth.mjs';
+export { neckFE, neckHingeModel, rotatingSquares, rotatingSquaresModel, kirigamiFindings } from './kirigami.mjs';
+export { curvedCellModel, balancedCellModel } from './cells.mjs';
+export { tubeFourBar, tubeFourBarModel, tubeFourBarFindings } from './developable.mjs';
+export { kreslingModel } from './origami.mjs';
 export { butterflyPivot, butterflyPivotModel, butterflyBeams, xyThetaStage, xyThetaStageModel, rollingJoint, rollingJointModel } from './stages.mjs';

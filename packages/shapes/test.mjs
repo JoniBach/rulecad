@@ -280,3 +280,14 @@ test('shaft bores in one place: shaftBore holds the fits, and plainBearing and p
   // A name the table does not hold is refused, even one every object answers to
   for (const fit of ['constructor', 'toString', 'hasOwnProperty']) assert.throws(() => shaftBore(5, { fit, printer: x1c }), /shaftBore: fit is slide, press, run/, fit);
 });
+
+test('a region of rings, a part swept past a plate as its section, is cut with its hole open: the outline less the ring, the hole left solid', async () => {
+  const { optimisedOutline, regionShape } = await import('@rulecad/shapes');
+  const area = (g) => jscad.measurements.measureArea(g);
+  // A 10 x 10 ring with a 4 x 4 hole in it (counter-clockwise round, clockwise inside), over a 20 x 20 plate
+  const ring = { rings: [[[0, 0], [10, 0], [10, 10], [0, 10]], [[3, 3], [3, 7], [7, 7], [7, 3]]], points: [[0, 0]] };
+  assert.ok(Math.abs(area(regionShape(ring)) - (100 - 16)) < 1e-9, 'the ring is 100 - 16 = 84 mm2');
+  // Cut from the plate: 400 - 84 = 316 mm2, the hole's 16 mm2 kept (JSCAD's boolean snaps corners, by under 0.01 mm2)
+  const plate = [[[-5, -5], [15, -5], [15, 15], [-5, 15]]], cut = area(optimisedOutline({ outlines: plate, regions: { keep: [], avoid: [ring] } }));
+  assert.ok(Math.abs(cut - 316) < 0.01, `${cut}`);
+});

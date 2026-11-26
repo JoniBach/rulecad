@@ -175,6 +175,19 @@ material that stretches, such as TPU or polypropylene, or a web much wider than 
 | Living hinge pinch | π - 2 max(atan(t / l), atan((h - t / 2) / (l / 2 + h - t))), the panels sloped back 45° | geometry |
 | Miura cell at a tilt θ | H = a sin θ sin γ, L = √(a² - H²), V = a b cos γ / L, S = √(b² - V²); vertex (i, j) at (i L + (j mod 2) V, j S, (i mod 2) H) | derived here; the same cell as Schenk and Guest 2013 |
 | Miura crease turns | between columns 2θ; between rows acos((H²S² - H²V² + L²S²) / (H² b² + L²S²)) | the facets' normals |
+| Kresling sides | a² = h² + 2R²(1 - cos φ), b² = h² + 2R²(1 - cos(φ - 2π/n)), polygon side 2R sin(π/n) | geometry |
+| Kresling's second stable state | twist π + 2π/n - φ0, height² = a² - 2R²(1 - cos φ1) (both states keep a and b) | derived here from Guest and Pellegrino 1994's geometry |
+| Kresling's panels between the states | each side and diagonal a bar E t (2A / L) / L, A its triangle's area: an estimate | estimate |
+
+**The Kresling fold.** `kreslingModel({ sides, radius, height, twist }, material)` is a tube of triangles between two
+polygons, the top turned against the bottom. Its triangles are fixed by one stable state; with the same triangles it
+stands again at a second, shorter and turned further, and between the two its panels must stretch, so it snaps from one
+to the other (it is bistable, not rigid-foldable). The model gives both states with each crease's fold, the flat
+pattern, and with a `panel` thickness the energy and force at any height, the barrier between the states and the most
+stretch on the way. With a `hinge` it gives each state's crease strain and the web width a crease would need for the
+material's limit. Six sides on a 20 mm radius, 30 tall turned 100°, stands again at 20.64 mm turned 140°; its
+diagonals fold over 150° there, which a 0.4 mm PETG web would need over 40 mm of width to take. A printed Kresling
+cell wants a material that bends far (TPU), so this is a model and a flat pattern, not a part drawn.
 
 ## Pinned where it must be: the constant-force mechanism
 
@@ -887,6 +900,165 @@ cells, more rows, or a material that bends further (TPU).
 
 The bench has this block as `flexures/lattice` (`npx cad check flexures/lattice`).
 
+## Kirigami: rotating squares
+
+A sheet cut by slots into squares, each joined to its four neighbours by a narrow neck at one corner, is a
+stretchable panel. Pulled by two opposite sides, its squares turn, alternately one way and the other, and the sheet
+grows both ways at once: a Poisson's ratio of -1 (Grima and Evans). It is also far softer in its plane than the plate
+it was cut from. The same cell tiled is the chiral lattice of rotating squares.
+
+```js
+import { rotatingSquares, rotatingSquaresModel, neckHingeModel, kirigamiFindings, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }); // strain limit 1.25%
+const sheet = { pitch: 10, neck: 0.84, slot: 1.68, depth: 2, across: 6, rows: 6 };
+const m = rotatingSquaresModel(sheet, petg);
+m.E;            // 7.47 MPa in its plane, 242 times softer than PETG
+m.stiffness;    // 12.44 N/mm pulled by its sides
+m.limit;        // { stretch: 0.93 mm, turn: 2.42° at each neck, force: 12.1 N, sheet: 1.56% }
+m.grams;        // 6.64
+rotatingSquares(sheet); // the shape: 60 x 60 x 2 mm, one piece
+kirigamiFindings({ ...sheet, stretch: 0.4 }, { line: 0.42, layer: 0.2 }, petg, m); // necks, slots, layers, strain
+```
+
+Through every vertex of the square grid runs one slot, along x and along y in turn, `slot` wide with round ends. Each
+stops a neck short of the slots either side, so every neck has a slot's round end (radius r, half the slot) on one
+side and another slot's straight side on the other: a one-sided notch hinge, `neck` (w) wide at its narrowest and
+`depth` (b) deep. Printed flat, every neck bends within its layers.
+
+`neckHingeModel` gives a neck's stiffness and its peak strain for a turn. Both come from the kit's own plane-stress
+finite elements (`@rulecad/fea`), tabulated for r / w from 0.5 to 6 (25 cells across the neck, the round end's cells
+taking the share of them that is solid). `neckFE(rho)` solves one neck and gives any row again.
+
+| r / w | Stiffness over E b w² | Peak strain per radian |
+|---|---|---|
+| 0.5 | 0.04944 | 0.401 |
+| 1 | 0.04088 | 0.297 |
+| 2 | 0.03159 | 0.211 |
+| 4 | 0.02347 | 0.153 |
+| 6 | 0.01952 | 0.126 |
+
+The thin-neck formula, 2 E b w^2.5 / (9π √(2r)) (Paros and Weisbord's, a one-sided notch taken as a two-sided one of
+twice the radius), gives the same trend but a stiffer neck: 1.22 times at r / w = 1, 1.05 times at 6. It leaves out
+the squares' give round the neck's roots. The peak strain is on the round side: 1.27 times the straight side's at
+r / w = 1.
+
+The sheet's model, for squares of pitch a:
+
+| Quantity | Formula |
+|---|---|
+| Each neck's place on its square's side, from a corner (geometry) | d = r + w / 2 |
+| The square through a square's four necks: side, turn at rest | s = √((a - d)² + d²), α0 = atan(d / (a - d)) |
+| The sheet's width across n squares, at a turn α | X = n s (cos α + sin α) |
+| Each neck's turn | 2 (α - α0): neighbours turn opposite ways |
+| In-plane modulus at rest (energy of the necks; Grima and Evans's model) | E = 8 K / (s² b (1 - sin 2α0)), ν = -1 |
+| The pull across the sheet (N necks of stiffness K) | F = (dU / dα) / (dX / dα), U = N ½ K (2 (α - α0))² |
+
+The formula for E is worked here from the necks' energy over a cell of four squares (eight necks); Grima and Evans
+give the rigid squares' Poisson's ratio of -1. Large turns are counted in the pull. The squares are taken as rigid (an
+estimate: their own bending is left out, beyond what the neck's finite elements count round its roots).
+
+`kirigamiFindings` checks that the necks are whole printed lines (`kirigami.neck`), the slots at least two lines wide
+(`kirigami.slot`), the thickness whole layers (`kirigami.layers`), the squares in the bed's plane
+(`kirigami.direction`) and the necks' strain at a stretch against the material's limit (`kirigami.strain`). A pitch
+too small for its slots and necks, a slot end outside the table, or fewer than two squares each way is refused by
+name (`kirigami.pitch`, `kirigami.radius`, `kirigami.count`).
+
+PETG's strain limit keeps the stretch small: a neck turns about 2.4° at r / w = 1, so the sheet above stretches
+1.6% before its necks reach the limit. A larger round end lets a neck turn further (5.7° at r / w = 6), at the cost
+of wide slots. Its use in PETG is a soft, auxetic panel; a stretch of tens of percent wants TPU.
+
+The bench has a 5 by 5 panel as `flexures/kirigami` (`npx cad check flexures/kirigami`).
+
+## Negative- and zero-stiffness cells
+
+A shallow arch clamped at both ends, pushed at its middle, gives less push back the further it goes over part of its
+travel: its stiffness there is negative. Two cosine arches side by side, joined at the middle (`bistable`, after Qiu,
+Lang and Slocum), make the cell. Put a positive spring beside it, as stiff as that negative stiffness, and the two
+cancel: the pair holds about the same force over a range of travel. That is a zero-stiffness, statically balanced
+cell, a weight carried anywhere in the range.
+
+```js
+import { curvedCellModel, balancedCellModel, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' });
+const arch = { length: 80, rise: 2.5, thickness: 0.84, width: 6 };
+const b = balancedCellModel(arch, petg);
+b.cell.stiffness;  // 5.12 N/mm at rest
+b.cell.negative;   // { from: 1.03, to: 3.99, least: -1.319 N/mm, at: 2.54 } mm pushed
+b.spring;          // 1.319 N/mm: the positive spring that cancels it
+b.flat;            // { from: 1.58, to: 3.44, span: 1.86, force: 4.39 N }: within 10% of 0 stiffness
+b.leaves;          // { length: 37.2, count: 11 }: what a printed spring of leaves takes
+```
+
+`curvedCellModel` runs the beam solver (`beams.mjs`, large deflections) on the two drawn arches, the shuttle pushed
+along -y with its slide and turn left free, and gives the force curve with its slope at each step, the stiffness at
+rest, the push where it gives (`snap`), the range where the slope is negative, whether it stays over (`bistable`) and
+where (`second`), and the beams' most strain. It stays over when the rise is over 2.31 thicknesses (Qiu et al.); below
+that it springs back, though its stiffness still turns negative past the snap. A rise under about a thickness has no
+negative stiffness at all, and says so (`cell.negative`).
+
+`balancedCellModel` adds a straight-line spring (by default as stiff as the arches' least slope) and finds the travel
+round that point where the pair's slope stays within 10% of the spring's (`within`), and the force there. It also
+sizes a printed spring for it: fixed-guided leaves side by side, each 12 E I / l³ with strain 3 t δ / l² (Howell),
+each as long as it must be to stay within half the strain limit at the far end of the range.
+
+That sizing is why the balanced cell is a model here and its spring is not drawn: a spring soft enough (1.3 N/mm) yet
+carrying 4.4 N at a low strain must hold its energy in a lot of plastic. The cell above wants eleven leaves of 37 mm,
+409 mm of leaf against the arches' 160 mm. Leaves in series (a wave spring) cannot do it at all: each leaf carries the
+whole force, so its strain allows only a few millimetres of leaf. A balanced cell in PETG is a large part. The usual
+compact answer is a strip printed straight and squeezed into its frame at assembly, balanced at its straight middle
+where every spring is near rest; that is a two-print part.
+
+## Developable mechanisms: a four-bar in a tube's wall
+
+A developable mechanism is made of pieces of a surface: at rest it is the surface and nothing stands out of it; moved,
+its links leave the surface, outward or inward (Nelson and others). On a cylinder whose joints' axes run
+along it, the mechanism is a planar one seen end on: a four-bar whose joints are four points on the wall's circle,
+its links the arcs of wall between them, the rest of the tube its ground. A grip's housing that grows a bump under the
+fingers, or a tube whose side opens, is one.
+
+```js
+import { tubeFourBar, tubeFourBarModel, tubeFourBarFindings, flexureMaterial } from '@rulecad/flexures';
+
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+const tube = { radius: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 8, thickness: 0.84 } };
+const m = tubeFourBarModel(tube, petg);
+m.travel;    // [-8.8, 8.8]: the input's turn each way at PETG's strain limit, degrees
+m.at(-4.4);  // turns, strain 0.63%, torque -89.8 N·mm, how far each link stands out of the tube and in
+m.grams;     // 6.69
+tubeFourBar(tube); // the tube, standing, one piece
+tubeFourBarFindings({ ...tube, turn: -4.4 }, { line: 0.42, layer: 0.2 }, petg, m); // webs, layers, strain, gap, surface
+```
+
+`joints` gives the four hinges' places round the tube in degrees, in order: the input's hinge on the ground, the input
+to the coupler, the coupler to the output, the output's hinge on the ground. The links move as the rigid four-bar's
+(the pseudo-rigid-body model, Howell), each hinge a torsion spring at its web's middle:
+
+| Quantity | Formula |
+|---|---|
+| A link's length | the chord between its two hinges, 2 R sin(arc / 2) |
+| The coupler's far hinge | where the circles about the input's moved end and the output's ground hinge meet, on the side it lies at rest |
+| A hinge's bending length | l_eff = l - 2 rr + 2 ∫ (t / t(s))³ ds over each round corner, t(s) = t + 2 (rr - √(rr² - s²)) |
+| Each hinge's stiffness | E I / l_eff, I = H t³ / 12 (a living hinge) |
+| Each hinge's strain | t ψ / 2 l_eff at a turn ψ (at the web's thin middle) |
+| The input's torque | the slope of Σ ½ K ψ² with the input's turn |
+| How far a link stands out or in | the most and least distance of its wall's middle from the axis, less R |
+
+Each hinge is the wall thinned to a web on its middle by a pocket from the outside and one from the inside, each
+pocket's corners at the web rounded (radius rr, the pocket's depth or half the web if less). The rounds thicken the
+web's ends, so it bends as a shorter one: on the bench tube the 8 mm web is 6.34 mm thin and bends as 7.20 mm, about 11%
+stiffer than the 8 mm figure (`m.hinge.length`). A positive turn takes the input out of the tube, a negative one in. Printed standing, every hinge's axis is up z, so it bends within its layers, and
+the first layer is the tube's whole ring. A web is straight on a curved wall, so its length is kept under
+√(2 R (wall - t)), where its ends stand a quarter of the pockets' cut off the wall's middle (`developable.hinge`).
+
+`tubeFourBarFindings` checks the webs in whole printed lines (`developable.web`), the length in whole layers
+(`developable.layers`), the hinges' strain at the input's turn (`developable.strain`), the links that are not joined
+apart (`developable.gap`), and says how far each link stands out and in (`developable.surface`). Joints out of order,
+arcs too short for two hinges, or a wall thicker than the radius are refused by name (`developable.*`).
+
+The bench has this tube as `flexures/tube`.
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
@@ -909,6 +1081,9 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear, and an open thin-walled section's (the split tube).
 - Schenk, M., and Guest, S. D., "Geometry of Miura-folded metamaterials", *Proceedings of the National Academy of Sciences* 110(9), 3276-3281, 2013: the Miura cell and its fold angle.
 - Gibson, L. J., and Ashby, M. F., *Cellular Solids: Structure and Properties*, 2nd ed., Cambridge University Press, 1997, chapter 4: a honeycomb's in-plane moduli, Poisson's ratios and buckling from its walls' bending, and the re-entrant cell's negative Poisson's ratio.
+- Grima, J. N., and Evans, K. E., "Auxetic behavior from rotating squares", *Journal of Materials Science Letters* 19(17), 1563-1565, 2000: the rotating-squares mechanism and its Poisson's ratio of -1.
+- Nelson, T. G., Zimmerman, T. K., Magleby, S. P., Lang, R. J., and Howell, L. L., "Developable mechanisms on developable surfaces", *Science Robotics* 4(27), 2019: mechanisms whose links are pieces of a cylinder or cone, at rest the surface.
+- Guest, S. D., and Pellegrino, S., "The folding of triangulated cylinders, Part I: Geometric considerations", *Journal of Applied Mechanics* 61, 773-777, 1994: the triangulated cylinder (the Kresling pattern) and its two stable states.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
 - Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
