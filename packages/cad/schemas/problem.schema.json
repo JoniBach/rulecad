@@ -194,14 +194,28 @@
       "description": "One section all along this axis: a part cut from a bar, an extrusion or a plate of the profile"
     },
     "mill": {
-      "type": "string",
-      "pattern": "^[+-][xyz]$",
-      "description": "Milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is as solid as every cell between it and the tool. Not with overhang or cast. Rules: mill-3axis"
+      "description": "Milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is as solid as every cell between it and the tool. Or from several sides, a setup each (['+z', '-z']: turned over for the second): a cell is left where no side's tool reaches it. Or a variable holding the side or sides ('+z', '+z -z') or 'none' (not milled), so a variant can switch it. Not with overhang or cast. Rules: mill-3axis",
+      "oneOf": [
+        { "type": "string", "pattern": "^([+-][xyz]|[A-Za-z_][A-Za-z0-9_]*)$" },
+        { "type": "array", "items": { "type": "string", "pattern": "^[+-][xyz]$" }, "minItems": 1, "uniqueItems": true }
+      ]
+    },
+    "tool": {
+      "$ref": "#/$defs/expr",
+      "description": "With mill: the tool's radius, mm (a flat end mill). No pocket narrower than the tool, and every inside corner seen from the tool rounded to at least its radius. At the grid's resolution: the tool's end is the cells whose centres are within its radius, so give at least a cell. Rules: mill-3axis (an inside corner's radius)"
+    },
+    "feature": {
+      "$ref": "#/$defs/expr",
+      "description": "The thinnest member made, mm: for a printer, its two lines (x1c.wall_min). Members narrower go as the part is optimised, and cad optimise reports any left. Where a cell is as wide or wider, every member already is and nothing changes; up to three cells across it is held by an opening filter; wider is refused by name with the cell size that would hold it. Rules: x1c (wall_min, line)"
+    },
+    "draft": {
+      "$ref": "#/$defs/expr",
+      "description": "With cast: the draft, degrees. The part narrows towards the side it is drawn off: a wall steps out a cell every whole number of layers in 1 / tan(draft), so at least this draft; refused by name when the grid is too shallow for one step. Rules: mould-injection"
     },
     "cast": {
-      "description": "Cast or moulded: in a mould drawn off one way ('+z'), or in two halves drawn off both ways along an axis from a parting plane. No undercuts from the draw; draft is left to the drawing. Not with overhang or mill. Rules: mould-injection",
+      "description": "Cast or moulded: in a mould drawn off one way ('+z'), or in two halves drawn off both ways along an axis from a parting plane. No undercuts from the draw, and with draft the walls taper. Not with overhang or mill. Rules: mould-injection",
       "oneOf": [
-        { "type": "string", "pattern": "^[+-][xyz]$" },
+        { "type": "string", "pattern": "^([+-][xyz]|[A-Za-z_][A-Za-z0-9_]*)$", "description": "The way it is drawn off, or a variable holding it (or 'none': not cast)" },
         {
           "type": "object",
           "additionalProperties": false,
@@ -214,8 +228,8 @@
       ]
     },
     "voids": {
-      "enum": ["allowed", "refused"],
-      "description": "Enclosed voids in the result: allowed (the default), or refused, for metal powder bed printing (powder left inside can't be got out) or a casting's trapped core: cad optimise then reports each as an error with its volume and where it is. Rules: dmls"
+      "enum": ["allowed", "refused", "prevented"],
+      "description": "Enclosed voids in the result: allowed (the default); refused, for metal powder bed printing (powder left inside can't be got out) or a casting's trapped core: cad optimise then reports each as an error with its volume and where it is; or prevented: the optimiser keeps every void open to the outside as it goes (a virtual temperature, kept under a cap: an enclosed void runs hot), and any left are still reported as errors. Prevented is for the stiffest part that fills a volume, not a mechanism or a stress limit. Rules: dmls"
     },
     "output": {
       "type": "object",

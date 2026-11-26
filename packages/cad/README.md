@@ -1617,12 +1617,28 @@ A part made another way says so in place of `overhang` (one process to a problem
 - **Milled:** `"mill": "+z"` (the tool cuts down from above). No undercuts: a cell is as solid as every cell
   between it and the tool. `cad optimise` says `milled from +z: no undercuts`, or counts the cells an avoid region
   or the space's own edge hides behind material. The `mill-3axis` rule set holds the walls, corners and pockets a 3-axis machine manages.
+  `"tool": 2` is the end mill's radius (mm, at least a cell): no pocket narrower, every inside corner rounded to it,
+  and `cad optimise` counts any cells still too narrow, in the design or in avoid regions (drill those holes). A flat
+  (2D) problem milled from `+z` with a tool is a plate's profile cut through by an end mill. `"mill": ["+z", "-z"]`
+  mills from several sides, a setup each: a cell stays only where no side's tool reaches it. `"mill"` can also name a
+  variable holding `"+z"`, `"+z -z"` or `"none"`, so a variant switches it: the bench's `bench/lever:milled` is the
+  lever cut from a 6 mm plate by a 4 mm end mill.
 - **Cast or moulded:** `"cast": "+z"` for a mould drawn off one way, or `"cast": { "draw": "z", "parting": 6 }` for
-  two halves drawn off both ways from a parting plane (mm along the axis; the space's middle when left out). Draft
-  (`mould-injection`: a degree or so) is less than a cell, so it is left to the drawing.
+  two halves drawn off both ways from a parting plane (mm along the axis; the space's middle when left out). `"draft": 15`
+  (degrees) narrows the part towards the side it is drawn off: a wall steps a cell out every whole number of layers
+  in 1 / tan(draft), so at least the draft, and `cad optimise` says the angle made (15° is a step every 3
+  layers, 18.43°). A draft too shallow for the grid (3° needs 19 layers) is refused by name: draw it on the finished
+  part instead (`mould-injection`: a degree or so).
 - **Printed in a metal powder bed:** `"overhang": "+z"` with `"voids": "refused"`. Powder left in an enclosed void
   can't be got out, so `cad optimise` fails with each void's volume and centre: open it with an avoid region (an
   escape hole, `dmls.escape_hole` wide) or allow voids. The `dmls` rule set holds the process's limits.
+  `"voids": "prevented"` keeps every pocket open as the part is optimised (a virtual temperature, kept under a cap:
+  an enclosed void runs hot); any a keep region walls in are still errors.
+
+Any problem can give `"feature"`, the thinnest member it makes, mm: for a printed part `"x1c.wall_min"`, the
+printer's two lines (0.84 mm). Where a cell is as wide, every member already is, and `cad optimise` says the grid
+holds it; up to three cells across, members narrower go as it optimises; wider is refused with the cells that would
+hold it.
 
 Any of them can also be `"symmetry": { "mirror": "y" }` (mirrored across the grid's middle planes; `"turns": 2` or
 `4` about `"axis"` for half or quarter turns) or `"extrude": "x"` (one section all along x, a part cut from a bar).

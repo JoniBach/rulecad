@@ -94,14 +94,45 @@ Two more steps shape the result:
   surfaces. A section milled, cast or extruded across its own plane in 2D often comes out grey (a grey column bends as
   stiffly as a solid one of its share's height, so the optimiser has no reason to choose), and its outline at half
   density is then a guess; `voids(grid, density)` finds enclosed empty pockets,
-  which a powder bed print can't empty of powder, with each one's volume and centre. Draft angles are a degree or
-  two, less than a cell, so they are left to the drawing.
+  which a powder bed print can't empty of powder, with each one's volume and centre.
+- **The tool, more sides, the draft** (with a process filter). `tool` (mm, with `mill`) is a flat end mill's radius:
+  in each layer across the tool's axis the part is closed by a disc that size (`toolFilter`: dilated then eroded,
+  Sigmund 2007's morphology filters as smooth maxima and minima), so no pocket is narrower than the tool and every
+  inside corner seen from it is rounded to its radius. In 2D, `mill: '+z'` with a tool is a plate's profile cut
+  through by an end mill along z. `mill: ['+z', '-z']` mills from several sides, a setup each (Langelaar 2019): a
+  cell stays only where no side's tool reaches it, the smooth minimum of what each side leaves. `draft` (degrees, with
+  `cast`) narrows the part towards the side it is drawn off: a wall steps out a cell every whole number of layers in
+  1 / tan(draft), so at least the draft asked, and a grid too shallow for one step is refused by name.
+- **Voids prevented** (`voids: 'prevented'`): every empty pocket is kept open to the outside as the part is optimised,
+  by the virtual temperature (`virtualTemperature`, Liu and others 2015): empty cells make heat and conduct it well,
+  solid ones conduct it poorly, the grid's faces are held cold, so an enclosed void runs hot. Its p-mean is kept under
+  a cap as a second constraint. On a twisted block that closes into a tube freely, the prevented run vents it for a
+  little stiffness (test). For the stiffest part that fills a volume.
+- **The thinnest member** (`feature`, mm): a printer's two lines, a resin printer's smallest feature. Members
+  narrower go as the part is optimised: after the density filter the part is opened by a ball (`featureFilter`:
+  eroded then dilated) of the least whole number of cells r whose 2r + 1 cells across are as wide. Where a cell is
+  already as wide (two 0.42 mm lines on 1 mm cells), every member is, and nothing changes. A ball of one cell holds
+  members to three cells; a wider one is refused by name with the cells that would do it, since a 2D cantilever
+  optimised under a ball of two cells came out speckled with loose cells and over twice as flexible (450 against 199).
+  On a 60 × 20 cantilever with a 1.2 mm filter, a 3 mm feature on 1 mm cells took the cells in members under three
+  cells from 114 to none, for 8.8% more compliance (test). `thin(grid, density, { radius })` finds the solid cells in
+  members narrower than a ball (and on square outside corners, which it rounds).
 
 Milled from above, the 3D cantilever (24 × 8 × 8 cubes, volume 0.3, 200 steps) has no undercuts from the tool's
 side and a compliance of 3227 against 2989 optimised freely, 8% less stiff, with 5.3% of its cells grey; the free
 design has over 100 cells hidden under material from above. A 2D cantilever (30 × 20 squares, 200 steps) milled from
 its top edge has no undercuts either, but over 30% of it is grey. Mirrored across its middle, a cantilever loaded at one corner comes out the same both
 sides to the last digit.
+
+| Figure | Formula | Source |
+|---|---|---|
+| Smooth maximum over a disc or ball of N cells | (1/β) ln(Σ exp(β x) / N), β = 10 ln N + 10 | Sigmund (2007) |
+| Smooth minimum | 1 − smooth maximum of (1 − x) | Sigmund (2007) |
+| Tool (closing) | smooth minimum of the smooth maximum, over a disc of the tool's radius in each layer | Sigmund (2007); Langelaar (2019) |
+| Feature (opening) | smooth maximum of the smooth minimum, over a ball of r cells; r = ⌈(feature / h − 1) / 2⌉ | Sigmund (2007) |
+| Several sides | smooth minimum of two: ½(a + b − √((a − b)² + ε)) + ½√ε, ε = 10⁻⁶ | Langelaar (2019) |
+| Draft | a cell's step out every ⌊1 / tan(draft)⌋ layers | the draw after Gersborg and Andreassen (2011); the step is this package's choice |
+| Virtual temperature | k = kₛ + (1 − kₛ)(1 − ρ)³, heat 1 − ρ, faces at 0; p-mean of T, p = 8 | Liu and others (2015) |
 
 Several load cases are optimised together by weight. A case weighted 0 is solved only at the end, for its figures.
 `model(spec)` exposes the analysis and its gradient, for other update methods.
@@ -339,6 +370,7 @@ Its gradients agree with finite differences through the filter and the projectio
   little thin or a little thick all round.
 - **Bound formulation:** making the worst of several measures best, by minimising one extra variable that each of
   them must stay under.
+- **Feature:** the thinnest member a process makes, mm.
 - **Von Mises stress:** one number for how hard a point of material is worked, from all its stresses together; it's
   compared with the material's strength.
 
@@ -356,6 +388,12 @@ Its gradients agree with finite differences through the filter and the projectio
   Optimization* 50, 1175–1196.
 - Langelaar (2017). An additive manufacturing filter for topology optimization of print-ready designs. *Structural and
   Multidisciplinary Optimization* 55, 871–883.
+- Langelaar (2019). Topology optimization for multi-axis machining. *Computer Methods in Applied Mechanics and
+  Engineering* 351, 226–252.
+- Sigmund (2007). Morphology-based black and white filters for topology optimization. *Structural and
+  Multidisciplinary Optimization* 33, 401–424.
+- Liu, Li, Chen, Tong, Cheng (2015). An identification method for enclosed voids restriction in manufacturability
+  design for additive manufacturing structures. *Frontiers of Mechanical Engineering* 10, 126–137.
 - Gersborg, Andreassen (2011). An explicit parameterization for casting constraints in gradient driven topology
   optimization. *Structural and Multidisciplinary Optimization* 44, 875–881.
 - Taubin (1995). A signal processing approach to fair surface design. *SIGGRAPH '95*, 351–358.

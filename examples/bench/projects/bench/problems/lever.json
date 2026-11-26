@@ -1,16 +1,21 @@
 {
   "title": "Lever bench: the stiffest lever",
   "description": "A cantilever lever held by two bolts in line at one end and loaded through a bolt near the other, in its own plane. The space is the bench's envelope; the bosses round the bolts stay solid and the holes empty.",
-  "uses": ["bench", "m5", "m4", "x1c"],
+  "uses": ["bench", "m5", "m4", "x1c", "mill-3axis"],
   "material": "pla",
   "variables": {
     "hole5": { "value": "(m5.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "A fixing bolt's hole: radius, printed" },
     "hole4": { "value": "(m4.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "The load bolt's hole: radius, printed" },
-    "angled": { "value": 0, "tweak": { "min": 0, "max": 1 }, "rule": "The angled case's weight: 0 analyses it without optimising for it" }
+    "angled": { "value": 0, "tweak": { "min": 0, "max": 1 }, "rule": "The angled case's weight: 0 analyses it without optimising for it" },
+    "sides": { "value": "none", "choice": ["none", "+z"], "rule": "none: printed; +z: its profile milled through a plate by an end mill along z, so no window narrower than the tool and every inside corner rounded to its radius" },
+    "tool_r": { "value": "round(mill_3axis.corner_per_depth * bench.thickness, 0.5)", "unit": "mm", "rule": "The end mill's radius: an inside corner's radius is at least a third of its depth, here the plate's 6 mm: 2 mm, a 4 mm end mill (rounded to the 0.5 mm steps end mills come in, as the rule's 0.3333 gives 1.9998 mm, a hair under 2 cells, which the grid draws as a 3 mm tool)" }
   },
   "variants": {
-    "both": { "angled": 1 }
+    "both": { "angled": 1 },
+    "milled": { "sides": "+z" }
   },
+  "mill": "sides",
+  "tool": "tool_r",
   "thickness": "bench.thickness",
   "cell": "bench.cell",
   "volume": "bench.fill",

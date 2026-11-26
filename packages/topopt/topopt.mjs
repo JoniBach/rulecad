@@ -65,10 +65,21 @@ export { jsBackend };
  *   middle planes across each axis in mirror ('x', 'xz', …), and the same each half or quarter turn about its middle
  *   (about axis in 3D, z by default); keep and avoid regions stay as given
  * @property {'x' | 'y' | 'z'} [extrude] one section all along this axis: cut from a bar or plate of the profile
- * @property {string} [mill] milled from this side ('+z': the tool cuts down from above): no undercuts, so a cell is
- *   as solid as every cell between it and that side
+ * @property {string | string[]} [mill] milled from this side ('+z': the tool cuts down from above): no undercuts, so a
+ *   cell is as solid as every cell between it and that side. Or from several (['+z', '-z']: a setup each): a cell is
+ *   left where no side's tool reaches it
+ * @property {number} [tool] with mill, the tool's radius (mm, a flat end mill): no pocket narrower than the tool, and
+ *   every inside corner seen from the tool rounded to at least it. At least a cell
+ * @property {'allowed' | 'prevented'} [voids] prevented: every empty pocket is kept open to the grid's outside as
+ *   the part is optimised (a powder bed print's powder, a casting's core, must get out), by the virtual temperature
+ *   (virtualTemperature) kept under a cap. For the stiffest part that fills a volume
  * @property {string | { draw: 'x' | 'y' | 'z', parting?: number }} [cast] cast in a mould drawn off this way ('+z'),
  *   or in two halves drawn off both ways along draw from a parting plane (mm along it, default the space's middle)
+ * @property {number} [feature] the thinnest member made, mm (a printer's two lines): members narrower go as the part is
+ *   optimised (featureFilter, a ball of the least whole number of cells r whose 2r + 1 cells across are as wide);
+ *   nothing to do where a cell is already as wide
+ * @property {number} [draft] with cast, the draft (degrees): the part narrows towards the side it is drawn off, a cell
+ *   every whole number of layers in 1 / tan(draft), so at least this; the grid must be deep enough for one step
  */
 
 /**
@@ -101,6 +112,7 @@ export function discretise(p) {
   const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
   // One process at a time: printed (overhang), milled or cast
+  if (p.voids != null && !['allowed', 'prevented'].includes(p.voids)) throw new Error(`voids: allowed, or prevented (each kept open to the outside as it is optimised); got "${p.voids}"`);
   const made = ['overhang', 'mill', 'cast'].filter((k) => p[k]);
   if (made.length > 1) throw new Error(`a part is printed (overhang), milled (mill) or cast (cast), one of them: this problem gives ${made.join(' and ')}`);
   for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
@@ -189,7 +201,7 @@ export function discretise(p) {
     for (let q = 0; q < g.dofs; q++) if (fixed[q] || loads.some((l) => l.force[q]) || output?.force[q]) acted[Math.floor(q / dim)] = 1;
     for (let e = 0; e < g.cells; e++) if (passive[e] === 0) for (let k = 0; k < corners; k++) if (acted[g.edof[e * g.cellDofs + dim * k] / dim]) { passive[e] = 1; break; }
   }
-  return clash({
+  return howMade(clash({
     grid: size, origin, passive, fixed, loads, ...(output ? { output, springs } : {}),
     material: p.material, thickness: p.thickness, volume: p.volume,
     // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
@@ -197,8 +209,19 @@ export function discretise(p) {
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (stress && !p.output ? 1000 : dim === 3 ? 500 : 300),
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(stress ? { stress, ...(p.strain != null ? { strain: p.strain } : {}) } : {}), ...(p.robust ? { robust: true } : {}),
     ...(p.symmetry ? { symmetry: p.symmetry } : {}), ...(p.extrude ? { extrude: p.extrude } : {}), ...(p.mill ? { mill: p.mill } : {}), ...(p.cast ? { cast: castOn(p.cast, lo, n, h, space) } : {}),
+    ...(p.tool ? { tool: p.tool } : {}), ...(p.draft ? { draft: p.draft } : {}), ...(p.voids === 'prevented' ? { voids: 'prevented' } : {}),
+    ...(p.feature != null ? { feature: p.feature } : {}),
     regions: { keep, avoid },
-  });
+  }));
+}
+
+// A milled or cast problem's process, checked by name on its grid before any maths (the filter itself is made by model)
+function howMade(spec) {
+  if (spec.tool != null && !(spec.tool > 0)) throw new Error(`a tool's radius is a distance above 0 mm (got ${spec.tool})`);
+  if (spec.tool && spec.mill && spec.tool < spec.grid.h) throw new Error(`a tool's radius of ${fmt(spec.tool)} mm is under a cell (${fmt(spec.grid.h)} mm) and changes nothing on the grid: give cells of ${fmt(down2(spec.tool))} mm or less, or leave the tool out`);
+  processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
+  if (spec.feature != null) featureCells(spec.feature, spec.grid.h);
+  return spec;
 }
 
 // A symmetry the process can't keep: a mirror or turn that swaps the tool's side, the mould's draw or the build
@@ -206,7 +229,10 @@ export function discretise(p) {
 // sides at once, and the tie and the process would pull it lopsided. Refused by name; a mould in two halves parted at
 // the grid's middle maps onto itself under a mirror or half turn across its draw, so that one stands.
 function clash(spec) {
-  const sym = spec.symmetry, way = spec.overhang || spec.mill || spec.cast;
+  const sym = spec.symmetry;
+  // (milled from several sides: each side's tool is checked as if it were the only one)
+  if (Array.isArray(spec.mill)) { for (const side of spec.mill) clash({ ...spec, mill: side }); return spec; }
+  const way = spec.overhang || spec.mill || spec.cast;
   if (!sym || !way || way === 'none') return spec;
   const g = spec.grid, n = g.nz > 1 ? [g.nx, g.ny, g.nz] : [g.nx, g.ny], dim = n.length, names = 'xyz'.slice(0, dim);
   const two = typeof way === 'object', axis = two ? way.draw : String(way).at(-1), ax = names.indexOf(axis);
@@ -452,15 +478,23 @@ export function tieFilter({ nx, ny, nz = 1 }, { mirror = '', turns = 1, axis, ex
  * same of a casting by a sum along the line). With parting, a mould in two halves: the cells from the parting layer
  * on (towards +) are drawn off one way, those before it the other. apply gives the densities the process can make;
  * adjoint carries sensitivities back through it.
+ * With draft (degrees, a mould's), the part also narrows towards the side it is drawn off: every `every` layers in
+ * from that side, a cell is at least as solid as its neighbours (the 3 or 9 round it, across the axis) in the layer
+ * before, so a wall steps out a cell each `every` layers, `every` the whole layers in 1 / tan(draft): at least the
+ * draft asked, at the grid's resolution. Refused by name when no step fits in the grid (a degree on a coarse grid).
  * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the side the tool comes from, or (with
  * parting) the draw axis, 'z' @param {number} [parting] with a two-part mould, the first layer of the + half (0 to n)
+ * @param {{ draft?: number }} [o]
  */
-export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
+export function drawFilter({ nx, ny, nz = 1 }, from, parting, { draft } = {}) {
   const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
   const two = parting != null, sign = from[0] === '-' ? -1 : 1;
   if (ax < 0 || ax >= dim || (!two && !/^[+-]/.test(from))) throw new Error(`the tool's side is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'}${two ? ', or with a parting plane the draw axis, x, y or z' : ''} (got ${from})`);
   if (two && !(Number.isInteger(parting) && parting >= 0 && parting <= n[ax])) throw new Error(`the parting plane is a layer from 0 to ${n[ax]} (got ${parting})`);
-  const stride = [1, nx, nx * ny][ax], eps = 1e-6;
+  const strides = [1, nx, nx * ny], stride = strides[ax], eps = 1e-6;
+  // A draft: a step out every `every` layers; the longest run of layers a half has must hold at least one step
+  const every = draftEvery(draft), longest = two ? Math.max(parting, n[ax] - parting) : n[ax];
+  if (every && every >= longest) throw new Error(`a draft of ${fmt(draft)}° steps out a cell every ${every} layers, and this grid has ${longest} along ${'xyz'[ax]}${two ? ' in its deeper half' : ''}: give it more than ${every} layers there (smaller cells), or more draft`);
   // Each line along the axis as a list of chains, each from the side its tool or mould half comes from inwards
   const chains = [];
   for (let e = 0; e < cells; e++) {
@@ -470,7 +504,7 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
     else chains.push(Int32Array.from(sign > 0 ? [...line].reverse() : line));
   }
   const slopeIn = new Float64Array(cells), slopePrev = new Float64Array(cells);
-  return {
+  if (!every) return {
     apply(x, out) {
       for (const c of chains) {
         let v = 0;
@@ -499,6 +533,289 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
       return out;
     },
   };
+  // With a draft, layer by layer from each half's side: what a cell takes from the layer before is that layer's cell
+  // under it, or on a step layer the smooth maximum of it and its neighbours across the axis (a chain of pairwise
+  // smooth maxima, each never below the larger, at most 1)
+  const across = [0, 1, 2].filter((a) => a < dim && a !== ax), depth = new Int32Array(cells), prev = new Int32Array(cells).fill(-1), order = [];
+  for (const c of chains) for (let k = 0; k < c.length; k++) { depth[c[k]] = k; if (k) prev[c[k]] = c[k - 1]; }
+  for (let k = 0; k < n[ax]; k++) for (const c of chains) if (k < c.length) order.push(c[k]); // layer by layer
+  const ring = new Array(cells); // a step layer's cell: the cells before it, its own first
+  for (const e of order) {
+    if (!depth[e] || depth[e] % every) continue;
+    const p = prev[e], list = [p], co = across.map((a) => Math.floor(p / strides[a]) % n[a]);
+    const offs = across.length === 1 ? [[-1], [1]] : [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+    for (const o of offs) if (o.every((d, i) => co[i] + d >= 0 && co[i] + d < n[across[i]])) list.push(p + o.reduce((s, d, i) => s + d * strides[across[i]], 0));
+    ring[e] = { list: Int32Array.from(list), a: new Float64Array(list.length), b: new Float64Array(list.length) };
+  }
+  const v = new Float64Array(cells), carry = new Float64Array(cells);
+  const smax = (a, b) => { const d = a - b, root = Math.sqrt(d * d + eps); let s = 0.5 * (a + b + root), da = 0.5 * (1 + d / root), db = 0.5 * (1 - d / root); if (s >= 1) { s = 1; da = db = 0; } return [s, da, db]; };
+  return {
+    every,
+    apply(x, out) {
+      for (const e of order) {
+        if (!depth[e]) { v[e] = x[e]; slopeIn[e] = 1; slopePrev[e] = 0; out[e] = v[e]; continue; }
+        let held = v[prev[e]];
+        const r = ring[e];
+        if (r) { held = v[r.list[0]]; for (let k = 1; k < r.list.length; k++) { const [s, da, db] = smax(held, v[r.list[k]]); r.a[k] = da; r.b[k] = db; held = s; } }
+        const [s, dp, dx] = smax(held, x[e]);
+        slopePrev[e] = dp; slopeIn[e] = dx; v[e] = out[e] = s;
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      carry.fill(0);
+      for (let i = order.length - 1; i >= 0; i--) {
+        const e = order[i], total = g[e] + carry[e];
+        out[e] = total * slopeIn[e];
+        if (!depth[e]) continue;
+        let gh = total * slopePrev[e];
+        const r = ring[e];
+        if (!r) { carry[prev[e]] += gh; continue; }
+        for (let k = r.list.length - 1; k >= 1; k--) { carry[r.list[k]] += gh * r.b[k]; gh *= r.a[k]; }
+        carry[r.list[0]] += gh;
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A milling tool's size: a flat end mill of radius r (cells) cutting from one side reaches a cell only if its whole
+ * end fits beside it, so in each layer across the tool's axis the part is closed by a disc of that radius (dilated,
+ * then eroded: Sigmund 2007's morphology filters, the smooth maximum and minimum as the log of a mean of
+ * exponentials). A pocket narrower than the tool fills, and every inside corner seen from the tool is rounded to at
+ * least its radius. After the draw filter, whose layers only grow away from the tool, this is exactly what a flat end
+ * mill can cut (Langelaar 2019 models the tool's size the same way). Beyond the grid is empty: the tool may run past
+ * its edge. In 2D, from +z or -z: the plate's profile cut through its thickness (a router or end mill along z), its
+ * one layer the whole grid. apply gives the densities; adjoint carries sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {string} from the tool's side, '+z'
+ * @param {number} radius the tool's radius, in cells (at least 1)
+ */
+export function toolFilter({ nx, ny, nz = 1 }, from, radius) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(String(from).at(-1)), cells = n.reduce((p, c) => p * c, 1);
+  if (ax < 0 || !/^[+-][xyz]$/.test(from)) throw new Error(`the tool's side is +x, -x, +y, -y, +z or -z${dim === 2 ? ' (z: through the plate)' : ''} (got ${from})`);
+  if (!(radius >= 1)) throw new Error(`a tool's radius under a cell changes nothing on the grid (got ${fmt(radius)} cells): give a bigger tool or smaller cells`);
+  // The layer's own axes (u, and v in 3D or through a plate), padded by R cells each side, and the disc's offsets
+  const [ua, va] = [0, 1, 2].filter((a) => a < dim && a !== ax), R = Math.floor(radius + 1e-9), strides = [1, nx, nx * ny];
+  n[2] = n[2] || 1; // (a plate's one layer through its thickness)
+  const nu = n[ua], nv = va == null ? 1 : n[va], pu = nu + 2 * R, pv = va == null ? 1 : nv + 2 * R, pad = va == null ? 0 : R;
+  const offs = [];
+  for (let dv = -pad; dv <= pad; dv++) for (let du = -R; du <= R; du++) if (du * du + dv * dv <= radius * radius + 1e-9) offs.push([du, dv]);
+  const N = offs.length, beta = 10 * Math.log(N) + 10; // (a lone solid cell dilates to about 1 − ln N / beta: 0.9 or more)
+  // Each cell of a layer, padded: its neighbours' places in the padded layer (for the erosion) and in the grid (for
+  // the dilation: -1 beyond it, which is empty)
+  const P = pu * pv, layers = n[ax], inGrid = new Int32Array(P * N).fill(-1);
+  const cellOf = (L, u, v) => L * strides[ax] + u * strides[ua] + (va == null ? 0 : v * strides[va]);
+  for (let pv0 = 0; pv0 < pv; pv0++) for (let pu0 = 0; pu0 < pu; pu0++) offs.forEach(([du, dv], k) => {
+    const u = pu0 - R + du, v = pv0 - pad + dv;
+    if (u >= 0 && u < nu && v >= 0 && v < nv) inGrid[(pv0 * pu + pu0) * N + k] = u + v * nu; // (the layer's own index)
+  });
+  const dil = new Float64Array(layers * P), sumD = new Float64Array(layers * P), sumE = new Float64Array(cells), lx = new Float64Array(nu * nv);
+  // (each exponential once a cell, not once an offset: the optimality criteria's bisection applies this some 30 times a step)
+  const gD = new Float64Array(P), ex = new Float64Array(cells), eD = new Float64Array(layers * P); // exp(beta x), exp(beta (1 - dilated)), for adjoint
+  const offAt = Int32Array.from(offs, ([du, dv]) => dv * pu + du), cellAt = new Int32Array(nu * nv * layers);
+  for (let L = 0; L < layers; L++) for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) cellAt[L * nu * nv + u + v * nu] = cellOf(L, u, v);
+  const padded = (u, v) => (v + pad) * pu + (u + R);
+  return {
+    apply(x, out) {
+      for (let L = 0; L < layers; L++) {
+        const base = L * nu * nv, LP = L * P;
+        for (let q = 0; q < nu * nv; q++) { const e = cellAt[base + q]; ex[e] = Math.exp(beta * x[e]); lx[q] = ex[e]; }
+        // Dilated: the log of the mean of exp(beta x) over the disc, on the padded layer (beyond the grid: empty, exp 0 = 1)
+        for (let p = 0; p < P; p++) {
+          let s = 0;
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; s += q < 0 ? 1 : lx[q]; }
+          sumD[LP + p] = s; dil[LP + p] = Math.log(s / N) / beta; eD[LP + p] = Math.exp(beta * (1 - dil[LP + p]));
+        }
+        // Eroded: one less the dilation of one less, over the disc round each cell in the grid
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+          const c = LP + padded(u, v), e = cellAt[base + u + v * nu];
+          let s = 0;
+          for (let k = 0; k < N; k++) s += eD[c + offAt[k]];
+          sumE[e] = s; out[e] = 1 - Math.log(s / N) / beta;
+        }
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      for (let L = 0; L < layers; L++) {
+        const base = L * nu * nv, LP = L * P;
+        gD.fill(0);
+        for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+          const c = padded(u, v), e = cellAt[base + u + v * nu], w = g[e] / sumE[e];
+          for (let k = 0; k < N; k++) { const p = c + offAt[k]; gD[p] += w * eD[LP + p]; }
+        }
+        for (let q = 0; q < nu * nv; q++) out[cellAt[base + q]] = 0;
+        for (let p = 0; p < P; p++) {
+          if (!gD[p]) continue;
+          const w = gD[p] / sumD[LP + p];
+          for (let k = 0; k < N; k++) { const q = inGrid[p * N + k]; if (q >= 0) { const e = cellAt[base + q]; out[e] += w * ex[e]; } }
+        }
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * The thinnest member a process makes (a printer's two lines, a resin printer's smallest feature): the part opened by
+ * a ball of radius r cells (eroded, then dilated: Sigmund 2007's morphology filters, the smooth minimum and maximum as
+ * the log of a mean of exponentials, as toolFilter). A member narrower than the ball's 2r + 1 cells goes; one as wide
+ * or wider stays, and every outside corner is rounded to r. Beyond the grid is empty, so a member along the grid's
+ * edge is held to the same width. A disc in 2D, a ball in 3D. apply gives the densities; adjoint carries
+ * sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {number} radius in cells, a whole number from 1
+ */
+export function featureFilter({ nx, ny, nz = 1 }, radius) {
+  if (!(Number.isInteger(radius) && radius >= 1)) throw new Error(`a feature's radius is a whole number of cells from 1 (got ${radius})`);
+  const R = radius, dim = nz > 1 ? 3 : 2, Rz = dim === 3 ? R : 0, cells = nx * ny * nz;
+  const px = nx + 2 * R, py = ny + 2 * R, pz = nz + 2 * Rz, P = px * py * pz;
+  const ball = [];
+  for (let dz = -Rz; dz <= Rz; dz++) for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy + dz * dz <= R * R + 1e-9) ball.push([dx, dy, dz]);
+  const N = ball.length, beta = 10 * Math.log(N) + 10, offAt = Int32Array.from(ball, ([dx, dy, dz]) => dx + dy * px + dz * px * py);
+  // Each padded cell's ball in the grid (-1 beyond it: empty), and each grid cell's padded place
+  const inGrid = new Int32Array(P * N).fill(-1), at = new Int32Array(cells);
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) at[i + j * nx + k * nx * ny] = i + R + (j + R) * px + (k + Rz) * px * py;
+  for (let k = 0; k < pz; k++) for (let j = 0; j < py; j++) for (let i = 0; i < px; i++) {
+    const p = i + j * px + k * px * py;
+    for (let q = 0; q < N; q++) {
+      const [dx, dy, dz] = ball[q], gi = i - R + dx, gj = j - R + dy, gk = k - Rz + dz;
+      if (gi >= 0 && gi < nx && gj >= 0 && gj < ny && gk >= 0 && gk < nz) inGrid[p * N + q] = gi + gj * nx + gk * nx * ny;
+    }
+  }
+  const eB = Math.exp(beta), F = new Float64Array(cells), T = new Float64Array(P), E = new Float64Array(P), S = new Float64Array(cells), gE = new Float64Array(P);
+  return {
+    radius: R,
+    apply(x, out) {
+      for (let e = 0; e < cells; e++) F[e] = Math.exp(beta * (1 - x[e]));
+      // Eroded, on the padded grid: one less the smooth maximum of one less (beyond the grid: empty, exp(beta))
+      for (let p = 0; p < P; p++) {
+        let t = 0;
+        for (let q = 0; q < N; q++) { const g = inGrid[p * N + q]; t += g < 0 ? eB : F[g]; }
+        T[p] = t; E[p] = Math.exp(beta * (1 - Math.log(t / N) / beta));
+      }
+      // Dilated, back on the grid
+      for (let e = 0; e < cells; e++) {
+        const c = at[e];
+        let s = 0;
+        for (let q = 0; q < N; q++) s += E[c + offAt[q]];
+        S[e] = s; out[e] = Math.log(s / N) / beta;
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      gE.fill(0);
+      for (let e = 0; e < cells; e++) { const c = at[e], w = g[e] / S[e]; for (let q = 0; q < N; q++) gE[c + offAt[q]] += w * E[c + offAt[q]]; }
+      out.fill(0);
+      for (let p = 0; p < P; p++) {
+        if (!gE[p]) continue;
+        const w = gE[p] / T[p];
+        for (let q = 0; q < N; q++) { const e = inGrid[p * N + q]; if (e >= 0) out[e] += w * F[e]; }
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A feature (the thinnest member, mm) on a grid of cells h mm: the ball's radius in cells, the least whose 2r + 1
+ * cells across are at least the feature. 0 where a cell is already as wide (every member on the grid is at least
+ * one), 1 up to three cells. Refused by name past three cells: optimised under a ball of 2 cells, a cantilever came
+ * out speckled with loose cells and over twice as flexible (450 against 199), so give cells of at least a third of the
+ * feature instead (or a smaller feature).
+ * @param {number} feature mm @param {number} h mm
+ */
+export function featureCells(feature, h) {
+  if (!(feature > 0)) throw new Error(`a feature is the thinnest member, a distance above 0 mm (got ${feature})`);
+  const r = Math.max(0, Math.ceil((feature / h - 1) / 2 - 1e-9));
+  // (the cells that hold it are at least a third of it, rounded up, and the feature held is at most three cells,
+  // rounded down: rounded to the nearest, 4 mm on 1 mm cells asked for 1.33 mm cells, 3.99 mm across, refused again)
+  if (r > 1) throw new Error(`a feature of ${fmt(feature)} mm is more than three cells (${fmt(3 * h)} mm) across: the optimiser holds members to three cells at most, so give cells of ${fmt(up2(feature / 3))} mm or more, or a feature of ${fmt(down2(3 * h))} mm or less`);
+  return r;
+}
+
+/**
+ * The solid cells of a result in members thinner than 2r + 1 cells: those the feature filter would take away.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
+ * @param {{ radius: number, iso?: number }} o
+ * @returns {{ count: number, cells: number[] }}
+ */
+export function thin(size, density, { radius, iso = 0.5 }) {
+  const f = featureFilter(size, radius), solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), kept = f.apply(solid, new Float64Array(solid.length));
+  const cells = [];
+  for (let e = 0; e < solid.length; e++) if (solid[e] && kept[e] < 0.5) cells.push(e);
+  return { count: cells.length, cells };
+}
+
+/**
+ * What a process can make, as one filter: milled from one side or more (mill: '+z' or ['+z', '-x']), each with the
+ * tool's radius (tool, cells) if given, or cast (cast: '+z', or { draw, parting } with parting a layer) with its
+ * draft (degrees). Milled from several sides (Langelaar 2019's multi-axis machining, one setup a side), a cell is
+ * left only if no side's tool can reach it: the smooth minimum of what each side leaves (the smaller where they are
+ * alike, so a full cell stays full; within ½√ε = 0.0005 of it elsewhere; at least 0). One side and no tool is drawFilter itself. Null for a part neither milled nor cast.
+ * @param {{ nx: number, ny: number, nz?: number }} size
+ * @param {{ mill?: string | string[], tool?: number, cast?: string | { draw: string, parting: number }, draft?: number }} o
+ */
+export function processFilter(size, { mill, tool, cast, draft }) {
+  if (tool && !mill) throw new Error('a tool\'s radius is for a milled part (mill): a mould has no tool');
+  if (draft && !cast) throw new Error(`a draft is for a cast or moulded part (cast)${mill ? ': a milled part\'s walls come out straight down the tool\'s side' : ''}`);
+  if (!mill && !cast) return null;
+  const cells = size.nx * size.ny * (size.nz || 1), eps = 1e-6, halfRootEps = 0.5 * Math.sqrt(eps);
+  if (cast) return typeof cast === 'string' ? drawFilter(size, cast, undefined, { draft }) : drawFilter(size, cast.draw, cast.parting, { draft });
+  const sides = [mill].flat();
+  if (!sides.length) throw new Error('mill: give the side or sides the tool comes from, \'+z\' or [\'+z\', \'-x\']');
+  const twice = sides.find((s, i) => sides.indexOf(s) !== i);
+  if (twice) throw new Error(`mill: the side ${twice} is given twice`);
+  // (a plate, 2D, cut through from +z or -z: every cell is a column through it, so no undercuts, only the tool's size)
+  const through = (s) => !size.nz || size.nz === 1 ? /^[+-]z$/.test(s) : false;
+  if (sides.some(through) && !tool) throw new Error('a plate cut through from +z or -z has no undercuts to keep out: give the tool\'s radius (tool), the one thing that limits its profile');
+  const paths = sides.map((s) => ({ draw: through(s) ? null : drawFilter(size, s), tool: tool ? toolFilter(size, s, tool) : null, a: new Float64Array(cells), b: new Float64Array(cells) }));
+  if (paths.length === 1 && !tool) return paths[0].draw;
+  // Each side's leavings, and the running smooth minimum's slopes (k: the minimum so far, against side k's)
+  const slopeRun = paths.map(() => new Float64Array(cells)), slopeSide = paths.map(() => new Float64Array(cells)), g1 = new Float64Array(cells), g2 = new Float64Array(cells);
+  const run = new Float64Array(cells), add = new Float64Array(cells);
+  const one = (p, x) => { if (p.draw) p.draw.apply(x, p.a); else p.a.set(x); if (p.tool) p.tool.apply(p.a, p.b); else p.b.set(p.a); return p.b; };
+  const oneBack = (p, g, out) => {
+    if (p.tool) p.tool.adjoint(g, g1); else g1.set(g);
+    if (p.draw) p.draw.adjoint(g1, out); else out.set(g1);
+    return out;
+  };
+  return {
+    sides,
+    apply(x, out) {
+      out.set(one(paths[0], x));
+      for (let k = 1; k < paths.length; k++) {
+        const b = one(paths[k], x), sr = slopeRun[k], ss = slopeSide[k];
+        for (let e = 0; e < cells; e++) {
+          const d = out[e] - b[e], root = Math.sqrt(d * d + eps);
+          let s = 0.5 * (out[e] + b[e] - root) + halfRootEps;
+          sr[e] = 0.5 * (1 - d / root); ss[e] = 0.5 * (1 + d / root);
+          if (s <= 0) { s = 0; sr[e] = ss[e] = 0; }
+          out[e] = s;
+        }
+      }
+      return out;
+    },
+    adjoint(g, out) {
+      run.set(g); out.fill(0);
+      for (let k = paths.length - 1; k >= 1; k--) {
+        for (let e = 0; e < cells; e++) { g2[e] = run[e] * slopeSide[k][e]; run[e] *= slopeRun[k][e]; }
+        oneBack(paths[k], g2, add);
+        for (let e = 0; e < cells; e++) out[e] += add[e];
+      }
+      oneBack(paths[0], run, add);
+      for (let e = 0; e < cells; e++) out[e] += add[e];
+      return out;
+    },
+  };
+}
+
+// A draft (degrees) as the whole layers a wall takes to step out a cell: 1 / tan, rounded down, so at least the draft
+// asked (0: no draft). Refused by name outside 0 to 45°.
+function draftEvery(draft) {
+  if (draft == null || draft === 0) return 0;
+  if (!(draft > 0 && draft <= 45)) throw new Error(`a draft is an angle in degrees, more than 0 and up to 45 (got ${draft})`);
+  return Math.max(1, Math.floor(1 / Math.tan((draft * Math.PI) / 180) + 1e-9));
 }
 
 /**
@@ -512,6 +829,7 @@ export function drawFilter({ nx, ny, nz = 1 }, from, parting) {
  */
 const SUPPORT = 10; // what a kept cell nothing holds up costs, in the part's compliances, over the kept cells
 const ERODE = 0.7, DILATE = 0.3, DILATE_EVERY = 10, ETA_MADE = 0.5; // the robust formulation: the eroded and dilated copies' thresholds (the design as made at 0.5), and how often a mechanism's dilated volume target follows
+const VENT = 10; // voids prevented: the virtual temperature's cap, in the even spread's
 
 export function model(spec, { method, backend = jsBackend } = {}) {
   clash(spec);
@@ -520,7 +838,13 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
   const filter = densityFilter(spec.grid, spec.filter / spec.grid.h, { pad: !!(spec.robust && spec.output) }), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
   // Milled or cast: no undercuts from the tool's side or the mould's draw; symmetric or extruded: cells tied together
-  const draw = spec.mill ? drawFilter(spec.grid, spec.mill) : spec.cast ? (typeof spec.cast === 'string' ? drawFilter(spec.grid, spec.cast) : drawFilter(spec.grid, spec.cast.draw, spec.cast.parting)) : null;
+  // (milled from more than one side, or with a tool's size, or cast with a draft: processFilter combines them)
+  const draw = processFilter(spec.grid, { mill: spec.mill, cast: spec.cast, draft: spec.draft, tool: spec.tool ? spec.tool / spec.grid.h : undefined });
+  // Enclosed voids prevented: the virtual temperature of the part as made, kept under a limit
+  const heat = spec.voids === 'prevented' ? virtualTemperature(spec.grid) : null;
+  // The thinnest member (a printer's two lines): opened by a ball, before the overhang or process filter; none where a
+  // cell is already as wide
+  const r = spec.feature != null ? featureCells(spec.feature, spec.grid.h) : 0, open = r ? featureFilter(spec.grid, r) : null, opened = open ? new Float64Array(cells) : null;
   const tie = spec.symmetry || spec.extrude ? tieFilter(spec.grid, { ...spec.symmetry, extrude: spec.extrude }, passive) : null, tied = new Float64Array(cells);
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
@@ -535,6 +859,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const physical = (x, beta, eta = ETA) => {
     filter.apply(tie ? tie.apply(x, tied) : x, tilde);
     for (let e = 0; e < cells; e++) if (passive[e]) tilde[e] = fixedValue(passive[e]);
+    if (open) { open.apply(tilde, opened); for (let e = 0; e < cells; e++) tilde[e] = passive[e] ? fixedValue(passive[e]) : opened[e]; }
     if (print) print.apply(tilde, made); else if (draw) draw.apply(tilde, made); else made.set(tilde);
     for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta, eta);
     return phys;
@@ -558,6 +883,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const toDesign = (d) => {
     if (print) { print.adjoint(d, back); d.set(back); } else if (draw) { draw.adjoint(d, back); d.set(back); }
     for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
+    if (open) { open.adjoint(d, back); for (let e = 0; e < cells; e++) d[e] = passive[e] ? 0 : back[e]; }
     filter.adjoint(d, back); d.set(back);
     if (tie) { tie.adjoint(d, back); d.set(back); }
   };
@@ -617,7 +943,13 @@ export function model(spec, { method, backend = jsBackend } = {}) {
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
     if (stress) { for (let e = 0; e < cells; e++) stress.d[e] *= passive[e] ? 0 : slope(made[e], beta, eta); toDesign(stress.d); }
-    return { compliance, dc, dv, u, cases, unsupported: lack, ...(stress ? { stress } : {}), ...(mechanism ? { mechanism } : {}) };
+    let hot = null;
+    if (heat) {
+      const h = heat.evaluate(phys), d = Float64Array.from(h.d, (v, e) => (passive[e] ? 0 : v * slope(made[e], beta, eta)));
+      toDesign(d);
+      hot = { value: h.value, max: h.max, d };
+    }
+    return { compliance, dc, dv, u, cases, unsupported: lack, ...(stress ? { stress } : {}), ...(mechanism ? { mechanism } : {}), ...(hot ? { heat: hot } : {}) };
   };
   // Stress limits on every cell (Senhora, Giraldo-Londoño, Menezes, Paulino 2020): each cell's von Mises stress at its
   // centre, as if solid, over the limit, less 1, times the cell's density, so an empty cell's limit vanishes. They're
@@ -839,7 +1171,8 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0);
   // A stress limit asks for the lightest layout that keeps to it; a volume, for the stiffest that fills it
   // (a mechanism with a stress limit is checked against it once optimised, not optimised under it: see the README)
-  const mechanism = !!spec.output, lightest = spec.stress > 0 && !mechanism;
+  const mechanism = !!spec.output, lightest = spec.stress > 0 && !mechanism, vent = spec.voids === 'prevented';
+  if (vent && (mechanism || lightest)) throw new Error(`voids are prevented for the stiffest part that fills a volume, not ${mechanism ? 'a mechanism' : 'under a stress limit'}: leave voids out, or refuse them to have them found`);
   if (lightest && spec.volume != null) throw new Error('give a volume (the stiffest layout that fills it) or a stress limit (the lightest that keeps to it), not both');
   if (!lightest && !(spec.volume > 0 && spec.volume <= 1)) throw new Error(`the volume is a share of the space, from 0 to 1 (got ${spec.volume})`);
   const target = lightest ? 0 : spec.volume * inSpace;
@@ -860,7 +1193,8 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const worst = mechanism && !!spec.robust, Z = 100;
   const mmaStep = lightest ? mma({ n, m: 0, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) })
     : worst ? mma({ n: n + 1, m: 4, xmin: Float64Array.from({ length: n + 1 }, (_, k) => (k < n ? 0 : -Z)), xmax: Float64Array.from({ length: n + 1 }, (_, k) => (k < n ? 1 : Z)) })
-    : mechanism ? mma({ n, m: 1, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
+    : mechanism ? mma({ n, m: 1, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) })
+    : vent ? mma({ n, m: 2, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
   const xz = worst ? new Float64Array(n + 1) : null;
   let scaleT = 0;
   // Robust (da Silva, Beck and Sigmund 2019): the limits hold on the eroded and dilated copies as well as the design as
@@ -868,6 +1202,12 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const copies = lightest && spec.robust ? [ETA_MADE, DILATE, ERODE] : [ETA_MADE];
   const synth = worst && spec.stress > 0, synthM = synth ? [0, 1, 2].map(() => ({ lam: [new Float64Array(m.limits)], mu: 1 })) : null;
   const multipliers = lightest ? copies.map(() => ({ lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 })) : undefined;
+  // Voids prevented: by the method of moving asymptotes, the stiffest part (compliance over the first step's) that fills
+  // the volume and keeps its virtual temperature under VENT times the first step's, the even spread, where nothing is
+  // enclosed. (VENT is a choice, an estimate: in a 12 mm cube of cells, all empty is 5.4, a hollow box 6180 and the same
+  // box with a 2 × 2 hole 46 (test); on the 12 × 12 × 20 twist the even spread is 21, so the cap is 214. Ten times keeps
+  // an enclosed void out with room to spare for open pockets)
+  let c0 = 0, heat0 = 0;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
   let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, madePeak = null, targetD = target;
   const tried = new Float64Array(cells); // the last design the bisection analysed, and how much it filled
@@ -877,7 +1217,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
     // design (threshold ERODE), its volume on a dilated one (DILATE), the design as made between them. A hinge that
     // survives erosion has real width, so no hinge is a point. (The design as made is stiffer than the eroded copy
     // it's optimised on, by a hinge width's worth; robust, the worst of the three copies is optimised instead, below.)
-    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers: multipliers?.[0] ?? synthM?.[0], ...(mechanism ? { eta: ERODE } : {}), limits: synth });
+    const { compliance, dc, dv, stress, mechanism: mech, heat } = m.evaluate(x, beta, { multipliers: multipliers?.[0] ?? synthM?.[0], ...(mechanism ? { eta: ERODE } : {}), limits: synth });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);
     if (lightest) {
@@ -925,6 +1265,14 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
       }
       xnew.set(x);
       freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
+    } else if (vent) {
+      history.push(compliance);
+      if (step === 1) { c0 = compliance; heat0 = heat.value; }
+      const used = m.physical(x, beta).reduce((s, v) => s + v, 0), cap = VENT * heat0;
+      xf.set(pick(x));
+      mmaStep(xf, compliance / c0, pick(dc).map((v) => v / c0), [used / target - 1, heat.value / cap - 1], [pick(dv).map((v) => v / target), pick(heat.d).map((v) => v / cap)], limit);
+      xnew.set(x);
+      freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
     } else {
       history.push(compliance);
       // Optimality criteria: scale each cell by √(−dc/dv/λ), within the move limit, finding λ by bisection so the
@@ -937,7 +1285,9 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
         for (let e = 0; e < cells; e++) {
           if (passive[e]) { xnew[e] = fixedValue(passive[e]); continue; }
           const b = Math.sqrt(Math.max(0, -dc[e]) / Math.max(1e-30, dv[e]) / mid);
-          xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] * b))));
+          // (an empty cell stays at its move limit's reach: 0 × an infinite scale, once the bisection's λ has run to
+          // nothing on a sharp projection, was not a number, and crashed the next solve)
+          xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] > 0 ? x[e] * b : 0))));
           if (xnew[e] !== tried[e]) same = false;
         }
         // (far from the answer every cell is at its move limit, the same design as the last try: not analysed again)
@@ -1098,13 +1448,20 @@ export function bounds(r) {
 
 /**
  * Where a result has undercuts: empty cells (below iso) with a solid one between them and the tool's side, along the
- * line to it (or, with parting, to their half's side). What drawFilter prevents, measured on densities as made.
+ * line to it (or, with parting, to their half's side). What drawFilter prevents, measured on densities as made. From
+ * several sides (from: ['+z', '-x']), the cells no side reaches; with tool (radius, cells), also the cells the tool's
+ * end can't get to (a pocket narrower than it, an inside corner tighter); with draft (degrees, a mould's), the cells
+ * a wall without that draft would leave behind. The same filters as the optimiser's, on the result made solid or empty.
  * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
- * @param {{ from: string, parting?: number, iso?: number }} o
+ * @param {{ from: string | string[], parting?: number, iso?: number, tool?: number, draft?: number }} o
  * @returns {{ count: number, cells: number[] }} the hidden cells (indices)
  */
-export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5 }) {
-  const f = drawFilter({ nx, ny, nz }, from, parting), solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
+export function undercuts({ nx, ny, nz = 1 }, density, { from, parting, iso = 0.5, tool, draft }) {
+  const size = { nx, ny, nz }, cast = parting != null || draft;
+  // (a plate cut through from +z or -z: every cell a column through it, nothing hidden, unless a tool's size is asked)
+  if (!cast && !tool && nz === 1 && [from].flat().some((s) => /^[+-]z$/.test(s))) return { count: 0, cells: [] };
+  const f = cast ? processFilter(size, { cast: parting != null ? { draw: from, parting } : from, draft }) : processFilter(size, { mill: from, tool });
+  const solid = Float64Array.from(density, (d) => (d >= iso ? 1 : 0)), made = f.apply(solid, new Float64Array(solid.length));
   const cells = [];
   for (let e = 0; e < solid.length; e++) if (!solid[e] && made[e] >= 0.5) cells.push(e);
   return { count: cells.length, cells };
@@ -1156,6 +1513,74 @@ export function voids({ nx, ny, nz = 1, h }, density, { iso = 0.5, origin } = {}
     out.push({ cells: list, volume: list.length * h ** dim, at });
   }
   return out;
+}
+
+/**
+ * The virtual temperature (Liu, Li, Chen, Tong and Cheng 2015, "An identification method for enclosed voids
+ * restriction in manufacturability design for additive manufacturing structures", Frontiers of Mechanical Engineering
+ * 10, 126-137): empty cells are a good conductor that makes heat, solid ones a poor conductor that makes none, and
+ * the grid's outside faces are held at 0. Heat made in a void open to the outside flows out through empty cells and
+ * stays cool; heat made in an enclosed void has to cross the solid round it, and the void runs hot. The measure is
+ * the p-mean of the cells' temperatures, so one hot pocket shows; its gradient takes one more solve (the adjoint).
+ * Cells: conductivity k = ks + (1 - ks)(1 - ρ)³, heat 1 - ρ, conductances face to face (the harmonic mean of the two
+ * cells', half a cell to an outside face), solved by conjugate gradients from the last answer.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {{ ks?: number, p?: number }} [o]
+ */
+export function virtualTemperature({ nx, ny, nz = 1 }, { ks = 1e-4, p = 8 } = {}) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, cells = n.reduce((q, c) => q * c, 1), stride = [1, nx, nx * ny];
+  // Each cell's neighbour along + each axis (-1 at the outside: a face held at 0), and how many outside faces it has
+  const next = n.map((m, a) => Int32Array.from({ length: cells }, (_, e) => (Math.floor(e / stride[a]) % m < m - 1 ? e + stride[a] : -1)));
+  const outside = Uint8Array.from({ length: cells }, (_, e) => n.reduce((s, m, a) => { const c = Math.floor(e / stride[a]) % m; return s + (c === 0) + (c === m - 1); }, 0));
+  const k = new Float64Array(cells), T = new Float64Array(cells), lam = new Float64Array(cells), diag = new Float64Array(cells);
+  const r = new Float64Array(cells), z = new Float64Array(cells), d = new Float64Array(cells), Ad = new Float64Array(cells), q = new Float64Array(cells), rhs = new Float64Array(cells);
+  const cond = (a, b) => (2 * k[a] * k[b]) / (k[a] + k[b]);
+  const mult = (x, out) => { // out = K x
+    for (let e = 0; e < cells; e++) out[e] = 2 * outside[e] * k[e] * x[e];
+    for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) { const f = nb[e]; if (f < 0) continue; const c = cond(e, f), t = c * (x[e] - x[f]); out[e] += t; out[f] -= t; } }
+    return out;
+  };
+  const cg = (b, x) => { // K x = b by conjugate gradients, preconditioned by the diagonal, from x
+    diag.fill(0);
+    for (let e = 0; e < cells; e++) diag[e] += 2 * outside[e] * k[e];
+    for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) { const f = nb[e]; if (f < 0) continue; const c = cond(e, f); diag[e] += c; diag[f] += c; } }
+    mult(x, Ad);
+    let bb = 0, rz = 0;
+    for (let e = 0; e < cells; e++) { r[e] = b[e] - Ad[e]; z[e] = r[e] / diag[e]; d[e] = z[e]; rz += r[e] * z[e]; bb += b[e] * b[e]; }
+    for (let it = 0; it < 20 * cells; it++) {
+      let rr = 0; for (let e = 0; e < cells; e++) rr += r[e] * r[e];
+      if (rr <= 1e-20 * bb) break;
+      mult(d, Ad);
+      let dAd = 0; for (let e = 0; e < cells; e++) dAd += d[e] * Ad[e];
+      const alpha = rz / dAd;
+      let rz2 = 0;
+      for (let e = 0; e < cells; e++) { x[e] += alpha * d[e]; r[e] -= alpha * Ad[e]; z[e] = r[e] / diag[e]; rz2 += r[e] * z[e]; }
+      const beta = rz2 / rz; rz = rz2;
+      for (let e = 0; e < cells; e++) d[e] = z[e] + beta * d[e];
+    }
+    return x;
+  };
+  return {
+    /** @param {ArrayLike<number>} rho the physical densities @returns {{ value: number, max: number, T: Float64Array, d: Float64Array }} d: the value's gradient by density */
+    evaluate(rho) {
+      for (let e = 0; e < cells; e++) { const v = 1 - rho[e]; k[e] = ks + (1 - ks) * v * v * v; q[e] = v; }
+      cg(q, T);
+      let s = 0, max = 0;
+      for (let e = 0; e < cells; e++) { s += Math.pow(T[e], p); max = Math.max(max, T[e]); }
+      const value = Math.pow(s / cells, 1 / p);
+      // The adjoint: K λ = d value / d T (K is symmetric), then d value / d ρ = λ · dq/dρ − λᵀ (dK/dρ) T
+      for (let e = 0; e < cells; e++) rhs[e] = (Math.pow(value, 1 - p) * Math.pow(T[e], p - 1)) / cells;
+      cg(rhs, lam);
+      const dk = new Float64Array(cells), g = new Float64Array(cells);
+      for (let e = 0; e < cells; e++) dk[e] += 2 * outside[e] * lam[e] * T[e];
+      for (let a = 0; a < dim; a++) { const nb = next[a]; for (let e = 0; e < cells; e++) {
+        const f = nb[e]; if (f < 0) continue;
+        const sum = k[e] + k[f], w = (lam[e] - lam[f]) * (T[e] - T[f]);
+        dk[e] += (2 * k[f] * k[f] * w) / (sum * sum); dk[f] += (2 * k[e] * k[e] * w) / (sum * sum);
+      } }
+      for (let e = 0; e < cells; e++) { const v = 1 - rho[e]; g[e] = -lam[e] - dk[e] * -3 * (1 - ks) * v * v; }
+      return { value, max, T, d: g };
+    },
+  };
 }
 
 // (Everything above decides the densities; everything below only draws them, so results can be kept by the code above)
@@ -1687,3 +2112,5 @@ export function reduce({ vertices, faces }, { tolerance, overhang, lo, hi }) {
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));
+// To the hundredth, up or down: a size a refusal asks for, which must pass the check it failed once written to two places
+const up2 = (n) => Math.ceil(n * 100 - 1e-9) / 100, down2 = (n) => Math.floor(n * 100 + 1e-9) / 100;

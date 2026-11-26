@@ -752,3 +752,268 @@ test('a robust mechanism: the worst of its three copies is made to move (the bou
   assert.ok(plainPeak > 2.5 * limit);
   assert.ok(held.stress.peak <= limit * 1.1 && held.stress.peak < plainPeak / 2.5, `as made: ${held.stress.peak} MPa against ${limit} (worst copy ${least(held)} mm, one piece ${one(held)})`);
 });
+
+test('a tool\'s radius: a slot narrower than the tool fills, a pocket as wide stays open, and the gradient matches finite differences', async () => {
+  const { toolFilter } = await import('@rulecad/topopt');
+  // A 12 × 4 block milled from +y with a slot one cell wide (i = 5) and a pocket three wide (i = 8 to 10), by a tool of
+  // radius 1.5 cells: its end covers the cells whose centres are within 1.5 of its own, three across, so it fits the
+  // pocket and not the slot
+  const nx = 12, ny = 4, x = new Float64Array(nx * ny).fill(1);
+  for (let j = 0; j < ny; j++) { x[j * nx + 5] = 0; for (let i = 8; i <= 10; i++) x[j * nx + i] = 0; }
+  const o = toolFilter({ nx, ny }, '+y', 1.5).apply(x, new Float64Array(nx * ny));
+  for (let j = 0; j < ny; j++) {
+    assert.ok(o[j * nx + 5] > 0.9, `the slot fills: ${o[j * nx + 5]}`);
+    for (let i = 8; i <= 10; i++) assert.ok(o[j * nx + i] < 0.1, `the pocket stays open: ${o[j * nx + i]}`);
+    // (the block's own cells stay solid, those at the grid's edge too: beyond it the tool runs free)
+    for (const i of [0, 2, 7, 11]) assert.ok(o[j * nx + i] > 0.9, `cell ${i}: ${o[j * nx + i]}`);
+  }
+  assert.throws(() => toolFilter({ nx, ny }, '+y', 0.8), /a tool's radius under a cell changes nothing on the grid \(got 0\.8 cells\)/);
+  assert.throws(() => toolFilter({ nx, ny }, 'y', 2), /the tool's side is \+x, -x, \+y, -y, \+z or -z \(z: through the plate\) \(got y\)/);
+  // A plate (2D) cut through from +z: the tool's end moves in the plate's own plane, so the slot fills from both
+  // sides along x and y alike, the pocket stays open, and the plate's edge is beyond the grid (the tool runs free)
+  const plate = toolFilter({ nx, ny }, '+z', 1.5).apply(x, new Float64Array(nx * ny));
+  for (let j = 0; j < ny; j++) { assert.ok(plate[j * nx + 5] > 0.9, `through: the slot fills: ${plate[j * nx + 5]}`); for (let i = 8; i <= 10; i++) assert.ok(plate[j * nx + i] < 0.1, `through: the pocket stays open: ${plate[j * nx + i]}`); }
+  const { processFilter, undercuts } = await import('@rulecad/topopt');
+  assert.throws(() => processFilter({ nx, ny }, { mill: '+z' }), /a plate cut through from \+z or -z has no undercuts to keep out: give the tool's radius \(tool\)/);
+  assert.equal(undercuts({ nx, ny }, x, { from: '+z' }).count, 0);
+  assert.ok(undercuts({ nx, ny }, x, { from: '+z', tool: 1.5 }).cells.includes(5), 'the slot is too narrow for the tool');
+  const size = { nx: 5, ny: 4, nz: 3 }, n = 60, y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+  for (const [from, r] of [['+z', 1.5], ['-x', 2], ['+y', 1]]) {
+    const f = toolFilter(size, from, r), value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = f.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-6; down[e] -= 1e-6;
+      const fd = (value(up) - value(down)) / 2e-6;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-6 * Math.max(1, Math.abs(fd)), `${from} ${r}, cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('a draft: a wall steps out a cell every whole number of layers in 1 / tan(draft), refused where no step fits, and the gradient matches finite differences', async () => {
+  const { drawFilter, processFilter } = await import('@rulecad/topopt');
+  // 20°: 1 / tan 20° = 2.75, so a step every 2 layers (26.6°, at least the draft). A 5 × 8 section cast from +y, one
+  // solid cell in its top layer (j = 7, i = 2): from the top, the layers are 1, 1, 3, 3, 5, 5, 5 and 5 cells wide
+  // (stepping out at j = 5 and j = 3, 2 and 4 layers in from the side it is drawn off, stopped at the grid's 5)
+  const x = new Float64Array(40); x[7 * 5 + 2] = 1;
+  const f = drawFilter({ nx: 5, ny: 8 }, '+y', undefined, { draft: 20 }), o = f.apply(x, new Float64Array(40));
+  assert.equal(f.every, 2);
+  const wide = [...Array(8).keys()].map((j) => [0, 1, 2, 3, 4].filter((i) => o[j * 5 + i] > 0.5).length);
+  assert.deepEqual(wide, [5, 5, 5, 5, 3, 3, 1, 1]);
+  // 1°: a step every 57 layers (1 / tan 1° = 57.3), more than the 8 the grid has
+  assert.throws(() => drawFilter({ nx: 5, ny: 8 }, '+y', undefined, { draft: 1 }), /a draft of 1° steps out a cell every 57 layers, and this grid has 8 along y: give it more than 57 layers there/);
+  assert.throws(() => drawFilter({ nx: 5, ny: 8 }, '+y', undefined, { draft: 50 }), /a draft is an angle in degrees, more than 0 and up to 45 \(got 50\)/);
+  assert.throws(() => processFilter({ nx: 5, ny: 8 }, { mill: '+y', draft: 5 }), /a draft is for a cast or moulded part \(cast\): a milled part's walls/);
+  assert.throws(() => processFilter({ nx: 5, ny: 8 }, { cast: '+y', tool: 2 }), /a tool's radius is for a milled part \(mill\)/);
+  // The gradient: a weighted sum of the filtered densities, against finite differences (3D one way and two halves)
+  const size = { nx: 4, ny: 3, nz: 6 }, n = 72, y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+  for (const g of [drawFilter(size, '+z', undefined, { draft: 30 }), drawFilter(size, 'z', 3, { draft: 40 })]) {
+    const value = (z) => g.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = g.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-7; down[e] -= 1e-7;
+      const fd = (value(up) - value(down)) / 2e-7;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-5 * Math.max(1, Math.abs(fd)), `cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('milled from several sides: a cell stays only where no side\'s tool reaches it, refused by name with a side twice, and the gradient matches finite differences', async () => {
+  const { processFilter } = await import('@rulecad/topopt');
+  // A column of 6 cells with one solid cell at j = 2: from +y alone, the cells under it fill (j = 0 to 2); from below
+  // too (['+y', '-y'], the part turned over for a second setup), the cells under it are reached from below, so only
+  // the cell itself stays
+  const x = new Float64Array(6); x[2] = 1;
+  const one = processFilter({ nx: 1, ny: 6 }, { mill: '+y' }).apply(x, new Float64Array(6)), two = processFilter({ nx: 1, ny: 6 }, { mill: ['+y', '-y'] }).apply(x, new Float64Array(6));
+  assert.deepEqual([...one].map((v) => v > 0.5), [true, true, true, false, false, false]);
+  assert.deepEqual([...two].map((v) => v > 0.5), [false, false, true, false, false, false]);
+  // (a cell both sides leave full stays exactly full; one a side reaches keeps at most ½√ε = 0.0005 of the other's)
+  assert.ok(Math.max(two[0], two[1], two[3]) < 2e-3 && two[2] === 1, JSON.stringify([...two]));
+  assert.throws(() => processFilter({ nx: 1, ny: 6 }, { mill: ['+y', '+y'] }), /mill: the side \+y is given twice/);
+  const size = { nx: 4, ny: 3, nz: 5 }, n = 60, y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+  for (const o of [{ mill: ['+z', '-x'] }, { mill: ['+z', '-z', '+y'], tool: 1 }, { mill: '-y', tool: 1.5 }]) {
+    const g = processFilter(size, o), value = (z) => g.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = g.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-7; down[e] -= 1e-7;
+      const fd = (value(up) - value(down)) / 2e-7;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-5 * Math.max(1, Math.abs(fd)), `${JSON.stringify(o)}, cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('a problem milled with a tool, from two sides, or cast with a draft: refused by name before any maths, and the gradient matches finite differences through each', () => {
+  const p = { space: { at: [0, 0, 5], size: [10, 10, 10] }, supports: [{ at: [0, 0, 0.5], size: [10, 10, 1] }], loads: [{ at: [0, 0, 9.5], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.3 };
+  assert.throws(() => discretise({ ...p, tool: 2 }), /a tool's radius is for a milled part \(mill\)/);
+  assert.throws(() => discretise({ ...p, mill: '+z', tool: 0.5 }), /a tool's radius of 0\.5 mm is under a cell \(1 mm\) and changes nothing on the grid/);
+  assert.throws(() => discretise({ ...p, mill: '+z', tool: -1 }), /a tool's radius is a distance above 0 mm \(got -1\)/);
+  assert.throws(() => discretise({ ...p, mill: '+z', draft: 3 }), /a draft is for a cast or moulded part/);
+  // (the 10 mm space on 1 mm cells is 12 layers along z: 3° steps every 19 layers, 1 / tan 3° = 19.1)
+  assert.throws(() => discretise({ ...p, cast: '+z', draft: 3 }), /a draft of 3° steps out a cell every 19 layers, and this grid has 12 along z/);
+  // (two halves parted at the middle, 6 layers each: 8° steps every 7, 1 / tan 8° = 7.1; 10° every 5 fits)
+  assert.throws(() => discretise({ ...p, cast: { draw: 'z' }, draft: 8 }), /every 7 layers, and this grid has 6 along z in its deeper half/);
+  assert.equal(discretise({ ...p, cast: { draw: 'z' }, draft: 10 }).draft, 10);
+  assert.throws(() => discretise({ ...p, mill: ['+z', '+x', '+z'] }), /mill: the side \+z is given twice/);
+  assert.throws(() => discretise({ ...p, mill: ['+x', '+z'], symmetry: { mirror: 'z' } }), /milled from \+z, a part can't be the same mirrored across z/);
+  const s = discretise({ ...p, mill: ['+z', '-z'], tool: 1.5 });
+  assert.deepEqual([s.mill, s.tool], [['+z', '-z'], 1.5]);
+  assert.equal(discretise({ ...p, cast: '+z', draft: 15 }).draft, 15);
+  for (const extra of [{ mill: ['+y', '-x'], tool: 1.5 }, { cast: '+y', draft: 25 }, { cast: { draw: 'y', parting: 5 }, draft: 30 }]) {
+    const t = { ...lever(), ...extra }, m = model(t), beta = 4, x = Float64Array.from(t.passive, (q, e) => (q ? (q === 1 ? 1 : 0) : 0.3 + 0.4 * ((e * 7) % 11) / 11));
+    const { dc } = m.evaluate(x, beta), c = (y) => m.evaluate(y, beta).compliance;
+    // (as for the tool's side alone: cells with next to no gradient of their own are lost in the differences' rounding)
+    const free = [...t.passive.keys()].filter((e) => t.passive[e] === 0), big = Math.max(...free.map((e) => Math.abs(dc[e]))), live = free.filter((e) => Math.abs(dc[e]) > big / 100);
+    for (const e of [live[3], live[Math.floor(live.length / 2)], live.at(-5)]) {
+      const h = 1e-6, up = Float64Array.from(x), down = Float64Array.from(x);
+      up[e] += h; down[e] -= h;
+      const fd = (c(up) - c(down)) / (2 * h);
+      assert.ok(Math.abs(fd - dc[e]) <= 1e-4 * Math.abs(fd) + 1e-12, `${JSON.stringify(extra)}, cell ${e}: ${dc[e]} against ${fd}`);
+    }
+  }
+});
+
+test('the 3D cantilever milled with a tool, from two sides, and cast with a draft: none of each one\'s undercuts, where the free design has hundreds', () => {
+  const [nx, ny, nz] = [16, 6, 6], g = grid({ nx, ny, nz, h: 1 }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
+  for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1;
+  for (let k = 0; k <= nz; k++) f[3 * g.node(nx, 0, k) + 1] = -1;
+  const s = { grid: { nx, ny, nz, h: 1 }, passive: new Int8Array(g.cells), fixed, loads: [{ name: 'load', force: f, weight: 1, size: nz + 1 }], material: { E: 1, nu: 0.3 }, volume: 0.3, filter: 1.5, penal: 3, projection: true, steps: 200 };
+  const free = optimise(s), tool = optimise({ ...s, mill: '+z', tool: 1.5 }), two = optimise({ ...s, mill: ['+z', '-z'] }), cast = optimise({ ...s, cast: '+z', draft: 15 });
+  const count = (r, o) => undercuts(s.grid, r.density, o).count;
+  // (200 steps, scratch c3/exp1.mjs: free 1928 with 334 cells a 1.5-cell tool from +z can't reach, 256 hidden from
+  // both +z and -z and 325 a 15° draft would leave; the tool's 2410 and the draft's 2422 with none, both sides' 1811
+  // with none from either)
+  assert.equal(count(tool, { from: '+z', tool: 1.5 }), 0);
+  assert.equal(count(two, { from: ['+z', '-z'] }), 0);
+  assert.equal(count(cast, { from: '+z', draft: 15 }), 0);
+  for (const o of [{ from: '+z', tool: 1.5 }, { from: ['+z', '-z'] }, { from: '+z', draft: 15 }]) assert.ok(count(free, o) > 100, `free, ${JSON.stringify(o)}: ${count(free, o)}`);
+  // A side more is a freedom more: two sides are stiffer than one (the free design, at the same steps, is a local
+  // optimum: 1928 against two sides' 1811)
+  assert.ok(two.compliance < tool.compliance && two.compliance < cast.compliance, `${two.compliance}, ${tool.compliance}, ${cast.compliance}`);
+  for (const r of [tool, two, cast]) assert.ok(Math.abs(r.volume - 0.3) < 0.03, `volume ${r.volume}`);
+});
+
+test('the virtual temperature: an enclosed void runs hot, an open one cool, and its gradient matches finite differences', async () => {
+  const { virtualTemperature, voids } = await import('@rulecad/topopt');
+  // A 12 mm cube of cells with a hollow box in it (8 cells a side, its 4-cell inside empty), then the same box with a
+  // 2 × 2 hole through its floor: the enclosed void's heat has to cross the solid (conductivity 10⁻⁴ of an empty
+  // cell's), the open one's flows out through the hole
+  const N = 12, at = (i, j, k) => (k * N + j) * N + i, size = { nx: N, ny: N, nz: N }, box = new Float64Array(N ** 3);
+  for (let k = 2; k < 10; k++) for (let j = 2; j < 10; j++) for (let i = 2; i < 10; i++) box[at(i, j, k)] = i > 3 && i < 8 && j > 3 && j < 8 && k > 3 && k < 8 ? 0 : 1;
+  const holed = Float64Array.from(box);
+  for (let k = 2; k < 4; k++) for (const [i, j] of [[5, 5], [6, 5], [5, 6], [6, 6]]) holed[at(i, j, k)] = 0;
+  const vt = virtualTemperature(size), empty = vt.evaluate(new Float64Array(N ** 3)).value, closed = vt.evaluate(box).value, open = vt.evaluate(holed).value;
+  // (scratch c3/vt1.mjs: empty 5.4, open 46, closed 6180)
+  assert.equal(voids({ ...size, h: 1 }, box).length, 1); assert.equal(voids({ ...size, h: 1 }, holed).length, 0);
+  assert.ok(closed > 100 * open && open < 10 * empty, `empty ${empty}, open ${open}, closed ${closed}`);
+  // The gradient, against finite differences, each solve fresh (from the last answer, the solver's stopping rule
+  // shows in the differences)
+  const small = { nx: 6, ny: 5, nz: 4 }, rho = Float64Array.from({ length: 120 }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11);
+  const d = virtualTemperature(small).evaluate(rho).d.slice(), big = Math.max(...d.map(Math.abs));
+  for (let e = 0; e < 120; e += 7) {
+    const up = Float64Array.from(rho), down = Float64Array.from(rho); up[e] += 1e-5; down[e] -= 1e-5;
+    const fd = (virtualTemperature(small).evaluate(up).value - virtualTemperature(small).evaluate(down).value) / 2e-5;
+    assert.ok(Math.abs(fd - d[e]) < 1e-6 * big, `cell ${e}: ${d[e]} against ${fd}`);
+  }
+});
+
+test('voids prevented: a twisted block optimised freely closes into a tube round an enclosed void; prevented, it vents it, and costs a little stiffness', async () => {
+  const { voids, virtualTemperature } = await import('@rulecad/topopt');
+  // A 12 × 12 × 20 mm block on 1 mm cells, kept end plates, held at its foot and twisted at its top by four tangential
+  // 1 N forces, filling 45%. (At its 131st step the free run used to crash: an empty cell times an infinite scale.)
+  const W = 12, L = 20, a = W / 2 - 0.5, p = {
+    space: { at: [0, 0, L / 2], size: [W, W, L] }, keep: [{ at: [0, 0, 0.5], size: [W, W, 1] }, { at: [0, 0, L - 0.5], size: [W, W, 1] }],
+    supports: [{ at: [0, 0, 0.5], size: [W, W, 1] }],
+    loads: [{ at: [a, 0, L - 0.5], r: 1, force: [0, 1, 0] }, { at: [-a, 0, L - 0.5], r: 1, force: [0, -1, 0] }, { at: [0, a, L - 0.5], r: 1, force: [-1, 0, 0] }, { at: [0, -a, L - 0.5], r: 1, force: [1, 0, 0] }],
+    material: { E: 1000, nu: 0.3 }, cell: 1, volume: 0.45, steps: 150,
+  };
+  const s = discretise(p), free = optimise(s), vented = optimise(discretise({ ...p, voids: 'prevented' }));
+  const found = (r) => voids({ ...s.grid }, r.density);
+  // (scratch c3/vt3.mjs: free 0.012770 N·mm with one void of 1520 mm³, the tube's whole inside; prevented 0.013446,
+  // 5.3% less stiff, none: slots two cells wide in each wall at its foot)
+  assert.deepEqual(found(free).map((v) => v.volume), [1520]);
+  assert.deepEqual(found(vented), []);
+  assert.ok(vented.compliance < free.compliance * 1.1 && Math.abs(vented.volume - 0.45) < 0.01, `${vented.compliance} against ${free.compliance}, volume ${vented.volume}`);
+  const heat = (r) => virtualTemperature(s.grid).evaluate(r.density).value;
+  assert.ok(heat(free) > 10 * heat(vented), `free ${heat(free)}, vented ${heat(vented)}`);
+  assert.throws(() => discretise({ ...p, voids: 'refused' }), /voids: allowed, or prevented .*got "refused"/);
+  assert.throws(() => optimise(discretise({ ...p, voids: 'prevented', stress: 5, volume: undefined })), /voids are prevented for the stiffest part that fills a volume, not under a stress limit/);
+});
+
+test('the thinnest member: a bar narrower than the ball goes and one as wide stays, refused past three cells, and the gradient matches finite differences', async () => {
+  const { featureFilter, featureCells, thin } = await import('@rulecad/topopt');
+  // A 20 × 12 grid: a bar one cell thick (j = 2) and one three thick (j = 5 to 7), both i = 2 to 17. A ball of 1 cell
+  // is the cell and its four neighbours, three across: the thin bar goes, the thick one stays but for its four square
+  // outside corners, rounded off (so thin finds the 16 cells of the bar and the 4 corners: 20)
+  const nx = 20, ny = 12, x = new Float64Array(nx * ny);
+  for (let i = 2; i < 18; i++) { x[2 * nx + i] = 1; for (let j = 5; j <= 7; j++) x[j * nx + i] = 1; }
+  const o = featureFilter({ nx, ny }, 1).apply(x, new Float64Array(nx * ny));
+  for (let i = 2; i < 18; i++) { assert.ok(o[2 * nx + i] < 0.1, `the thin bar goes: ${o[2 * nx + i]}`); assert.ok(o[6 * nx + i] > 0.9, `the thick bar stays: ${o[6 * nx + i]}`); }
+  assert.ok(o[5 * nx + 2] < 0.5 && o[5 * nx + 3] > 0.5, 'a square outside corner is rounded off');
+  assert.equal(thin({ nx, ny }, x, { radius: 1 }).count, 20);
+  // From mm: the least whole r whose 2r + 1 cells are as wide. A printer's two 0.42 mm lines (0.84 mm) on 1 mm cells:
+  // 0, a cell is wider; 2.4 mm on 0.8 mm cells: (3 - 1) / 2 = 1; 3 mm on 1 mm cells: 1; 3.5 mm on 1 mm: (3.5 - 1) / 2 =
+  // 1.25, so 2, refused (cells of 3.5 / 3 = 1.167, so 1.17 mm or more, would do, or a feature of 3 mm or less)
+  assert.deepEqual([featureCells(0.84, 1), featureCells(2.4, 0.8), featureCells(3, 1)], [0, 1, 1]);
+  assert.throws(() => featureCells(3.5, 1), /a feature of 3\.5 mm is more than three cells \(3 mm\) across: .* give cells of 1\.17 mm or more, or a feature of 3 mm or less/);
+  assert.throws(() => featureCells(0, 1), /a feature is the thinnest member, a distance above 0 mm \(got 0\)/);
+  assert.throws(() => featureFilter({ nx, ny }, 1.5), /a feature's radius is a whole number of cells from 1 \(got 1\.5\)/);
+  // The gradient, 2D and 3D: a weighted sum of the filtered densities against finite differences
+  for (const size of [{ nx: 6, ny: 5 }, { nx: 4, ny: 4, nz: 3 }]) {
+    const n = size.nx * size.ny * (size.nz || 1), y = Float64Array.from({ length: n }, (_, e) => 0.1 + 0.8 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e + 1));
+    const f = featureFilter(size, 1), value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = f.adjoint(w, new Float64Array(n));
+    for (let e = 0; e < n; e++) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-6; down[e] -= 1e-6;
+      const fd = (value(up) - value(down)) / 2e-6;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-6 * Math.max(1, Math.abs(fd)), `${JSON.stringify(size)}, cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
+test('a problem\'s feature: a cantilever optimised with a small filter has members a cell or two wide; with a 3 mm feature on 1 mm cells, none under three, for a little stiffness', async () => {
+  const { thin } = await import('@rulecad/topopt');
+  // A 60 × 20 mm cantilever on 1 mm cells, held along its left edge and pushed down at its right middle, its filter
+  // (1.2 mm) small enough for thin members. At 200 steps: free 191.75 with 114 cells in members
+  // under three cells; a 3 mm feature 208.54 (8.8% more flexible) with none
+  const p = { space: { at: [30, 10], size: [60, 20] }, thickness: 1, supports: [{ at: [0.5, 10], size: [1, 20] }], loads: [{ at: [59.5, 10], size: [1, 2], force: [0, -1] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.4, filter: 1.2, steps: 200 };
+  const free = discretise(p), held = discretise({ ...p, feature: 3 }), a = optimise(free), b = optimise(held);
+  assert.equal(held.feature, 3);
+  assert.ok(thin(free.grid, a.density, { radius: 1 }).count > 50, `free: ${thin(free.grid, a.density, { radius: 1 }).count}`);
+  assert.equal(thin(held.grid, b.density, { radius: 1 }).count, 0);
+  assert.ok(b.compliance > a.compliance && b.compliance < 1.15 * a.compliance, `${b.compliance} against ${a.compliance}`);
+  // A feature the grid already holds (two 0.42 mm lines on 1 mm cells) changes nothing; one past three cells is refused
+  assert.equal(optimise(discretise({ ...p, feature: 0.84, steps: 20 })).compliance, optimise(discretise({ ...p, steps: 20 })).compliance);
+  assert.throws(() => discretise({ ...p, feature: 4 }), /a feature of 4 mm is more than three cells \(3 mm\) across/);
+});
+
+test('a refusal\'s sizes pass the check they failed, and a tool a hair under 2 cells is drawn as a smaller tool than one of 2', async () => {
+  const { featureCells, processFilter } = await import('@rulecad/topopt');
+  // A feature past three cells asks for cells of at least a third of it, rounded up, or a feature of at most three
+  // cells, rounded down. 4 mm on 1 mm cells: 4 / 3 = 1.333, so 1.34 mm cells (4 / 1.34 = 2.985 cells, (2.985 - 1) / 2 =
+  // 0.99, a ball of 1); rounded to the nearest it asked for 1.33 (4 / 1.33 = 3.008 cells, (3.008 - 1) / 2 = 1.004, so 2,
+  // refused again). Each refused pair below, its two suggestions tried
+  for (const [feature, h] of [[4, 1], [3.5, 1], [5, 1.5], [7.3, 2], [3.2, 0.8], [4.01, 1.33], [10, 1]]) {
+    const said = (() => { try { featureCells(feature, h); } catch (e) { return e.message; } return null; })();
+    assert.ok(said, `${feature} mm on ${h} mm cells is refused`);
+    const cells = +said.match(/give cells of ([\d.]+) mm or more/)[1], smaller = +said.match(/or a feature of ([\d.]+) mm or less/)[1];
+    assert.ok(featureCells(feature, cells) <= 1, `${feature} mm on the suggested ${cells} mm cells holds`);
+    assert.ok(featureCells(smaller, h) <= 1, `the suggested ${smaller} mm feature on ${h} mm cells holds`);
+  }
+  assert.throws(() => featureCells(4, 1), /give cells of 1\.34 mm or more, or a feature of 3 mm or less/);
+  // A tool under a cell asks for cells no bigger than it, rounded down: 1.237 mm on 1.3 mm cells, 1.23 (to the nearest,
+  // 1.24, still more than the tool, refused again)
+  const p = { space: { at: [0, 0, 5], size: [10, 10, 10] }, supports: [{ at: [0, 0, 0.5], size: [10, 10, 1] }], loads: [{ at: [0, 0, 9.5], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, volume: 0.3, mill: '+z', tool: 1.237 };
+  assert.throws(() => discretise({ ...p, cell: 1.3 }), /a tool's radius of 1\.24 mm is under a cell \(1\.3 mm\) .* give cells of 1\.23 mm or less/);
+  assert.doesNotThrow(() => discretise({ ...p, cell: 1.23 }));
+  // The disc a tool is drawn as takes the cells whose centres are within its radius, so a radius a hair under a whole
+  // number of cells loses the four cells at that distance: 1.9998 cells (the bench's 0.3333 × 6 mm on 1 mm cells) is a
+  // 3 × 3 square, about a 3 mm tool, and a 4 mm slot stays open under it; 2 cells fills it (a 4 mm tool fits a 4 mm slot
+  // only exactly, and the disc is five cells across). A plate 30 × 12 cells, a slot 4 cells wide and 8 deep, through
+  const nx = 30, ny = 12, slot = (radius) => {
+    const x = new Float64Array(nx * ny).fill(1);
+    for (let j = 2; j < 10; j++) for (let i = 12; i < 16; i++) x[i + j * nx] = 0;
+    const out = processFilter({ nx, ny }, { mill: '+z', tool: radius }).apply(x, new Float64Array(nx * ny));
+    let open = 0; for (let j = 2; j < 10; j++) for (let i = 12; i < 16; i++) open += out[i + j * nx] < 0.5 ? 1 : 0;
+    return open;
+  };
+  assert.deepEqual([slot(0.3333 * 6), slot(2)], [32, 0]);
+});
