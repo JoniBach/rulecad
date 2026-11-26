@@ -299,7 +299,13 @@ solid carry huge stresses, held the output still: the travel went to 0 at every 
 | Checked only (default) | 12.1 MPa | | | 1.81 mm | 0.023 mm |
 | Optimised under it (`robust`) | 4.03 MPa | 0.72 MPa | 6.66 MPa | 1.90 mm | 1.28 mm |
 
-The design as made keeps to the limit and still moves its output 1.9 mm. Made a little thick, its peak is 66% over:
+**Experimental: the figures above are one machine's.** A mechanism optimised under a limit is sensitive to the
+floating point of the machine it runs on. The same problem in CI ended within 2% of the limit with the worst copy
+moving 0.55 mm and in more than one piece (macOS), 5.7% over (Linux), and within 2% (Windows). It always cuts the
+checked-only layout's peak by more than half, but check the result as drawn (`cad check` finds loose pieces) before
+printing it, and read its peak in `result.stress`. Making it hold the same on every machine is left.
+
+On the machine above, the design as made keeps to the limit and still moves its output 1.9 mm. Made a little thick, its peak is 66% over:
 the dilated copy's limits are in the problem but did not hold by the time it settled (its stopping test is the travel,
 not the limit). So read `result.stress.copies` before trusting a thick print, and keep the input force under the
 `force` reported. Earlier tries, without the three copies: the augmented Lagrangian added to the eroded copy's travel

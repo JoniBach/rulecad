@@ -4,6 +4,8 @@ What changed in each release, for someone upgrading.
 
 ## 0.3.8: robust stress limits and mechanisms
 
+- Experimental: a robust mechanism under a stress or strain limit varies with the machine's floating point (within 2% of the limit to 5.7% over, and on one machine in more than one piece). The README says so and to check the drawn result.
+
 - A robust mechanism under a stress or strain limit stops only once the design as made keeps to it (within 2%). Its travel could settle first, and where it stopped then rested on the machine's floating point: on Linux the design as made ended 9% over, on macOS within the limit.
 ### Added
 
