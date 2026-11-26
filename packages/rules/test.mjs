@@ -420,6 +420,21 @@ test('the printed plastics: stiffness and strength each way, with the data sheet
 });
 
 
+test('TPU: a rubber from its maker\'s sheet, with the strain a flexure in it is sized to marked an estimate', () => {
+  const r = sets.find((s) => s.name === 'tpu').set.rules;
+  // Bambu TPU 95A V3.0: 9.2 ± 0.4 MPa along the layers, 7.8 ± 0.5 across; 29.6 ± 0.6 and 23.2 ± 0.5 MPa strong
+  assert.deepEqual([r.modulus.low, r.modulus.value, r.modulus.high], [8.8, 9.2, 9.6]);
+  assert.deepEqual([r.modulus_z.low, r.modulus_z.value, r.modulus_z.high], [7.3, 7.8, 8.3]);
+  assert.ok(r.modulus_z.value < r.modulus.value && r.strength_z.value < r.strength.value, 'weaker across its layers');
+  assert.equal(r.density.value, 1.2);
+  // strength over modulus is 29.6 / 9.2 = 3.22: no strain limit for a rubber. The flexure's limit is its own rule, an
+  // estimate, well under the 100% where the second maker's curve bends over (15.5 MPa at 100%, 19.9 at 200%)
+  assert.ok(Math.abs(r.strength.value / r.modulus.value - 3.217) < 1e-3);
+  assert.equal(r.flex_strain.kind, 'estimate');
+  assert.ok(r.flex_strain.value < 1 && r.flex_strain.value < r.elongation.value / 10);
+  assert.equal(r.stress_100.kind, 'spec');
+});
+
 test('a second maker\'s sheet beside pla, petg and asa: the same rules with its range, weaker across the layers, read in an expression as either maker', () => {
   const second = { 'pla-prusament': 'pla', 'petg-polylite': 'petg', 'asa-polylite': 'asa' };
   for (const [name, first] of Object.entries(second)) {

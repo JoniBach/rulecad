@@ -192,3 +192,158 @@ export function tubeFourBarFindings(p, printer, material, model, o = {}) {
   }
   return out;
 }
+
+// ------------------------------------------------------------------------------------------------------- on a cone
+
+// On a cone the same holds with the joints' axes along the cone's rulings, which all meet at its apex: the mechanism
+// is a spherical four-bar about the apex (Hyatt, Magleby and Howell, Developable mechanisms on right conical surfaces,
+// Mechanism and Machine Theory 149, 2020). Each joint's axis is a unit vector from the apex; each link turns about the
+// apex; a link's "length" is the angle between its two joints' axes, and the loop closes on the sphere.
+
+/**
+ * @typedef {{ radius: number, angle: number, wall: number, height: number, joints: number[], hinge: { flex: number, thickness: number }, segments?: number }} ConeFourBar
+ *   radius: R, to the wall's middle at the bottom (z = 0); angle: the cone's half-angle κ, degrees, the wall leaning in
+ *   that far from vertical as it rises (above 0 and at most 60); wall: its thickness, square to its face; height: the
+ *   part's up z (its top's radius R - H tan κ); joints: the four joints' places round the cone, degrees, in order as on
+ *   the tube (the input's ground joint, input to coupler, coupler to output, the output's ground joint); hinge: each
+ *   joint's web, flex long round the wall and thickness thick
+ */
+function coneLayout(what, p) {
+  if (!p || typeof p !== 'object') refuse('developable.input', `${what}: a cone four-bar is { radius, angle, wall, height, joints, hinge } (got ${said(p)})`);
+  const kap = p.angle;
+  if (!(typeof kap === 'number' && kap > 0 && kap <= 60)) refuse('developable.angle', `${what}: angle is the cone's half-angle, above 0 and at most 60 degrees (got ${said(kap)}); at 0 it is a tube: tubeFourBar`);
+  const R = size(what, p, 'radius', "the wall's middle radius at the bottom"), H = size(what, p, 'height', "the part's height");
+  const top = R - H * Math.tan(kap * DEG);
+  if (!(top >= R / 3)) refuse('developable.height', `${what}: ${H} mm up a ${kap}° cone takes its ${R} mm radius to ${top.toFixed(2)} mm, under a third: up to ${((2 * R) / 3 / Math.tan(kap * DEG)).toFixed(2)} mm tall`);
+  // the tube's checks, on the narrowest circle (the top), where the arcs are shortest and the web leaves the curve most
+  const t = layoutOf(what, { ...p, radius: top, height: H });
+  const k = { ...t, R, R1: top, kap: kap * DEG, H };
+  k.apex = R / Math.tan(k.kap); // apex height
+  k.slant = H / Math.cos(k.kap);
+  k.u = k.a.map((q) => [-Math.sin(k.kap) * Math.cos(q), -Math.sin(k.kap) * Math.sin(q), Math.cos(k.kap)]); // each joint's axis, up its ruling to the apex (so a turn is anticlockwise seen from above, as on the tube)
+  return k;
+}
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit3 = (a) => { const l = Math.hypot(...a); return a.map((x) => x / l); };
+// v turned q about the unit axis e (Rodrigues)
+const turn3 = (v, e, q) => { const c = Math.cos(q), s = Math.sin(q), d = dot3(e, v), x = cross3(e, v); return [0, 1, 2].map((i) => v[i] * c + x[i] * s + e[i] * d * (1 - c)); };
+const signed = (w1, w2, e) => Math.atan2(dot3(cross3(w1, w2), e), dot3(w1, w2));
+
+// The spherical four-bar's pose for an input turn θ: B is B0 turned θ about A; C is C0 turned ψ about D, with B·C kept
+// at B0·C0. B·(C0 turned ψ) = a cos ψ + b sin ψ + c, a = B·C0 - (B·D)(D·C0), b = B·(D × C0), c = (B·D)(D·C0), so
+// ψ = atan2(b, a) ± acos((B0·C0 - c) / √(a² + b²)), the sign the one that gives ψ = 0 at rest
+function conePose(k, th, sgn) {
+  const [A, B0, C0, D] = k.u, B = turn3(B0, A, th), cBC = dot3(B0, C0), dC = dot3(D, C0), bD = dot3(B, D);
+  const a = dot3(B, C0) - bD * dC, b = dot3(B, cross3(D, C0)), c = bD * dC, r = Math.hypot(a, b), x = (cBC - c) / r;
+  if (!(Math.abs(x) <= 1 + 1e-12)) return null; // the loop no longer closes
+  const psi = wrap(Math.atan2(b, a) + sgn * Math.acos(Math.max(-1, Math.min(1, x)))), C = turn3(C0, D, psi);
+  // the joints' turns: each between the two links' images of a vector square to the joint's axis
+  const vB = unit3(C0.map((q, i) => q - cBC * B0[i])), vC = unit3(B0.map((q, i) => q - cBC * C0[i]));
+  const atB = signed(turn3(vB, A, th), unit3(C.map((q, i) => q - dot3(C, B) * B[i])), B), atC = signed(unit3(B.map((q, i) => q - dot3(B, C) * C[i])), turn3(vC, D, psi), C);
+  return { B, C, input: th, output: psi, turns: [th, atB, atC, -psi] };
+}
+const coneSign = (k) => { const s = [1, -1].map((g) => { const r = conePose(k, 0, g); return r ? Math.abs(r.output) : Infinity; }); return s[0] <= s[1] ? 1 : -1; };
+
+/**
+ * A four-bar in a cone's wall (ConeFourBar), its model: at an input's turn, each joint's turn, each hinge's strain,
+ * how far each moving link stands out of the cone and in; the input's torque from the hinges' energy; the turn each
+ * way at the hinges' strain limit; and the grams. Each hinge is a web along a ruling, as long as the wall's slant
+ * (H / cos κ) and bending as the tube's do (EI / l over its drawn length).
+ * @param {ConeFourBar} p
+ * @param {{ E: number, strainLimit?: number, density?: number }} m
+ * @returns {{ hinge: { stiffness: number, length: number, width: number }, links: { input: number, coupler: number, output: number, ground: number },
+ *   at: (input: number) => null | { turns: number[], strain: number, torque: number, out: Record<string, number>, in: Record<string, number> },
+ *   travel?: [number, number], grams?: number, volume: number }}
+ *   links: each one's angle between its joints' axes, degrees (the spherical four-bar's link lengths); the rest as the
+ *   tube's (tubeFourBarModel)
+ */
+export function coneFourBarModel(p, m) {
+  const what = 'coneFourBarModel', k = coneLayout(what, p);
+  if (!(m && m.E > 0)) refuse('developable.material', `${what}: the material needs a modulus E above 0 MPa (got ${said(m?.E)})`);
+  const lEff = webLength(k), hinge = livingHingeModel({ flex: lEff, thickness: k.t, width: k.slant }, m), K = hinge.stiffness, sgn = coneSign(k);
+  const link = (i, j) => Math.acos(Math.min(1, dot3(k.u[i], k.u[j]))) / DEG;
+  // each body's wall middle as points (round its arc, and down its rulings), from the apex
+  const ring = (from, span) => { const pts = []; for (let i = 0; i <= 24; i++) for (const z of [0, k.H / 2, k.H]) { const q = from + (k.dir * span * i) / 24, r = (k.apex - z) * Math.tan(k.kap); pts.push([r * Math.cos(q), r * Math.sin(q), z - k.apex]); } return pts; };
+  const bodies = { input: ring(k.a[0], k.spans[0]), coupler: ring(k.a[1], k.spans[1]), output: ring(k.a[2], k.spans[2]) };
+  const energy = (th) => { const s = conePose(k, th, sgn); return s ? s.turns.reduce((e, q) => e + 0.5 * K * q * q, 0) : NaN; };
+  const off = (v) => { const z = v[2] + k.apex, r = Math.hypot(v[0], v[1]); return (r - (k.apex - z) * Math.tan(k.kap)) * Math.cos(k.kap); }; // out of the cone's middle surface, square to it
+  const at = (deg) => {
+    if (!(typeof deg === 'number' && Number.isFinite(deg))) refuse('developable.input', `${what}: at() takes the input's turn in degrees (got ${said(deg)})`);
+    const th = deg * DEG, s = conePose(k, th, sgn);
+    if (!s) return null;
+    // the coupler's turn: the one that takes B0 to B and C0 to C, applied as B, C and B × C from B0, C0 and B0 × C0
+    const [, B0, C0] = k.u, f0 = [B0, unit3(cross3(B0, C0))], f1 = [s.B, unit3(cross3(s.B, s.C))];
+    const g0 = [f0[0], f0[1], cross3(f0[0], f0[1])], g1 = [f1[0], f1[1], cross3(f1[0], f1[1])];
+    const coupler = (v) => { const c = g0.map((e) => dot3(e, v)); return [0, 1, 2].map((i) => c[0] * g1[0][i] + c[1] * g1[1][i] + c[2] * g1[2][i]); };
+    const moved = { input: bodies.input.map((v) => turn3(v, k.u[0], th)), coupler: bodies.coupler.map(coupler), output: bodies.output.map((v) => turn3(v, k.u[3], s.output)) };
+    const out = {}, inn = {};
+    for (const [name, pts] of Object.entries(moved)) { const d = pts.map(off); out[name] = Math.max(0, ...d); inn[name] = Math.max(0, ...d.map((x) => -x)); }
+    const e = 1e-6, torque = (energy(th + e) - energy(th - e)) / (2 * e);
+    return { turns: s.turns.map((q) => q / DEG), strain: Math.max(...s.turns.map((q) => hinge.strain(Math.abs(q)))), torque, out, in: inn };
+  };
+  let travel;
+  if (m.strainLimit != null) {
+    const reach = (sg) => { let lo = 0, hi = 0.5; const bad = (x) => { const r = at((sg * x) / DEG); return !r || r.strain > m.strainLimit; }; if (!bad(hi)) return hi / DEG; for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (bad(mid)) hi = mid; else lo = mid; } return lo / DEG; };
+    travel = [-reach(-1), reach(1)];
+  }
+  const volume = jscad.measurements.measureVolume(coneFourBar(p));
+  return {
+    hinge: { stiffness: K, length: lEff, width: k.slant }, links: { input: link(0, 1), coupler: link(1, 2), output: link(2, 3), ground: link(3, 0) }, at,
+    ...(travel ? { travel } : {}), volume, ...(m.density ? { grams: (volume * m.density) / 1000 } : {}),
+  };
+}
+
+/**
+ * A four-bar in a cone's wall (ConeFourBar), drawn standing at rest, its wide end on the bed: the cone's wall from
+ * z = 0 up to its height, and at each joint a pocket from the outside and one from the inside along the ruling, round
+ * cornered at the web, leaving the web on the wall's middle. The wall leans in κ as it rises, so its inside overhangs
+ * κ from vertical and nothing else does. One piece.
+ * @param {ConeFourBar} p
+ * @returns {object} the shape, a JSCAD geom3
+ */
+export function coneFourBar(p) {
+  const k = coneLayout('coneFourBar', p), { d, rr } = pocketOf(k), c = Math.cos(k.kap), s = Math.sin(k.kap), half = k.w / 2 / c, top = k.R - k.H * Math.tan(k.kap);
+  const wall = jscad.extrusions.extrudeRotate({ segments: k.segments }, polygon({ points: [[k.R - half, 0], [k.R + half, 0], [top + half, k.H], [top - half, k.H]] }));
+  const over = 1, pocket = union(
+    rectangle({ size: [k.l, d - rr + over], center: [0, rr + (d - rr + over) / 2] }),
+    rectangle({ size: [k.l - 2 * rr, rr + 0.001], center: [0, rr / 2] }),
+    circle({ radius: rr, center: [-k.l / 2 + rr, rr], segments: 32 }), circle({ radius: rr, center: [k.l / 2 - rr, rr], segments: 32 }),
+  ), bar = extrudeLinear({ height: k.slant + 4 }, pocket), cuts = [];
+  for (const q of k.a) {
+    const tq = [-Math.sin(q), Math.cos(q), 0], nr = [c * Math.cos(q), c * Math.sin(q), s], g = [-s * Math.cos(q), -s * Math.sin(q), c], base = [k.R * Math.cos(q), k.R * Math.sin(q), 0];
+    for (const side of [1, -1]) {
+      // the profile's x round the wall, y out from the web's face (out of the cone, or into it), z up the ruling: a
+      // right-handed frame either way (x flipped with y; the profile is the same both ways round)
+      const X = tq.map((v) => -side * v), Y = nr.map((v) => side * v), at = [0, 1, 2].map((i) => base[i] + Y[i] * (k.t / 2) - g[i] * 2);
+      cuts.push(jscad.transforms.transform([...X, 0, ...Y, 0, ...g, 0, ...at, 1], bar));
+    }
+  }
+  return subtract(wall, union(cuts));
+}
+
+/**
+ * Whether a cone four-bar prints as drawn and lasts at its turn, as findings in the kit's one shape: the webs in whole
+ * lines (developable.web), the hinges' axes in the cone's wall so each bends within its layers (developable.direction),
+ * the inside's lean against the printer's overhang (developable.overhang), the hinges' strain at the input's turn
+ * (developable.strain), and how far the links stand out of the cone and in (developable.surface).
+ * @param {ConeFourBar & { turn?: number }} p
+ * @param {{ line: number, layer: number, wall_min?: number, overhang?: number }} printer overhang: the steepest from vertical it prints, degrees (default 45)
+ * @param {{ strainLimit?: number, name?: string }} [material]
+ * @param {ReturnType<typeof coneFourBarModel>} [model]
+ * @returns {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code: string, values?: object }[]}
+ */
+export function coneFourBarFindings(p, printer, material, model) {
+  const k = coneLayout('coneFourBarFindings', p);
+  const out = tubeFourBarFindings({ ...p, radius: k.R1, turn: undefined }, printer).filter((x) => x.code !== 'developable.direction'), f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  f('pass', "printed standing on its wide end, every hinge's axis runs up the wall: each bends within its layers, and the first layer is the whole ring", 'developable.direction');
+  const over = printer.overhang ?? 45, kap = k.kap / DEG;
+  f(kap <= over ? 'pass' : 'fail', `the wall leans in ${kap}° as it rises, so its inside overhangs ${kap}° from vertical${kap <= over ? `, within the ${over}° it prints without supports` : `, past the ${over}° it prints without supports`}`, 'developable.overhang', { lean: kap, limit: over });
+  if (p.turn != null && model) {
+    const r = model.at(p.turn), limit = material?.strainLimit;
+    if (!r) { f('fail', `the linkage does not reach an input turn of ${p.turn}°: its loop no longer closes`, 'developable.reach', { turn: p.turn }); return out; }
+    if (limit != null) f(r.strain <= limit ? 'pass' : 'fail', `turned ${p.turn}° at the input, the hinges see at most ${(r.strain * 100).toFixed(2)}% strain${r.strain <= limit ? ', within' : ', over'} ${material.name ?? 'its'} limit of ${(limit * 100).toFixed(2)}%${r.strain <= limit ? ` (${(limit / r.strain).toFixed(2)} times)` : model.travel ? `: from ${model.travel[0].toFixed(1)}° to ${model.travel[1].toFixed(1)}°` : ''}`, 'developable.strain', { turn: p.turn, strain: r.strain, limit });
+    const outs = Object.entries(r.out).filter(([, v]) => v > 1e-6).map(([n, v]) => `the ${n} ${v.toFixed(2)} mm out`), ins = Object.entries(r.in).filter(([, v]) => v > 1e-6).map(([n, v]) => `the ${n} ${v.toFixed(2)} mm in`);
+    f('info', `turned ${p.turn}°, ${[...outs, ...ins].join(', ') || 'nothing leaves the cone'}, taking ${r.torque.toFixed(1)} N·mm at the input`, 'developable.surface', { out: r.out, in: r.in, torque: r.torque });
+  }
+  return out;
+}

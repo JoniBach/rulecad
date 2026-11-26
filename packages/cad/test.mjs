@@ -6927,6 +6927,21 @@ test('a robust problem: cad optimise reports the design made a little thin and a
   } finally { done(); }
 });
 
+test('printed fittings in TPU: refused by name as a rubber, and left out of the plastics another refusal names', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
+    // the kit's tpu.json has strength, modulus, density and modulus_z, as a plastic's set does; but 29.6 / 9.2 = 3.22,
+    // a strain where a stiff plastic would long have yielded: the clip's sums are not for it
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'TPU', objects: [] }));
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "TPU", a rubber \(its strength over its modulus is 3\.22, a strain far past where its stiffness holds\), and printed fittings are sized with sums for a stiff plastic that do not hold for it\. Set the material to one of abs, asa, pa_cf, petg, pla$/m);
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PC', objects: [] }));
+    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, pa_cf, petg, pla, and there is no rules\/pc\.json/);
+  } finally { done(); }
+});
+
 test('a problem milled from two sides by a tool of a size, or cast with a draft (#35): cad optimise says how, with the draft made at the grid, and refuses a tool or a draft the grid cannot show', () => {
   const { ws, cad, done } = workspace();
   try {

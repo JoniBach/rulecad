@@ -5,7 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## 0.7.94: robust: true
+## 0.7.97: robust: true
 ### Added
 
 - A problem's `robust: true` (schema first): optimised as made, a little thin and a little thick (topopt's robust
@@ -17,6 +17,13 @@ and head, the parts it passes through and the part it ends in.
 ### Printed sizes that moved
 
 - None.
+
+## 0.7.95: a rubber is refused as a printed fitting
+### Changed
+
+- A project whose material is a rubber (a rule set whose strength over its modulus is past 0.5, such as the kit's new
+  `tpu`) is refused by name for printed fittings, whose sums are for a stiff plastic, and a rubber is left out of the
+  plastics another refusal lists. No printed size moved.
 
 ## 0.7.93: milled by a tool, cast with draft, a minimum feature, voids prevented
 ### Added
