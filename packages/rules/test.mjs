@@ -419,3 +419,20 @@ test('the printed plastics: stiffness and strength each way, with the data sheet
   assert.deepEqual([cf.low, cf.value, cf.high], [3860 - 230, 3860, 3860 + 230]);
 });
 
+
+test('a second maker\'s sheet beside pla, petg and asa: the same rules with its range, weaker across the layers, read in an expression as either maker', () => {
+  const second = { 'pla-prusament': 'pla', 'petg-polylite': 'petg', 'asa-polylite': 'asa' };
+  for (const [name, first] of Object.entries(second)) {
+    const r = sets.find((s) => s.name === name).set.rules, f = sets.find((s) => s.name === first).set.rules;
+    assert.deepEqual(Object.keys(f).filter((k) => k !== 'cost').filter((k) => !r[k]), [], `${name} gives every rule ${first} does but its price`);
+    for (const k of ['modulus', 'modulus_z', 'strength', 'strength_z']) { assert.ok(r[k].low < r[k].value && r[k].high > r[k].value, `${name}.${k} has a range round its value`); assert.equal(r[k].unit, 'MPa'); assert.equal(r[k].kind, 'spec'); }
+    assert.ok(r.strength_z.value < r.strength.value, `${name} is weaker across its layers`);
+    assert.match(r.modulus.source, /https:\/\//, `${name} names where its sheet is`);
+  }
+  // Read off the sheets: Prusament PLA's standing specimen 37.6 ± 4.0 MPa; PolyLite PETG 42.8 ± 2.8 and ASA 32 ± 1.8 across the layers
+  const r = resolve({ uses: Object.keys(second), variables: { pla: { value: 'pla_prusament.strength_z.low', unit: 'MPa' }, petg: { value: 'petg_polylite.strength_z.low', unit: 'MPa' }, asa: { value: 'asa_polylite.strength_z.high', unit: 'MPa' } } }, { sets: Object.fromEntries(sets.map((s) => [s.name, s.set])) });
+  assert.deepEqual([r.values.pla, r.values.petg, r.values.asa], [37.6 - 4, 42.8 - 2.8, 32 + 1.8].map((x) => +x.toFixed(4)));
+  // The makers differ: PolyLite ASA across the layers is 32 MPa, Bambu's 35; their ranges overlap (32 + 1.8 = 33.8 is above 35 - 4 = 31)
+  const asa = sets.find((s) => s.name === 'asa').set.rules.strength_z, poly = sets.find((s) => s.name === 'asa-polylite').set.rules.strength_z;
+  assert.ok(poly.value < asa.value && poly.high > asa.low, 'PolyLite ASA is weaker across the layers than Bambu\'s, their ranges overlapping');
+});
