@@ -1,11 +1,11 @@
 # The benches
 
-Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: four levers (2D, flat) and
+Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: five levers (2D, flat) and
 four wall brackets (3D). Every object here is in the `bench` project; the rules they share are in `rules/bench.json`.
 
 ## The lever bench
 
-A test block for rulecad's topology optimisation (`cad optimise`, @rulecad/topopt), built to be measured. Four
+A test block for rulecad's topology optimisation (`cad optimise`, @rulecad/topopt), built to be measured. Five
 specimens weigh the same, fit the same envelope and are held and loaded the same way. The only difference between them
 is where the material is. Print them, hang weights on them and read a dial gauge. The results show whether the
 optimiser makes a stiffer part, and how close its predictions are for printed parts.
@@ -23,6 +23,13 @@ every specimen's volume to within 1% of that.
 | B | `bench/lever-plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.72 N/mm |
 | C | `bench/lever` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 100 N/mm |
 | D | `bench/lever:both` | Optimised for a second load too, 45° from straight down. | 99.3 N/mm (191 N/mm at 45°) |
+| E | `bench/lever:milled` | C's problem, with its profile milled through a 6 mm plate by a 4 mm end mill (`mill` from +z with a `tool` of 2 mm radius): no window narrower than the tool, every inside corner rounded to its radius. | 98.9 N/mm (183 N/mm at 45°) |
+
+E is for a shop with a router or a mill rather than a printer (it prints as well as the others). Its tool's radius
+is a third of the plate's thickness, the inside corner the Protolabs Network machining guide gives for a pocket that
+deep (`rules/mill-3axis.json`). Milling costs it 1.1% straight down against C (98.9 against 100 N/mm). `cad optimise
+bench/lever:milled` says what is left for the tool: the design has no member narrower than a 4 mm end mill, and the
+bolt holes (16 cells on the 1 mm grid) are, so drill the holes.
 
 The predictions are from `cad check` (the analysis in @rulecad/fea, with Bambu Lab PLA Basic's data sheet modulus,
 2680 MPa), verified: each specimen is analysed on cells smaller than the optimiser's (0.5 mm for the levers, 0.8 mm
@@ -54,7 +61,7 @@ Print every specimen the same way, and write down how in `results.json`:
 
 - flat on the bed, 0.2 mm layers;
 - 100% infill, or enough walls to be solid, so the slicer's infill doesn't change the result;
-- the same printer, filament and spool for all four;
+- the same printer, filament and spool for all five;
 - three prints of each;
 - left for a day before testing.
 
@@ -80,7 +87,7 @@ A specimen's stiffness is the slope of load (N: kg × 9.81) against movement (mm
 - **Your material:** from the plain bar's measured stiffness, your printed material's modulus is the data sheet's
   times measured over predicted. Record it as `"kind": "measured"` in `rules/pla.json`, then run `cad check` again
   for new predictions.
-- **The tool:** with the modulus calibrated, compare measured and predicted for B, C and D. The gap shows how far the
+- **The tool:** with the modulus calibrated, compare measured and predicted for B to E. The gap shows how far the
   analysis can be trusted for printed parts.
 
 The bench passes when the optimised specimens are clearly stiffer than both A and B (by more than the spread between

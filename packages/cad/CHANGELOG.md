@@ -12,6 +12,25 @@ and head, the parts it passes through and the part it ends in.
   `tpu`) is refused by name for printed fittings, whose sums are for a stiff plastic, and a rubber is left out of the
   plastics another refusal lists. No printed size moved.
 
+## 0.7.93: milled by a tool, cast with draft, a minimum feature, voids prevented
+### Added
+
+- A problem milled from several sides (`"mill": ["+z", "-z"]`), by a tool of a size (`"tool"`, mm), or cast with a
+  draft (`"draft"`, degrees): the schema first. `cad optimise` says how it is made, the draft as made at the grid
+  ("a step out every 3 layers: 18.43°"), and any cells too narrow for the tool, in the design or in avoid regions
+  (drill those holes). A tool or draft with no milling or casting is refused by name.
+- `"mill"` and `"cast"` can name a variable holding the side or sides (`"+z"`, `"+z -z"`) or `"none"`, so a variant
+  switches the process; a tool or draft goes off with it.
+- `"voids": "prevented"`: the optimiser keeps every empty pocket open to the outside; cad optimise says so, and any
+  void a keep region walls in is still an error, said to be left though prevented.
+- `"feature"` (mm): the thinnest member, from the printer's line (`x1c.wall_min`, two lines). `cad optimise` says the
+  grid holds it where a cell is as wide, or that it was held to three cells, with any cells left narrower; past three
+  cells it is refused with the cell size that would hold it.
+- The bench's lever E (`bench/lever:milled`): the lever's profile milled through a 6 mm plate by a 4 mm end mill,
+  98.9 N/mm against the printed C's 100. No existing printed size moves.
+- A refusal of a feature past three cells asks for cells of at least a third of it, rounded up (it asked for cells of
+  1.33 mm or less for 4 mm, which it refused again), or a smaller feature.
+
 
 ## 0.7.92: eight axes on a Mega 2560 (#199)
 - The wiring sheet names a Mega slot's pins as step, dir and enable (D38, every slot's): the wire to a driver breakout carries EN, STEP, DIR and GND, and the axis's home switch is a wire of its own. A CNC shield's axis still names its limit pin.

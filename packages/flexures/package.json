@@ -32,6 +32,8 @@
     "amplifiers.mjs",
     "bistables.mjs",
     "lattices.mjs",
+    "clicks.mjs",
+    "gearteeth.mjs",
     "kirigami.mjs",
     "cells.mjs",
     "developable.mjs",
@@ -61,6 +63,8 @@
     "amplifiers.d.mts",
     "bistables.d.mts",
     "lattices.d.mts",
+    "clicks.d.mts",
+    "gearteeth.d.mts",
     "kirigami.d.mts",
     "cells.d.mts",
     "developable.d.mts",
@@ -106,6 +110,7 @@
   },
   "dependencies": {
     "@rulecad/fea": "^0.2.5",
-    "@rulecad/fixings": "^0.1.5"
+    "@rulecad/fixings": "^0.1.5",
+    "@rulecad/gears": "^0.3.4"
   }
 }
