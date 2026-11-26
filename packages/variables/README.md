@@ -31,6 +31,10 @@ entries               // every variable and rule with its value, source and whet
 - **Lists:** a rule may hold a list, `"value": [5, 6, 8, 10]` with one `unit` for all of it (the lengths a screw is
   sold in). Each entry is a number or an expression. A design reads it as an array; in an expression only `min()` and
   `max()` take a list, and anything else refuses it by name.
+- **Ranges:** a rule may give the range it is found in, `"low"` and `"high"` beside its value, in its unit. An
+  expression reads either end as `<set>.<rule>.low` or `<set>.<rule>.high` (`pa_cf.strength.low`), and the plain name
+  still reads the value. Reading an end a rule does not give is refused by name (`var.range`), with the rules in that set
+  that do give one.
 - **Rule sets** are handed in through `sets`, or fetched by name with `load: (name) => …` (from files, a URL, anywhere).
 - **Tweaks:** only variables with a `tweak` range can be set, and only within it. Errors say which variable and why.
 - **Names, not numbers:** `choice: [...]`, `type: 'text'` or `type: 'anchor'` (one of `ANCHORS`: tl tc tr / ml mc

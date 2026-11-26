@@ -1813,6 +1813,144 @@ test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened end
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
 
+test('a force gauge: the beam solver\'s parallel guide is 24EI / L³, its ticks fall where the force puts the needle, the leaves keep twice the margin at the range, and a calibration corrects it', async () => {
+  const { forceGauge, forceGaugeModel } = await import('@rulecad/flexures');
+  // Leaves 40 × 0.8 × 6, no rounds: I = 6 × 0.8³ / 12 = 0.256 mm⁴; one fixed-guided leaf 12EI / L³ = 12 × 2680 × 0.256
+  // / 64000 = 0.12864 N/mm, two 0.25728 N/mm. At 1.5 N it travels 1.5 / 0.25728 = 5.830 mm; the small-deflection
+  // strain 3tδ / L² = 3 × 0.8 × 5.830 / 1600 = 0.874%, and the drop 3δ² / 5L = 3 × 5.83² / 200 = 0.510 mm
+  const p = { length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5, fillet: 0 }, g = forceGaugeModel(p, plaG);
+  near(g.stiffness, 0.25728, 1e-5, '24EI / L³');
+  assert.ok(Math.abs(g.solvedStiffness / g.stiffness - 1) < 0.01, `the solver's guide within 1% of the formula (${g.solvedStiffness})`);
+  near(g.travel, 5.83, 0.06, 'the travel at the range, within 1%');
+  assert.ok(g.strain > 0.00874 && g.strain < 1.15 * 0.00874, `the solver's strain at the range is the small-deflection 0.874%, a little more as it bends far (${g.strain})`);
+  near(g.drop, 0.51, 0.03, 'the needle\'s drop, 3δ² / 5L');
+  // the ticks: 0 and ±0.5, ±1, ±1.5 N; a positive force moves the needle down (-y), 1 N about 1 / 0.25728 = 3.887 mm
+  assert.deepEqual(g.ticks.map((x) => x.force), [-1.5, -1, -0.5, 0, 0.5, 1, 1.5]);
+  const one = g.ticks.find((x) => x.force === 1);
+  assert.ok(one.at < 0 && Math.abs(-one.at * g.stiffness - 1) < 0.02, `1 N's tick at ${one.at} mm`);
+  assert.equal(g.ticks.find((x) => x.force === 0).long, true);
+  assert.ok(g.margin >= 2 && g.findings.find((x) => x.code === 'flexure.strain').level === 'pass', `twice the margin at 1.5 N (${g.margin})`);
+  // past 1.6 N the strain is over half the limit: a warning that names the fix
+  const far = forceGaugeModel({ ...p, range: 1.7, step: 0.5 }, plaG).findings.find((x) => x.code === 'flexure.strain');
+  assert.equal(far.level, 'warn'); assert.match(far.text, /only 1\.\d+x the margin: longer or thinner leaves, or a smaller range/);
+  // a calibration: 1 N read 1.1 on the scale, so a reading of 1.1 is 1 N
+  const c = forceGaugeModel(p, plaG, { calibration: { load: 1, reading: 1.1 } });
+  near(c.factor, 1 / 1.1, 1e-12, 'load / reading'); near(c.read(1.1), 1, 1e-12, 'a reading corrected');
+  assert.equal(c.findings.find((x) => x.code === 'gauge.calibration').level, 'pass');
+  // the shape: one piece, its grams its volume, the bottom face all of its footprint (one extrusion)
+  const shape = forceGauge(p, plaG);
+  assert.ok(onePiece(shape)); near(g.grams, (measureVolume(shape) / 1000) * 1.24, 1e-9, 'grams from the drawn volume');
+  near(measureBoundingBox(shape)[0][2], 0, 1e-9, 'from the bed');
+  // refused by name: a step past the range, ticks too close to cut, a calibration that is not one, leaves too close
+  assert.throws(() => forceGaugeModel({ ...p, step: 2 }, plaG), /step 2 N is more than the range 1\.5 N/);
+  assert.throws(() => forceGauge({ ...p, step: 0.1 }, plaG), /ticks every 0\.1 N lie 0\.3\d mm apart, under two 0\.6 mm slots/);
+  assert.equal(forceGaugeModel({ ...p, step: 0.1 }, plaG).findings.find((x) => x.code === 'gauge.ticks').level, 'fail');
+  assert.throws(() => forceGaugeModel(p, plaG, { calibration: { load: 1 } }), /calibration is \{ load, reading \}/);
+  assert.throws(() => forceGaugeModel({ ...p, apart: 3 }, plaG), /apart 3 puts the leaves' rounds into each other/);
+  assert.throws(() => forceGaugeModel({ ...p, range: 0 }, plaG), /range is a size above 0/);
+});
+
+test('a slip clutch: each arm is the curved cantilever EI / r³ (φ/2 - sin 2φ / 4), and it slips at the snap-fit wedge\'s push times the arms and the radius', async () => {
+  const { slipClutch, slipClutchModel } = await import('@rulecad/flexures');
+  // Two arms of 90°, 1.2 × 6, the ring's bore 15, gap 0.3: the arms' centreline r = 15 - 0.3 - 0.6 = 14.1. Castigliano
+  // on a quarter circle with a radial load P at its tip: M = P r sin θ, so δ = P r³ ∫ sin²θ dθ / EI = P r³ (π/4) / EI.
+  // EI = 2680 × 6 × 1.2³ / 12 = 2315.52 N·mm², r³ = 2803.221, so k = 2315.52 / (2803.221 × 0.785398) = 1.05172 N/mm
+  const p = { radius: 15, thickness: 1.2, width: 6, depth: 1, arms: 2, sweep: 90 }, c = slipClutchModel(p, plaG);
+  near(c.arc, 1.05172, 1e-4, 'the curved cantilever by hand');
+  assert.ok(Math.abs(c.solvedArc / c.arc - 1) < 0.02, `the solver's arm within 2% of it (${c.solvedArc})`);
+  assert.ok(c.stiffness < c.solvedArc && c.stiffness > 0.9 * c.solvedArc, `over the whole 1 mm lift a little softer (${c.stiffness})`);
+  // the slip: tan 30° = 0.57735, (0.3 + 0.57735) / (1 - 0.3 × 0.57735) = 1.06115 times the lift force, at the flanks'
+  // middle radius 15.5, two arms
+  near(c.push, c.lift * 1.06115, 1e-4, 'the wedge'); near(c.torque, 2 * 15.5 * c.push, 1e-9, 'two arms at 15.5 mm');
+  assert.equal(c.clicks, 8);
+  assert.ok(c.margin >= 2, `the arms keep twice the margin (${c.margin})`);
+  // a torque it must carry: under half the slip passes, between warns, over fails
+  const need = (T) => slipClutchModel(p, plaG, { torque: T }).findings.find((x) => x.code === 'clutch.torque').level;
+  assert.equal(need(c.torque / 2.5), 'pass'); assert.equal(need(c.torque / 1.5), 'warn'); assert.equal(need(c.torque * 1.2), 'fail');
+  // the shape: hub and ring two pieces printed together, apart (their volumes add up), each one piece
+  const hub = slipClutch(p, { part: 'hub' }), ring = slipClutch(p, { part: 'ring' }), all = slipClutch(p);
+  assert.ok(onePiece(hub) && onePiece(ring));
+  near(measureVolume(jscad.booleans.intersect(hub, ring)), 0, 1e-6, 'at rest the hub and the ring do not touch');
+  near(measureVolume(all), measureVolume(hub) + measureVolume(ring), 1e-6 * measureVolume(all), 'both in the one print');
+  assert.ok(measureVolume(jscad.booleans.intersect(jscad.transforms.rotateZ((3 * Math.PI) / 180, hub), ring)) > 0.1, 'turned 3° held, the bumps run into their notches\' flanks');
+  near(c.grams, (measureVolume(all) / 1000) * 1.24, 1e-9, 'grams from the drawn volume');
+  // refused by name: notches that are not a whole number of times the arms, a flank that locks, a hub with no room,
+  // arms that leave no room between them
+  assert.throws(() => slipClutchModel({ ...p, notches: 7 }, plaG), /notches is a whole number of times the 2 arms/);
+  assert.throws(() => slipClutchModel({ ...p, angle: 60 }, { ...plaG, friction: 0.6 }), /a 60° flank locks/);
+  assert.throws(() => slipClutchModel({ ...p, radius: 6 }, plaG), /leaves the hub .* round a 5 mm bore/);
+  assert.throws(() => slipClutchModel({ ...p, arms: 3, sweep: 110 }, plaG), /3 arms of 110° each, with their roots, leave/);
+});
+
+test('a tristable: two tilted-leaf bistables in series rest in three places, the outer pair over first; too weak a pair rests in two and fails by name', async () => {
+  const { tiltedTristable, tiltedTristableModel, tiltedBistable } = await import('@rulecad/flexures');
+  // The tilted bistable's outline is unchanged by sharing its leaves' and blocks' sums with the tristable: base 6,
+  // no rounds, 4364.43 mm³ as before
+  near(measureVolume(tiltedBistable({ length: 30, angle: 8, thickness: 0.84, width: 6, base: 6 })), 4364.43, 0.01, 'the bistable as before');
+  // Rises: outer 45 sin 7° = 5.484 mm, inner 32 sin 7° = 3.900 mm. Alone, a tilted pair rests again about 1.4 rises on,
+  // its leaves still bent (the bistable's 5.95 mm for a 4.18 mm rise). So the outer pair over is between 1 and 2 of its
+  // rises down, and the inner pair then between 1 and 2 of the inner's further
+  const p = { outer: { length: 45, angle: 7 }, inner: { length: 32, angle: 7 }, thickness: 0.84, width: 6 }, t = tiltedTristableModel(p, plaG);
+  near(t.rises.outer, 45 * Math.sin(7 * Math.PI / 180), 1e-9, 'outer rise'); near(t.rises.inner, 3.8998, 1e-4, 'inner rise');
+  assert.equal(t.stable, 3); assert.equal(t.tristable, true);
+  const [, a, b] = t.places;
+  assert.ok(a > t.rises.outer && a < 2 * t.rises.outer, `the middle rest ${a} mm down`);
+  assert.ok(b - a > t.rises.inner && b - a < 2 * t.rises.inner, `the last ${b - a} mm on`);
+  assert.ok(t.snaps[0].force < t.snaps[1].force, 'the outer pair switches first, at the lower push');
+  assert.ok(t.backs.every((x) => x.force < -0.2), `each pulls itself on by over 0.2 N (${t.backs.map((x) => x.force)})`);
+  assert.ok(t.strain <= 0.02, `within the limit (${t.strain})`);
+  assert.equal(t.findings.find((x) => x.code === 'tristable.rests').level, 'pass');
+  const shape = tiltedTristable(p);
+  assert.ok(onePiece(shape)); near(t.grams, (measureVolume(shape) / 1000) * 1.24, 1e-9, 'grams from the drawn volume');
+  assert.ok(onePiece(tiltedTristable(p, { part: 'stage' })), 'the stage is one body');
+  // shallower pairs at 6°: the outer goes over and stays, the inner springs back
+  const weak = tiltedTristableModel({ outer: { length: 36, angle: 6 }, inner: { length: 28, angle: 6 }, thickness: 0.8, width: 6 }, plaG);
+  assert.equal(weak.stable, 2); const fr = weak.findings.find((x) => x.code === 'tristable.rests');
+  assert.equal(fr.level, 'fail'); assert.match(fr.text, /rests in only 2 places .* one pair springs back/);
+  assert.throws(() => tiltedTristableModel({ ...p, inner: { length: 32 } }, plaG), /inner\.angle is the leaves' tilt in degrees/);
+  assert.throws(() => tiltedTristable({ ...p, outer: 3 }), /outer is an object \{ length, angle, thickness\? \}/);
+});
+
+test('the README\'s tristable, force gauge and slip clutch are the code\'s figures', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), has = (s) => assert.ok(readme.includes(s), `the README should read: ${s}`);
+  const x1 = (v) => v.toFixed(1), x2 = (v) => v.toFixed(2), x3 = (v) => v.toFixed(3);
+  const t = f.tiltedTristableModel({ outer: { length: 45, angle: 7 }, inner: { length: 32, angle: 7 }, thickness: 0.84, width: 6 }, plaG);
+  has(`t.places;        // [${t.places.map((x) => (x ? x2(x) : '0')).join(', ')}] mm down: where it rests`);
+  has(`rises ${x2(t.rises.outer)} and ${x2(t.rises.inner)} mm; ${x2(t.snaps[0].force)} N takes it to its middle rest, ${x2(t.places[1])} mm down, and ${x2(t.snaps[1].force)} N to its last, ${x2(t.places[2])} mm down; ${x2(-t.backs[0].force)} N and ${x2(-t.backs[1].force)} N bring it back; ${x2(t.strain * 100)}% on the way | ${x1(t.grams)} |`);
+  const g = f.forceGaugeModel({ length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5 }, plaG);
+  has(`g.ticks;         // [{ force: -1.5, at: ${x2(g.ticks[0].at)}, long: false }, ...]`);
+  has(`${x3(g.solvedStiffness)} N/mm (24EI / L³ without the rounds: ${x3(g.stiffness)}); ${x2(g.travel)} mm and ${x2(g.strain * 100)}% at 1.5 N; ticks ${x2(g.spacing)} mm apart; the needle drops ${x2(g.drop)} mm | ${x1(g.grams)} |`);
+  const c = f.slipClutchModel({ radius: 15, thickness: 1.2, width: 6, depth: 1 }, plaG, { torque: 30 });
+  has(`c.torque;        // ${x1(c.torque)} N·mm: past this it slips`);
+  has(`each arm ${x3(c.solvedArc)} N/mm (the curved cantilever: ${x2(c.arc)}); a 1 mm lift takes ${x2(c.lift)} N, so it slips at ${x1(c.torque)} N·mm; ${x2(c.strain * 100)}%; ${c.clicks} clicks a turn | ${x1(c.grams)} (hub and ring) |`);
+  assert.equal(c.findings.find((x) => x.code === 'clutch.torque').level, 'pass');
+});
+
+test('a force gauge whose ticks are too close to cut fails gauge.ticks by name, even over 1 mm; the slip clutch\'s declared sweep default is the code\'s 225 / arms', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs');
+  // Leaves 50 × 1 × 5, no rounds: I = 5 × 1³ / 12 = 0.4167 mm⁴; two fixed-guided leaves 24EI / L³ = 24 × 2680 × 0.4167
+  // / 125000 = 0.2144 N/mm, so a tick every 0.25 N lies about 0.25 / 0.2144 = 1.17 mm apart: over 1 mm, but under two
+  // 0.6 mm slots (1.2 mm), so forceGauge refuses to cut it and the model must fail it too, not pass it with no grams
+  const p = { length: 50, thickness: 1, width: 5, range: 1, step: 0.25, fillet: 0 }, g = f.forceGaugeModel(p, plaG);
+  assert.ok(g.spacing > 1 && g.spacing < 1.2, `the ticks 1.17 mm apart (${g.spacing})`);
+  const ticks = g.findings.find((x) => x.code === 'gauge.ticks');
+  assert.equal(ticks.level, 'fail', ticks.text);
+  assert.match(ticks.text, /under two 0\.6 mm slots/);
+  assert.throws(() => f.forceGauge(p, plaG), /under two 0\.6 mm slots/);
+  assert.equal(g.grams, null);
+  // drawn and over 1 mm still passes: the README's gauge, ticks every 0.5 N
+  const ok = f.forceGaugeModel({ length: 40, thickness: 0.8, width: 6, range: 1.5, step: 0.5 }, plaG);
+  assert.equal(ok.findings.find((x) => x.code === 'gauge.ticks').level, 'pass');
+  // the slip clutch: left out, the sweep is 225 / arms (75° for three, 112.5° for two), and the typedef says so
+  const c = (q) => f.slipClutchModel({ radius: 15, thickness: 1.2, width: 6, depth: 1, ...q }, plaG);
+  near(c({}).arc, c({ sweep: 75 }).arc, 1e-9, 'three arms sweep 75° by default');
+  near(c({ arms: 2, notches: 8 }).arc, c({ arms: 2, notches: 8, sweep: 112.5 }).arc, 1e-9, 'two arms sweep 112.5° by default');
+  const src = fs.readFileSync(new URL('./elements.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const doc = src.slice(src.indexOf('@typedef {{ radius: number, thickness: number, width: number, depth: number, arms?'), src.indexOf('function clutchLayout'));
+  assert.match(doc.replace(/\n \*\s+/g, ' '), /sweep: each arm's arc, root to tip \(degrees, default 225 \/ arms, 75 for three\)/);
+});
+
 test('a butterfly pivot: four blade pairs in series share the turn, a quarter each; the model against the beam solver and against Henein\'s titanium pivot; far less drift than one pair; one piece that prints flat', async () => {
   const { butterflyPivot, butterflyPivotModel, butterflyBeams, equilibrium } = await import('@rulecad/flexures');
   const p = { length: 15, thickness: 0.84, width: 8 }, m = butterflyPivotModel(p, { ...pla, density: 1.24 });

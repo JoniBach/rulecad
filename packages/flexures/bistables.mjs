@@ -24,7 +24,7 @@ const { measureVolume } = jscad.measurements;
 const STEM = 2; // mm: the knob's stem, across
 const rect = (x0, x1, y0, y1) => rectangle({ size: [x1 - x0, y1 - y0], center: [(x0 + x1) / 2, (y0 + y1) / 2] });
 // A beam's outline from a to b, its profile's half-thickness along it, running on `into` past both ends
-function beamOutline(a, b, half, L, t, into, r = 0) {
+export function beamOutline(a, b, half, L, t, into, r = 0) {
   const u = unit(sub(b, a)), n = [-u[1], u[0]], m = 120, top = [], bottom = [], fine = r ? Array.from({ length: 33 }, (_, i) => (r * i) / 32) : []; // the rounds, finely
   const ss = [-into, ...[...new Set([...Array.from({ length: m + 1 }, (_, i) => (L * i) / m), ...fine, ...fine.map((x) => L - x)])].sort((x, y) => x - y), L + into];
   for (const s of ss) { const h = s < 0 || s > L ? t / 2 : half(s); const c = add(a, mul(u, s)); top.push(add(c, mul(n, h))); bottom.push(sub(c, mul(n, h))); }
@@ -33,7 +33,7 @@ function beamOutline(a, b, half, L, t, into, r = 0) {
 // A pad at a beam's end, square to the beam, so the beam's rounds meet a flat face
 const pad = (at, u, along, across) => { const n = [-u[1], u[0]], c = add(at, mul(u, along / 2)); return polygon({ points: [add(sub(c, mul(u, along / 2)), mul(n, across / 2)), sub(sub(c, mul(u, along / 2)), mul(n, across / 2)), sub(add(c, mul(u, along / 2)), mul(n, across / 2)), add(add(c, mul(u, along / 2)), mul(n, across / 2))] }); };
 // The beam as the solver's spans, its thickness from the rounded profile
-const spansOf = (a, b, half, L, n = 16) => ({ path: Array.from({ length: n + 1 }, (_, i) => add(a, mul(sub(b, a), i / n))), thickness: Array.from({ length: n }, (_, i) => 2 * half(((i + 0.5) * L) / n)) });
+export const spansOf = (a, b, half, L, n = 16) => ({ path: Array.from({ length: n + 1 }, (_, i) => add(a, mul(sub(b, a), i / n))), thickness: Array.from({ length: n }, (_, i) => 2 * half(((i + 0.5) * L) / n)) });
 
 /**
  * The force curve of a pushed shuttle, from the beam solver: its y held at each step from rest to `to` (the push,
@@ -84,6 +84,23 @@ function readCurve(curve) {
  *   it, and a shallower bar bends enough to take much of the snap away; see tiltedBistableModel); gap: the least air
  *   (default 0.3)
  */
+// Each leaf from the shuttle's end (a, at the rise h) down to its root (b, on y = 0), the root block's face square to
+// the leaf (hi and lo its ends), then from lo down at 45° to the bar's top at yLow (the foot), so its corners there
+// open to 135°; the block runs out to outer
+function tiltedLeaves(s, h, run, pw, yLow, blk) {
+  return [1, -1].map((sx) => {
+    const a = [sx * s / 2, h], b = [sx * (s / 2 + run), 0], u = unit(sub(b, a)), n = [-u[1], u[0]], e1 = add(b, mul(n, pw / 2)), e2 = sub(b, mul(n, pw / 2));
+    const lo = e1[1] < e2[1] ? e1 : e2, hi = e1[1] < e2[1] ? e2 : e1;
+    return { sx, a, b, u, lo, hi, foot: [lo[0] - sx * (lo[1] - yLow), yLow], outer: sx * (s / 2 + run + blk) };
+  });
+}
+// A root block's outline: from the leaf's root face down at 45° to the bar's top, out to the frame's end
+function rootBlock(lf, yLow) {
+  const pts = [lf.hi, lf.lo, lf.foot, [lf.outer, yLow], [lf.outer, lf.hi[1]]];
+  const area = pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0);
+  return polygon({ points: area > 0 ? pts : pts.slice().reverse() }); // anticlockwise, as JSCAD's outlines run
+}
+
 function tiltedLayout(p, what) {
   if (!p || typeof p !== 'object') throw new Error(`${what}: give the bistable's parameters (length, angle, thickness, width)`);
   const L = size(what, p, 'length'), t = size(what, p, 'thickness'), W = size(what, p, 'width'), s = size(what, p, 'shuttle', 'shuttle', 8), blk = size(what, p, 'block', 'block', 6), hb = size(what, p, 'base', 'base', 20), gap = size(what, p, 'gap', 'gap', 0.3), r = p.fillet ?? 1;
@@ -94,11 +111,7 @@ function tiltedLayout(p, what) {
   const sh = Math.max(4, pw), yLow = -h - sh / 2 - gap - 1; // the shuttle's height; its lowest when over (at -h), and a gap
   // each leaf from the shuttle down to its root; the root block's face square to the leaf (hi and lo its ends), then
   // from lo down at 45° to the bar's top (the foot), so its corners there open to 135°; the block runs out to outer
-  const leaves = [1, -1].map((sx) => {
-    const a = [sx * s / 2, h], b = [sx * (s / 2 + run), 0], u = unit(sub(b, a)), n = [-u[1], u[0]], e1 = add(b, mul(n, pw / 2)), e2 = sub(b, mul(n, pw / 2));
-    const lo = e1[1] < e2[1] ? e1 : e2, hi = e1[1] < e2[1] ? e2 : e1;
-    return { sx, a, b, u, lo, hi, foot: [lo[0] - sx * (lo[1] - yLow), yLow], outer: sx * (s / 2 + run + blk) };
-  });
+  const leaves = tiltedLeaves(s, h, run, pw, yLow, blk);
   return { L, t, W, s, blk, hb, gap, r, a, h, run, pw, leaves, sh, yLow, half: beamProfile({ length: L, thickness: t, fillet: r }, 'guided') };
 }
 
@@ -120,9 +133,7 @@ export function tiltedBistable(p, { part = 'all' } = {}) {
     shuttle.push(pad(lf.a, mul(u, -1), 2, k.pw)); // the shuttle's face square to the leaf
     // the root block (its corners at the foot open to 135°, under the leaf, which leaves its root rising at the tilt,
     // or falling at it when over); outward to the frame's end
-    const pts = [lf.hi, lf.lo, lf.foot, [lf.outer, k.yLow], [lf.outer, lf.hi[1]]];
-    const area = pts.reduce((a, q, i) => { const r = pts[(i + 1) % pts.length]; return a + q[0] * r[1] - r[0] * q[1]; }, 0);
-    frame.push(polygon({ points: area > 0 ? pts : pts.slice().reverse() })); // anticlockwise, as JSCAD's outlines run
+    frame.push(rootBlock(lf, k.yLow));
   }
   const x1 = k.s / 2 + k.run + k.blk;
   frame.push(rect(-x1, x1, k.yLow - k.hb, k.yLow)); // (its corners are outside ones: square is fine)
@@ -348,4 +359,144 @@ export function buckledSwitchModel(p, m, o = {}) {
   let grams = null;
   if (m.density > 0) { grams = (measureVolume(buckledSwitch(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, strip and frame`, 'switch.mass', { values: { grams } }); }
   return { rise, formula, load, euler, give, snap: { push: top.push, force: top.force }, back: { push: low.push, force: low.force }, second, bistable, strain: most, curve, grams, findings: out, rests };
+}
+
+// ------------------------------------------------------------------------------------------- tristable, two in series
+
+/**
+ * @typedef {{ outer: { length: number, angle: number, thickness?: number }, inner: { length: number, angle: number, thickness?: number },
+ *   thickness: number, width: number, fillet?: number, shuttle?: number, block?: number, stage?: number, base?: number, gap?: number }} TiltedTristable
+ *   outer, inner: each pair of leaves, its length and tilt (degrees, above 0 and at most 30) and, if it differs, its
+ *   thickness; thickness, width: the leaves'; fillet: their rounds (default 1); shuttle: the shuttle's length along x
+ *   (default 8); block: each root block's (default 6); stage: the stage's bar, which carries the inner pair's roots
+ *   and is the outer pair's shuttle (default 16); base: the frame's bar (default 20); gap: the least air (default 0.3)
+ */
+function tristableLayout(p, what) {
+  if (!p || typeof p !== 'object') throw new Error(`${what}: give the tristable's parameters (outer, inner, thickness, width)`);
+  for (const k of ['outer', 'inner']) if (!p[k] || typeof p[k] !== 'object') throw new Error(`${what}: ${k} is an object { length, angle, thickness? }: one pair of tilted leaves`);
+  const t = size(what, p, 'thickness'), W = size(what, p, 'width'), s = size(what, p, 'shuttle', 'shuttle', 8), blk = size(what, p, 'block', 'block', 6);
+  const hs = size(what, p, 'stage', 'stage', 16), hb = size(what, p, 'base', 'base', 20), gap = size(what, p, 'gap', 'gap', 0.3), r = p.fillet ?? 1;
+  const pair = (k) => {
+    const L = size(what, p[k], 'length', `${k}.length`), tk = size(what, p[k], 'thickness', `${k}.thickness`, t), al = p[k].angle;
+    if (typeof al !== 'number' || !(al > 0 && al <= 30)) throw new Error(`${what}: ${k}.angle is the leaves' tilt in degrees, above 0 and at most 30 (got ${JSON.stringify(al)})`);
+    if (!(typeof r === 'number' && r >= 0 && 2 * r < L)) throw new Error(`${what}: fillet is the leaves' rounds, 0 or more and under half the ${k} leaves (got ${JSON.stringify(p.fillet)})`);
+    const a = al * rad;
+    return { L, t: tk, a, h: L * Math.sin(a), run: L * Math.cos(a), pw: tk + 2 * r + 2, half: beamProfile({ length: L, thickness: tk, fillet: r }, 'guided') };
+  };
+  const B = pair('inner'), A = pair('outer');
+  // The inner pair in its own frame (roots on y = 0), the stage's bar top under its shuttle's lowest; then the stage,
+  // the outer pair's shuttle, centred at its rise over the outer roots (y = 0 here), and the frame's bar under the
+  // stage's lowest
+  B.sh = Math.max(4, B.pw); B.yLow = -B.h - B.sh / 2 - gap - 1; B.leaves = tiltedLeaves(s, B.h, B.run, B.pw, B.yLow, blk);
+  const X = s / 2 + B.run + blk; // the stage's half length: out to the inner roots' blocks
+  A.yLow = -A.h - hs / 2 - gap - 1; A.leaves = tiltedLeaves(2 * X, A.h, A.run, A.pw, A.yLow, blk);
+  const lift = A.h + hs / 2 - B.yLow; // the inner frame's y = 0 here
+  return { t, W, s, blk, hs, hb, gap, r, A, B, X, lift };
+}
+
+const shift = (pt, dy) => [pt[0], pt[1] + dy];
+
+/**
+ * A tristable (TiltedTristable above): two tilted-leaf bistables in series, one piece, drawn at rest. The frame holds
+ * the outer pair of leaves; they carry the stage, a bar that holds the inner pair; they carry the shuttle. Each pair
+ * snaps over on its own, so the shuttle rests at three places: as printed, with one pair over, and with both (two
+ * bistables in series, Oh and Kota 2009). The pair that switches at the lower force goes first.
+ * @param {TiltedTristable} p
+ * @param {{ part?: 'all' | 'frame' | 'stage' | 'shuttle' }} [o]
+ * @returns {object} a JSCAD geom3
+ */
+export function tiltedTristable(p, { part = 'all' } = {}) {
+  const k = tristableLayout(p, 'tiltedTristable');
+  if (!['all', 'frame', 'stage', 'shuttle'].includes(part)) throw new Error(`tiltedTristable: part is all, frame, stage or shuttle (got ${JSON.stringify(part)})`);
+  const { A, B } = k, up = k.lift;
+  const shuttle = [rect(-k.s / 2, k.s / 2, up + B.h - B.sh / 2, up + B.h + B.sh / 2)], stageBar = [rect(-k.X, k.X, A.h - k.hs / 2, A.h + k.hs / 2)], stage = [], frame = [], leaves = [];
+  for (const lf of B.leaves) {
+    leaves.push(beamOutline(shift(lf.a, up), shift(lf.b, up), B.half, B.L, B.t, 0.5, k.r));
+    shuttle.push(pad(shift(lf.a, up), mul(lf.u, -1), 2, B.pw));
+    stage.push(jscad.transforms.translate([0, up], rootBlock(lf, B.yLow))); // on the stage's bar
+  }
+  for (const lf of A.leaves) {
+    leaves.push(beamOutline(lf.a, lf.b, A.half, A.L, A.t, 0.5, k.r));
+    stageBar.push(pad(lf.a, mul(lf.u, -1), 2, A.pw)); // the stage's end square to the leaf
+    frame.push(rootBlock(lf, A.yLow));
+  }
+  const x1 = k.X + A.run + k.blk;
+  frame.push(rect(-x1, x1, A.yLow - k.hb, A.yLow));
+  const flat = { shuttle: hull(...shuttle), stage: union(hull(...stageBar), ...stage), frame: union(...frame) };
+  return extrudeLinear({ height: k.W }, part === 'all' ? union(flat.shuttle, flat.stage, flat.frame, ...leaves) : flat[part]);
+}
+
+// Every place a force curve rests (where the push comes back up through 0), and between them the push that switches
+// it on (the most) and the pull back (the least)
+function restsOf(curve) {
+  const rests = [], snaps = [], backs = [];
+  let from = 0;
+  for (let i = 1; i < curve.length; i++) {
+    const a = curve[i - 1], b = curve[i];
+    if (a.force < 0 && b.force >= 0) {
+      const seg = curve.slice(from, i + 1), top = seg.reduce((x, c) => (c.force > x.force ? c : x)), low = seg.reduce((x, c) => (c.force < x.force ? c : x));
+      rests.push(a.push + ((b.push - a.push) * a.force) / (a.force - b.force)); snaps.push({ push: top.push, force: top.force }); backs.push({ push: low.push, force: low.force });
+      from = i;
+    }
+  }
+  return { rests, snaps, backs };
+}
+
+/**
+ * What a tristable does, from the beam solver on the drawn leaves, the stage's bar and the frame's bar: the shuttle
+ * pushed down through both pairs, the force curve, every place it rests, the push that takes it to each, the pull
+ * back, and the most strain on the way.
+ * @param {TiltedTristable} p
+ * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m
+ * @param {{ steps?: number, printer?: { line: number, layer: number, wall_min?: number } }} [o] steps: the curve's
+ *   (default 120, over 2.4 times both rises)
+ * @returns {{ rises: { outer: number, inner: number }, places: number[], snaps: { push: number, force: number }[], backs: { push: number, force: number }[],
+ *   stable: number, tristable: boolean, strain: number, curve: object[], grams: number | null, findings: object[], rests: string[] }}
+ *   places: where it rests, mm down from as printed (the first is 0); snaps, backs: the most push on the way to each
+ *   rest after the first and the least (below 0: it pulls itself on); stable: how many places it rests
+ */
+export function tiltedTristableModel(p, m, o = {}) {
+  const what = 'tiltedTristableModel', k = tristableLayout(p, what);
+  need(what, {}, m);
+  if (!(m.strainLimit > 0)) throw new Error(`${what}: the material needs a strainLimit (flexureMaterial(rules) gives one)`);
+  const steps = o.steps ?? 120;
+  if (!(Number.isInteger(steps) && steps >= 20)) throw new Error(`${what}: steps is a whole number, 20 or more (got ${JSON.stringify(o.steps)})`);
+  const out = [], f = (level, text, code, extra) => out.push({ level, text, code, ...extra }), lim = m.strainLimit, { A, B } = k, up = k.lift;
+  // The bodies: the frame's middle and its two root blocks (the frame sat on its blocks, as the bistable's), the
+  // stage's middle and its two ends (each an inner root block and an outer leaf's pad), and the shuttle. The bars
+  // between, frame and stage, are beams as deep as drawn.
+  const yc = A.yLow - k.hb / 2, bodies = { middle: { at: [0, yc] }, stage: { at: [0, A.h] }, shuttle: { at: [0, up + B.h] } }, beams = [];
+  const spans = (from, to, x1, y, depth, name) => ({ name, path: Array.from({ length: 9 }, (_, j) => [(x1 * j) / 8, y]), thickness: depth, width: k.W, E: m.E, from, to });
+  A.leaves.forEach((lf, i) => {
+    bodies[`block ${i + 1}`] = { at: [(lf.foot[0] + lf.outer) / 2, yc] };
+    beams.push(spans('middle', `block ${i + 1}`, lf.foot[0], yc, k.hb, `bar ${i + 1}`));
+    beams.push({ name: `outer ${i + 1}`, ...spansOf(lf.a, lf.b, A.half, A.L), width: k.W, E: m.E, from: `end ${i + 1}`, to: `block ${i + 1}` });
+  });
+  B.leaves.forEach((lf, i) => {
+    bodies[`end ${i + 1}`] = { at: [(lf.foot[0] + lf.outer) / 2, A.h] };
+    beams.push(spans('stage', `end ${i + 1}`, lf.foot[0], A.h, k.hs, `stage bar ${i + 1}`));
+    beams.push({ name: `inner ${i + 1}`, ...spansOf(shift(lf.a, up), shift(lf.b, up), B.half, B.L), width: k.W, E: m.E, from: 'shuttle', to: `end ${i + 1}` });
+  });
+  const sys = beamSystem({ bodies, beams, segments: 32 });
+  const support = new Map([[sys.body.middle.dof, 0], [sys.body.middle.dof + 2, 0], ...[1, 2].map((i) => [sys.body[`block ${i}`].dof + 1, 0])]);
+  // the nudge, a thousandth of each leaf's buckling load at its middle, square to it and down (see tiltedBistableModel)
+  const nudge = new Map();
+  for (const [pr, name, list] of [[A, 'outer', A.leaves], [B, 'inner', B.leaves]]) list.forEach((lf, i) => {
+    const Pcr = (4 * Math.PI ** 2 * m.E * (k.W * pr.t ** 3) / 12) / pr.L ** 2, nodes = sys.nodes.filter((n) => n.beam === `${name} ${i + 1}`), mid = nodes[Math.floor(nodes.length / 2)];
+    const nn = [-lf.u[1] * lf.sx, lf.u[0] * lf.sx], down = nn[1] < 0 ? nn : mul(nn, -1);
+    nudge.set(mid.dof, 1e-3 * Pcr * down[0]); nudge.set(mid.dof + 1, 1e-3 * Pcr * down[1]);
+  });
+  const sc = snapCurve(sys, 'shuttle', 2.4 * (A.h + B.h), steps, undefined, nudge, support), rd = restsOf(sc.curve);
+  const last = rd.rests.length ? rd.rests[rd.rests.length - 1] : null, strain = Math.max(...sc.curve.filter((c) => last == null || c.push <= last + 1e-9).map((c) => c.strain));
+  const stable = 1 + rd.rests.length, assumptions = ['the force curve is the beam solver\'s on the drawn leaves and both bars, the shuttle pushed down and free to slide sideways and turn, the stage free, the frame sat on its two blocks; the root blocks and the stage\'s ends taken as rigid', 'a push held at each step: where a pair snaps over, a finger\'s push jumps on to the next rest'];
+  const rises = { outer: A.h, inner: B.h };
+  if (stable >= 3) f('pass', `it rests in ${stable} places: as printed and ${rd.rests.map((x) => `${n2(x)} mm`).join(' and ')} down. ${rd.snaps.map((x, i) => `${n2(x.force)} N takes it to the ${i ? 'last' : 'middle'}`).join('; ')}; ${rd.backs.map((x) => `${n2(-x.force)} N`).join(' and ')} back the other way (the rises are ${n2(A.h)} mm outer, ${n2(B.h)} mm inner)`, 'tristable.rests', { values: { places: rd.rests, snaps: rd.snaps, backs: rd.backs } });
+  else f('fail', `it rests in only ${stable} place${stable === 1 ? '' : 's'}${rd.rests.length ? ` (as printed and ${n2(rd.rests[0])} mm down)` : ''}: ${stable === 1 ? 'neither pair stays over' : 'one pair springs back'}. Longer, thinner leaves or a steeper tilt for the pair that does not hold, or deeper bars`, 'tristable.rests', { values: { places: rd.rests } });
+  if (stable >= 3 && rd.snaps.length >= 2 && Math.abs(rd.snaps[1].force - rd.snaps[0].force) < 0.1 * Math.max(rd.snaps[0].force, rd.snaps[1].force)) f('warn', `the two pairs switch at nearly the same push (${n2(rd.snaps[0].force)} and ${n2(rd.snaps[1].force)} N): a finger may take it straight through the middle. Make one pair stiffer`, 'tristable.order', { values: { snaps: rd.snaps } });
+  f(strain <= lim ? 'pass' : 'fail', `on the way the leaves see at most ${n2(strain * 100, 2)}%, ${strain <= lim ? 'within' : 'over'} the limit of ${n2(lim * 100, 1)}%`, 'flexure.strain', { values: { strain, limit: lim } });
+  if (!sc.converged) f('warn', 'the beam solver did not settle at every step: the force curve is a guide only', 'tristable.solver');
+  if (o.printer) for (const t of new Set([A.t, B.t])) for (const x of printable({ thickness: t, width: k.W }, o.printer, m)) out.push(x);
+  let grams = null;
+  if (m.density > 0) { grams = (measureVolume(tiltedTristable(p)) / 1000) * m.density; f('pass', `${n2(grams, 1)} g printed${m.name ? ` in ${m.name}` : ''}, one piece`, 'tristable.mass', { values: { grams } }); }
+  return { rises, places: [0, ...rd.rests], snaps: rd.snaps, backs: rd.backs, stable, tristable: stable >= 3, strain, curve: sc.curve, grams, findings: out, rests: assumptions };
 }

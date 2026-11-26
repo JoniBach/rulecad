@@ -1,0 +1,13 @@
+{
+  "_doc": "Polymaker PolyLite PETG, printed, for analysis: a second maker's figures beside petg (Bambu Lab PETG HF), so a design can be checked against either or see the spread between makers. Stiffness and strength along the layers (x-y) and across them (z); low and high are the sheet's own spread either side.",
+  "name": "petg-polylite",
+  "rules": {
+    "modulus": {"value": 2116.8, "low": 2048.7, "high": 2184.9, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), ± 68.1", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 527, GB/T 1040; specimens printed at 240 °C, 100% infill), https://cdn.shopify.com/s/files/1/0548/7299/7945/files/PolyLite_PETG_TDS_EN_V5.4.pdf", "checked": "2026-11-25"},
+    "modulus_z": {"value": 1898.7, "low": 1800.2, "high": 1997.2, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 98.5", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 527, GB/T 1040)", "checked": "2026-11-25"},
+    "strength": {"value": 50.8, "low": 49.9, "high": 51.7, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 0.9", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 527, GB/T 1040)", "checked": "2026-11-25"},
+    "strength_z": {"value": 42.8, "low": 40.0, "high": 45.6, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 2.8", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 527, GB/T 1040)", "checked": "2026-11-25"},
+    "poisson": {"value": 0.38, "rule": "Poisson's ratio (Polymaker publish none): taken as the kit's petg, an estimate", "kind": "estimate", "source": "Typical for PETG, as the kit's petg", "checked": "2026-11-25"},
+    "density": {"value": 1.25, "unit": "g/cm³", "rule": "Density of the filament, at 23 °C", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 1183, GB/T 1033)", "checked": "2026-11-25"},
+    "softening": {"value": 78, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Polymaker PolyLite PETG technical data sheet V5.4 (ISO 75)", "checked": "2026-11-25"}
+  }
+}
