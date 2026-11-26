@@ -38,7 +38,7 @@
     "body_half": {"value": 75, "unit": "mm", "rule": "Hip to hip along the body, halved: the side plate, 242 mm long, fits on a 256 mm bed, and the knees point outward so they stay apart", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "body_w": {"value": 50, "unit": "mm", "rule": "The body's half-width, to the hips' plates: two hip motors back to back fit inside", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
     "side_t": {"value": 6, "unit": "mm", "rule": "The side plate's thickness", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"},
-    "robot_mass": {"value": 4.2, "unit": "kg", "rule": "The quadruped as drawn: 3.83 kg of prints, eight 17HS4401s, bearings and screws from cad list, and about 0.4 kg for its drivers, an Uno and shield, a battery and the wires, an estimate until built", "kind": "estimate", "source": "cad list leg/quadruped (3834 g, the knees 17HS4401s at 280 g each) and a guess at the electronics", "checked": "2026-11-23"},
+    "robot_mass": {"value": 4.2, "unit": "kg", "rule": "The quadruped as drawn: 3.83 kg of prints, eight 17HS4401s, bearings and screws from cad list, and about 0.4 kg for its electronics (a Mega 2560, eight DRV8825s on their breakouts, none weighed), a battery and the wires, an estimate until built", "kind": "estimate", "source": "cad list leg/quadruped (3834 g, the knees 17HS4401s at 280 g each) and a guess at the electronics", "checked": "2026-11-23"},
     "foot_socket": {"value": 12, "unit": "mm", "rule": "How far each rod goes into a foot block", "kind": "default", "source": "EXAMPLES chapter 14", "checked": "2026-11-09"}
   }
 }

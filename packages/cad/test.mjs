@@ -6920,6 +6920,47 @@ test('printed fittings in TPU: refused by name as a rubber, and left out of the 
   } finally { done(); }
 });
 
+test('the quadruped\'s eight axes on one controller: cad machine reads the Mega 2560 and follows each motor\'s wire to its breakout and on to the Mega\'s slot', async () => {
+  const { controllerOf, slotsOf, CONTROLLERS } = await import('./lib/machine.mjs');
+  // the controller is the bought board the streamer runs on; none is the Uno under a CNC shield, as before the Mega
+  assert.deepEqual([controllerOf({ items: [] }).board, controllerOf({ items: [] }).item], ['uno', null]);
+  assert.deepEqual([controllerOf({ items: [{ id: 'mega', bought: 'arduino-mega-2560' }] }).board, CONTROLLERS['arduino-mega-2560'].slots.length], ['mega', 8]);
+  assert.throws(() => controllerOf({ items: [{ id: 'shield', bought: 'cnc-shield-v3' }, { id: 'mega', bought: 'arduino-mega-2560' }] }), /items shield \(cnc-shield-v3\), mega \(arduino-mega-2560\): a machine streams through one controller/);
+  // a motor's slot: its own wire straight to a shield's slot; or its wire to a breakout and the breakout's signal wire on to
+  // the Mega; or its driver item's signal wire
+  const a = { items: [{ id: 'm1', motor: {} }, { id: 'm2', motor: { driver: 'd2' } }, { id: 'm3', motor: {} }], wires: [
+    { from: 'm1.connector', to: 'board1.top' }, { from: 'board1.centre', to: 'mega.S3' }, { from: 'd2.header', to: 'mega.S0' }, { from: 'm3.connector', to: 'shield.Y' }] };
+  assert.deepEqual(slotsOf(a, CONTROLLERS['arduino-mega-2560']), { m1: 'S3', m2: 'S0' });
+  assert.deepEqual(slotsOf(a, CONTROLLERS['cnc-shield-v3']), { m3: 'Y' });
+  // the bench quadruped: the Mega, its eight axes in the slots' order, each on its own DRV8825
+  const { ws, cad, done } = workspace({ printer: 'x1c' });
+  const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url));
+  try {
+    for (const d of ['rules', 'projects/leg']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
+    const m = JSON.parse(cad('machine', 'leg/quadruped', '--json'));
+    assert.deepEqual([m.controller.board, m.controller.set, m.controller.item], ['mega', 'arduino-mega-2560', 'mega']);
+    assert.deepEqual(m.axes.map((x) => `${x.name} ${x.slot} ${x.driver}`), ['fl_hd S0 fl_d1', 'fl_kd S1 fl_d2', 'fr_hd S2 fr_d1', 'fr_kd S3 fr_d2', 'bl_hd S4 bl_d1', 'bl_kd S5 bl_d2', 'br_hd S6 br_d1', 'br_kd S7 br_d2']);
+    // the stand stays on its shield
+    assert.deepEqual(JSON.parse(cad('machine', 'leg/stand', '--json')).controller, { board: 'uno', set: 'cnc-shield-v3', item: 'shield', slots: ['X', 'Y', 'Z'] });
+    // the buy list: the Mega, eight breakouts, eight DRV8825s
+    const l = JSON.parse(cad('list', 'leg/quadruped', '--json')), qty = (set) => l.bought.filter((b) => b.set === set).reduce((t, b) => t + b.qty, 0);
+    assert.deepEqual([qty('arduino-mega-2560'), qty('driver-breakout'), qty('drv8825')], [1, 8, 8]);
+  } finally { done(); }
+});
+
+test('the wiring sheet names a Mega slot\'s enable pin, not its home switch, on a driver\'s signal wire; a shield\'s axis keeps its limit pin', async () => {
+  const { pinsAt } = await import('./lib/wires.mjs');
+  const entries = (set, map) => Object.entries(map).map(([k, value]) => ({ name: `${set}.${k}`, value }));
+  const mega = { id: 'mega', bought: { part: 'board', set: 'arduino-mega-2560' }, built: { entries: entries('arduino-mega-2560', { step_pin_s0: 'D22', dir_pin_s0: 'D37', limit_pin_s0: 'A8', enable_pin: 'D38' }) } };
+  const shield = { id: 'shield', bought: { part: 'board', set: 'cnc-shield-v3' }, built: { entries: entries('cnc-shield-v3', { step_pin_x: 'D2', dir_pin_x: 'D5', limit_pin_x: 'D9', enable_pin: 'D8' }) } };
+  const s = { objects: [mega, shield] };
+  // a breakout's EN, STEP, DIR and GND go to S0: the switch on A8 is a wire of its own, and EN is D38 for every slot
+  assert.equal(pinsAt({ from: 'fl_board1.centre', to: 'mega.S0' }, s), 'step D22, dir D37, enable D38 (every slot\'s)');
+  // the shield's X plug carries its limit switch's pin, as before
+  assert.equal(pinsAt({ from: 'm0.connector', to: 'shield.X' }, s), 'step D2, dir D5, limit D9');
+  assert.equal(pinsAt({ from: 'psu.terminals', to: 'fl_board1.bottom' }, s), null);
+});
+
 test('a problem placed in an assembly: a support at one of its joints, and a part swept through a joint\'s range kept clear, flat and solid, followed when the assembly changes', () => {
   const { ws, cad, done } = workspace();
   try {
