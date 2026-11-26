@@ -481,7 +481,7 @@ function motionOf(a, placed, num, ref) {
 // .cache/gears/ by the pair, the centre distance and the gears package's code, as it takes half a second
 let gearsCode = null;
 function measured(a, b, centre) {
-  gearsCode ||= (() => { const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))); return fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join(''); })();
+  gearsCode ||= (() => { const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))); return fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs' && !f.startsWith('.')).sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join(''); })();
   const file = paths.cache('gears', `${crypto.createHash('sha256').update(JSON.stringify([gearsCode, a, b, +centre.toFixed(6)])).digest('hex')}.json`);
   if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
   const r = contact(a, b, { centre, steps: 12 }), keep = { findings: r.findings, backlash: r.backlash, error: r.error };
