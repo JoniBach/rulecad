@@ -199,3 +199,20 @@ test('rules check holds a range to its value: low at most it, high at least it, 
   assert.deepEqual(checkRuleSet(set({ low: 2300, high: 2200 }), vocabulary).map((x) => [x.code, x.values]), [['rules.range', { value: 2246.6, low: 2300 }], ['rules.range', { value: 2246.6, high: 2200 }]]);
   assert.match(checkRuleSet(set({ high: '2300' }), vocabulary)[0].text, /modulus: high is a number in the rule's unit/);
 });
+
+test('an expression reads either end of a rule\'s range: pa_cf.strength.low, in the rule\'s unit; a rule with no range, or another word, is refused by name', () => {
+  // Bambu Lab PAHT-CF along the layers: 88 ± 7 MPa, so low 81 and high 95; the modulus 3860 MPa
+  const pa = { name: 'pa_cf', rules: { strength: { value: 88, low: 81, high: 95, unit: 'MPa' }, modulus: { value: 3860, unit: 'MPa' } } };
+  const r = resolve({ uses: ['pa_cf'], variables: { weak: { value: 'pa_cf.strength.low', unit: 'MPa' }, span: { value: 'pa_cf.strength.high - pa_cf.strength.low', unit: 'MPa' }, strain: { value: 'pa_cf.strength.low / pa_cf.modulus' } } }, { sets: { pa_cf: pa } });
+  assert.equal(r.values.weak, 81);
+  assert.equal(r.values.span, 14, '95 - 81');
+  assert.equal(r.values.strain, 81 / 3860, 'the weak end over the modulus: 0.0210');
+  assert.deepEqual(r.units, [], 'the ends carry the rule\'s unit');
+  assert.deepEqual(r.deps.weak, ['pa_cf.strength.low']); assert.deepEqual(r.deps['pa_cf.strength.low'], ['pa_cf.strength']);
+  assert.equal(r.entries.find((e) => e.name === 'pa_cf.strength').used, true, 'the rule an end is read from is used');
+  assert.equal(r.values.pa_cf.strength, 88, 'the value itself is unchanged');
+  const bad = (value) => { try { resolve({ uses: ['pa_cf'], variables: { x: { value } } }, { sets: { pa_cf: pa } }); } catch (e) { return [e.code, e.message]; } return null; };
+  assert.deepEqual(bad('pa_cf.modulus.low'), ['var.range', '"pa_cf.modulus.low": pa_cf.modulus gives no low (the rules in pa_cf with a range: strength), so read its value, pa_cf.modulus']);
+  assert.match(bad('pa_cf.strength.mid')[1], /"pa_cf\.strength\.mid": a rule is named <set>\.<rule>, with one dot, and the ends of its range <set>\.<rule>\.low and <set>\.<rule>\.high/);
+  assert.match(bad('pa_cf.strength.low.low')[1], /with one dot/);
+});

@@ -1,10 +1,13 @@
 // Strength and length: whether enough thread is engaged, the load that strips it, the clamp force a tightening torque
 // gives, the pressure under a head, and the sold length that fits a stack of parts. Each returns its numbers, what
 // they rest on, and findings in the kit's one shape. The strengths of materials come from the kit's material rule
-// sets (pla, petg, al6061, al7075, s275, ss304), or one handed in. These are first sums for a printed joint, with
+// sets (pla, petg, abs, asa, pa_cf, al6061, al7075, s275, ss304), or one handed in. These are first sums for a printed joint, with
 // their estimates named: a joint that matters is tested. Units: mm, N, N·m, MPa.
 import pla from '@rulecad/rules/pla.json' with { type: 'json' };
 import petg from '@rulecad/rules/petg.json' with { type: 'json' };
+import abs from '@rulecad/rules/abs.json' with { type: 'json' };
+import asa from '@rulecad/rules/asa.json' with { type: 'json' };
+import pa_cf from '@rulecad/rules/pa_cf.json' with { type: 'json' };
 import al6061 from '@rulecad/rules/al6061.json' with { type: 'json' };
 import al7075 from '@rulecad/rules/al7075.json' with { type: 'json' };
 import s275 from '@rulecad/rules/s275.json' with { type: 'json' };
@@ -16,7 +19,7 @@ import { holeModel } from './holes.mjs';
  * @typedef {import('./model.mjs').Fixing} Fixing a fixing's model, as fixingModel gives it
  */
 
-const KIT = { pla, petg, al6061, al7075, s275, ss304 };
+const KIT = { pla, petg, abs, asa, pa_cf, al6061, al7075, s275, ss304 };
 /** The materials there are rule sets for in the kit, by name. */
 export const MATERIALS = Object.keys(KIT);
 /** The classes of material the engagement rules know. */
@@ -76,7 +79,7 @@ function proofOf(what, fx, o) {
  * aluminium, 2.5 in plastic (the engagement rule set of @rulecad/rules).
  * @param {Fixing | string} m a fixing's model or name @param {{ depth: number, material: string | object, sets?: object }} o
  *   depth: the length of thread engaged, in mm; material: a class (plastic, aluminium, steel), a material of the kit
- *   (pla, petg, al6061, al7075, s275, ss304) or a material's rule set
+ *   (pla, petg, abs, asa, pa_cf, al6061, al7075, s275, ss304) or a material's rule set
  * @returns {{ thread: string, depth: number, need: number, turns: number, diameters: number, class: string, material: string | null, enough: boolean, rests: object[], findings: object[] }}
  *   need: the depth that would do; turns: threads engaged; diameters: the depth in diameters of the screw
  */

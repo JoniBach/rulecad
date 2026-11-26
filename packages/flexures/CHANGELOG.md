@@ -31,6 +31,37 @@ why. Releases before this file was started are described in their pull requests 
 
 No printed size moved: the new parts are new, and nothing else's outline changed.
 
+## 0.5.14: a tristable, a force gauge and a slip clutch
+### Fixed
+
+- `forceGaugeModel`: `gauge.ticks` fails whenever the ticks lie closer than two slots, as `forceGauge` refuses to cut
+  them. It used to pass any spacing of 1 mm or more, so ticks 1.0 to 1.2 mm apart passed while the drawing refused
+  them and the grams came back empty. No printed size moved.
+- The `SlipClutch` type's `sweep` reads its real default, 225 / arms (75° for three), not 90°.
+
+### Added
+
+- `tiltedTristable` and `tiltedTristableModel` (issue #76): two tilted-leaf bistables in series, one piece. The frame's
+  leaves carry a stage, the stage's leaves carry the shuttle, so it rests in three places. The model runs the beam
+  solver on the drawn leaves, the stage's bar and the frame's bar, and gives every place it rests, the push to each, the
+  pull back, the strain, and `tristable.rests` (a fail by name when a pair springs back) and `tristable.order` (a
+  warning when both pairs switch at nearly the same push).
+- `forceGauge` and `forceGaugeModel` (issue #77, force-sensing beams): a spring balance printed in one piece, a
+  platform on a parallel guide with a needle, read against ticks cut in the frame's post. Each tick is where the beam
+  solver puts the needle under its force. The model gives the stiffness beside 24EI / L³, the ticks, the strain at the
+  range against half the limit, the scale's straightness, the needle's drop, the grams, and a correction factor from a
+  measured `calibration`.
+- `slipClutch` and `slipClutchModel` (issue #77, clutch elements): a hub with curved arms whose tip bumps sit in a
+  ring's notches, printed together a gap apart. The model gives each arm's stiffness from the beam solver beside the
+  curved cantilever's EI / r³ (φ/2 - sin 2φ / 4), the slip torque from the snap-fit wedge, the clicks a turn, the arms'
+  strain against half the limit, and checks a torque it must carry (`clutch.torque`). A flank that would lock is
+  refused by name.
+
+### Changed
+
+- `bistables.mjs` shares its leaves' and root blocks' sums between the bistable and the tristable. No printed size
+  moved: the tilted bistable's outline is the same (a test holds its volume).
+
 ## 0.5.13: the butterfly pivot, the rolling-contact joint, an x, y and turn stage
 ### Added
 

@@ -4081,7 +4081,7 @@ test('printed fittings in a project of another plastic: refused by name where no
     fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
     // once sized as PLA without a word; now refused by name, with what would do: every plastic the kit has a rule set
     // for (one with strength, modulus, density and modulus_z, the modulus across the layers), not only pla and petg
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, pa_cf, petg, pla, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, pa_cf, petg, pla/);
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament/);
     fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
     const pla = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/pla.json'), 'utf8'));
     fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { strength: pla.rules.strength } }));
@@ -4090,7 +4090,7 @@ test('printed fittings in a project of another plastic: refused by name where no
     assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of pc/);
     // a set the workspace gives is one of its plastics from then on: another missing plastic's refusal names it too
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'nylon', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, pa_cf, pc, petg, pla, and there is no rules\/nylon\.json/);
+    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, pc, petg, petg-polylite, pla, pla-prusament, and there is no rules\/nylon\.json/);
     // and a plastic the kit gives a set for (#27's abs) is sized from it, with no set of the workspace's own
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
     assert.match(cad('check', 'frame/clip'), /c: it weighs [\d.]+ g of abs/);
@@ -6464,7 +6464,7 @@ test('cad preview of a problem file: its run kept step by step as a page to watc
   } finally { done(); }
 });
 
-test('a solid result with fewer triangles: outline.reduce keeps the surface within its tolerance, closed, and as printable as it was drawn', async () => {
+test('a solid result with fewer triangles by default: outline.reduce keeps the surface within its tolerance (0.1 mm unless given), closed, and as printable as it was drawn; false keeps every triangle', async () => {
   const { ws, cad, done } = workspace();
   try {
     const project = path.join(ws, 'projects', 'post');
@@ -6474,13 +6474,15 @@ test('a solid result with fewer triangles: outline.reduce keeps the surface with
       space: { at: [0, 0, 12], size: [12, 12, 24] }, keep: [{ at: [0, 0, 22], r: 4, length: 4, axis: 'z' }],
       supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }] };
     fs.writeFileSync(path.join(project, 'problems', 'post.json'), JSON.stringify(post));
-    fs.writeFileSync(path.join(project, 'problems', 'lean.json'), JSON.stringify({ ...post, outline: { reduce: 0.1 } }));
-    const full = JSON.parse(cad('optimise', 'post/post', '--json')), out = cad('optimise', 'post/lean'), lean = JSON.parse(cad('optimise', 'post/lean', '--json'));
+    fs.writeFileSync(path.join(project, 'problems', 'full.json'), JSON.stringify({ ...post, outline: { reduce: false } }));
+    fs.writeFileSync(path.join(project, 'problems', 'given.json'), JSON.stringify({ ...post, outline: { reduce: 0.1 } }));
+    const full = JSON.parse(cad('optimise', 'post/full', '--json')), out = cad('optimise', 'post/post'), lean = JSON.parse(cad('optimise', 'post/post', '--json'));
     const mesh = (r) => JSON.parse(fs.readFileSync(path.join(ws, '.cache', 'optimise', `${r.hash}.json`), 'utf8')).mesh;
     const a = mesh(full), b = mesh(lean);
     // the same densities (the outline only draws them), drawn with under half the triangles
-    assert.equal(full.reduced, undefined, 'off unless asked');
-    assert.deepEqual(lean.reduced, { before: a.faces.length, after: b.faces.length, tolerance: 0.1 });
+    assert.equal(full.reduced, undefined, 'false keeps every triangle');
+    assert.deepEqual(lean.reduced, { before: a.faces.length, after: b.faces.length, tolerance: 0.1 }, 'on by default, within 0.1 mm');
+    assert.deepEqual(mesh(JSON.parse(cad('optimise', 'post/given', '--json'))), b, '0.1 given is the default');
     assert.ok(b.faces.length < a.faces.length / 2, `${a.faces.length} to ${b.faces.length} triangles`);
     assert.match(out, new RegExp(`${a.faces.length} triangles reduced to ${b.faces.length} \\([\\d.]+%\\), the surface kept within 0\\.1 mm`));
     assert.ok(Math.abs(lean.solid / full.solid - 1) < 0.005, `${full.solid} to ${lean.solid} mm³`);
@@ -6900,6 +6902,53 @@ export function main (v) {
     assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, {}, { deep: 3 })[0][1], /dowel 3x12.*too long for its part/);
     assert.match(said({ pin: 'dowel 3x12', count: 2, fit: 'press' }, { bore: 3.5 })[0][1], /right's hole is drawn 3\.5 mm, and dowel 3x12 wants 3\.05 mm for a press fit \(x1c\.hole_comp, x1c\.pin_press\): too big, it will be loose/);
     assert.match(said({ pin: 'dowel 3x12', count: 3, fit: 'press' })[0][1], /3 × dowel 3x12 wanted, and only 2 holes about its 3\.05 mm hole lead from right into left/);
+  } finally { done(); }
+});
+
+test('a design reads the weak end of a printed plastic\'s range (pa_cf.strength_z.low) in cad values, with its unit, and cad why says where it comes from', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/weak', { uses: ['pa_cf'], variables: {
+      // Bambu Lab PAHT-CF across the layers: 64 ± 3 MPa, so the weak end is 61 MPa; at half of it, 30.5 MPa
+      allowed: { value: 'pa_cf.strength_z.low / 2', unit: 'MPa', rule: 'Allowed stress across the layers, twice the margin on the weak end' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const all = JSON.parse(cad('values', 'demo/weak', '--json')).values, at = (n) => all.find((v) => v.name === n);
+    assert.equal(at('allowed').value, 30.5, JSON.stringify(at('allowed')));
+    const tree = JSON.parse(cad('why', 'demo/weak.allowed', '--json')), end = tree.reads[0];
+    assert.deepEqual([end.name, end.value, end.unit, end.reads[0].name, end.reads[0].value], ['pa_cf.strength_z.low', 61, 'MPa', 'pa_cf.strength_z', 64]);
+    assert.match(end.rule, /^the low end of the range pa_cf\.strength_z is found in/);
+    assert.match(end.source, /PAHT-CF/);
+  } finally { done(); }
+});
+
+test('cad\'s share of the densities key is pinned, so a change to holdEmpty or optimised() (a comment included) that would optimise every cached problem again is made on purpose', async () => {
+  const crypto = await import('node:crypto');
+  const { densityCode } = await import('./lib/optimise.mjs');
+  // densityCode().cad is the source text of holdEmpty and optimised(), comments and all; CI's dimension diff keeps
+  // densities by it too (.cache/dimension-diff/slow). A reworded comment inside optimised() once moved it and threw
+  // every kept result away. When a change there is meant to optimise again, put the new digest here and say so in the
+  // CHANGELOG; otherwise keep the change outside those two functions.
+  // Line ends normalised: Windows checks the source out with \r\n, which the pin does not mean to catch
+  assert.equal(crypto.createHash('sha256').update(densityCode().cad.replace(/\r\n/g, '\n')).digest('hex'), '5e4fb33bb0c71c40d22adfec2b24a8de9b8202bb292dd7d339b2a5423c81c417');
+});
+
+test('cad why explains a rule of a set named with a hyphen as an expression writes it (pla_prusament.strength_z and its low end), as cad values reads it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/hyphen', { uses: ['pla-prusament'], variables: {
+      // Prusament PLA across the layers: 37.6 ± 4 MPa, so the weak end is 33.6 MPa; at half of it, 16.8 MPa; half the
+      // middle value, 18.8 MPa
+      weak: { value: 'pla_prusament.strength_z.low / 2', unit: 'MPa', rule: 'Half the weak end across the layers' },
+      mid: { value: 'pla_prusament.strength_z / 2', unit: 'MPa', rule: 'Half the value across the layers' },
+    } }, "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [10, 10, 10], center: [0, 0, 5] }) }\n");
+    const weak = JSON.parse(cad('why', 'demo/hyphen.weak', '--json')), end = weak.reads[0];
+    assert.equal(weak.value, 16.8);
+    assert.deepEqual([end.name, end.value, end.unit, end.reads[0].name, end.reads[0].value], ['pla_prusament.strength_z.low', 33.6, 'MPa', 'pla-prusament.strength_z', 37.6]);
+    assert.match(end.rule, /^the low end of the range pla-prusament\.strength_z is found in/);
+    assert.match(end.source, /Prusament PLA/);
+    const mid = JSON.parse(cad('why', 'demo/hyphen.mid', '--json')).reads[0];
+    assert.deepEqual([mid.name, mid.value, mid.unit], ['pla_prusament.strength_z', 37.6, 'MPa']);
+    assert.match(mid.source, /Prusament PLA/);
   } finally { done(); }
 });
 
