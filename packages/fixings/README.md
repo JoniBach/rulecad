@@ -446,7 +446,7 @@ overlaps 0.812 mm before any gap. Where the joint carries load, compare `flanks:
 ## Strength and length
 
 First sums for a joint, each returning its numbers, what they rest on and findings. `material` is a material of the
-kit's rule sets (`pla`, `petg`, `al6061`, `al7075`, `s275`, `ss304`), the workspace's own set of that name (`sets`),
+kit's rule sets (`pla`, `petg`, `abs`, `asa`, `pa_cf`, `al6061`, `al7075`, `s275`, `ss304`), the workspace's own set of that name (`sets`),
 or a rule set with a `strength` and a `modulus`. Its class (plastic, aluminium or steel) is told from its stiffness.
 
 | Function | Gives |
@@ -505,7 +505,7 @@ M3x10 is the screw: M3x12 would bottom out.
 material's tensile strength over √3. For a printed plastic that strength is an estimate: the bond between layers,
 the walls round the hole and how the hole printed decide the real figure, and a thread a screw has formed in a pilot
 is less complete than the handbook's. Where the material's rule set has a strength across the layers (`strength_z`,
-as `petg` has), the weaker of the two is taken; where it has none (`pla`), the finding says so. The clamp force from
+as `petg`, `abs`, `asa` and `pa_cf` have), the weaker of the two is taken; where it has none (`pla`), the finding says so. The clamp force from
 a torque scatters by a quarter to a third either way. Take the results as a first check, keep a working load to half
 of what they give, and test a joint that matters.
 

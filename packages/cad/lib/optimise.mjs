@@ -37,6 +37,12 @@ export async function readProblem(project, ref) {
   const link = { key, name, object: null };
   return reading.run([...chain, link], () => readOne(project, ref, link));
 }
+// A solid result's surface is thinned by default to within this many mm of where it was drawn: a quarter of an X1C's
+// 0.42 mm print line, so the printer cannot tell. On the bracket bench's printable result it takes 75,592 triangles to
+// 21,124 and 27.808 cm³ to 27.806 (35.04 g of PLA either way). "outline": { "reduce": false } keeps every triangle.
+// Fewer triangles is on unless outline.reduce is false: within outline.reduce mm of the surface as drawn, closed, and no
+// more overhang or tips. (Said here, not in optimised(), whose text is part of the densities key: see densityCode)
+const REDUCE = 0.1;
 const reading = new AsyncLocalStorage();
 async function readOne(project, ref, link) {
   const [name, variant] = String(ref).split(':'), file = problemFile(project, name);
@@ -142,7 +148,7 @@ async function readOne(project, ref, link) {
     ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
-  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25, ...(p.outline?.reduce != null ? { reduce: ev(p.outline.reduce) } : {}) }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
+  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25, ...(dim === 3 && p.outline?.reduce !== false ? { reduce: p.outline?.reduce != null ? ev(p.outline.reduce) : REDUCE } : {}) }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
   // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
   // tipped corners leave dips that slice as islands, and the layers step out no further for it)

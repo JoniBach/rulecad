@@ -154,8 +154,8 @@
           "description": "3D with an overhang direction: faces the smoothing left steeper than the printer's limit are tipped back to it as well (off by default: tipped corners can leave dips that slice as islands, and the sliced overhang is no smaller for it; the bracket example's 160 mm² of lean is the same either way)"
         },
         "reduce": {
-          "$ref": "#/$defs/expr",
-          "description": "3D: fewer triangles, the surface kept within this many mm of where it was drawn (0.1 is a quarter of a print line), closed, and no more overhang or tips than it had. Off unless given"
+          "anyOf": [{ "$ref": "#/$defs/expr" }, { "const": false }],
+          "description": "3D: fewer triangles, the surface kept within this many mm of where it was drawn, closed, and no more overhang or tips than it had. 0.1 mm (a quarter of a print line) unless given; false keeps every triangle the surface was drawn with"
         }
       }
     },
