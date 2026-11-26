@@ -5,6 +5,12 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.28: the agents' guide follows cad 0.7.87
+
+### Changed
+
+- The template's AGENTS.md follows cad 0.7.87's: `robust: true` on an optimisation problem. No printed size changes.
+
 
 ## 0.3.27: the leg's streamer and sender, eight axes on a Mega (#199)
 - The sender refuses a step file whose axes are not the machine's, by name and in order, so a file written for one machine never drives another's motors.

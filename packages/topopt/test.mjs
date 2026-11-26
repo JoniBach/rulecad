@@ -693,6 +693,66 @@ test('grey: the share of the design cells neither empty nor solid', async () => 
   assert.equal(grey([], []), 0);
 });
 
+test('the filter with pad counts the cells past the grid\'s edges as empty, so a member along an edge thins like one inside', () => {
+  // Radius 1.5 cells reaches the 8 neighbours: weights 1.5 for the cell itself, 1.5 - 1 = 0.5 for each side and
+  // 1.5 - √2 = 0.0858 for each diagonal, 3.8431 in all. A corner cell of an all-solid grid has itself, two sides and one
+  // diagonal: 1.5 + 0.5 + 0.5 + 0.0858 = 2.5858, so 2.5858 / 3.8431 = 0.6729 padded, and 1 without (its own total)
+  const ones = new Float64Array(9).fill(1), out = new Float64Array(9);
+  densityFilter({ nx: 3, ny: 3 }, 1.5).apply(ones, out);
+  assert.ok(out.every((v) => Math.abs(v - 1) < 1e-12), 'unpadded: an even field stays even');
+  densityFilter({ nx: 3, ny: 3 }, 1.5, { pad: true }).apply(ones, out);
+  const full = 1.5 + 4 * 0.5 + 4 * (1.5 - Math.SQRT2), corner = (1.5 + 2 * 0.5 + (1.5 - Math.SQRT2)) / full;
+  assert.ok(Math.abs(out[0] - corner) < 1e-12 && Math.abs(corner - 0.6729) < 1e-4, `corner ${out[0]}`);
+  assert.ok(Math.abs(out[4] - 1) < 1e-12, 'the middle cell has all its neighbours');
+});
+
+test('robust: refused by name with a volume alone or a value other than true or false; a robust mechanism keeps the cells where it is held, pushed and moved', () => {
+  assert.throws(() => discretise({ ...stressed(undefined), volume: 0.4, robust: true }), /robust is for a mechanism \(with output: the worst of its eroded, as-made and dilated copies\) or a stress limit .*a volume alone has neither/);
+  assert.throws(() => plaInverter({ robust: 'yes' }), /robust is true or false \(got "yes"\)/);
+  const plain = plaInverter(), robust = plaInverter({ robust: true }), kept = (s) => s.passive.filter((p) => p === 1).length;
+  // Two 1 mm supports in the corners, a 1 × 2 mm input and output: each region's nodes, and the cells that touch them
+  assert.equal(kept(plain), 0);
+  assert.ok(kept(robust) >= 4 * 2, `kept ${kept(robust)} cells`);
+});
+
+test('a robust stress limit: the lightest layout keeps it made a little thin and a little thick too, where the plain one fails thin', () => {
+  // (the cantilever above at 20 MPa: the plain layout's eroded copy peaked at 103 MPa, five times the limit; robust, all
+  // three within 1%, for 89% of the space against 76%)
+  const plain = optimise(discretise(stressed(20))), robust = optimise(discretise({ ...stressed(20), robust: true }));
+  for (const o of [plain, robust]) assert.ok(o.converged && o.stress.copies, 'settled, with its copies reported');
+  assert.ok(plain.stress.copies.eroded > 20 * 2, `plain, made thin: ${plain.stress.copies.eroded} MPa`);
+  for (const v of [robust.stress.peak, robust.stress.copies.eroded, robust.stress.copies.dilated]) assert.ok(v <= 20 * 1.03, `robust: ${JSON.stringify(robust.stress)}`);
+  assert.ok(robust.volume > plain.volume, `robust takes more material: ${robust.volume} against ${plain.volume}`);
+});
+
+test('a robust mechanism: the worst of its three copies is made to move (the bound formulation), and under a strain limit its peak is cut to near the limit (experimental: it varies by machine)', () => {
+  // Eroded copy only (the default): made a little thick, the hinges fill and the output hardly moves (0.023 mm against
+  // 1.81 as made). Worst of three: each copy moves its output 0.9 mm or more
+  const plain = optimise(plaInverter()), worst = optimise(plaInverter({ robust: true }));
+  assert.ok(plain.mechanism.copies.dilated < 0.1, `plain, made thick: ${plain.mechanism.copies.dilated} mm`);
+  const least = (r) => Math.min(r.mechanism.travel, r.mechanism.copies.eroded, r.mechanism.copies.dilated);
+  assert.ok(least(worst) > 0.5 && least(worst) > 10 * least(plain), `worst copy ${least(worst)} mm against ${least(plain)}`);
+  // No loose pieces as made. (Joined corner to corner counts: on cells of 1 mm with a 1.5 mm filter the worst-of-three
+  // layout keeps two joints where cells meet only at a corner, a hinge a node wide in all three copies; the README says
+  // so, and a wider filter is the cure it names)
+  const { nx, ny } = plaInverter().grid, one = (r) => {
+    const seen = new Uint8Array(r.density.length), stack = [r.density.findIndex((d) => d >= 0.5)];
+    seen[stack[0]] = 1;
+    while (stack.length) { const e = stack.pop(), i = e % nx, j = Math.floor(e / nx); for (const [a, b] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1], [i - 1, j - 1], [i + 1, j - 1], [i - 1, j + 1], [i + 1, j + 1]]) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const f = b * nx + a; if (r.density[f] >= 0.5 && !seen[f]) { seen[f] = 1; stack.push(f); } } }
+    return r.density.every((d, e) => d < 0.5 || seen[e]);
+  };
+  assert.ok(one(worst), 'one piece');
+  // Under 0.15% (4.02 MPa): the plain layout, checked only, peaks at 12.1 MPa, three times over; the robust one is
+  // optimised under it. Where it ends rests on the machine's floating point (experimental, the README says so): as made
+  // within 2% of the limit with the worst copy 1.28 mm in one piece (macOS here), within 2% but 0.55 mm and in more
+  // than one piece (macOS in CI), 5.7% over (Linux in CI), within 2% (Windows in CI). What every machine gives: the
+  // peak as made within 10% of the limit, under a third of the plain layout's
+  const limit = 0.0015 * 2680, held = optimise(plaInverter({ robust: true, strain: 0.0015 }));
+  const plainPeak = optimise(plaInverter({ strain: 0.0015 })).stress.peak;
+  assert.ok(plainPeak > 2.5 * limit);
+  assert.ok(held.stress.peak <= limit * 1.1 && held.stress.peak < plainPeak / 2.5, `as made: ${held.stress.peak} MPa against ${limit} (worst copy ${least(held)} mm, one piece ${one(held)})`);
+});
+
 test('a tool\'s radius: a slot narrower than the tool fills, a pocket as wide stays open, and the gradient matches finite differences', async () => {
   const { toolFilter } = await import('@rulecad/topopt');
   // A 12 × 4 block milled from +y with a slot one cell wide (i = 5) and a pocket three wide (i = 8 to 10), by a tool of
