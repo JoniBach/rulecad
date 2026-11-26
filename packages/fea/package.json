@@ -22,17 +22,15 @@
     }
   },
   "files": [
-    "fea.mjs",
-    "fea.d.mts",
+    "*.mjs",
+    "*.d.mts",
     "README.md",
     "LICENSE",
-    "threads.mjs",
-    "threads.d.mts",
-    "frame.mjs",
-    "frame.d.mts",
-    "layout.mjs",
-    "layout.d.mts",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "!backend-suite.mjs",
+    "!frame-cases.mjs",
+    "!layout-cases.mjs",
+    "!test.mjs"
   ],
   "license": "MIT",
   "keywords": [

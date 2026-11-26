@@ -1,5 +1,5 @@
-# On main: publish every package whose version isn't on npm yet (scripts/publish.mjs). To release, bump a package's
-# version in its package.json and merge. npm trusts this workflow for each package (trusted publishing), so there are
+# On main: publish every package whose version isn't on npm yet (scripts/publish.mjs). To release, merge a release pull
+# request made by scripts/release.mjs from the change notes (CONTRIBUTING.md). npm trusts this workflow for each package (trusted publishing), so there are
 # no tokens or one-time passwords, and every release carries provenance.
 name: publish
 on:

@@ -11,21 +11,12 @@
   },
   "types": "./robots.d.mts",
   "files": [
-    "robots.mjs",
-    "kinematics.mjs",
-    "reach.mjs",
-    "svg.mjs",
-    "toolpath.mjs",
-    "gait.mjs",
-    "robots.d.mts",
-    "kinematics.d.mts",
-    "reach.d.mts",
-    "svg.d.mts",
-    "toolpath.d.mts",
-    "gait.d.mts",
+    "*.mjs",
+    "*.d.mts",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "!test.mjs"
   ],
   "license": "MIT",
   "keywords": [

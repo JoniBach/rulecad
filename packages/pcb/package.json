@@ -5,12 +5,11 @@
   "type": "module",
   "exports": "./pcb.mjs",
   "files": [
-    "pcb.mjs",
-    "circuit.mjs",
-    "kicad.mjs",
+    "*.mjs",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "!test.mjs"
   ],
   "license": "MIT",
   "keywords": [
