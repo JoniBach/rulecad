@@ -6927,6 +6927,158 @@ test('a robust problem: cad optimise reports the design made a little thin and a
   } finally { done(); }
 });
 
+test('a problem placed in an assembly: a support at one of its joints, and a part swept through a joint\'s range kept clear, flat and solid, followed when the assembly changes', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'swing');
+    for (const d of ['problems', 'objects', 'assemblies']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'swing', objects: ['plate', 'bar'] }));
+    // The plate being optimised (drawn as a blank when its problem is none), and a 20 x 4 x 4 bar with its end at its anchor
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0',
+      variables: { problem: { type: 'problem', value: 'plate' } }, anchors: { pivot: { at: [0, 0, 4] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return v.problem === 'none' ? jscad.primitives.cuboid({ size: [40, 30, 4], center: [10, 0, 2] }) : jscad.extrusions.extrudeLinear({ height: 4 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    fs.writeFileSync(path.join(project, 'objects', 'bar.json'), JSON.stringify({ name: 'bar', version: '0.1.0', anchors: { end: { at: [0, 0, 0] } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'bar.js'), "import jscad from '@jscad/modeling'\nexport function main () { return jscad.primitives.cuboid({ size: [20, 4, 4], center: [10, 0, 2] }) }\n");
+    // An arm on the plate's pivot, lying on top of it (z 4 to 8), and a gate swinging in the plate's own layer (z 0 to 4)
+    // about a post at (30, 0), from pointing along +y (90 degrees) round to along -x (180 degrees)
+    const bench = (max = 180) => fs.writeFileSync(path.join(project, 'assemblies', 'bench.json'), JSON.stringify({ title: 'A plate, an arm on it and a gate beside it', kind: 'fit',
+      items: [{ id: 'plate', object: 'plate' }, { id: 'arm', object: 'bar' }, { id: 'gate', object: 'bar' }],
+      joints: [{ id: 'hinge', type: 'revolute', parent: 'plate.pivot', child: 'arm.end', min: 0, max: 90, value: 0 },
+        { id: 'swing', type: 'revolute', parent: { at: [30, 0, 0] }, child: 'gate.end', min: 90, max, value: 90 }] }));
+    bench();
+    const problem = { title: 'The plate under the arm, clear of the gate', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.4, steps: 30,
+      in: { assembly: 'bench', item: 'plate' }, space: { at: [10, 0], size: [40, 30] },
+      supports: [{ joint: 'hinge', r: 2 }, { at: [28, -10], r: 2 }], loads: [{ at: [14, 14], r: 1.5, force: [0, -10] }], avoid: [{ sweep: 'gate', through: 'swing' }] };
+    const write = (n, x) => fs.writeFileSync(path.join(project, 'problems', `${n}.json`), JSON.stringify(x));
+    write('plate', problem);
+    const read = (ref) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const { discretise } = await import('@rulecad/topopt');
+      try {
+        const r = await readProblem('swing', ${JSON.stringify(ref)}), d = discretise(r.problem), g = d.grid, o = d.origin, h = g.h;
+        const cell = (x, y, z = 0.5) => d.passive[Math.floor((x - o[0]) / h) + g.nx * (Math.floor((y - o[1]) / h) + g.ny * (g.nz ? Math.floor((z - o[2]) / h) : 0))];
+        console.log(JSON.stringify({ supports: r.problem.supports.map((s) => ({ at: s.at, axis: s.axis })), inputs: r.inputs, avoided: d.passive.filter((p) => p === -1).length,
+          cells: [[20.5, 5.5], [29.5, -1.5], [5.5, 5.5], [20.5, -5.5]].map(([x, y]) => cell(x, y)) }));
+      } catch (e) { console.log(JSON.stringify({ error: e.message })); }
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const r = read('plate');
+    assert.equal(r.error, undefined, r.error);
+    // The support sits at the hinge: the plate's own end of it, its pivot anchor at (0, 0, 4), x and y in this flat problem
+    assert.deepEqual(r.supports, [{ at: [0, 0] }, { at: [28, -10] }]);
+    assert.deepEqual(r.inputs.assembly.joints, [{ joint: 'hinge', at: [0, 0, 4] }]);
+    // Steps, by hand: the bar's far corners (20, +-2) are sqrt(20^2 + 2^2) = 20.0998 mm from the post, so over 90 degrees
+    // in 32 pieces of pi / 64 each moves a chord of 2 x 20.0998 x sin(pi / 128) = 0.98655 mm, 31.570 mm in all; no point
+    // moves more than half a 1 mm cell between steps, so ceil(2 x 31.570 / 1) = 64 steps, 65 positions of the bar
+    assert.deepEqual(r.inputs.assembly.sweeps, [{ sweep: 'gate', through: 'swing', from: 90, to: 180, steps: 64, regions: 65 }]);
+    // What it sweeps in the plate's layer, by hand: a quarter disc of radius 20 about (30, 0) on the space's side
+    // (y up to the space's edge at 15): the integral of sqrt(400 - y^2) from 0 to 15 = 7.5 x 13.229 + 200 x asin(0.75)
+    // = 99.22 + 169.61 = 268.8 mm2, and the bar's half below y = 0 at 180 degrees, 20 x 2 = 40 mm2: 308.8 mm2, so about
+    // 309 cells of 1 mm2 (the rounded ends and the cells' centres move it a few cells)
+    assert.ok(r.avoided > 295 && r.avoided < 325, `${r.avoided} cells kept clear, about 309 by hand`);
+    // Inside the swept quarter, on the bar at 180 degrees, and two outside it: beyond its reach, and below the bar
+    assert.deepEqual(r.cells, [-1, -1, 0, 0]);
+    // The same problem solid: each step the bar's own triangles, every one of the 4 layers clear as the flat section was
+    write('solid', { ...problem, thickness: undefined, space: { at: [10, 0, 2], size: [40, 30, 4] }, supports: [{ joint: 'hinge', r: 2, length: 4 }, { at: [28, -10, 2], r: 2, length: 4 }], loads: [{ at: [14, 14, 2], r: 1.5, length: 4, force: [0, -10, 0] }] });
+    const solid = read('solid');
+    assert.equal(solid.error, undefined, solid.error);
+    assert.deepEqual(solid.supports[0], { at: [0, 0, 4], axis: 'z' }, 'a cylinder at the hinge lies along its axis');
+    assert.equal(solid.avoided, 4 * r.avoided);
+    // Optimised as any problem is, kept until the assembly moves what it read; cad why names the assembly and the sweep
+    assert.match(cad('optimise', 'swing/plate'), /moves [\d.]+ mm along its load/);
+    assert.match(cad('optimise', 'swing/plate'), /\(cached\)/);
+    assert.match(cad('check', 'swing/plate'), /✓ closed solid/);
+    // The load at (14, 14) and the support at (28, -10) lie either side of the gate's swing: the plate goes round it, and
+    // the assembly, the plate drawn from its result, is clear all through the swing. Without the sweep it is struck.
+    assert.match(cad('check', 'swing/bench', '--sweep'), /✓ sweep swing, 90 to 180° in 24 steps: nothing collides/);
+    write('bare', { ...problem, avoid: [] });
+    cad('set', 'swing/plate', 'problem=bare');
+    assert.match(cad('check', 'swing/bench', '--sweep'), /✗ sweep swing, 90 to 180° in 24 steps: [^\n]*gate[^\n]* hits plate|plate[^\n]* hits gate/);
+    cad('set', 'swing/plate', 'problem=plate');
+    const why = cad('why', 'swing/plate.problem');
+    assert.match(why, /in the assembly bench, item plate: joints read: hinge at \(0, 0, 4\); swept: gate through swing, 90 to 180 in 64 steps/);
+    bench(135);
+    assert.doesNotMatch(cad('optimise', 'swing/plate'), /\(cached\)/, 'the gate swings less far: the region it keeps clear is smaller, and the plate is optimised again');
+    assert.deepEqual(read('plate').inputs.assembly.sweeps[0].to, 135);
+    // Refused by name: the arm rides on the plate, touching its top face, never in its layer; the plate itself; a joint or a sweep named wrong;
+    // a sweep anywhere but avoid; a joint without an assembly to find it in
+    write('over', { ...problem, avoid: [{ sweep: 'arm', through: 'hinge' }] });
+    assert.match(read('over').error, /over\.json: "arm" never reaches into the plate \(z 0 to 4 mm in plate\) through hinge: nothing to keep clear there/);
+    write('self', { ...problem, avoid: [{ sweep: 'plate', through: 'hinge' }] });
+    assert.match(read('self').error, /self\.json: "plate" is plate itself, the item this problem is in: sweep a part that moves against it/);
+    write('typo', { ...problem, avoid: [{ sweep: 'gate', through: 'swign' }] });
+    assert.match(read('typo').error, /typo\.json: bench has no joint "swign" that moves on its own to sweep "gate" through \(joints: hinge, swing\)/);
+    write('nojoint', { ...problem, supports: [{ joint: 'elbow', r: 2 }] });
+    assert.match(read('nojoint').error, /nojoint\.json: bench has no joint "elbow" \(joints: hinge, swing\)/);
+    write('kept', { ...problem, keep: [{ sweep: 'gate', through: 'swing' }] });
+    assert.match(read('kept').error, /kept\.json: a swept part \("gate"\) is a region to keep clear: put it under avoid/);
+    write('loose', { ...problem, in: undefined, avoid: [] });
+    assert.match(read('loose').error, /loose\.json: the joint "hinge" needs the problem placed in an assembly: "in": \{ "assembly": "<name>", "item": "<the item it is drawn in>" \}/);
+  } finally { done(); }
+});
+
+test('a flat problem keeps clear of all of a swept part within the plate\'s thickness: a gate whose arm dips 1 mm into the plate\'s top is kept clear where the arm passes, and the plate built is clear through the swing; a leaning part is cut finely enough to leave no gap', async () => {
+  // The heights sections are taken at, for a 1 mm square rod standing 4 mm through a 4 mm plate on 1 mm cells, by hand:
+  // no more than half a cell apart up the slab, so (4 - 2 x 0.00001) / 0.5 rounds up to 8 gaps and 9 sections. Leaning
+  // 12 mm across over its 4 mm (its sloped faces' normals (1, 0, -3), a lean of 3), each 0.5 mm gap moves its outline
+  // 3 x 0.5 = 1.5 mm, so each gap is cut in ceil(2 x 1.5 / 1) = 3: 1 + 8 x 3 = 25 sections, each 4 / 24 mm up from the
+  // last, the rod's outline moving 3 x 4 / 24 = 0.5 mm across between two, half a cell
+  const { slabLevels, section } = await import('./lib/mesh.mjs');
+  const prism = (shift) => {
+    const v = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]].flatMap((q) => [q, [q[0] + shift, q[1], 4]]), at = (i) => v[i];
+    const quads = [[0, 2, 4, 6], [1, 7, 5, 3], [0, 1, 3, 2], [2, 3, 5, 4], [4, 5, 7, 6], [6, 7, 1, 0]]; // bottom, top, then the four sides
+    return quads.flatMap(([a, b, c, d]) => [[at(a), at(b), at(c)], [at(a), at(c), at(d)]]);
+  };
+  assert.equal(slabLevels(prism(0), 0, 4, 1).length, 9);
+  const levels = slabLevels(prism(12), 0, 4, 1);
+  assert.equal(levels.length, 25);
+  const spans = levels.map((h) => { const xs = section(prism(12), 2, h).flat().map((q) => q[0]); return [Math.min(...xs), Math.max(...xs)]; });
+  for (let i = 1; i < spans.length; i++) assert.ok(spans[i][0] - spans[i - 1][0] <= 0.5 + 1e-6, `section ${i} moved ${spans[i][0] - spans[i - 1][0]} mm, over half a cell`);
+  assert.ok(Math.abs(spans[0][0]) < 1e-3 && Math.abs(spans.at(-1)[1] - 13) < 1e-3, 'from the rod\'s foot at x 0 to its head at x 13');
+
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'swing');
+    for (const d of ['problems', 'objects', 'assemblies']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'swing', objects: ['plate', 'gate'] }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.json'), JSON.stringify({ name: 'plate', version: '0.1.0', variables: { problem: { type: 'problem', value: 'plate' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'plate.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return v.problem === 'none' ? jscad.primitives.cuboid({ size: [40, 30, 4], center: [10, 0, 2] }) : jscad.extrusions.extrudeLinear({ height: 4 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    // The gate: a 6 mm stub on its post through the plate's layer (z 0 to 4), and a 20 x 4 mm arm from it at z 3 to 7,
+    // in the plate's top 1 mm but never across its middle plane (z 2); without the stub, the arm alone
+    const gate = (stub) => fs.writeFileSync(path.join(project, 'objects', 'gate.js'), `import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main () { const arm = cuboid({ size: [20, 4, 4], center: [10, 0, 5] }); return ${stub ? 'jscad.booleans.union(cuboid({ size: [6, 4, 4], center: [3, 0, 2] }), arm)' : 'arm'} }\n`);
+    fs.writeFileSync(path.join(project, 'objects', 'gate.json'), JSON.stringify({ name: 'gate', version: '0.1.0', anchors: { end: { at: [0, 0, 0] } } }));
+    gate(true);
+    fs.writeFileSync(path.join(project, 'assemblies', 'bench.json'), JSON.stringify({ title: 'A plate and a gate whose arm dips into it', kind: 'fit',
+      items: [{ id: 'plate', object: 'plate' }, { id: 'gate', object: 'gate' }],
+      joints: [{ id: 'swing', type: 'revolute', parent: { at: [30, 0, 0] }, child: 'gate.end', min: 90, max: 180, value: 90 }] }));
+    fs.writeFileSync(path.join(project, 'problems', 'plate.json'), JSON.stringify({ title: 'The plate, clear of the gate', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.4, steps: 30,
+      in: { assembly: 'bench', item: 'plate' }, space: { at: [10, 0], size: [40, 30] },
+      supports: [{ at: [0, 0], r: 2 }, { at: [28, -10], r: 2 }], loads: [{ at: [14, 14], r: 1.5, force: [0, -10] }], avoid: [{ sweep: 'gate', through: 'swing' }] }));
+    const read = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      const { discretise } = await import('@rulecad/topopt');
+      try { const r = await readProblem('swing', 'plate'), d = discretise(r.problem); console.log(JSON.stringify({ avoided: d.passive.filter((p) => p === -1).length, sweeps: r.inputs.assembly.sweeps })); }
+      catch (e) { console.log(JSON.stringify({ error: e.message })); }
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // The arm's footprint covers the stub's, so it sweeps what a full-thickness 20 x 4 bar does (the test before this
+    // one, by hand): a quarter disc of radius 20 inside the space, 268.8 mm2, and the bar's half below y = 0 at 180
+    // degrees, 40 mm2, about 309 cells. Taken at the middle plane alone, only the stub's 6 mm counted (42 cells). Each
+    // of the 65 positions gives two regions, 130: the stub's section in the plate's bottom 3 mm, the stub and arm's in its
+    // top 1 mm (the other sections, the same as one of these, are left out); the arm alone gives one, 65
+    const r = read();
+    assert.equal(r.error, undefined, r.error);
+    assert.ok(r.avoided > 295 && r.avoided < 325, `${r.avoided} cells kept clear, about 309 by hand`);
+    assert.deepEqual(r.sweeps, [{ sweep: 'gate', through: 'swing', from: 90, to: 180, steps: 64, regions: 130 }]);
+    assert.match(cad('optimise', 'swing/plate'), /moves [\d.]+ mm along its load/);
+    assert.match(cad('check', 'swing/bench', '--sweep'), /✓ sweep swing, 90 to 180° in 24 steps: nothing collides/);
+    // The arm alone, never across the middle plane, is kept clear the same
+    gate(false);
+    const alone = read();
+    assert.equal(alone.error, undefined, alone.error);
+    assert.equal(alone.avoided, r.avoided);
+    assert.equal(alone.sweeps[0].regions, 65);
+  } finally { done(); }
+});
+
 test('a design reads the weak end of a printed plastic\'s range (pa_cf.strength_z.low) in cad values, with its unit, and cad why says where it comes from', () => {
   const { ws, cad, done } = workspace();
   try {

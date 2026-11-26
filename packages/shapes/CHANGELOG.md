@@ -4,6 +4,17 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
+## 0.4.9: swept parts as regions
+### Added
+
+- `regionShape` (and so `optimisedOutline`) takes a region of `rings`: closed outlines solid on their left, holes
+  clockwise, as cad gives a part swept past a flat plate. It is cut with its holes open; drawn from its `points`
+  alone, the solver's single polygon of all its outlines, it would not be.
+
+### Printed sizes that moved
+
+- None.
+
 ## 0.4.8: a part as a region
 ### Fixed
 
