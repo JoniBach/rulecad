@@ -5,6 +5,8 @@ import * as frames from '@rulecad/frames';
 import { SETS } from './catalogue.mjs';
 import { gap, inside } from './section.mjs';
 import jscad from '@jscad/modeling';
+import { fileURLToPath } from 'node:url';
+import { shippedModules } from '../../scripts/shipped.mjs';
 
 const { beamModel, beam, beamAnchor, printable, profileModel, slotModel, slotPath, outline, section, profileFindings, readOutline, polygonSection, torsionConstant, signedArea, DEFAULTS } = frames;
 const rulesDir = new URL('../rules/', import.meta.url);
@@ -20,7 +22,8 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   assert.ok(!pkg.version.startsWith('0.0.'), 'from 0.1.0 it has functions to call');
   assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/fea', '@rulecad/fixings', '@rulecad/rules'], 'fixings sizes what an operation names by a thread; fea bends a printed fitting');
   assert.deepEqual(Object.keys(pkg.peerDependencies), ['@jscad/modeling'], 'a beam\'s solid is JSCAD\'s, which a design already has');
-  for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
+  const declared = (f) => pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')) || pkg.files.includes('*.d.mts');
+  for (const f of shippedModules(fileURLToPath(new URL('.', import.meta.url)))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(declared(f), `${f} ships its declarations`); }
 });
 
 test('the catalogue holds every profile, slot family, slot nut, bought fitting, rail, V-wheel and eccentric the rules package has, and what they name', () => {

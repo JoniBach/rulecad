@@ -6936,9 +6936,9 @@ test('printed fittings in TPU: refused by name as a rubber, and left out of the 
     // the kit's tpu.json has strength, modulus, density and modulus_z, as a plastic's set does; but 29.6 / 9.2 = 3.22,
     // a strain where a stiff plastic would long have yielded: the clip's sums are not for it
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'TPU', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "TPU", a rubber \(its strength over its modulus is 3\.22, a strain far past where its stiffness holds\), and printed fittings are sized with sums for a stiff plastic that do not hold for it\. Set the material to one of abs, asa, pa_cf, petg, pla$/m);
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "TPU", a rubber \(its strength over its modulus is 3\.22, a strain far past where its stiffness holds\), and printed fittings are sized with sums for a stiff plastic that do not hold for it\. Set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament$/m);
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PC', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, pa_cf, petg, pla, and there is no rules\/pc\.json/);
+    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json/);
   } finally { done(); }
 });
 
