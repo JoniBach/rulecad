@@ -2,6 +2,13 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## 0.3.7: range ends in expressions
+### Added
+
+- An expression reads either end of a rule's range: `pa_cf.strength.low`, `pa_cf.strength.high`, in the rule's unit.
+  An end the rule does not give is refused by name (`var.range`). Names with two dots that are not `low` or `high` are
+  refused as before. No value read by an existing name changes.
+
 ## 0.3.6: material ranges
 ### Added
 

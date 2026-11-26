@@ -10,8 +10,8 @@ it comes from and when it was checked, so a design built on it can be traced and
 
 A value that varies, as a printed plastic's does with the printer and the spool, may also give the range it is found in:
 `"low"` and `"high"`, in its unit, low at most the value and high at least it (`cad rules check` holds them to that). The
-printed plastics' ranges are their data sheets' spread either side. Expressions read the value (`pla.strength`); to design
-to the weak end, take `low` from the set.
+printed plastics' ranges are their data sheets' spread either side. Expressions read the value as `pla.strength` and
+either end as `pla.strength.low` or `pla.strength.high`, so a part can be sized to the weak end of the range.
 
 | Set | What | Values |
 |---|---|---|
@@ -46,6 +46,7 @@ to the weak end, take `low` from the set.
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
 | `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them, and what a kilogram costs (its EU store's price with VAT) | 7, 8 |
 | `abs`, `asa`, `pa_cf` | Polymaker PolyLite ABS, Bambu Lab ASA and Bambu Lab PAHT-CF (carbon-filled nylon, dry and annealed), printed, for analysis: stiffness and strength along the layers and across them, each with the data sheet's range (`low`, `high`) | 6 or 7 each |
+| `pla-prusament`, `petg-polylite`, `asa-polylite` | A second maker's sheet beside `pla`, `petg` and `asa`: Prusament PLA (version 1.0, 2018), Polymaker PolyLite PETG and PolyLite ASA (V5.4), printed, for analysis, in the same rules with the sheets' ranges. A design reads either maker (`pla_prusament.strength_z.low`) or sets its material to one. ABS and PA-CF have one maker's sheet each for now | 7 each |
 | `bearing-608`, `bearing-625`, `bearing-6800`, `bearing-f623`, `bearing-51104` | Ball bearings from NTN's figures: 608, 625, 6800, the flanged F623 and the 51104 thrust bearing: bore, outer diameter, width, chamfer, ratings, radial play class | 9, 9, 9, 10, 10 |
 | `bearing-mr105` | MR105 miniature bearing, 5 x 10 mm (4 wide shielded, 3 open), distributor figures: community until measured | 8 |
 | `endstop-10t85` | The lever microswitch endstop marked 10T85: body, holes, force. Community until measured, and its lever travel is not published anywhere found | 12 |

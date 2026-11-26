@@ -207,11 +207,19 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     busy.add(name);
     let src, where;
     if (name.includes('.')) {
-      let [s, r, more] = name.split('.');
-      if (more !== undefined) throw fail('var.unknown-rule', `"${name}": a rule is named <set>.<rule>, with one dot`);
+      let [s, r, end, more] = name.split('.');
+      if (more !== undefined || (end !== undefined && end !== 'low' && end !== 'high')) throw fail('var.unknown-rule', `"${name}": a rule is named <set>.<rule>, with one dot, and the ends of its range <set>.<rule>.low and <set>.<rule>.high`);
       if (!own(ruleSets, s) && own(ruleSets, s.replace(/_/g, '-'))) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
       if (!own(ruleSets, s)) throw fail('var.unknown-set', `"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
       if (!own(ruleSets[s].rules, r)) throw fail('var.unknown-rule', `"${name}": no rule "${r}" in ${s}`);
+      // An end of the range a value is found in (pa_cf.strength.low): a number beside the value, in the same unit
+      if (end !== undefined) {
+        const d = ruleSets[s].rules[r], ranged = Object.entries(ruleSets[s].rules).filter(([, x]) => typeof x[end] === 'number').map(([k]) => k);
+        busy.delete(name);
+        if (typeof d[end] !== 'number') throw fail('var.range', `"${name}": ${s}.${r} gives no ${end} (${ranged.length ? `the rules in ${s} with a range: ${ranged.join(', ')}` : `no rule in ${s} gives a range`}), so read its value, ${s}.${r}`, `rules.${s}.${r}`);
+        deps.set(name, new Set([`${s}.${r}`])); done.set(name, d[end]);
+        return d[end];
+      }
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's
     } else {
       const d = own(vars, name);
@@ -252,7 +260,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     for (const p of r.problems) units.push({ name, path: `variables.${name}.value`, message: `"${name}" = ${d.value}: ${p}` });
     if (said && r.value && !sameUnit(said, r.value)) units.push({ name, path: `variables.${name}.unit`, message: `"${name}" comes to ${r.unit}, but its unit says ${showUnit(said)}` });
   }
-  const used = new Set(done.keys()); // rules the variables actually refer to (directly or through other rules)
+  const used = new Set([...done.keys(), ...[...deps].filter(([k]) => k.split('.').length === 3).flatMap(([, v]) => [...v])]); // rules the variables actually refer to (directly or through other rules)
   for (const [s, rs] of Object.entries(ruleSets)) {
     values[s] = {};
     for (const [r, d] of Object.entries(rs.rules)) {
