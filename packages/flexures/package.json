@@ -35,6 +35,7 @@
     "kirigami.mjs",
     "cells.mjs",
     "developable.mjs",
+    "elements.mjs",
     "stages.mjs",
     "flexures.d.mts",
     "core.d.mts",
@@ -63,6 +64,7 @@
     "kirigami.d.mts",
     "cells.d.mts",
     "developable.d.mts",
+    "elements.d.mts",
     "stages.d.mts",
     "README.md",
     "LICENSE"
