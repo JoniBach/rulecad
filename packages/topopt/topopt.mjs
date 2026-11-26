@@ -869,7 +869,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const synth = worst && spec.stress > 0, synthM = synth ? [0, 1, 2].map(() => ({ lam: [new Float64Array(m.limits)], mu: 1 })) : null;
   const multipliers = lightest ? copies.map(() => ({ lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 })) : undefined;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
-  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, targetD = target;
+  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, madePeak = null, targetD = target;
   const tried = new Float64Array(cells); // the last design the bisection analysed, and how much it filled
   while (step < spec.steps) {
     step++; sinceBeta++;
@@ -910,7 +910,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
         // Under a stress limit (da Silva, Beck and Sigmund 2019): each copy's limits on every cell, kept by an augmented
         // Lagrangian added to z, as the lightest layout's are
         const Jm = synth ? evs.reduce((t, v) => t + v.stress.J, 0) : 0, dJ = synth ? evs.reduce((t, v) => { for (let e = 0; e < cells; e++) t[e] += v.stress.d[e]; return t; }, new Float64Array(cells)) : new Float64Array(cells);
-        if (synth) peak = Math.max(...evs.map((v) => v.stress.peak));
+        if (synth) { peak = Math.max(...evs.map((v) => v.stress.peak)); madePeak = evs[1].stress.peak; }
         if (!scaleT) { scaleT = Math.max(...three.map((t) => Math.abs(t.travel))) || 1; xz[n] = -Math.min(...three.map((t) => t.travel)) / scaleT; }
         xz.set(pick(x));
         const grad = (d, last) => { const g = new Float64Array(n + 1); g.set(pick(d)); g[n] = last; return g; };
@@ -959,7 +959,9 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
     // Done when nothing moves, or at full sharpness the compliance has stopped improving (within 0.1% over 10 steps)
     const latest = mechanism ? history.at(-1) : compliance;
     const settled = spec.projection && history.length > 10 && beta >= betaMax && sinceBeta > 10 && Math.abs(history.at(-11) - latest) <= 1e-3 * Math.abs(latest);
-    if (beta >= betaMax && (change < tol || settled)) { converged = true; break; }
+    // (a mechanism under a limit stops only once the design as made keeps to it: its travel can settle first, and where
+    // it stops then rests on the floating point of the machine it runs on, 9% over on one, within the limit on another)
+    if (beta >= betaMax && (change < tol || settled) && (madePeak == null || madePeak <= spec.stress * 1.02)) { converged = true; break; }
   }
   // The final design, analysed as it is
   const final = m.evaluate(x, beta, { all: true }), phys = Float64Array.from(m.physical(x, beta));

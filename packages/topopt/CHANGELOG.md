@@ -3,6 +3,8 @@
 What changed in each release, for someone upgrading.
 
 ## 0.3.8: robust stress limits and mechanisms
+
+- A robust mechanism under a stress or strain limit stops only once the design as made keeps to it (within 2%). Its travel could settle first, and where it stopped then rested on the machine's floating point: on Linux the design as made ended 9% over, on macOS within the limit.
 ### Added
 
 - `robust: true` on a problem: the design is optimised as three copies, as made, eroded (a little thin, threshold
