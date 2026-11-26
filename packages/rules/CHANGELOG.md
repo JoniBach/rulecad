@@ -3,6 +3,15 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.30: TPU
+### Added
+
+- `tpu`: Bambu Lab TPU 95A (data sheet V3.0), printed, for analysis: modulus 9.2 ± 0.4 MPa and strength 29.6 ± 0.6 MPa
+  along the layers, 7.8 ± 0.5 and 23.2 ± 0.5 across, strain at break over 700%, density 1.20, the maker's 70° overhang;
+  a second maker's (Polymaker PolyFlex TPU95-HF V5.5) stress at 100% strain, 15.5 MPa; and `flex_strain`, 0.25, the
+  strain a flexure in it is sized to, an estimate (neither sheet gives a fatigue limit). Poisson's ratio 0.48 is an
+  estimate. No existing value changed.
+
 
 ## 0.3.29: the Mega 2560 and a driver breakout (#199)
 ### Added

@@ -178,6 +178,9 @@ material that stretches, such as TPU or polypropylene, or a web much wider than 
 | Kresling sides | a² = h² + 2R²(1 - cos φ), b² = h² + 2R²(1 - cos(φ - 2π/n)), polygon side 2R sin(π/n) | geometry |
 | Kresling's second stable state | twist π + 2π/n - φ0, height² = a² - 2R²(1 - cos φ1) (both states keep a and b) | derived here from Guest and Pellegrino 1994's geometry |
 | Kresling's panels between the states | each side and diagonal a bar E t (2A / L) / L, A its triangle's area: an estimate | estimate |
+| A Kresling crease's turn, printed to the other state | the change in its fold; at the floor and ring, the change in the triangle's lean about its edge, atan2(u_z, u · out) | geometry |
+| Waterbomb side creases' droop | e_m = δ + acos(cos(π/n) / ρ), ρ = √(cos²(π/n) cos² e_c + sin² e_c), δ = atan2(sin e_c, cos(π/n) cos e_c), from c · m = cos(π/n) | derived here: each sector keeps its angle π/n |
+| Waterbomb's end | sin e_c = cos(π/n): the corner creases fold 180°, the side creases 180° - 360°/n | the same |
 
 **The Kresling fold.** `kreslingModel({ sides, radius, height, twist }, material)` is a tube of triangles between two
 polygons, the top turned against the bottom. Its triangles are fixed by one stable state; with the same triangles it
@@ -186,8 +189,49 @@ to the other (it is bistable, not rigid-foldable). The model gives both states w
 pattern, and with a `panel` thickness the energy and force at any height, the barrier between the states and the most
 stretch on the way. With a `hinge` it gives each state's crease strain and the web width a crease would need for the
 material's limit. Six sides on a 20 mm radius, 30 tall turned 100°, stands again at 20.64 mm turned 140°; its
-diagonals fold over 150° there, which a 0.4 mm PETG web would need over 40 mm of width to take. A printed Kresling
-cell wants a material that bends far (TPU), so this is a model and a flat pattern, not a part drawn.
+diagonals fold over 150° there, which a 0.4 mm PETG web would need over 40 mm of width to take. Flat, a Kresling
+cell wants a material that bends far. In TPU (the rule set `tpu`), printed standing in one of its states, it is drawn:
+
+```js
+import { kreslingTube, kreslingTubeModel, waterbomb, waterbombModel, flexureMaterial } from '@rulecad/flexures';
+import tpuRules from '@rulecad/rules/tpu.json' with { type: 'json' };
+
+const t = tpuRules.rules;
+const tpu = flexureMaterial({ modulus: t.modulus.value, strength: t.strength.value, flex_strain: t.flex_strain.value, density: t.density.value, name: 'TPU' });
+const tube = { sides: 6, radius: 20, height: 30, twist: 100, wall: 0.8, panel: { thickness: 1.6 }, hinge: { flex: 4 } };
+const k = kreslingTubeModel(tube, tpu);
+k.turns;    // { side: 65.35, diagonal: 49.05, floor: 30.24, ring: 30.24 } degrees, printed to the second state
+k.strain;   // 0.1140: 11.4% on the 0.8 mm webs, 2.19 times under TPU's 25%
+k.overhang; // 37.19 degrees from vertical, its steepest underside
+k.grams;    // 4.68
+kreslingTube(tube); // one piece, standing on its floor
+```
+
+**The Kresling tube in TPU.** `kreslingTube(p)` draws the tube standing in the state it is given (`height`, `twist`):
+a solid floor (`cap`, 1.2 mm) under the bottom polygon, the wall of triangles `wall` thick out from the axis, and a ring
+on the wall's top (`rim`, 2 mm) that keeps the top a polygon. Each triangle carries a panel inside it, `panel.thickness`
+in all, set back from its three creases by the web (`hinge.flex`) and sloped back 3:1, so the creases bend and the
+panels do not. The wall's own lean is about 19° on these sides; the panels' slopes add to it, and 3:1 keeps the steepest
+underside under the 45° the printer takes. `kreslingTubeModel(p, material)` gives both states, each
+crease's turn from the printed state to the other (the sides, the diagonals, and the floor's and ring's edges), each
+web's strain t ψ / 2l there (t the wall, a little more than the web's true thickness square to a leaning face, so the
+strain is not understated), the panels' stretch and the push over the barrier (the panels as bars, an estimate), the
+steepest underside of the drawn solid, and the grams. Printed, it is stress-free in its first state; pushed down and
+turned, it snaps to the second. In PETG the same webs see 11.4% against a limit of 1.25% and it fails by name
+(`flexure.strain`). The kit's slicer check (`@rulecad/printcheck`) passes the floor and the ring but warns of specks of
+0.3 mm², its smallest region, at the panels' sloped edges from 9 to 23 mm up: look at those in a slicer's preview
+before printing.
+
+**The waterbomb base.** `waterbomb(p, fold)` draws a waterbomb base (Hanna and others): a regular polygon of `sides`
+corners on `radius`, its 2n creases from the middle to the corners and to the sides' middles, each sector a triangle
+with its angle π/n at the middle. Printed flat in TPU it is the Miura's build, the web over the whole sheet and a panel
+on each sector. Folded, the middle stands up and the corners and sides go down, the side creases further: one number,
+the corner creases' droop `fold`, sets all of them while every sector keeps its angle. `waterbombModel(p, material)`
+gives the side creases' droop, every crease's fold, the middle's height and the reach, each web's strain and the side
+creases' pinch, the furthest fold that passes, and the grams. Four corners on 40 mm, panels 1.6 on webs 0.4 thick and
+5.2 wide, fold to the end (45°, the side creases hanging straight down, the corner creases folded flat) at 12.08% in
+TPU, 2.07 times under its limit, in 3.97 g; in PETG the same webs stop the corners under 10°.
+
 
 ## Pinned where it must be: the constant-force mechanism
 
@@ -1006,9 +1050,35 @@ each as long as it must be to stay within half the strain limit at the far end o
 That sizing is why the balanced cell is a model here and its spring is not drawn: a spring soft enough (1.3 N/mm) yet
 carrying 4.4 N at a low strain must hold its energy in a lot of plastic. The cell above wants eleven leaves of 37 mm,
 409 mm of leaf against the arches' 160 mm. Leaves in series (a wave spring) cannot do it at all: each leaf carries the
-whole force, so its strain allows only a few millimetres of leaf. A balanced cell in PETG is a large part. The usual
-compact answer is a strip printed straight and squeezed into its frame at assembly, balanced at its straight middle
-where every spring is near rest; that is a two-print part.
+whole force, so its strain allows only a few millimetres of leaf. An arch balanced this way is a large part.
+
+**The balanced strip cell.** The compact answer is the buckled switch's strip, squeezed into its frame, balanced at its
+middle. Held square, as the switch's pad is, the strip goes over in its symmetric shape and is negative only near its
+middle. Free to turn, it goes over S-shaped, and its force falls in a straight line, the same negative stiffness most
+of the way across (Vangbo): a straight spring cancels all of it. So `balancedStrip(p, material)` makes the pad a ring
+round a disc printed in place in it (a pin, so the pad turns freely), the disc on the knob's stem, and the knob presses
+into a carriage on two leaves from one post on the frame (a parallel guide, free to draw in at its ends, so its force
+stays straight; leaves held at both ends would stretch and stiffen).
+
+```js
+import { balancedStrip, balancedStripModel } from '@rulecad/flexures';
+
+const cell = { length: 90, thickness: 0.84, width: 6, squeeze: 0.28, base: 12 };
+const c = balancedStripModel(cell, petg);
+c.negative; // -0.133 N/mm: the strip alone at its middle, its pad turned 6°
+c.spring;   // { stiffness: 0.147, thickness: 0.84, length: 44.03 }: two leaves, 10% over the strip
+c.flat;     // { from: -1.30, to: 1.82, span: 3.11, force: 0.012 N }: within 10% of 0 stiffness
+c.margin;   // 2.33: strip, stem and leaves at 0.54% against PETG's 1.25%
+c.grams;    // 19.0, strip and frame
+balancedStrip(cell, petg); // the strip (its disc and stem printed in place in the ring) and the frame, side by side
+```
+
+`balancedStripModel` runs the beam solver on the strip, the pin, the stem and the leaves together: squeezed with the
+knob at the middle, then pushed the strip's rise either way. The spring is sized to the strip (10% over, so the middle
+stays stable; a softer one fails by name, `cell.stable`) and its leaves to stay within half the strain limit over the
+rise. Flat over 3.11 mm with two 44 mm leaves, where the arch above wanted 409 mm of leaf for 1.86 mm. The pin's
+0.3 mm of play and its rub are left out of the model, and the knob is taken as held without play (a press fit, an
+estimate).
 
 ## Developable mechanisms: a four-bar in a tube's wall
 
@@ -1059,12 +1129,42 @@ arcs too short for two hinges, or a wall thicker than the radius are refused by 
 
 The bench has this tube as `flexures/tube`.
 
+**On a cone.** With the joints' axes on a cone's rulings, which all meet at its apex, the mechanism is a spherical
+four-bar about the apex (Hyatt, Magleby and Howell): each link turns about the apex, and a link's length is the angle
+between its two joints' axes. `coneFourBar(p)` draws it standing on its wide end, the wall leaning in by the cone's
+half-angle `angle`, each hinge a web down a ruling cut by pockets from both faces with round corners; the inside
+overhangs by that angle and nothing else does. `coneFourBarModel(p, material)` closes the loop on the sphere and gives
+what the tube's model gives; `coneFourBarFindings` adds `developable.overhang`.
+
+```js
+import { coneFourBar, coneFourBarModel, coneFourBarFindings } from '@rulecad/flexures';
+
+const cone = { radius: 26, angle: 20, wall: 2.5, height: 20, joints: [200, 140, 60, -20], hinge: { flex: 7, thickness: 0.84 } };
+const c = coneFourBarModel(cone, petg);
+c.links;    // { input: 19.69, coupler: 25.40, output: 25.40, ground: 37.49 } degrees between the axes
+c.hinge;    // { stiffness: 306.79 N·mm a radian, length: 6.20, width: 21.28 }: each web as long as the slant
+c.at(-3.7); // strain 0.61% (2.05 times under PETG's limit), torque -92.9 N·mm; the input and coupler 1.47 mm in
+c.grams;    // 8.29
+```
+
+| Quantity | Formula |
+|---|---|
+| A joint's axis | (-sin κ cos q, -sin κ sin q, cos κ), up its ruling to the apex |
+| A link's length | acos(u_i · u_j) = acos(sin²κ cos(q_j - q_i) + cos²κ) |
+| The output's turn ψ | C0 turned ψ about D keeps B · C = B0 · C0: a cos ψ + b sin ψ + c, a = B · C0 - (B · D)(D · C0), b = B · (D × C0), c = (B · D)(D · C0) |
+| A hinge's stiffness | E b t³ / 12 l_eff, b = H / cos κ, the slant |
+
+As the angle goes to 0 the apex goes far off and the cone four-bar is the tube's, joint for joint (the test holds them
+to 0.001°).
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
 the elastica above for a leaf (the other flexures' large-deflection models are on the roadmap). The material's strain limit
 is yours to set: PLA is brittle and creeps when held bent; PETG and nylon last far longer; living hinges want TPU or
-polypropylene. Measured limits, with their sources, belong in the material's rule set.
+polypropylene. Measured limits, with their sources, belong in the material's rule set. A rubber's strength over its
+modulus (3.2 for TPU 95A) is no limit at all, so `flexureMaterial` takes the rule set's `flex_strain` for it (25% for
+the kit's `tpu`, an estimate: neither maker's sheet gives a fatigue limit) and refuses a rubber without one.
 
 ## Sources
 
@@ -1086,7 +1186,10 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Guest, S. D., and Pellegrino, S., "The folding of triangulated cylinders, Part I: Geometric considerations", *Journal of Applied Mechanics* 61, 773-777, 1994: the triangulated cylinder (the Kresling pattern) and its two stable states.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.
 - Jensen, B. D., and Howell, L. L., "Bistable configurations of compliant mechanisms modeled using four links and translational joints", *Journal of Mechanical Design* 126(4), 2004: bistable compliant mechanisms, among them a shuttle on two leaves.
-- Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap.
+- Vangbo, M., "An analytical analysis of a compressed bistable buckled beam", *Sensors and Actuators A* 69(3), 1998: the squeezed strip and its snap, and its S-shaped way over, straight in force, when its middle is free to turn.
+- Hanna, B. H., Lund, J. M., Lang, R. J., Magleby, S. P., and Howell, L. L., "Waterbomb base: a symmetric single-vertex bistable origami mechanism", *Smart Materials and Structures* 23(9), 094009, 2014: the waterbomb base and its symmetric fold.
+- Hyatt, L. P., Magleby, S. P., and Howell, L. L., "Developable mechanisms on right conical surfaces", *Mechanism and Machine Theory* 149, 2020: spherical mechanisms on a cone, their joints' axes on its rulings.
+- Bambu Lab, TPU 95A technical data sheet V3.0, and Polymaker, PolyFlex TPU95-HF technical data sheet V5.5: the `tpu` rule set's figures.
 - Henein, S., Spanoudakis, P., Droz, S., Myklebust, L. I., and Onillon, E., "Flexure pivot for aerospace mechanisms", *10th European Space Mechanisms and Tribology Symposium*, ESA SP-524, 2003: the butterfly pivot, its four stages and its titanium prototype.
 - Cannon, J. R., Lusk, C. P., and Howell, L. L., "Compliant rolling-contact element mechanisms", ASME DETC2005-84073, 2005: the CORE.
 - Halverson, P. A., Howell, L. L., and Magleby, S. P., "Tension-based multi-stable compliant rolling-contact elements", *13th National Conference on Mechanisms and Machines* (NaCoMM 2007): a band's bending stress E h / 2R on a rolling surface, its tension stress E ε.

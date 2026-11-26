@@ -816,11 +816,16 @@ export async function lamina(spec) {
  * A material for flexures from its rule set ({ modulus, strength }): the strain it may see is its strength over its
  * modulus, the strain where it starts to yield, over a safety factor. The ratio is the figure of merit for compliant
  * mechanisms (Howell): the higher it is, the further a flexure of a given size can bend. PLA's is about 1.5%,
- * PETG's 1.9%, nylon's higher still.
- * @param {{ modulus: number, strength: number, name?: string }} rules @param {{ safety?: number }} [o] (default 1.5)
+ * PETG's 1.9%, nylon's higher still. A rubber (TPU) is different: it never yields as a plastic does, and its strength
+ * over its modulus (3.2 for TPU 95A) is far past where its stiffness holds. Its rule set gives flex_strain, the strain
+ * a flexure in it is sized to, and that is the limit as it stands (it is a design figure already, not divided again).
+ * @param {{ modulus: number, strength: number, name?: string, density?: number, flex_strain?: number }} rules
+ * @param {{ safety?: number }} [o] (default 1.5)
  */
-export function flexureMaterial({ modulus, strength, name, density }, { safety = 1.5 } = {}) {
+export function flexureMaterial({ modulus, strength, name, density, flex_strain }, { safety = 1.5 } = {}) {
   if (!(modulus > 0) || !(strength > 0)) throw new Error('a flexure material needs its modulus and strength (MPa)');
+  if (flex_strain !== undefined && !(flex_strain > 0 && flex_strain < 1)) throw new Error(`a flexure material's flex_strain is the strain a flexure in it is sized to, a fraction between 0 and 1 (got ${JSON.stringify(flex_strain)})`);
   const yieldStrain = strength / modulus;
-  return { E: modulus, strength, yieldStrain, strainLimit: yieldStrain / safety, safety, ...(name ? { name } : {}), ...(density ? { density } : {}) }; // density g/cm³, for firing
+  if (flex_strain === undefined && yieldStrain > 0.5) throw new Error(`a flexure material with a strength over its modulus of ${yieldStrain.toFixed(2)} is a rubber, whose stiffness does not hold that far: give its flex_strain (the rule set's), the strain a flexure in it is sized to`);
+  return { E: modulus, strength, yieldStrain, strainLimit: flex_strain ?? yieldStrain / safety, safety, ...(name ? { name } : {}), ...(density ? { density } : {}) }; // density g/cm³, for firing
 }
