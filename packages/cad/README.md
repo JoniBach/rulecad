@@ -1546,6 +1546,11 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
   area (a hole's edge, a pad), as stress where a load meets a point has no limit. `cad optimise` reports the peak
   stress against the limit. Check the final part with an `analysis` on a finer `cell`: a sharp corner that's
   within the limit on the optimiser's cells can still be over it on finer ones.
+- **Robust:** `"robust": true` optimises the design as made, a little thin and a little thick (eroded and dilated
+  copies) together. With a stress or strain limit, the lightest layout that keeps it on all three; a mechanism, the
+  layout whose worst copy moves its output furthest, and with a limit, optimised under it. `cad optimise` prints
+  the copies' peaks (and a mechanism's copies' travels). About three times the solves. A sharp inside corner of the
+  space still stays sharp; topopt's README has the figures.
 - **Variants**, picked as `name:variant`, set variables that have a tweak range, as an object's do.
 
 `cad optimise <project>/<problem>` runs it, reports how far each load case moves its load and the stiffness that

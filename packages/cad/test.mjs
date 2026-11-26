@@ -6905,6 +6905,28 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('a robust problem: cad optimise reports the design made a little thin and a little thick, and robust with a volume alone is refused by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'mech');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'mech', objects: [] }));
+    const inverter = {
+      title: 'A robust inverter', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.3, filter: 1.5, steps: 40,
+      space: { at: [20, 10], size: [40, 20] }, supports: [{ at: [0.5, 0.5], size: [1, 1] }, { at: [0.5, 19.5], size: [1, 1] }],
+      loads: [{ at: [0.5, 10], size: [1, 2], force: [10, 0] }], input_spring: 0.268,
+      output: { at: [39.5, 10], size: [1, 2], direction: [-1, 0], spring: 0.268 },
+    };
+    // (PLA: 39 MPa over 2680 MPa is 1.46%; a tenth of it is 0.146%, 3.9 MPa)
+    fs.writeFileSync(path.join(project, 'problems', 'robust.json'), JSON.stringify({ ...inverter, robust: true, strain: 'pla.strength / pla.modulus / 10' }));
+    const out = cad('optimise', 'mech/robust');
+    assert.match(out, /made a little thin, its output moves [\d.e-]+ mm; a little thick, [\d.e-]+ mm/);
+    assert.match(out, /made a little thin, peak stress [\d.e-]+ MPa; a little thick, [\d.e-]+ MPa/);
+    fs.writeFileSync(path.join(project, 'problems', 'stiff.json'), JSON.stringify({ ...inverter, output: undefined, input_spring: undefined, robust: true }));
+    assert.match(cad('optimise', 'mech/stiff'), /robust is for a mechanism \(with output: the worst of its eroded, as-made and dilated copies\) or a stress limit/);
+  } finally { done(); }
+});
+
 test('printed fittings in TPU: refused by name as a rubber, and left out of the plastics another refusal names', () => {
   const { ws, cad, done } = workspace();
   try {

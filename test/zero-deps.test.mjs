@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shippedModules } from '../scripts/shipped.mjs';
 
 const PEERS = ['@jscad/modeling', 'manifold-3d'];
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -21,7 +22,7 @@ for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad p
   // Every module the package ships, not only its main entry. The exception is a Node-only extra offered under its
   // own path (fea's ./threads): the main entry must not import it.
   const extras = typeof pj.exports === 'object' && pj.exports['.'] ? Object.entries(pj.exports).filter(([k]) => k !== '.').map(([, v]) => path.normalize(v.default || v)) : [];
-  const modules = pj.files.filter((f) => f.endsWith('.mjs') && !extras.includes(path.normalize(f)));
+  const modules = shippedModules(path.join(root, 'packages', p)).filter((f) => !extras.includes(path.normalize(f)));
   assert.ok(modules.length, `${p} ships no module`);
   for (const f of modules) {
     const src = fs.readFileSync(path.join(root, 'packages', p, f), 'utf8');
