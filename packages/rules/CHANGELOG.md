@@ -3,6 +3,17 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+
+## 0.3.29: the Mega 2560 and a driver breakout (#199)
+### Added
+
+- `arduino-mega-2560`: the board the streamer drives eight stepper axes from, each axis's STEP (D22 to D29), DIR (D37
+  down to D30) and home switch (A8 to A15) pin, the shared enable (D38), its clock and its outline. The pins are the
+  streamer's choice, read against ArduinoCore-avr's pin table; the outline is community until measured.
+- `driver-breakout`: a stepper driver expansion board for one A4988 or DRV8825 (42 x 35 mm, 12 to 30 V, an EN STEP DIR
+  GND header, microstep switches), community until measured, from one seller's listing.
+- No existing value changed.
+
 ## 0.3.28: a second maker's sheets, ranges readable
 ### Added
 
