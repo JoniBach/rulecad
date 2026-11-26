@@ -1813,6 +1813,221 @@ test('a spiral spring\'s coils never overlap: under 1.25 turns its thickened end
   assert.ok(made.findings.some((x) => x.code === 'lamina.strain' && x.level === 'pass'), 'its strain is the model\'s, within the limit at 30°');
 });
 
+test('kirigami: a one-sided neck\'s stiffness and strain are the kit\'s finite elements, re-run here; the rotating-squares sheet turns, stretches and weighs as worked by hand', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 });
+  // The table's row at r / w = 1 (k 0.04088, strain 0.2967 a radian), solved again on the same grid (25 cells across)
+  const fe = f.neckFE(1);
+  near(fe.stiffness, 0.04088, 0.0002, 'the stiffness over E b w², as tabulated'); near(fe.strain, 0.2967, 0.003, 'the peak strain a radian, as tabulated');
+  assert.ok(fe.strain > 1.2 * fe.flat, `the round side is the notch: ${fe.strain} against ${fe.flat} on the straight side`);
+  // A neck 0.84 wide, r 0.84, 2 deep in PETG (E 1810): k = 1810 × 2 × 0.84² × 0.04088 = 3620 × 0.7056 × 0.04088 = 104.42
+  // N·mm a radian. Paros and Weisbord's thin neck (a one-sided notch as a two-sided one of radius 2r):
+  // 2 E b w^2.5 / (9π √(2r)) = 2 × 1810 × 2 × 0.646695 / (28.2743 × 1.296148) = 127.76, stiffer as it leaves out the roots.
+  // PETG's limit 34 / 1810 / 1.5 = 1.2523%, so the neck turns 0.012523 / 0.2967 = 0.042208 rad = 2.418°
+  const n = f.neckHingeModel({ neck: 0.84, radius: 0.84, depth: 2 }, petg);
+  near(n.stiffness, 104.42, 0.01, 'k by hand'); near(n.thinNeck, 127.76, 0.01, 'the thin-neck formula by hand');
+  near(n.limit, 0.042208, 1e-5, 'the turn at the strain limit'); near(n.strain(0.01), 0.002967, 1e-9, 'strain a radian');
+  // the thin-neck formula comes nearer as the round end grows: at r / w = 6, 2 / (9π √12) = 0.020418 against 0.01952
+  const ratio = (rho) => f.neckHingeModel({ neck: 1, radius: rho, depth: 1 }, { E: 1 }).stiffness / f.neckHingeModel({ neck: 1, radius: rho, depth: 1 }, { E: 1 }).thinNeck;
+  near(ratio(6), 0.01952 / 0.020418, 1e-4, 'at r / w = 6'); assert.ok(ratio(1) < ratio(3) && ratio(3) < ratio(6), 'nearer as r grows');
+  // between rows, straight in log r and log k: at r / w = √1.5, halfway, √(0.04088 × 0.03507) = 0.037864
+  near(f.neckHingeModel({ neck: 1, radius: Math.sqrt(1.5), depth: 1 }, { E: 1 }).stiffness, 0.037864, 1e-6, 'between rows');
+  assert.throws(() => f.neckHingeModel({ neck: 0.84, radius: 0.25, depth: 2 }, petg), /kirigami\.radius: .*0\.298.*from 0\.42 to 5\.04 mm/);
+  assert.throws(() => f.neckHingeModel({ neck: 0, radius: 1, depth: 2 }, petg), /kirigami\.size: neckHingeModel: neck/);
+  // The sheet: pitch 10, necks 0.84, slots 1.68 (r 0.84), 2 thick, 6 by 6. Each square's necks sit d = r + w / 2 = 1.26
+  // from its corners, going round, so they make a square of side s = √(8.74² + 1.26²) = √77.9752 = 8.830357, turned
+  // α0 = atan(1.26 / 8.74) = 8.2035°; s (cos α0 + sin α0) = 8.74 + 1.26 = 10, the pitch
+  const p = { pitch: 10, neck: 0.84, slot: 1.68, depth: 2, across: 6, rows: 6 }, m = f.rotatingSquaresModel(p, petg);
+  near(m.side, 8.830357, 1e-6, 's'); near(m.rest, 8.20351, 1e-4, 'α0'); assert.equal(m.necks, 5 * 6 + 6 * 5); assert.equal(m.poisson, -1);
+  // Grima and Evans: E = 8K / (s² b (1 - sin 2α0)); sin 2α0 = 2 × 1.26 × 8.74 / 77.9752 = 0.282459, so
+  // 8 × 104.4186 / (77.9752 × 2 × 0.717541) = 835.349 / 111.900 = 7.4651 MPa: 242 times softer than PETG
+  near(m.E, 7.4651, 1e-3, 'E by hand');
+  // pulled by its sides: 60 necks' energy ½ K (2Δα)², width 6 s (cos α + sin α), so at rest 60 × 4K / (36 s² (cos α0 - sin α0)²)
+  // = 25060.5 / (36 × (8.74 - 1.26)²) = 25060.5 / 2014.21 = 12.442 N/mm; a large sheet's E b rows / across is 14.93
+  near(m.stiffness, 12.442, 1e-3, 'stiffness by hand'); near(m.at(0.001).force / 0.001, m.stiffness, 1e-3, 'the force curve starts at it');
+  // the limit: each neck 2.418°, so the squares turn 1.2092° further, to α = 9.4127°: 6 s (cos α + sin α) - 60 =
+  // 6 × 8.830357 × 1.150083 - 60 = 0.934 mm, 1.56% of the sheet
+  const al = (8.20351 + 2.418322 / 2) * Math.PI / 180;
+  near(m.limit.stretch, 6 * 8.830357 * (Math.cos(al) + Math.sin(al)) - 60, 1e-4, 'the stretch at the limit'); near(m.limit.stretch, 0.934, 1e-3, 'by hand');
+  near(m.at(m.limit.stretch).strain, petg.strainLimit, 1e-6, 'the necks reach the limit there');
+  near(m.stretchFor(m.at(0.5).force), 0.5, 1e-6, 'stretchFor is the force curve read back'); assert.throws(() => m.stretchFor(-1), /kirigami\.force/);
+  // grams: the plate less 36 slots, each π r² + 4r (8.32 - 0.84) = 2.2167 + 25.1328 = 27.3495 mm², half where an edge
+  // runs through it and a quarter at a corner: 25 + 20 / 2 + 4 / 4 = 36 whole ones, 984.58 mm², so 2615.42 mm²
+  near(m.area, 3600 - 36 * (Math.PI * 0.84 ** 2 + 4 * 0.84 * 7.48), 1e-6, 'area'); near(m.area, 2615.42, 0.01, 'by hand');
+  const g = f.rotatingSquares(p), box = measureBoundingBox(g);
+  near(measureVolume(g) / m.volume, 1, 0.002, 'the shape weighs what the model says'); assert.ok(onePiece(g), 'one print');
+  assert.deepEqual(box.map((c) => c.map((x) => +x.toFixed(6) + 0)), [[0, 0, 0], [60, 60, 2]]);
+  // findings: the necks and slots in lines, a pull past the limit fails and says how far it may go
+  const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, by = (list, c) => list.find((x) => x.code === c);
+  const ok = f.kirigamiFindings({ ...p, stretch: 0.4 }, printer, petg, m);
+  assert.deepEqual(ok.filter((x) => x.level !== 'pass').map((x) => x.code), []);
+  assert.match(by(f.kirigamiFindings({ ...p, stretch: 1.2 }, printer, petg, m), 'kirigami.strain').text, /over PETG limit of 1\.25%: at most 0\.93 mm/);
+  assert.equal(by(f.kirigamiFindings({ ...p, neck: 0.6, slot: 1.2 }, printer), 'kirigami.neck').level, 'fail');
+  assert.equal(by(f.kirigamiFindings({ ...p, slot: 0.8 }, printer), 'kirigami.slot').level, 'fail');
+  assert.equal(by(f.kirigamiFindings({ ...p, depth: 2.1 }, printer), 'kirigami.layers').level, 'warn');
+  assert.throws(() => f.rotatingSquares({ ...p, pitch: 2.5 }), /kirigami\.pitch: .*over 2\.52 mm/);
+  assert.throws(() => f.rotatingSquaresModel({ ...p, rows: 1 }, petg), /kirigami\.count: rotatingSquaresModel: rows/);
+  // fully open at 45°: 6 s √2 - 60 = 74.93 - 60 = 14.93 mm
+  assert.throws(() => m.at(15), /kirigami\.stretch: .*fully open/);
+  // the bench panel (examples/bench flexures/kirigami): built by its own main, sized for its 6 N pull with twice the margin
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), json = JSON.parse(fs.readFileSync(new URL('kirigami.json', dir), 'utf8').replace(/\r\n/g, '\n')), V = json.variables;
+  assert.equal(V.neck.value, 'x1c.line * 2'); assert.equal(V.slot.value, 'x1c.line * 4');
+  const v = { ...Object.fromEntries(Object.entries(V).map(([k, x]) => [k, x.value])), neck: 0.84, slot: 1.68, flexures: f, petg: { modulus: 1810, strength: 34, density: 1.27 }, x1c: printer };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('kirigami.js', dir))).href), made = main(v), mech = made.mechanism;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass').map((x) => x.code), [], 'every finding passes');
+  const margin = by(made.findings, 'kirigami.strain').values.limit / by(made.findings, 'kirigami.strain').values.strain;
+  assert.ok(margin >= 1.9 && margin <= 2.5, `about twice the margin: ${margin}`);
+  near(by(made.findings, 'kirigami.strain').values.force, V.load.value, 1e-6, 'the stretch is the design pull\'s');
+  assert.ok(V.load.rule.includes(`stretches it ${mech.stretch.toFixed(2)} mm`) && V.load.rule.includes(`stretched ${mech.limit.toFixed(2)} mm`) && V.load.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.load.rule);
+  assert.ok(onePiece(made.parts.sheet), 'the panel is one print');
+  // the README's figures are the code's
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  for (const line of [`m.E;            // ${m.E.toFixed(2)} MPa in its plane, ${Math.round(1810 / m.E)} times softer than PETG`, `m.stiffness;    // ${m.stiffness.toFixed(2)} N/mm pulled by its sides`,
+    `m.limit;        // { stretch: ${m.limit.stretch.toFixed(2)} mm, turn: ${m.limit.turn.toFixed(2)}° at each neck, force: ${m.limit.force.toFixed(1)} N, sheet: ${(m.limit.sheet * 100).toFixed(2)}% }`, `m.grams;        // ${m.grams.toFixed(2)}`,
+    `1.22 times at r / w = 1`, `turn further (${(petg.strainLimit / 0.1256 * 180 / Math.PI).toFixed(1)}° at r / w = 6)`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  near(n.thinNeck / n.stiffness, 1.22, 0.005, 'the README\'s 1.22');
+});
+
+test('cells: a curved-beam cell\'s stiffness turns negative past its snap, Qiu\'s rise over thickness sets whether it stays over, and a spring as stiff cancels it over a range', async () => {
+  const { curvedCellModel, balancedCellModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }); // strain limit 34 / 1810 / 1.5 = 1.2523%
+  // Qiu, Lang and Slocum: two cosine beams joined at the middle stay over when the rise is over 2.31 thicknesses.
+  // 60 mm, 0.84 thick: a rise of 1.5 (Q 1.79) springs back, though its stiffness still turns negative past the snap;
+  // a rise of 3 (Q 3.57) stays over, resting again short of the mirror (2 × 3 = 6 mm) and past 1.5 rises
+  const low = curvedCellModel({ length: 60, rise: 1.5, thickness: 0.84, width: 6 }, petg), high = curvedCellModel({ length: 60, rise: 3, thickness: 0.84, width: 6 }, petg);
+  assert.equal(low.bistable, false); assert.ok(low.negative && low.negative.least < 0, 'Q 1.79: negative past the snap');
+  assert.equal(high.bistable, true); assert.ok(high.second > 4.5 && high.second < 6, `rests again at ${high.second}`);
+  // the slope is the force curve's own: centred differences between steps
+  const c = high.curve, i = 20; near(c[i].slope, (c[i + 1].force - c[i - 1].force) / (c[i + 1].push - c[i - 1].push), 1e-9, 'a centred slope');
+  // a rise under a thickness has none to balance: the finding fails and the balanced cell is refused by name
+  const flat = curvedCellModel({ length: 60, rise: 0.8, thickness: 0.84, width: 6 }, petg);
+  assert.equal(flat.negative, null); assert.equal(flat.findings.find((x) => x.code === 'cell.negative').level, 'fail');
+  assert.throws(() => balancedCellModel({ length: 60, rise: 0.8, thickness: 0.84, width: 6 }, petg), /cell\.negative: balancedCellModel/);
+  assert.throws(() => curvedCellModel({ length: 60, rise: 13, thickness: 0.84, width: 6 }, petg), /cell\.rise: .*up to 12\.00 mm/);
+  assert.throws(() => curvedCellModel({ length: 60, rise: 3, thickness: 0, width: 6 }, petg), /cell\.size: curvedCellModel: thickness/);
+  // The balanced cell: 80 mm, rise 2.5, two lines thick, 6 wide. A spring as stiff as the beams' least slope (about
+  // -1.32 N/mm at 2.57 mm pushed) cancels it there: the pair's force is the beams' plus k × push, its slope theirs plus k
+  const p = { length: 80, rise: 2.5, thickness: 0.84, width: 6 }, b = balancedCellModel(p, petg), k = b.spring;
+  near(k, -b.cell.negative.least, 1e-12, 'the spring matches the least slope'); near(k, 1.32, 0.02, 'about 1.32 N/mm');
+  const j = 30; near(b.curve[j].force, b.cell.curve[j].force + k * b.cell.curve[j].push, 1e-12, 'forces add'); near(b.curve[j].slope, b.cell.curve[j].slope + k, 1e-12, 'slopes add');
+  assert.ok(b.flat && b.flat.from < b.cell.negative.at && b.flat.to > b.cell.negative.at, 'the flat range is round the cancelling point');
+  for (const q of b.curve.filter((q) => q.push >= b.flat.from && q.push <= b.flat.to)) assert.ok(Math.abs(q.slope) <= 0.1 * k + 1e-12, `within 10% at ${q.push}`);
+  assert.ok(b.flat.span > 1.5, `a range of ${b.flat.span} mm`); assert.equal(b.findings.find((x) => x.code === 'cell.flat').level, 'pass');
+  // the printed spring: leaves 0.84 by 6 that stay within half the limit to the range's end δ: l = √(3 t δ / (0.012523 / 2)),
+  // each 12 E I / l³ = E w t³ / l³, as many as reach k. With δ = 3.4375 (the solver's): l = √(8.6625 / 0.0062615) = 37.195,
+  // each 1810 × 6 × 0.592704 / 37.195³ = 6436.8 / 51458 = 0.12509 N/mm, so ⌈1.3195 / 0.12509⌉ = 11 leaves
+  const d = b.flat.to, l = Math.sqrt((3 * 0.84 * d) / (petg.strainLimit / 2));
+  near(b.leaves.length, l, 1e-9, 'leaf length'); near(b.leaves.each, (1810 * 6 * 0.84 ** 3) / l ** 3, 1e-12, 'each leaf'); assert.equal(b.leaves.count, Math.ceil(k / b.leaves.each));
+  if (Math.abs(d - 3.4375) < 1e-9) { near(l, 37.195, 1e-3, 'by hand'); assert.equal(b.leaves.count, 11); }
+  // a spring too soft never cancels: the finding fails and names the stiffness wanted
+  const readme = (await import('node:fs')).readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), N = b.cell.negative;
+  for (const line of [`b.cell.stiffness;  // ${b.cell.stiffness.toFixed(2)} N/mm at rest`, `b.cell.negative;   // { from: ${N.from.toFixed(2)}, to: ${N.to.toFixed(2)}, least: ${N.least.toFixed(3)} N/mm, at: ${N.at.toFixed(2)} } mm pushed`,
+    `b.flat;            // { from: ${b.flat.from.toFixed(2)}, to: ${b.flat.to.toFixed(2)}, span: ${b.flat.span.toFixed(2)}, force: ${b.flat.force.toFixed(2)} N }`, `b.leaves;          // { length: ${b.leaves.length.toFixed(1)}, count: ${b.leaves.count} }`,
+    `${(b.leaves.count * b.leaves.length).toFixed(0)} mm of leaf against the arches' 160 mm`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+  assert.match(balancedCellModel(p, petg, { spring: 0.5 }).findings.find((x) => x.code === 'cell.flat').text, /does not cancel .* a spring nearer 1\.3\d\d N\/mm/);
+});
+
+test('developable: a four-bar in a tube\'s wall moves as the rigid linkage, its links leave the surface as worked by hand, and the bench tube is sized with twice the margin', async () => {
+  const f = await import('@rulecad/flexures'), fs = await import('node:fs'), { pathToFileURL, fileURLToPath } = await import('node:url');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
+  const petg = f.flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG', density: 1.27 }), R = 20, th = (5 * Math.PI) / 180;
+  // Joints at 210°, 150°, 30° and -30° on a 20 mm radius make a rectangle: input and output R long (60° chords), coupler
+  // and ground R√3 = 34.641. A parallelogram: the coupler does not turn, so every hinge turns as far as the input, by
+  // turns +, -, +, -. Each web is drawn 8 long with pockets (2.5 - 0.84) / 2 = 0.83 deep whose corners at the web are
+  // rounds of rr = 0.83: thin for 8 - 1.66 = 6.34 mm, then at s along each round t + 2 (rr - √(rr² - s²)) thick. It bends
+  // as a web of l_eff = 6.34 + 2 ∫ from 0 to rr of (t / t(s))³ ds = 6.34 + 2 × 0.43108 = 7.20216 mm (the midpoint rule on
+  // s, 200000 steps, below). Each hinge EI / l_eff = 1810 × 20 × 0.84³ / 12 / 7.20216 = 248.257 N·mm a radian (it would be
+  // 223.499 on the full 8 mm), so holding 5° takes the four hinges' energy's slope 4 K θ = 4 × 248.257 × 0.087266 =
+  // 86.658 N·mm, at strain t θ / 2 l_eff = 0.84 × 0.087266 / 14.40433 = 0.50890%; PETG's 1.2523% allows
+  // 2 × 7.20216 × 0.012523 / 0.84 = 0.21475 rad = 12.304° each way
+  const p = { radius: R, wall: 2.5, height: 20, joints: [210, 150, 30, -30], hinge: { flex: 8, thickness: 0.84 } }, m = f.tubeFourBarModel(p, petg), r = m.at(5);
+  let ends = 0; for (let i = 0, n = 200000, rr = 0.83; i < n; i++) { const s = ((i + 0.5) * rr) / n; ends += (0.84 / (0.84 + 2 * (rr - Math.sqrt(rr * rr - s * s)))) ** 3 * (rr / n); }
+  near(ends, 0.43108, 1e-5, 'a round corner\'s share'); near(m.hinge.length, 6.34 + 2 * ends, 1e-6, 'the web bends as its drawn profile');
+  near(m.links.input, R, 1e-9, 'input'); near(m.links.coupler, R * Math.sqrt(3), 1e-9, 'coupler'); near(m.hinge.stiffness, 248.257, 1e-3, 'K by hand');
+  r.turns.forEach((q, i) => near(q, [5, -5, 5, -5][i], 1e-9, `hinge ${i + 1}'s turn`));
+  near(r.torque, 86.658, 1e-3, 'torque by hand'); near(r.strain, 0.0050890, 1e-7, 'strain by hand'); near(m.travel[1], 12.304, 1e-3, 'travel'); near(m.travel[0], -12.304, 1e-3, 'travel back');
+  // The coupler moves without turning, by the input's end's move: B from (−R cos 30°, R sin 30°) about A by θ, so by
+  // (−R sin θ, R (cos θ − 1)). A point at φ on its arc then lies √(1 + sin²θ + (cos θ − 1)² − 2 cos φ sin θ + 2 sin φ (cos θ − 1)) R
+  // from the axis: the most and least over the arc from 150° to 30° (the model's 49 points) are how far it stands out and in
+  const ds = Array.from({ length: 49 }, (_, i) => { const ph = ((150 - (120 * i) / 48) * Math.PI) / 180; return R * Math.sqrt(1 + Math.sin(th) ** 2 + (Math.cos(th) - 1) ** 2 - 2 * Math.cos(ph) * Math.sin(th) + 2 * Math.sin(ph) * (Math.cos(th) - 1)) - R; });
+  near(r.out.coupler, Math.max(0, ...ds), 1e-9, 'out, by hand'); near(r.in.coupler, Math.max(0, ...ds.map((x) => -x)), 1e-9, 'in, by hand');
+  assert.ok(r.out.coupler > 1 && r.in.coupler > 1, 'it leaves the surface both ways'); near(m.at(0).out.coupler, 0, 1e-9, 'at rest it is the tube');
+  // the shape: one piece, the tube's outline, its volume the model's (the pockets measured flat: within half a percent)
+  const g = f.tubeFourBar(p), box = measureBoundingBox(g);
+  assert.ok(onePiece(g), 'one print'); near(box[1][0], R + 1.25, 0.01, 'outer radius'); near(box[1][2], 20, 1e-9, 'height');
+  near(measureVolume(g) / m.volume, 1, 0.005, 'the shape weighs what the model says');
+  // findings and refusals by name
+  const printer = { line: 0.42, layer: 0.2, wall_min: 0.84 }, by = (list, c) => list.find((x) => x.code === c);
+  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 12.5 }, printer, petg, m), 'developable.strain').level, 'fail');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, turn: 5 }, printer, petg, m), 'developable.strain').level, 'pass');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, hinge: { flex: 8, thickness: 0.6 } }, printer), 'developable.web').level, 'fail');
+  assert.equal(by(f.tubeFourBarFindings({ ...p, height: 20.1 }, printer), 'developable.layers').level, 'warn');
+  assert.throws(() => f.tubeFourBarModel({ ...p, joints: [0, 90, 180] }, petg), /developable\.joints: .*four angles/);
+  assert.throws(() => f.tubeFourBarModel({ ...p, joints: [0, 10, 180, 270] }, petg), /developable\.joints: .*the input's arc, 3\.49 mm, is under two hinges' length/);
+  // a straight web on a curved wall: 10 mm on 20 mm stands 100 / 160 = 0.625 mm off, over a quarter of the 1.66 mm cut;
+  // the longest is √(2 R (w - t)) = √(40 × 1.66) = 8.149 mm
+  assert.throws(() => f.tubeFourBar({ ...p, hinge: { flex: 10, thickness: 0.84 } }), /developable\.hinge: .*0\.63 mm.*under 8\.15 mm long/);
+  // the bench tube (examples/bench flexures/tube): built by its own main, every finding passes, about twice the margin
+  const dir = new URL('../../examples/bench/projects/flexures/objects/', import.meta.url), V = JSON.parse(fs.readFileSync(new URL('tube.json', dir), 'utf8').replace(/\r\n/g, '\n')).variables;
+  assert.equal(V.web.value, 'x1c.line * 2');
+  const v = { ...Object.fromEntries(Object.entries(V).map(([k, x]) => [k, x.value])), web: 0.84, flexures: f, petg: { modulus: 1810, strength: 34, density: 1.27 }, x1c: { ...printer, fit: 0.2 } };
+  const { main } = await import(pathToFileURL(fileURLToPath(new URL('tube.js', dir))).href), made = main(v), at = made.mechanism.at;
+  assert.deepEqual(made.findings.filter((x) => x.level !== 'pass' && x.level !== 'info').map((x) => x.code), []);
+  const margin = petg.strainLimit / at.strain; assert.ok(margin >= 1.9 && margin <= 2.5, `about twice the margin: ${margin}`);
+  // pressed inwards is a turn below 0: the input and the hinge after it go into the tube, the coupler's far hinge out
+  assert.ok(V.turn.value < 0 && at.in.input > 1 && at.out.input === 0 && at.out.coupler > 1, 'the design turn presses the input in');
+  assert.ok(V.turn.rule.includes(`${at.in.coupler.toFixed(2)} mm into the tube`) && V.turn.rule.includes(`stands ${at.out.coupler.toFixed(2)} mm out`) && V.turn.rule.includes(`${Math.abs(at.torque).toFixed(1)} N·mm`) && V.turn.rule.includes(`(${margin.toFixed(2)} times the margin)`), V.turn.rule);
+  const bench = fs.readFileSync(new URL('../../examples/bench/projects/flexures/README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n').replace(/\s+/g, ' ');
+  assert.ok(bench.includes(`turned ${Math.abs(V.turn.value)} degrees in it takes ${Math.abs(at.torque).toFixed(1)} N·mm, it and the hinge after it go ${at.in.coupler.toFixed(2)} mm into the tube and the next hinge stands ${at.out.coupler.toFixed(2)} mm out`), 'the bench README says what the model does');
+  assert.ok(onePiece(made.parts.tube), 'the bench tube is one print');
+  // the README's example is the bench tube
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), bt = made.mechanism.travel;
+  for (const line of [`m.travel;    // [${bt[0].toFixed(1)}, ${bt[1].toFixed(1)}]`, `m.at(${V.turn.value});  // turns, strain ${(at.strain * 100).toFixed(2)}%, torque ${at.torque.toFixed(1)} N·mm`, `m.grams;     // ${made.mechanism.grams.toFixed(2)}`]) assert.ok(readme.includes(line), `the README should read ${line}`);
+});
+
+test('Kresling: the second stable state is the closed form\'s, the panels stretch between the two, and PETG webs cannot take its folds', async () => {
+  const { kreslingModel, flexureMaterial } = await import('@rulecad/flexures');
+  const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`), r = (d) => (d * Math.PI) / 180;
+  const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' });
+  // Six sides on R 20 (each 20 mm), standing 30 tall turned 100°: the side B_i T_i a² = 900 + 800 (1 - cos 100°) =
+  // 1838.918, a = 42.8826; the diagonal b² = 900 + 800 (1 - cos 40°) = 1087.165, b = 32.9722. The second state turns
+  // 180 + 60 - 100 = 140°, at h² = a² - 800 (1 - cos 140°) = 1838.918 - 1412.836 = 426.082, h = 20.6418
+  const p = { sides: 6, radius: 20, height: 30, twist: 100, panel: { thickness: 0.6 }, hinge: { flex: 2, thickness: 0.4 } }, k = kreslingModel(p, petg);
+  near(k.sides.polygon, 20, 1e-9, 'polygon side'); near(k.sides.side, 42.8826, 1e-4, 'a'); near(k.sides.diagonal, 32.9722, 1e-4, 'b');
+  assert.equal(k.bistable, true); near(k.states[1].twist, 140, 1e-9, 'the second twist'); near(k.states[1].height, 20.6418, 1e-4, 'the second height');
+  // at the second state every side and diagonal is its length again: the same a and b from the second height and twist
+  near(Math.sqrt(k.states[1].height ** 2 + 800 * (1 - Math.cos(r(140)))), k.sides.side, 1e-9, 'a again'); near(Math.sqrt(k.states[1].height ** 2 + 800 * (1 - Math.cos(r(80)))), k.sides.diagonal, 1e-9, 'b again');
+  // flat: the top row x0 = (a² - b² + s²) / 2s = (1838.918 - 1087.165 + 400) / 40 = 28.7938 along, √(a² - x0²) = 31.7778 up
+  near(k.flat[1][0][0], 28.7938, 1e-4, 'x0'); near(k.flat[1][0][1], 31.7778, 1e-4, 'y0'); assert.equal(k.flat[0].length, 7);
+  // both states rest (no stretch, no force); between them the panels stretch and it takes a push to cross
+  for (const st of k.states) { const a = k.at(st.height); near(a.stretch, 0, 1e-6, `no stretch at ${st.height}`); near(a.energy, 0, 1e-6, 'no energy'); }
+  assert.ok(k.barrier.height < 30 && k.barrier.height > 20.64, 'the barrier lies between'); assert.ok(k.barrier.energy > 0 && k.barrier.force > 0 && k.barrier.stretch > 0.005, JSON.stringify(k.barrier));
+  // a crease folded ψ on a web t thick and l wide sees t ψ / 2l: the second state's diagonal folds over 150°, so a 0.4 mm
+  // PETG web would want 0.4 × ψ / (2 × 0.012523) mm, over 40 mm, where the panels are 20
+  const w = k.web[1]; near(w.strain, (0.4 * r(w.fold)) / 4, 1e-12, 'web strain'); near(w.length, (0.4 * r(w.fold)) / (2 * petg.strainLimit), 1e-9, 'web length'); assert.ok(w.fold > 150 && w.length > 40);
+  // too short for a second state: 15 tall at 100° (needs h² over 800 (cos 100° - cos 140°) = 474.0)
+  assert.equal(kreslingModel({ sides: 6, radius: 20, height: 15, twist: 100 }).bistable, false);
+  assert.equal(kreslingModel({ sides: 6, radius: 20, height: 22, twist: 100 }).bistable, true);
+  for (const [bad, code] of [[{ ...p, sides: 2 }, 'kresling.sides'], [{ ...p, twist: 20 }, 'kresling.twist'], [{ ...p, twist: 130 }, 'kresling.twist']]) assert.throws(() => kreslingModel(bad), (e) => e.code === code);
+});
+
+test('kirigami: a neck a hair past the table\'s ends reads the end row, not a line through the far rows', async () => {
+  const { neckHingeModel } = await import('@rulecad/flexures');
+  // 0.7 × 6 = 4.2 gives r / w = 6.000000000000001 in floating point: the refusal lets it through (within 1e-9), so the
+  // table's last row, k / (E b w²) = 0.01952 and 0.1256 a radian, is what it must read. Before the fix, findIndex found no
+  // row at or over it and the lookup ran the line through the 0.5 and 0.75 rows out to 6: 0.02619 (+34%)
+  const w = 0.7, edge = neckHingeModel({ neck: w, radius: 4.2, depth: 1 }, { E: 1 }), end = neckHingeModel({ neck: 0.3, radius: 1.8, depth: 1 }, { E: 1 });
+  assert.ok(edge.rho > 6, `the case is past the end: ${edge.rho}`);
+  assert.ok(Math.abs(edge.stiffness / (w * w) - 0.01952) < 1e-9, `${edge.stiffness / (w * w)}`);
+  assert.ok(Math.abs(edge.stiffness / (w * w) - end.stiffness / 0.09) < 1e-9);
+  assert.ok(Math.abs(edge.strain(1) - end.strain(1)) < 1e-9, `the strain too: ${edge.strain(1)} against ${end.strain(1)}`);
+  // and a hair under the first row reads the first row
+  const low = neckHingeModel({ neck: 0.3, radius: 0.15 - 1e-12, depth: 1 }, { E: 1 });
+  assert.ok(Math.abs(low.stiffness / 0.09 - 0.04944) < 1e-9, `${low.stiffness / 0.09}`);
+});
+
 test('a force gauge: the beam solver\'s parallel guide is 24EI / L³, its ticks fall where the force puts the needle, the leaves keep twice the margin at the range, and a calibration corrects it', async () => {
   const { forceGauge, forceGaugeModel } = await import('@rulecad/flexures');
   // Leaves 40 × 0.8 × 6, no rounds: I = 6 × 0.8³ / 12 = 0.256 mm⁴; one fixed-guided leaf 12EI / L³ = 12 × 2680 × 0.256
