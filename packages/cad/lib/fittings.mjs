@@ -76,14 +76,19 @@ export function plasticNamed(raw, where = 'the project') {
   if (['pla', 'petg'].includes(m)) return m;
   let set = null; try { set = peekRuleSet(m); } catch {}
   const lacks = ['strength', 'modulus', 'density'].filter((k) => !(typeof set?.rules?.[k]?.value === 'number'));
-  if (set && !lacks.length) return set;
   const have = plastics().join(', ');
+  if (set && !lacks.length && rubber(set.rules)) throw new Error(`${where}: its material is ${JSON.stringify(raw)}, a rubber (its strength over its modulus is ${(set.rules.strength.value / set.rules.modulus.value).toFixed(2)}, a strain far past where its stiffness holds), and printed fittings are sized with sums for a stiff plastic that do not hold for it. Set the material to one of ${have}`);
+  if (set && !lacks.length) return set;
   throw new Error(`${where}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit and this workspace have rule sets for ${have}, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to one of ${have}`);
 }
 
+// A rubber (TPU): its strength over its modulus, the strain where a stiff plastic yields, is past 0.5. Its stiffness
+// holds only at small strains and it never yields as a plastic does, so the fittings' sums are not for it
+const rubber = (r) => r.strength.value / r.modulus.value > 0.5;
+
 /**
  * The plastics a project can name: the rule sets (the workspace's rules/, then the kit's) that give strength, modulus,
- * density and modulus_z, the modulus across a print's layers, which only a printed plastic's set gives.
+ * density and modulus_z, the modulus across a print's layers, which only a printed plastic's set gives; a rubber's is left out.
  * @returns {string[]} their names, sorted
  */
 export function plastics() {
@@ -92,7 +97,7 @@ export function plastics() {
     let files = []; try { files = fs.readdirSync(d).filter((f) => f.endsWith('.json')); } catch { continue; }
     for (const f of files) {
       let r; try { r = JSON.parse(fs.readFileSync(path.join(d, f), 'utf8')).rules; } catch { continue; }
-      if (['strength', 'modulus', 'density', 'modulus_z'].every((k) => typeof r?.[k]?.value === 'number')) out.add(f.slice(0, -5));
+      if (['strength', 'modulus', 'density', 'modulus_z'].every((k) => typeof r?.[k]?.value === 'number') && !rubber(r)) out.add(f.slice(0, -5));
     }
   }
   return [...out].sort();

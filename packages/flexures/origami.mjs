@@ -17,6 +17,7 @@ import { need } from './core.mjs';
 const { polygon, polyhedron } = jscad.primitives;
 const { union } = jscad.booleans;
 const { extrudeLinear } = jscad.extrusions;
+const { measureVolume } = jscad.measurements;
 
 const refuse = (code, text) => Object.assign(new Error(text), { code });
 const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
@@ -220,4 +221,253 @@ export function kreslingModel(p, m) {
     out.web = states.map((st) => { const fold = Math.max(st.folds.side, st.folds.diagonal), strain = (p.hinge.thickness * rad(fold)) / (2 * p.hinge.flex); return { fold, strain, length: m?.strainLimit ? (p.hinge.thickness * rad(fold)) / (2 * m.strainLimit) : NaN }; });
   }
   return out;
+}
+
+// ------------------------------------------------------------------------------------------------ the waterbomb base
+
+/** @typedef {{ sides: number, radius: number, thickness: number, hinge: { flex: number, thickness: number } }} Waterbomb
+ *   sides: n, the sheet's corners (3 to 8): the sheet is a regular n-sided polygon, its corners radius R from the
+ *   middle; 2n creases run out from the middle, n to the corners and n to the sides' middles, each sector between two
+ *   of them a triangle with its angle at the middle π / n; thickness: the panels' (h); hinge: each crease's web, flex
+ *   wide across it and thickness thick (t, under h), printed on the bed under the whole sheet */
+
+function checkW(what, p) {
+  if (!p || typeof p !== 'object') throw refuse('waterbomb.input', `${what}: a waterbomb is { sides, radius, thickness, hinge: { flex, thickness } } (got ${JSON.stringify(p)})`);
+  if (!(Number.isInteger(p.sides) && p.sides >= 3 && p.sides <= 8)) throw refuse('waterbomb.sides', `${what}: sides is a whole number from 3 to 8 (got ${JSON.stringify(p.sides)})`);
+  need(what, { radius: p.radius, thickness: p.thickness });
+  if (!p.hinge || typeof p.hinge !== 'object') throw refuse('waterbomb.web', `${what}: give its creases a hinge: { flex, thickness } (the web under each crease)`);
+  need(`${what}: hinge`, { flex: p.hinge.flex, thickness: p.hinge.thickness });
+  if (!(p.thickness > p.hinge.thickness)) throw refuse('waterbomb.web', `${what}: the web (${p.hinge.thickness} mm) is not thinner than the panels (thickness ${p.thickness} mm)`);
+  // each panel, set back half a web from its two creases and sloped back at 45°, must keep some of its face
+  const n = p.sides, inr = (p.radius * Math.cos(Math.PI / n) * Math.sin(Math.PI / n)) / (1 + Math.sin(Math.PI / n)), back = p.hinge.flex / 2 + (p.thickness - p.hinge.thickness);
+  if (!(back < 0.8 * inr)) throw refuse('waterbomb.panel', `${what}: the panels, set back ${back.toFixed(2)} mm from their creases (half the web and the panels' slope), leave next to nothing of each ${(2 * inr).toFixed(2)} mm sector: a bigger radius, a narrower web or thinner panels`);
+}
+
+// The symmetric fold, by the corner creases' droop e_c below the flat (radians): each corner crease's direction from
+// the middle c_k = (cos e_c cos φk, cos e_c sin φk, -sin e_c), each side crease's m_k the same at φk + π/n with its
+// droop e_m. A sector keeps its angle π/n, so c_k · m_k = cos(π/n):
+//   cos e_c cos e_m cos(π/n) + sin e_c sin e_m = cos(π/n)
+// ρ cos(e_m - δ) = cos(π/n) with ρ = √(cos²(π/n) cos² e_c + sin² e_c), δ = atan2(sin e_c, cos(π/n) cos e_c); of its two
+// roots the side creases droop further, e_m = δ + acos(cos(π/n) / ρ): the middle stands up, the corners and sides go
+// down, the sides furthest (the waterbomb base). It ends where the side creases hang straight down (e_m = 90°), at
+// sin e_c = cos(π/n): there the corner creases are folded flat (180°) and the side creases 180° - 360°/n.
+function waterbombAt(n, ec) {
+  const C = Math.cos(Math.PI / n), rho = Math.hypot(C * Math.cos(ec), Math.sin(ec)), dl = Math.atan2(Math.sin(ec), C * Math.cos(ec));
+  const em = Math.min(Math.PI / 2, dl + Math.acos(Math.min(1, C / rho)));
+  const ray = (phi, e) => [Math.cos(e) * Math.cos(phi), Math.cos(e) * Math.sin(phi), -Math.sin(e)];
+  const c = Array.from({ length: n }, (_, k) => ray((2 * Math.PI * k) / n, ec)), m = Array.from({ length: n }, (_, k) => ray((2 * Math.PI * k) / n + Math.PI / n, em));
+  return { em, c, m };
+}
+const waterbombEnd = (n) => Math.asin(Math.cos(Math.PI / n));
+
+/**
+ * The waterbomb base's model (Hanna, Lund, Lang, Magleby and Howell, Waterbomb base: a symmetric single-vertex
+ * bistable origami mechanism, Smart Mater. Struct. 23 094009, 2014, for the base; the symmetric fold's sums are worked
+ * here from its sectors keeping their angles): at a fold, the side creases' droop, every crease's fold, the middle's
+ * height over the corners and the sheet's reach; each crease's strain t ψ / 2l and, where the panels close on it, its
+ * pinch; the furthest fold the webs allow at the material's limit; and the grams.
+ * @param {Waterbomb} p
+ * @param {{ E: number, strainLimit?: number, density?: number, name?: string }} [m]
+ * @param {{ fold?: number }} [o] fold: the corner creases' droop it is checked at, degrees (default the fold's end)
+ * @returns {{ at: (fold: number) => { side: number, folds: { corner: number, side: number }, height: number, reach: number, strain: { corner: number, side: number }, pinch: number, vertices: number[][] },
+ *   end: number, fold: number | null, limit: string | null, grams: number | null, margin: number | null, findings: object[] }}
+ *   at(fold): fold is the corner creases' droop below flat, degrees, from 0 to the end; side: the side creases' droop;
+ *   folds: each kind of crease's fold, degrees; height: the middle over the corners (mm); reach: the corners from the
+ *   middle across (mm); strain: each kind's web strain; pinch: the fold at which the panels either side of a side
+ *   crease meet (they close on their tops; the corner creases close on the web); vertices: the middle, then each corner
+ *   and side's end in turn round; end: the fold where the side creases hang straight down; fold: the furthest that
+ *   passes; limit: what stops it ('strain' or 'pinch'), null if it reaches the end; margin: the limit over the most
+ *   strain at the checked fold
+ */
+export function waterbombModel(p, m, o = {}) {
+  checkW('waterbombModel', p);
+  if (m !== undefined) need('waterbombModel', {}, m);
+  const n = p.sides, R = p.radius, Rm = R * Math.cos(Math.PI / n), h = p.thickness, { flex: l, thickness: t } = p.hinge, end = deg(waterbombEnd(n));
+  const pinch = deg(Math.PI - 2 * Math.max(Math.atan(t / l), Math.atan((h - t / 2) / (l / 2 + h - t))));
+  const at = (fold) => {
+    if (!(typeof fold === 'number' && fold >= 0 && fold <= end + 1e-9)) throw refuse('waterbomb.fold', `waterbombModel: the fold is the corner creases' droop, from 0 (flat) to ${end.toFixed(2)} degrees (the side creases hanging straight down) (got ${JSON.stringify(fold)})`);
+    const { em, c, m: s } = waterbombAt(n, rad(Math.min(fold, end))), nrm = (a, b) => unit(cross(a, b)), ang = (u, v) => deg(Math.acos(Math.min(1, Math.max(-1, dot(u, v)))));
+    // the fold at side crease 0 (between sectors c0 m0 and m0 c1) and at corner crease 1 (between m0 c1 and c1 m1)
+    const side = fold === 0 ? 0 : ang(nrm(c[0], s[0]), nrm(s[0], c[1 % n])), corner = fold === 0 ? 0 : ang(nrm(s[0], c[1 % n]), nrm(c[1 % n], s[1 % n]));
+    const vertices = [[0, 0, 0]];
+    for (let k = 0; k < n; k++) vertices.push(c[k].map((x) => x * R), s[k].map((x) => x * Rm));
+    return { side: deg(em), folds: { corner, side }, height: R * Math.sin(rad(fold)), reach: R * Math.cos(rad(fold)), strain: { corner: (t * rad(corner)) / (2 * l), side: (t * rad(side)) / (2 * l) }, pinch, vertices };
+  };
+  let fold = null, limit = null;
+  if (m?.strainLimit != null) {
+    const fails = (f) => { const a = at(f); return Math.max(a.strain.corner, a.strain.side) > m.strainLimit ? 'strain' : a.folds.side > pinch ? 'pinch' : null; };
+    if (!fails(end)) fold = end;
+    else { let lo = 0, hi = end; for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (fails(mid)) hi = mid; else lo = mid; } fold = lo; limit = fails(hi); }
+  }
+  const out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  const check = o.fold ?? end, a = at(check), most = Math.max(a.strain.corner, a.strain.side);
+  let margin = null;
+  if (m?.strainLimit != null) {
+    margin = m.strainLimit / most;
+    f(most <= m.strainLimit ? 'pass' : 'fail', `folded ${n2f(check)}° (the corners' droop) its corner creases fold ${n2f(a.folds.corner)}° and its side creases ${n2f(a.folds.side)}°; the webs see at most ${n2f(most * 100)}%, ${most <= m.strainLimit ? 'within' : 'over'} ${m.name ?? 'its'} limit of ${n2f(m.strainLimit * 100)}% (${n2f(margin)} times)`, 'flexure.strain', { fold: check, strain: most, limit: m.strainLimit, margin });
+  }
+  f(a.folds.side <= pinch ? 'pass' : 'fail', `the panels either side of a side crease meet at a ${n2f(pinch)}° fold; folded ${n2f(check)}° it is at ${n2f(a.folds.side)}°`, 'waterbomb.pinch', { fold: a.folds.side, pinch });
+  let grams = null;
+  if (m?.density > 0) { grams = (measureVolume(waterbomb(p)) / 1000) * m.density; f('pass', `${n2f(grams)} g printed${m.name ? ` in ${m.name}` : ''}, flat`, 'waterbomb.mass', { grams }); }
+  return { at, end, fold, limit, grams, margin, findings: out };
+}
+const n2f = (x) => (Math.round(x * 100) / 100).toString();
+
+// A triangle's prism: a face, and another above it (both in the same order round), as a closed solid
+const prism3 = (lo, hi) => polyhedron({ points: [...lo, ...hi], faces: [[2, 1, 0], [3, 4, 5], [0, 1, 4, 3], [1, 2, 5, 4], [2, 0, 3, 5]], orientation: 'outward' });
+
+/**
+ * A waterbomb base (Waterbomb above), printed flat (fold 0): the web, the whole polygon t thick on the bed, and a
+ * panel on each of the 2n sectors, set back half a web from its two creases and sloped back at 45°, so the first layer
+ * is the whole sheet and no inside corner is square. Folded (fold above 0, the corners' droop in degrees), the panels
+ * where the symmetric fold puts them (the webs left out), for a picture and a fit check.
+ * @param {Waterbomb} p @param {number} [fold] (default 0, as printed)
+ * @returns {object} the shape, a JSCAD geom3
+ */
+export function waterbomb(p, fold = 0) {
+  checkW('waterbomb', p);
+  const n = p.sides, R = p.radius, Rm = R * Math.cos(Math.PI / n), h = p.thickness, { flex: l, thickness: t } = p.hinge, rise = h - t, end = deg(waterbombEnd(n));
+  if (!(typeof fold === 'number' && fold >= 0 && fold <= end + 1e-9)) throw refuse('waterbomb.fold', `waterbomb: the fold is the corner creases' droop, from 0 (flat) to ${end.toFixed(2)} degrees (got ${JSON.stringify(fold)})`);
+  const { c, m: s } = waterbombAt(n, rad(Math.min(fold, end))), parts = [];
+  for (let k = 0; k < n; k++) for (const q of [[[0, 0, 0], c[k].map((x) => x * R), s[k].map((x) => x * Rm)], [[0, 0, 0], s[k].map((x) => x * Rm), c[(k + 1) % n].map((x) => x * R)]]) {
+    // sides in order: the first crease, the sheet's edge, the second crease; set back from the creases only
+    const nm = normalOf([...q, q[2]]), d0 = [l / 2, 0, l / 2], d1 = [l / 2 + rise, 0, l / 2 + rise], lo = inset(q, nm, d0), hi = inset(q, nm, d1);
+    if (fold === 0) parts.push(prism3(lo.map((x) => [x[0], x[1], t - 0.01]), hi.map((x) => [x[0], x[1], h])));
+    else parts.push(prism3(lo, hi.map((x) => add(x, nm.map((v) => v * rise)))));
+  }
+  if (fold === 0) parts.push(extrudeLinear({ height: t }, polygon({ points: Array.from({ length: n }, (_, k) => [R * Math.cos((2 * Math.PI * k) / n), R * Math.sin((2 * Math.PI * k) / n)]) })));
+  return union(...parts);
+}
+
+// --------------------------------------------------------------------------------------- the Kresling tube, printed
+
+/** @typedef {Kresling & { wall: number, panel: { thickness: number }, hinge: { flex: number }, cap?: number, rim?: number }} KreslingTube
+ *   the Kresling cell (sides, radius, height, twist: the state it is printed in, standing); wall: the wall's thickness
+ *   out from the axis, which is each crease's web; panel.thickness: the panels' (h, over the wall), on the inside;
+ *   hinge.flex: each crease's web, flex wide between the panels; cap: the solid floor under the bottom polygon (default
+ *   1.2); rim: the ring over the top polygon, which keeps it a polygon (default 2, as wide in as it is tall) */
+
+function checkKT(what, p) {
+  if (!p || typeof p !== 'object') throw refuse('kresling.input', `${what}: a Kresling tube is { sides, radius, height, twist, wall, panel: { thickness }, hinge: { flex } } (got ${JSON.stringify(p)})`);
+  need(what, { thickness: p.wall });
+  if (!p.panel || !p.hinge) throw refuse('kresling.web', `${what}: give the panels' thickness (panel: { thickness }) and each crease's web (hinge: { flex })`);
+  need(`${what}: panel`, { thickness: p.panel.thickness });
+  need(`${what}: hinge`, { flex: p.hinge.flex });
+  if (!(p.panel.thickness > p.wall)) throw refuse('kresling.web', `${what}: the panels (${p.panel.thickness} mm) are not thicker than the wall, the creases' web (${p.wall} mm)`);
+  const cap = p.cap ?? 1.2, rim = p.rim ?? 2;
+  need(what, { cap, rim });
+  return { cap, rim };
+}
+
+// The tube's wall, as drawn: the outer face is the Kresling's triangles through the polygons' corners (radius R), the
+// inner face the same corners w nearer the axis; floor and top close it. A closed solid, faces outward
+function kreslingShell(n, R, h, phi, w) {
+  const al = (2 * Math.PI) / n, pt = (r, q, z) => [r * Math.cos(q), r * Math.sin(q), z];
+  const pts = [];
+  for (let i = 0; i < n; i++) pts.push(pt(R, i * al, 0), pt(R - w, i * al, 0), pt(R, i * al + phi, h), pt(R - w, i * al + phi, h));
+  const B = (i) => 4 * (i % n), b = (i) => 4 * (i % n) + 1, T = (i) => 4 * (i % n) + 2, t = (i) => 4 * (i % n) + 3, faces = [];
+  for (let i = 0; i < n; i++) {
+    faces.push([B(i), B(i + 1), T(i)], [B(i + 1), T(i + 1), T(i)]); // outside, seen from outside
+    faces.push([b(i), t(i), b(i + 1)], [b(i + 1), t(i), t(i + 1)]); // inside
+    faces.push([B(i), b(i), b(i + 1), B(i + 1)], [T(i), T(i + 1), t(i + 1), t(i)]); // floor and top
+  }
+  return polyhedron({ points: pts, faces, orientation: 'outward' });
+}
+
+// The fold at a polygon's edge: the turn of the triangle on it about the edge, from the edge's outward level line,
+// so a change between two states is the hinge's turn there. The edge a, b; the triangle's third corner c
+const edgeTilt = (a, b, c) => {
+  const e = unit(sub(b, a)), u0 = sub(c, a), u = unit(sub(u0, e.map((x) => x * dot(u0, e)))), out = unit([e[1], -e[0], 0]); // the edge runs round anticlockwise, so out is to its right
+  return deg(Math.atan2(u[2], dot(u, out)));
+};
+
+/**
+ * A Kresling tube printed standing in its first state (KreslingTube above): one piece, the floor on the bed, the
+ * wall's triangles with a panel inside each, set back from its three creases by the web and sloped back at 3:1 (so no
+ * panel's underside overhangs more than the printer allows), and the ring on top. The other state is where the panels
+ * stretch through to and stand again: the creases' turn from print to there bends the webs.
+ * @param {KreslingTube} p
+ * @returns {object} the shape, a JSCAD geom3
+ */
+export function kreslingTube(p) {
+  const { cap, rim } = checkKT('kreslingTube', p), n = p.sides, R = p.radius, h0 = p.height, phi = rad(p.twist), w = p.wall, l = p.hinge.flex, rise = p.panel.thickness - w;
+  kreslingModel({ ...p, hinge: undefined }); // its sides, radius, height and twist checked
+  const al = (2 * Math.PI) / n, pt = (r, q, z) => [r * Math.cos(q), r * Math.sin(q), z], parts = [kreslingShell(n, R, h0, phi, w)];
+  for (let i = 0; i < n; i++) {
+    const Bi = pt(R - w, i * al, 0), Bj = pt(R - w, (i + 1) * al, 0), Ti = pt(R - w, i * al + phi, h0), Tj = pt(R - w, (i + 1) * al + phi, h0);
+    // each inner triangle, seen from the axis anticlockwise; its sides in order, and how far back each one's panel
+    // starts: a crease between two panels half a web, the floor's and the ring's edges a whole web over them
+    for (const [q, back] of [[[Bi, Ti, Bj], [l / 2, l / 2, cap + l]], [[Bj, Ti, Tj], [l / 2, l, l / 2]]]) {
+      const nm = normalOf([...q, q[2]]), lo = inset(q, nm, back), hi = inset(q, nm, back.map((d) => d + 3 * rise));
+      // set back too far the three lines cross over, and their triangle is the original turned half round: each side then runs backwards
+      if (!(dot(cross(sub(hi[1], hi[0]), sub(hi[2], hi[0])), nm) > 1 && [0, 1, 2].every((j) => dot(sub(hi[(j + 1) % 3], hi[j]), sub(q[(j + 1) % 3], q[j])) > 0))) throw refuse('kresling.panel', `kreslingTube: the panels, set back from their creases by the web and sloped back 3:1 over ${n2f(rise)} mm, leave next to nothing of their triangles: a bigger tube, narrower webs or thinner panels`);
+      parts.push(prism3(lo.map((x) => add(x, nm.map((v) => -v * 0.01))), hi.map((x) => add(x, nm.map((v) => v * rise)))));
+    }
+  }
+  const poly = (r, q0, z) => Array.from({ length: n }, (_, i) => pt(r, i * al + q0, z));
+  parts.push(extrudeLinear({ height: cap }, polygon({ points: poly(R, 0, 0).map((x) => [x[0], x[1]]) })));
+  // the ring: on the wall's top (w wide) from h0 up by rim, and a third of rim further in, its underside rising 2:1 in
+  // from the wall's inside edge, so every layer of it is at least the wall's width and stands on the one below
+  const ri = Math.min(rim / 3, R / 3), prof = [[R, h0], [R, h0 + rim], [R - w - ri, h0 + rim], [R - w - ri, h0 + 2 * ri], [R - w, h0]], np = prof.length;
+  const ringPts = [], faces = [];
+  for (let i = 0; i < n; i++) for (const [r, z] of prof) ringPts.push(pt(r, i * al + phi, z));
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, at = (c, k) => c * np + k;
+    for (let k = 0; k < np; k++) { const k1 = (k + 1) % np; faces.push([at(i, k), at(j, k), at(j, k1), at(i, k1)]); }
+  }
+  parts.push(polyhedron({ points: ringPts, faces, orientation: 'outward' }));
+  return union(...parts);
+}
+
+/**
+ * What a Kresling tube printed standing (KreslingTube) does: its two states (kreslingModel), every crease's turn from
+ * the printed state to the other (the sides, the diagonals, and the polygons' edges at the floor and the ring), each
+ * web's strain t ψ / 2l there, the panels' stretch on the way over (the panels as bars, an estimate), the push over
+ * the barrier and the energy, the steepest overhang of the drawn solid against the printer's, and the grams.
+ * @param {KreslingTube} p
+ * @param {{ E: number, strainLimit: number, density?: number, name?: string }} m flexureMaterial(rules): a rubber's
+ *   flex_strain is its limit
+ * @param {{ overhang?: number }} [printer] overhang: the steepest from vertical it prints (degrees, default 45)
+ * @returns {{ states: object[], bistable: boolean, turns: { side: number, diagonal: number, floor: number, ring: number }, strain: number, stretch: number | null,
+ *   barrier: { height: number, energy: number, force: number } | null, overhang: number, margin: number | null, grams: number | null, findings: object[] }}
+ *   turns: each crease's turn from print to the second state, degrees; strain: the most any web sees there; stretch:
+ *   the most a panel stretches on the way; overhang: the steepest underside of the drawn solid off its floor, degrees
+ *   from vertical; margin: the limit over the worse of strain and stretch
+ */
+export function kreslingTubeModel(p, m, printer = {}) {
+  checkKT('kreslingTubeModel', p);
+  need('kreslingTubeModel', {}, m);
+  if (!(m.strainLimit > 0)) throw refuse('kresling.material', 'kreslingTubeModel: the material needs a strainLimit (flexureMaterial(rules) gives one; a rubber\'s is its flex_strain)');
+  const k = kreslingModel({ ...p, hinge: undefined }, m), n = p.sides, R = p.radius, al = (2 * Math.PI) / n, out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  const limit = m.strainLimit, over = printer.overhang ?? 45;
+  const turnsAt = (st) => {
+    const phi = rad(st.twist), pt = (q, z) => [R * Math.cos(q), R * Math.sin(q), z], B0 = pt(0, 0), B1 = pt(al, 0), T0 = pt(phi, st.height), T1 = pt(al + phi, st.height);
+    // the floor's edge B0 B1 turns the lower triangle (third corner T0); the ring's edge T0 T1 the upper (third corner B1)
+    return { side: st.folds.side, diagonal: st.folds.diagonal, floor: edgeTilt(B0, B1, T0), ring: edgeTilt(T0, T1, B1) };
+  };
+  let turns = { side: 0, diagonal: 0, floor: 0, ring: 0 }, strain = 0, stretch = null, barrier = null;
+  if (!k.bistable) f('fail', `with these sides it has no second state with its top above its floor: a taller first state or more twist`, 'kresling.states', { states: k.states });
+  else {
+    const a = turnsAt(k.states[0]), b = turnsAt(k.states[1]);
+    turns = { side: Math.abs(b.side - a.side), diagonal: Math.abs(b.diagonal - a.diagonal), floor: Math.abs(b.floor - a.floor), ring: Math.abs(b.ring - a.ring) };
+    // the side and diagonal webs are the wall (w thick) between panels; the floor's and ring's webs too
+    strain = (p.wall * rad(Math.max(...Object.values(turns)))) / (2 * p.hinge.flex);
+    stretch = k.barrier.stretch; barrier = { height: k.barrier.height, energy: k.barrier.energy, force: k.barrier.force };
+    f('pass', `printed ${n2f(p.height)} mm tall at ${n2f(p.twist)}°, it stands again ${n2f(k.states[1].height)} mm tall at ${n2f(k.states[1].twist)}°; pushed over it takes up to ${n2f(barrier.force)} N, and the panels stretch up to ${n2f(stretch * 100)}% on the way (as bars: an estimate)`, 'kresling.states', { states: k.states, barrier, stretch });
+    f(strain <= limit ? 'pass' : 'fail', `from print to the second state the creases turn ${n2f(turns.side)}° (sides), ${n2f(turns.diagonal)}° (diagonals), ${n2f(turns.floor)}° (floor) and ${n2f(turns.ring)}° (ring): the webs see at most ${n2f(strain * 100)}%, ${strain <= limit ? 'within' : 'over'} ${m.name ?? 'its'} limit of ${n2f(limit * 100)}%`, 'flexure.strain', { turns, strain, limit });
+    f(stretch <= limit ? 'pass' : 'fail', `the panels stretch up to ${n2f(stretch * 100)}% between the states, ${stretch <= limit ? 'within' : 'over'} the limit of ${n2f(limit * 100)}%${stretch <= limit ? '' : ': a stiffer material would break; this fold wants a rubber, or a twist nearer the polygon\'s'}`, 'kresling.stretch', { stretch, limit });
+  }
+  const margin = k.bistable ? limit / Math.max(strain, stretch) : null;
+  // the steepest underside of the drawn solid, off the floor (z > 0): a face whose outward normal points down by nz
+  // overhangs asin(-nz) from vertical
+  const shape = kreslingTube(p), polys = jscad.geometries.geom3.toPolygons(shape);
+  let overhang = 0;
+  for (const g of polys) {
+    const v = g.vertices, nz = jscad.maths.plane.fromPoints(jscad.maths.plane.create(), ...v)[2];
+    if (nz < -1e-9 && Math.max(...v.map((x) => x[2])) > 1e-6) overhang = Math.max(overhang, deg(Math.asin(Math.min(1, -nz))));
+  }
+  f(overhang <= over + 1e-6 ? 'pass' : 'fail', `printed standing on its floor, its steepest underside is ${n2f(overhang)}° from vertical${overhang <= over + 1e-6 ? `, within the ${over}° it prints without supports` : `, past the ${over}° it prints without supports: less twist, or thinner panels`}`, 'kresling.overhang', { overhang, limit: over });
+  let grams = null;
+  if (m.density > 0) { grams = (measureVolume(shape) / 1000) * m.density; f('pass', `${n2f(grams)} g printed${m.name ? ` in ${m.name}` : ''}`, 'kresling.mass', { grams }); }
+  return { states: k.states, bistable: k.bistable, turns, strain, stretch, barrier, overhang, margin, grams, findings: out };
 }
