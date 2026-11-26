@@ -5,6 +5,25 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+
+## 0.3.27: the leg's streamer and sender, eight axes on a Mega (#199)
+- The sender refuses a step file whose axes are not the machine's, by name and in order, so a file written for one machine never drives another's motors.
+- STREAMER.md: set each driver breakout's switches to 1/8 (M0 and M1 on, M2 off) before streaming; they come set to 1/32.
+### Added
+
+- `--machine leg` makes the leg with the streamer (`projects/leg/firmware/leg/leg.ino`), its sender (`send.mjs`) and
+  their write-up (`STREAMER.md`), the arm's own programs.
+
+### Changed
+
+- The streamer (both machines) is built for an Uno under a CNC Shield V3 (three axes) or a Mega 2560 (eight), the
+  board it is compiled for picking its pins. It greets with `streamer ready, <n> axes` (it said `arm ready`). Each
+  axis's figures are worked out at a block's start and only the moving axes are stepped: on a simulated Uno the
+  slowest three-axis ceiling rose from 12428 to 14082 steps/s.
+- `send.mjs` writes its lines for the machine description's controller (`controller.board`), refuses a file with more
+  axes than that board's streamer, and refuses to send to a streamer that says it was built for the other board.
+- `leg.robot_mass`'s rule names the Mega and its drivers; its value is unchanged. No printed size moved.
+
 ## 0.3.26: the agents' guide follows cad 0.7.78
 ### Changed
 

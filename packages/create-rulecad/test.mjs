@@ -228,3 +228,17 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('--machine leg: the workspace carries the streamer and its sender, the arm\'s own programs, and the sender takes a gait file', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-')), dir = path.join(root, 'my-leg');
+  try {
+    execFileSync(process.execPath, [CREATE, dir, '--no-install', '--machine', 'leg'], { encoding: 'utf8' });
+    const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'), arm = fileURLToPath(new URL('./machines/arm/projects/arm/', import.meta.url));
+    for (const [f, same] of [['projects/leg/firmware/leg/leg.ino', 'firmware/arm/arm.ino'], ['projects/leg/send.mjs', 'send.mjs'], ['projects/leg/STREAMER.md', 'STREAMER.md']]) assert.equal(read(path.join(dir, f)), read(path.join(arm, same)), f);
+    // a two-axis gait block for the stand's Uno: three numbers a block, the third axis 0
+    const send = await import(pathToFileURL(path.join(dir, 'projects/leg/send.mjs')).href);
+    const file = { format: 'rulecad.steps/1', kind: 'gait', axes: [{ name: 'hd' }, { name: 'kd' }], blocks: [{ type: 'move', steps: [400, -200], rate: { entry: 0, peak: 2000, exit: 0, accel: 20000 }, accelSteps: 100, decelSteps: 100 }] };
+    assert.deepEqual(send.linesOf(file), ['m 400 -200 0 0 2000 0 20000 100 100']);
+    assert.deepEqual(send.dryRun(['e', ...send.linesOf(file), 'd']).position, [400, -200, 0]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

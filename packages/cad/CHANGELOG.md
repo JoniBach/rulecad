@@ -5,6 +5,27 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+
+## 0.7.92: eight axes on a Mega 2560 (#199)
+- The wiring sheet names a Mega slot's pins as step, dir and enable (D38, every slot's): the wire to a driver breakout carries EN, STEP, DIR and GND, and the axis's home switch is a wire of its own. A CNC shield's axis still names its limit pin.
+- The quadruped carries a 12 V supply (a Mean Well LRS-100-12 to buy: about 6 A for eight motors, an estimate) and a power wire to each breakout.
+### Added
+
+- `cad machine` writes the machine's `controller`: the bought board the streamer runs on, a CNC Shield V3 (an Uno,
+  three axes, slots X, Y, Z) or an `arduino-mega-2560` (eight axes, slots S0 to S7), with the Uno where the assembly
+  names none. A motor's slot is read from its wire to the board, or, for a driver on its own breakout, from the motor's
+  wire to the breakout and the breakout's signal wire on to the slot. Two different controllers are refused by name.
+- `cad plot` on a gait holds the axes to the controller's slots: the quadruped's eight stream through the Mega, and an
+  Uno still warns `stream.axes` past three, naming the Mega as the way to more.
+- The wiring sheet names a Mega slot's pins as it does a shield's.
+
+### Changed
+
+- The bench quadruped and crawl carry a Mega 2560, a DRV8825 on a driver breakout for each motor and sixteen wires
+  (each motor to its breakout, each breakout's EN, STEP, DIR and GND to the Mega); each motor names its driver, so the
+  check says each trimmer's setting. The boards sit over the body as references; no printed size moved. EXAMPLES
+  chapter 14 says how the eight axes are wired, and `leg.robot_mass`'s rule names the Mega (its 4.2 kg is unchanged).
+
 ## 0.7.91: problems at an assembly's joints, avoid regions from a sweep
 ### Added
 
