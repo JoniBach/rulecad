@@ -2,6 +2,30 @@
 
 What changed in each release, for someone upgrading.
 
+## 0.3.7: tool radius, draft, several sides, voids prevented, the thinnest member
+### Added
+
+- `tool` (mm, with `mill`): a flat end mill's radius. `toolFilter` closes each layer across the tool's axis by a disc
+  that size, so no pocket is narrower than the tool and every inside corner seen from it is rounded to its radius. In
+  2D, `mill: '+z'` with a tool cuts a plate's profile through along z. Refused by name under a cell, or without mill.
+- `mill: ['+z', '-z']`: milled from several sides, a setup each; a cell stays only where no side's tool reaches it.
+  A side given twice is refused by name.
+- `draft` (degrees, with `cast`): the part narrows towards the side it is drawn off, a step out every whole number of
+  layers in 1 / tan(draft). Refused by name outside 0 to 45 degrees, or where the grid is too shallow for one step.
+- `voids: 'prevented'`: enclosed voids prevented as the part is optimised, by the virtual temperature
+  (`virtualTemperature`, Liu and others 2015) kept under a cap.
+- `feature` (mm): the thinnest member, held by an opening filter (`featureFilter`) of up to three cells across;
+  nothing to do where a cell is already as wide; wider is refused by name with the cell size that holds it (a third
+  of the feature, rounded up so the size asked for passes) or the feature the grid holds (rounded down).
+  `featureCells(feature, h)` and `thin(grid, density, { radius })` give the ball and the cells in narrower members.
+- `undercuts(grid, density, { from, tool, draft })` also counts what a tool of a size, or a draft, could not make.
+
+### Fixed
+
+- An empty cell no longer crashes the optimality criteria's update.
+- A tool under a cell is refused with cells no bigger than the tool, rounded down (to the nearest, 1.237 mm asked
+  for 1.24 mm cells, still too big).
+
 ## 0.3.6: fewer triangles, problems in 2D from a part
 ### Added
 

@@ -69,7 +69,7 @@
     "@jscad/modeling": "^2.12.0",
     "three": "^0.186.1",
     "@rulecad/fea": "^0.2.14",
-    "@rulecad/topopt": "^0.3.6",
+    "@rulecad/topopt": "^0.3.7",
     "@rulecad/flexures": "^0.5.12",
     "@rulecad/gears": "^0.3.4",
     "@rulecad/motors": "^0.1.6",

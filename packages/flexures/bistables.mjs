@@ -61,7 +61,8 @@ export function snapCurve(sys, body, to, steps = 60, start, loads = new Map(), h
 // A force curve read: the push that switches it (the most before the force first falls through 0, or the most of all
 // if it never does), where it falls through 0 (the middle), the most it pulls back on after, and where the force
 // comes back up through 0 (where it rests again)
-function readCurve(curve) {
+/** @param {{ push: number, force: number, strain: number }[]} curve @returns {{ snap: { push: number, force: number }, back: { push: number, force: number }, middle: number | null, second: number | null, bistable: boolean, strain: number }} */
+export function readCurve(curve) {
   const cross = (from, up) => {
     for (let i = Math.max(1, from); i < curve.length; i++) { const a = curve[i - 1], b = curve[i]; if (up ? a.force < 0 && b.force >= 0 : a.force > 0 && b.force <= 0) return { at: a.push + ((b.push - a.push) * a.force) / (a.force - b.force), i }; }
     return null;
