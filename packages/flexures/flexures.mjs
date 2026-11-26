@@ -24,6 +24,8 @@ export { bridgeAmplifier, bridgeAmplifierModel, rhombusAmplifier, rhombusAmplifi
 export { tiltedBistable, tiltedBistableModel, buckledSwitch, buckledSwitchModel, snapCurve, tiltedTristable, tiltedTristableModel } from './bistables.mjs';
 export { forceGauge, forceGaugeModel, slipClutch, slipClutchModel } from './elements.mjs';
 export { latticeCell, latticeBlock, latticeBlockModel, latticeFindings } from './lattices.mjs';
+export { youngBistable, youngBistableModel, tensuralBistable, tensuralBistableModel } from './clicks.mjs';
+export { splitToothGear, splitToothGearModel } from './gearteeth.mjs';
 export { neckFE, neckHingeModel, rotatingSquares, rotatingSquaresModel, kirigamiFindings } from './kirigami.mjs';
 export { curvedCellModel, balancedCellModel } from './cells.mjs';
 export { tubeFourBar, tubeFourBarModel, tubeFourBarFindings } from './developable.mjs';
