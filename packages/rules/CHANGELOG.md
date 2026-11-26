@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
-## 0.3.27: TPU
+## 0.3.30: TPU
 ### Added
 
 - `tpu`: Bambu Lab TPU 95A (data sheet V3.0), printed, for analysis: modulus 9.2 ± 0.4 MPa and strength 29.6 ± 0.6 MPa
@@ -11,6 +11,20 @@ read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value chan
   a second maker's (Polymaker PolyFlex TPU95-HF V5.5) stress at 100% strain, 15.5 MPa; and `flex_strain`, 0.25, the
   strain a flexure in it is sized to, an estimate (neither sheet gives a fatigue limit). Poisson's ratio 0.48 is an
   estimate. No existing value changed.
+
+## 0.3.28: a second maker's sheets, ranges readable
+### Added
+
+- A second maker's sheet beside three printed plastics, each in the same rules with its sheet's range:
+  `pla-prusament` (Prusament PLA, version 1.0, 2018), `petg-polylite` and `asa-polylite` (Polymaker PolyLite PETG and
+  ASA, V5.4). A design reads either maker (`asa_polylite.strength_z`) or sets its material to one. No existing value
+  changed. ABS and PA-CF still have one maker each: no second sheet could be read with figures across the layers that
+  hold together (Bambu Lab's ABS sheet gives 3800 MPa in tension and 1880 MPa in bending; Polymaker's Fiberon PA6-CF20
+  is another nylon, and its density was not readable).
+
+### Changed
+
+- The README says how expressions read a range's ends (`pla.strength.low`). No value changed.
 
 ## 0.3.25: slot 10 nuts from a second maker
 ### Added

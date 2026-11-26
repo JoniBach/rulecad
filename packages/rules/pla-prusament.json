@@ -1,0 +1,13 @@
+{
+  "_doc": "Prusament PLA (Prusa Polymers), printed, for analysis: a second maker's figures beside pla (Bambu Lab PLA Basic), so a design can be checked against either or see the spread between makers. Along the layers is the sheet's horizontal (flat) specimen; across them its vertical z-axis one, standing. The strengths are tensile yield strengths. low and high are the sheet's own spread either side.",
+  "name": "pla-prusament",
+  "rules": {
+    "modulus": {"value": 2200, "low": 2100, "high": 2300, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), the flat specimen, ± 100", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0, 2018-09-20 (ISO 527-1; specimens printed on an Original Prusa i3 MK3, 0.2 mm layers, 100% infill, 215 °C), https://cdn.shopify.com/s/files/1/1745/6181/files/PRUSA_PLA_TechSheet_ENG.pdf", "checked": "2026-11-25"},
+    "modulus_z": {"value": 2300, "low": 2200, "high": 2400, "unit": "MPa", "rule": "Young's modulus across the layers (z), the standing specimen, ± 100: the sheet gives it no lower than along them", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0 (ISO 527-1)", "checked": "2026-11-25"},
+    "strength": {"value": 50.8, "low": 48.4, "high": 53.2, "unit": "MPa", "rule": "Tensile yield strength along the layers (x-y), the flat specimen (59.3 ± 1.9 on its edge), ± 2.4", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0 (ISO 527-1)", "checked": "2026-11-25"},
+    "strength_z": {"value": 37.6, "low": 33.6, "high": 41.6, "unit": "MPa", "rule": "Tensile yield strength across the layers (z), the standing specimen, ± 4", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0 (ISO 527-1)", "checked": "2026-11-25"},
+    "poisson": {"value": 0.36, "rule": "Poisson's ratio (Prusa publish none): taken as the kit's pla, an estimate", "kind": "estimate", "source": "Typical for PLA, as the kit's pla: Farah, Anderson, Langer (2016), Physical and mechanical properties of PLA", "checked": "2026-11-25"},
+    "density": {"value": 1.24, "unit": "g/cm³", "rule": "Density of the filament (specific gravity)", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0 (ISO 1183)", "checked": "2026-11-25"},
+    "softening": {"value": 55, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Prusament PLA technical data sheet version 1.0 (ISO 75)", "checked": "2026-11-25"}
+  }
+}
