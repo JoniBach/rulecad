@@ -24,6 +24,25 @@ and head, the parts it passes through and the part it ends in.
 - A refusal of a feature past three cells asks for cells of at least a third of it, rounded up (it asked for cells of
   1.33 mm or less for 4 mm, which it refused again), or a smaller feature.
 
+## 0.7.91: problems at an assembly's joints, avoid regions from a sweep
+### Added
+
+- Optimisation problems placed in an assembly (#28): `"in": { "assembly", "item", "pose", "z" }` puts a problem in
+  an item's frame. A region, support or load can sit at one of the assembly's joints (`"joint": "hinge"`, read as an
+  anchor is), and an `avoid` region can be a part swept through a joint's range (`{ "sweep": "gate", "through":
+  "swing", "steps" }`), each step kept clear; in a flat problem, all of the part within the plate's thickness (its
+  sections up the plate, half a cell apart and closer where a face leans, so a part dipping into the plate's top or
+  bottom is kept clear too), holes open. Steps by default so no point moves more than half a cell between two. Changing the assembly reruns the
+  optimisation. `cad why` names the assembly, the joints read and each sweep's range and steps. Schema first:
+  `problem.schema.json` gains `in`, `joint`, `sweep`, `through` and `steps`. Refused by name: a sweep outside avoid,
+  of the item itself or through a joint that doesn't move it against the item; a part that never reaches into a flat
+  plate's thickness; a joint or item the assembly has not got; more than 360 default steps.
+
+### Printed sizes that moved
+
+- None. Problems without `in` read as before (each result is drawn again once, since this file's code is in the
+  drawing's key; no densities key moves).
+
 ## 0.7.89: fewer triangles by default
 ### Changed
 

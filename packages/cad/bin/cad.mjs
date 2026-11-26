@@ -798,6 +798,7 @@ async function explainValue(ref) {
       console.log(`${pad}  rule sets: ${q.uses.join(', ')}`);
       if (vals.length) console.log(`${pad}  its values: ${vals.map(([k, v]) => `${k} = ${typeof v === 'number' ? fmt(v) : v}`).join(', ')}`);
       if (q.parts.length) console.log(`${pad}  parts read: ${q.parts.join(', ')}`);
+      if (q.assembly) { const A = q.assembly, bits = [...(A.joints.length ? [`joints read: ${A.joints.map((j) => `${j.joint} at (${j.at.map(fmt).join(', ')})`).join(', ')}`] : []), ...(A.sweeps.length ? [`swept: ${A.sweeps.map((w) => `${w.sweep} through ${w.through}, ${fmt(w.from)} to ${fmt(w.to)} in ${w.steps} steps`).join(', ')}`] : [])]; console.log(`${pad}  in the assembly ${A.name}, item ${A.item}${A.pose ? `, pose ${A.pose}` : ''}${bits.length ? `: ${bits.join('; ')}` : ''}`); }
       if (q.anchors.length) console.log(`${pad}  anchors read: ${q.anchors.map((a) => `${a.anchor} at (${a.at.map(fmt).join(', ')})`).join(', ')}`);
       console.log(`${pad}  filter ${fmt(q.filter.value)} mm: ${q.filter.from}`);
       console.log(`${pad}  ${q.made ? `kept in ${q.densities}` : `not made yet (cad optimise ${n.object.split('/')[0]}/${q.problem}); it will be kept in ${q.densities}`}: made again only when one of these, or the solver, changes`);

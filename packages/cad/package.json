@@ -64,7 +64,7 @@
     "@rulecad/fit": "^0.4.0",
     "@rulecad/model-link": "^0.3.2",
     "@rulecad/versions": "^0.1.6",
-    "@rulecad/shapes": "^0.4.8",
+    "@rulecad/shapes": "^0.4.9",
     "@rulecad/rules": "^0.3.28",
     "@jscad/modeling": "^2.12.0",
     "three": "^0.186.1",

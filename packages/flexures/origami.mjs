@@ -132,3 +132,92 @@ export function miura(p, fold = 0) {
   }
   return union(...parts);
 }
+
+// ------------------------------------------------------------------------------------------------- the Kresling fold
+
+/** @typedef {{ sides: number, radius: number, height: number, twist: number, panel?: { thickness: number }, hinge?: { flex: number, thickness: number } }} Kresling
+ *   sides: n, the polygons' sides (3 to 12); radius: R, their circumradius; height, twist: one stable state, the top
+ *   polygon h above the bottom and turned φ (degrees) from it; panel: the panels' thickness, for the stretch the
+ *   panels take between the stable states; hinge: each crease's web, flex wide and thickness thick */
+
+const vertsK = (n, R, h, phi) => ({ B: Array.from({ length: n }, (_, i) => { const q = (2 * Math.PI * i) / n; return [R * Math.cos(q), R * Math.sin(q), 0]; }), T: Array.from({ length: n }, (_, i) => { const q = (2 * Math.PI * i) / n + phi; return [R * Math.cos(q), R * Math.sin(q), h]; }) });
+// The fold at every crease, degrees (0 flat): each side B_i T_i between the panels either side, each diagonal B_i+1 T_i
+// between the two panels of its quad (B_i B_i+1 T_i and B_i+1 T_i+1 T_i)
+function foldsK(n, R, h, phi) {
+  const { B, T } = vertsK(n, R, h, phi), tri = (a, b, c) => normalOf([a, b, c, c]), turn = (u, v) => deg(Math.acos(Math.min(1, Math.max(-1, dot(u, v)))));
+  const lower = (i) => tri(B[i], B[(i + 1) % n], T[i]), upper = (i) => tri(B[(i + 1) % n], T[(i + 1) % n], T[i]);
+  return { side: turn(upper((i => (i + n - 1) % n)(0)), lower(0)), diagonal: turn(lower(0), upper(0)) };
+}
+
+/**
+ * The Kresling fold: a tube of 2n triangles between two n-sided polygons, the top turned against the bottom. Its
+ * triangles' sides are fixed by one stable state (height, twist), and with the same sides it stands again at a
+ * second, where every side is again its length (Guest and Pellegrino, The folding of triangulated cylinders, part 1,
+ * J. Appl. Mech. 61, 1994). Between the two the panels must stretch: it is bistable, not rigid-foldable. With the side
+ * B_i T_i of length a and the diagonal B_i+1 T_i of length b (α = 2π/n):
+ *   a² = h² + 2R²(1 - cos φ), b² = h² + 2R²(1 - cos(φ - α)), so a² - b² = 2R²(cos(φ - α) - cos φ) at both states:
+ *   2R² sin(α/2) · 2 sin(φ - α/2) = a² - b², whose two roots φ0 and π + α - φ0 are the two states' twists.
+ * The force to hold it at a height, its top free to turn, is the slope of the panels' stretch energy (each side and
+ * diagonal a bar, as stiff as its panel taken as a strip its triangle's height wide: an estimate), at the twist that
+ * makes it least.
+ * @param {Kresling} p
+ * @param {{ E: number, strainLimit?: number }} [m]
+ * @returns {{ sides: { polygon: number, side: number, diagonal: number }, states: { height: number, twist: number, folds: { side: number, diagonal: number } }[],
+ *   bistable: boolean, at?: (height: number) => { twist: number, energy: number, force: number, stretch: number }, barrier?: { height: number, energy: number, force: number },
+ *   flat: number[][], web?: { strain: number, fold: number, length: number }[] }}
+ *   sides: the polygon's side and the triangles' two others, mm; states: both stable states (twist in degrees, folds
+ *   at the creases in degrees), the given one first; bistable: whether the second exists with the top above the
+ *   bottom; at(h): with a material and a panel, the least-energy twist, the energy (N·mm), the force to hold it (N, +
+ *   pushes it taller) and the most stretch of a side or diagonal; barrier: the energy's most between the states, and
+ *   the most force to push it from the first towards the second; flat: the pattern's vertices flat, [x, y], bottom row
+ *   then top row; web: with a hinge, at each state the creases' most strain and the web length that fold needs for the
+ *   material's limit
+ */
+export function kreslingModel(p, m) {
+  if (!p || typeof p !== 'object') throw refuse('kresling.input', `kreslingModel: a Kresling cell is { sides, radius, height, twist } (got ${JSON.stringify(p)})`);
+  const n = p.sides;
+  if (!(Number.isInteger(n) && n >= 3 && n <= 12)) throw refuse('kresling.sides', `kreslingModel: sides is a whole number from 3 to 12 (got ${JSON.stringify(n)})`);
+  need('kreslingModel', { radius: p.radius, length: p.height });
+  const R = p.radius, h0 = p.height, al = (2 * Math.PI) / n, phi0 = rad(p.twist);
+  if (!(typeof p.twist === 'number' && phi0 > al / 2 && phi0 < Math.PI / 2 + al / 2)) throw refuse('kresling.twist', `kreslingModel: twist is the top's turn, between ${(deg(al) / 2).toFixed(1)} and ${(90 + deg(al) / 2).toFixed(1)} degrees for ${n} sides (half a side's turn to a quarter turn past it; got ${JSON.stringify(p.twist)})`);
+  const a2 = h0 * h0 + 2 * R * R * (1 - Math.cos(phi0)), b2 = h0 * h0 + 2 * R * R * (1 - Math.cos(phi0 - al)), s = 2 * R * Math.sin(al / 2);
+  // the second root of sin(φ - α/2) = (a² - b²) / (4R² sin(α/2)): φ1 - α/2 = π - (φ0 - α/2)
+  const phi1 = Math.PI + al - phi0, h1sq = a2 - 2 * R * R * (1 - Math.cos(phi1)), bistable = h1sq > 1e-9 && Math.abs(phi1 - phi0) > 1e-9;
+  const state = (h, phi) => ({ height: h, twist: deg(phi), folds: foldsK(n, R, h, phi) });
+  const states = [state(h0, phi0), ...(bistable ? [state(Math.sqrt(h1sq), phi1)] : [])];
+  // the pattern flat: the bottom row at (i s, 0); each top vertex a from its bottom one and b from the next
+  const x0 = (a2 - b2 + s * s) / (2 * s), y0 = Math.sqrt(Math.max(0, a2 - x0 * x0));
+  const flat = [Array.from({ length: n + 1 }, (_, i) => [i * s, 0]), Array.from({ length: n + 1 }, (_, i) => [i * s + x0, y0])];
+  const out = { sides: { polygon: s, side: Math.sqrt(a2), diagonal: Math.sqrt(b2) }, states, bistable, flat };
+  if (m !== undefined) need('kreslingModel', {}, m);
+  if (m && p.panel) {
+    need('kreslingModel: panel', { thickness: p.panel.thickness });
+    // a bar's stiffness: E × panel thickness × its triangle's height to that side / the side's length (an estimate)
+    const area = 0.5 * s * y0, ka = (m.E * p.panel.thickness * ((2 * area) / Math.sqrt(a2))) / Math.sqrt(a2), kb = (m.E * p.panel.thickness * ((2 * area) / Math.sqrt(b2))) / Math.sqrt(b2);
+    const U = (h, phi) => { const da = Math.sqrt(h * h + 2 * R * R * (1 - Math.cos(phi))) - Math.sqrt(a2), db = Math.sqrt(h * h + 2 * R * R * (1 - Math.cos(phi - al))) - Math.sqrt(b2); return n * (0.5 * ka * da * da + 0.5 * kb * db * db); };
+    const best = (h) => { // golden-section search on the twist, over the span of both states and a little more
+      let lo = Math.min(phi0, phi1) - 0.3, hi = Math.max(phi0, phi1) + 0.3; const g = (Math.sqrt(5) - 1) / 2;
+      // a coarse look first, so the search starts in the least valley
+      let at = lo, least = Infinity; for (let k = 0; k <= 200; k++) { const q = lo + ((hi - lo) * k) / 200, u = U(h, q); if (u < least) { least = u; at = q; } }
+      lo = at - (hi - lo) / 200; hi = at + (hi - lo) / 200;
+      for (let k = 0; k < 80; k++) { const c = hi - g * (hi - lo), d = lo + g * (hi - lo); if (U(h, c) < U(h, d)) hi = d; else lo = c; }
+      return (lo + hi) / 2;
+    };
+    out.at = (h) => {
+      if (!(typeof h === 'number' && h > 0)) throw refuse('kresling.height', `kreslingModel: a height is above 0 mm (got ${JSON.stringify(h)})`);
+      const phi = best(h), e = 1e-5 * h0, energy = U(h, phi), force = -(U(h + e, best(h + e)) - U(h - e, best(h - e))) / (2 * e);
+      const stretch = Math.max(Math.abs(Math.sqrt(h * h + 2 * R * R * (1 - Math.cos(phi))) / Math.sqrt(a2) - 1), Math.abs(Math.sqrt(h * h + 2 * R * R * (1 - Math.cos(phi - al))) / Math.sqrt(b2) - 1));
+      return { twist: deg(phi), energy, force, stretch };
+    };
+    if (bistable) {
+      const hs = Array.from({ length: 81 }, (_, k) => h0 + ((states[1].height - h0) * k) / 80), pts = hs.map((h) => ({ h, ...out.at(h) }));
+      const top = pts.reduce((a, c) => (c.energy > a.energy ? c : a)), push = pts.slice(0, pts.indexOf(top) + 1).reduce((a, c) => (Math.abs(c.force) > Math.abs(a.force) ? c : a)); // the most force before the top of the barrier
+      out.barrier = { height: top.h, energy: top.energy, force: Math.abs(push.force), stretch: Math.max(...pts.map((c) => c.stretch)) };
+    }
+  }
+  if (p.hinge) {
+    need('kreslingModel: hinge', { flex: p.hinge.flex, thickness: p.hinge.thickness });
+    out.web = states.map((st) => { const fold = Math.max(st.folds.side, st.folds.diagonal), strain = (p.hinge.thickness * rad(fold)) / (2 * p.hinge.flex); return { fold, strain, length: m?.strainLimit ? (p.hinge.thickness * rad(fold)) / (2 * m.strainLimit) : NaN }; });
+  }
+  return out;
+}
