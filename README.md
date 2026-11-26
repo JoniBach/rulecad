@@ -83,8 +83,10 @@ with it, no permission needed. If you improve it, sharing back is welcome, never
 See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contribution is a measurement: if a rule is wrong for your
 printer or parts, the "Correct a rule" issue form takes a minute.
 
-**Releasing:** bump a package's `version` in its package.json and merge to `main`. The publish workflow runs the
-tests, then publishes every package whose version isn't on npm yet, with provenance. npm trusts that workflow for
+**Releasing:** pull requests add change notes (`packages/<name>/changes/*.md`), never versions; a release pull request
+made by `node scripts/release.mjs` turns a batch of them into versions and CHANGELOG sections (CONTRIBUTING.md says
+how). Merging it to `main` runs the publish workflow: the tests, then every package whose version isn't on npm yet is
+published, with provenance. npm trusts that workflow for
 each package (`scripts/trust.sh`, once per package, by a maintainer), so there are no tokens to keep.
 
 ```sh

@@ -8,15 +8,12 @@
     "default": "./smooth.mjs"
   },
   "files": [
-    "smooth.mjs",
-    "core.mjs",
-    "finish.mjs",
-    "finish.d.mts",
-    "smooth.d.mts",
-    "core.d.mts",
+    "*.mjs",
+    "*.d.mts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "!test.mjs"
   ],
   "license": "MIT",
   "keywords": [

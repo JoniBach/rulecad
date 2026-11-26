@@ -14,23 +14,12 @@
     }
   },
   "files": [
-    "gears.mjs",
-    "core.mjs",
-    "planetary.mjs",
-    "contact.mjs",
-    "tooth.mjs",
-    "worm.mjs",
-    "diagram.mjs",
-    "gears.d.mts",
-    "core.d.mts",
-    "planetary.d.mts",
-    "contact.d.mts",
-    "tooth.d.mts",
-    "worm.d.mts",
-    "diagram.d.mts",
+    "*.mjs",
+    "*.d.mts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "!test.mjs"
   ],
   "license": "MIT",
   "keywords": [
