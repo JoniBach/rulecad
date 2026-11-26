@@ -655,10 +655,10 @@ test('engagement: threads engaged against the rule for what they are in, with th
   const al = engagement('M3', { depth: 6, material: 'al6061' }); assert.equal(al.class, 'aluminium'); assert.equal(al.need, 6); assert.equal(al.enough, true); assert.equal(al.findings[0].level, 'pass');
   assert.equal(engagement('M3', { depth: 6, material: 'steel' }).need, 3, 'a class by name'); assert.equal(engagement('M3', { depth: 6, material: 's275' }).class, 'steel'); assert.equal(engagement('M3', { depth: 6, material: 'PETG' }).class, 'plastic');
   assert.equal(engagement('1/4-20', { depth: 12.7, material: 'aluminium' }).need, 12.7, 'two diameters of 6.35 mm');
-  assert.deepEqual(MATERIALS, ['pla', 'petg', 'al6061', 'al7075', 's275', 'ss304']); assert.deepEqual(MATERIAL_CLASSES, ['plastic', 'aluminium', 'steel']);
+  assert.deepEqual(MATERIALS, ['pla', 'petg', 'abs', 'asa', 'pa_cf', 'al6061', 'al7075', 's275', 'ss304']); assert.deepEqual(MATERIAL_CLASSES, ['plastic', 'aluminium', 'steel']);
   assert.throws(() => engagement('M3', { depth: 0, material: 'pla' }), /engagement: depth is a number above 0/); assert.throws(() => engagement('M3', { depth: -2, material: 'pla' }), /depth is a number above 0/);
-  assert.throws(() => engagement('M3', { depth: 6 }), /engagement: give a material: a class \(plastic, aluminium, steel\) or a material \(pla, petg, al6061, al7075, s275, ss304\)/);
-  assert.throws(() => engagement('M3', { depth: 6, material: 'nylon' }), /engagement: no material "nylon"\. There are: pla, petg, al6061, al7075, s275, ss304\. For another, hand in its rule set/);
+  assert.throws(() => engagement('M3', { depth: 6 }), /engagement: give a material: a class \(plastic, aluminium, steel\) or a material \(pla, petg, abs, asa, pa_cf, al6061, al7075, s275, ss304\)/);
+  assert.throws(() => engagement('M3', { depth: 6, material: 'nylon' }), /engagement: no material "nylon"\. There are: pla, petg, abs, asa, pa_cf, al6061, al7075, s275, ss304\. For another, hand in its rule set/);
   assert.throws(() => engagement('M7', { depth: 6, material: 'pla' }), /no thread "M7"/); assert.throws(() => engagement('M3', 6), /the second argument is its options/);
 });
 
@@ -1607,4 +1607,22 @@ test('annular snap, a slotted skirt: every given bead, passing or failing, names
     assert.ok(!strains(at(u + 0.001)), `${say}: a thousandth more fails`);
     assert.equal(most.removal, named[0].removal, `${say}: it holds the pull-off it names`);
   }
+});
+
+test('the printed plastics ABS, ASA and PA-CF are materials of the kit: plastics by their stiffness, stripped at their strength across the layers', () => {
+  // By hand, an M3 screw 6 mm in, its shear area 0.875 x pi x 3 x 6 = 49.480 mm² (as for PLA above), at the strength
+  // across the layers (strength_z) over sqrt(3), the weaker way of each print:
+  //   abs (Polymaker PolyLite ABS):   29.7 / 1.7321 = 17.147 MPa x 49.480 =  848.4 N
+  //   asa (Bambu Lab ASA):            35   / 1.7321 = 20.207 MPa x 49.480 =  999.9 N
+  //   pa_cf (Bambu Lab PAHT-CF):      64   / 1.7321 = 36.950 MPa x 49.480 = 1828.3 N, 1828.3 / 2917.9 = 0.63 of a class 8.8 screw's proof load
+  const area = 0.875 * Math.PI * 3 * 6;
+  for (const [name, across, strip] of [['abs', 29.7, 848.4], ['asa', 35, 999.9], ['pa_cf', 64, 1828.3]]) {
+    const s = stripping('M3', { depth: 6, material: name });
+    near(s.strip, (across / Math.sqrt(3)) * area, 0.05, `${name}, across its layers`); assert.equal(s.strip, strip, name);
+    assert.ok(s.rests.some((r) => r.name === `${name}.strength_z`), `${name} rests on its strength across the layers`);
+    assert.match(s.findings[0].text, new RegExp(`${name}\\.strength_z, the weaker way of the print`));
+    const e = engagement('M3', { depth: 6, material: name.toUpperCase() });
+    assert.deepEqual([e.class, e.material, e.need], ['plastic', name, 7.5], `${name} is a plastic: 2.5 diameters`);
+  }
+  assert.equal(stripping('M3', { depth: 6, material: 'pa_cf' }).margin, 0.63);
 });
