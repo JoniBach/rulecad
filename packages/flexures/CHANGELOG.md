@@ -4,6 +4,30 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a leaf's thickness, a pin's diameter, a part's outline). Each release says whether any printed size moved, and
 why. Releases before this file was started are described in their pull requests on GitHub.
 
+## 0.5.15: kirigami, developable mechanisms, Kresling and zero-stiffness cells (#78, #79)
+### Added
+
+- `rotatingSquares`, `rotatingSquaresModel`, `kirigamiFindings` (issues #78 and #79): a kirigami sheet of rotating
+  squares, printed flat in one piece, which stretches both ways at once (Poisson's ratio -1). The model gives the
+  in-plane modulus, the pull and stretch with large turns counted, the stretch at the necks' strain limit, and grams.
+  The same cell is the chiral lattice of rotating squares.
+- `neckHingeModel` and `neckFE`: the one-sided notch hinge between a slot's round end and another slot's straight
+  side, its stiffness and peak strain tabulated from the kit's own plane-stress finite elements (r / w from 0.5 to 6);
+  `neckFE` regenerates any row.
+- `tubeFourBar`, `tubeFourBarModel`, `tubeFourBarFindings` (issue #78): a developable four-bar in a tube's wall, printed
+  standing in one piece with living hinges whose axes run up the tube. The model gives each hinge's turn and strain,
+  the input's torque, its travel at the strain limit, and how far each link stands out of the tube and in.
+  Each hinge bends as its drawn web, the thin middle plus what the pockets' round corners add (`hinge.length`).
+- `kreslingModel` (issue #78): the Kresling fold's two stable states in closed form, each crease's fold, the flat
+  pattern, the energy and force between the states with the panels taken as bars (an estimate), and the web a crease
+  needs for the material's limit.
+- The bench has a kirigami panel, `flexures/kirigami`, and a developable tube, `flexures/tube`.
+- `curvedCellModel` and `balancedCellModel` (issue #79): the curved-beam cell's force curve from the beam solver, the
+  range where its stiffness is negative, and with a positive spring as stiff, the range of travel over which the pair
+  holds about the same force (zero stiffness), with the leaves a printed spring of that stiffness takes.
+
+No printed size of an existing part moved.
+
 ## 0.5.14: a tristable, a force gauge and a slip clutch
 ### Fixed
 
