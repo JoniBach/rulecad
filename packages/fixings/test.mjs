@@ -5,6 +5,8 @@ import jscad from '@jscad/modeling';
 import * as fixings from '@rulecad/fixings';
 import { check } from '@rulecad/printcheck';
 import * as shapes from '@rulecad/shapes';
+import { fileURLToPath } from 'node:url';
+import { shippedModules } from '../../scripts/shipped.mjs';
 const shapesNutPocket = shapes.nutPocket;
 
 const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeModel, hole, HOLE_KINDS, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket,
@@ -32,7 +34,9 @@ test('the package: it says it is ready, depends on the rules and the shapes alon
   assert.equal(fixings.status.release, 'ready'); assert.ok(Object.isFrozen(fixings.status));
   assert.deepEqual(Object.keys(pkg.dependencies).sort(), ['@rulecad/rules', '@rulecad/shapes']);
   assert.deepEqual(Object.keys(pkg.peerDependencies), ['@jscad/modeling']);
-  for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(`./${f}`, import.meta.url)), f); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f}'s declarations are shipped`); }
+  // every module it ships exists, and its declarations go with it (by name or the *.d.mts pattern)
+  const declared = (f) => pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')) || pkg.files.includes('*.d.mts');
+  for (const f of shippedModules(fileURLToPath(new URL('.', import.meta.url)))) { assert.ok(fs.existsSync(new URL(`./${f}`, import.meta.url)), f); assert.ok(declared(f), `${f}'s declarations are shipped`); }
 });
 
 test('fixingModel: an M3x12 cap screw is its head, clearances, tap drill and pitch, each with how far to trust it and where it comes from', () => {

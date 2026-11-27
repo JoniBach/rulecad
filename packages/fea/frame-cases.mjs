@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { frame, statics, buckling, modes, subdivide, elementMatrices, sizing } from '@rulecad/fea/frame';
 import { grid, analyse } from '@rulecad/fea';
+import { fileURLToPath } from 'node:url';
+import { shippedModules } from '../../scripts/shipped.mjs';
 
 // Aluminium, and a 20 × 30 mm solid bar: 20 along local y, 30 along local z
 const alu = { E: 70000, nu: 0.33, density: 2.7 }, G = alu.E / (2 * (1 + alu.nu));
@@ -440,7 +442,7 @@ test('frame: subdivide keeps the answer, the joints and the loads; the module is
   assert.ok(!/^\s*(?:import|export)\b[^'\n]*\bfrom\s+['"]/m.test(src) && !/\bimport\s*\(/.test(src.replace(/^\s*(\*|\/\/).*$/gm, '')), 'frame.mjs imports nothing');
   assert.ok(!/\brequire\(|\bprocess\.|['"`]node:/.test(src), 'frame.mjs does not reach for Node');
   assert.deepEqual(pkg.exports['./frame'], { types: './frame.d.mts', default: './frame.mjs' });
-  assert.ok(pkg.files.includes('frame.mjs') && pkg.files.includes('frame.d.mts'));
+  assert.ok(shippedModules(fileURLToPath(new URL('.', import.meta.url))).includes('frame.mjs') && (pkg.files.includes('frame.d.mts') || pkg.files.includes('*.d.mts')));
   assert.ok(!/frame\.mjs/.test(fs.readFileSync(new URL('./fea.mjs', import.meta.url), 'utf8')), 'the main entry does not load it');
 });
 
