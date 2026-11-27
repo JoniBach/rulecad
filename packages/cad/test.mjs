@@ -7384,3 +7384,16 @@ test('beam.printable with a stalled motor (#302): a printed beam\'s options take
     assert.equal(stalled.refs.printable, false);
   } finally { done(); }
 });
+
+test('a helper package\'s dot-files are not its sources: a scratch module another package\'s tests write beside them, gone mid-read, does not crash cad', () => {
+  // The fixings tests write .readme-example-<n>.mjs into their package while they run; cad, started in parallel (CI
+  // runs the packages' tests at once), listed the folder, then read a file already deleted (ENOENT, seen on Windows).
+  // A directory named like a module stands in for that file: reading it throws, so only skipping dot-files passes
+  const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/fixings'))), probe = path.join(dir, '.cad-dotfile-probe.mjs');
+  fs.mkdirSync(probe, { recursive: true });
+  try {
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/design.mjs', import.meta.url))).href)}); console.log('loaded')`], { encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /loaded/);
+  } finally { fs.rmSync(probe, { recursive: true, force: true }); }
+});

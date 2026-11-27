@@ -133,8 +133,9 @@ const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
 const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), framesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/frames'))), fixingsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/fixings')));
-// (every module of a helper package but its tests: they change nothing a design builds)
-const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
+// (every module of a helper package but its tests: they change nothing a design builds; nor a dot-file, which is a
+// package's tests writing a scratch module beside its sources, there for a moment and gone mid-read)
+const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs' && !f.startsWith('.')).sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
 // (as one digest, so each build's key hashes a line and not a megabyte of source)
 const own = crypto.createHash('sha256').update(source(import.meta.url) + source('./fixings.mjs') + source('./frames.mjs') + helperSources(framesDir) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling')).digest('hex'); // every shapes module, not just its entry
