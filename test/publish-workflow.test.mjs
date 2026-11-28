@@ -75,6 +75,9 @@ test('the plan job only reads: it checks out the tested commit and says whether 
   assert.match(plan, /node scripts\/publish-plan\.mjs/);
   assert.doesNotMatch(plan, /npm (ci|install|test)\b/, 'the plan needs nothing installed');
   assert.match(plan, /outputs:[\s\S]*due:/, 'it says whether anything is due');
+  // A request inside a test ([ "$(gh api ...)" = 0 ]) that fails gives an empty answer, which would count as a pass
+  assert.doesNotMatch(plan, /\[\s*"\$\(gh api/, 'each question to GitHub is asked on a line of its own, so a failed one stops the job');
+  assert.match(plan, /passed="\$\(gh api [^\n]*status=success/, 'started by hand, the commit needs a passing test run');
 });
 
 test('the publish job holds the right to publish alone, installs without install scripts and runs no tests', () => {

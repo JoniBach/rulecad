@@ -55,9 +55,13 @@ jobs:
           elif [ "$sha" != "$main" ]; then
             allowed=false
             echo "::notice::main has moved on from $sha to $main: the run for $main publishes whatever is due, once its tests pass."
-          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&event=push&status=success" --jq .total_count)" = 0 ]; then
-            allowed=false
-            echo "::warning::$sha has no passing test run on main, so nothing is published. Re-run its failed test jobs: publishing follows when they pass."
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Asked on a line of its own, so a failed request stops the step rather than counting as a pass
+            passed="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&event=push&status=success" --jq .total_count)"
+            if ! [ "${passed:-0}" -gt 0 ] 2>/dev/null; then
+              allowed=false
+              echo "::warning::$sha has no passing test run on main, so nothing is published. Re-run its failed test jobs: publishing follows when they pass."
+            fi
           fi
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
           echo "commit $sha, publishing allowed: $allowed"

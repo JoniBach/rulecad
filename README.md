@@ -85,8 +85,8 @@ printer or parts, the "Correct a rule" issue form takes a minute.
 
 **Releasing:** pull requests add change notes (`packages/<name>/changes/*.md`), never versions; a release pull request
 made by `node scripts/release.mjs` turns a batch of them into versions and CHANGELOG sections (CONTRIBUTING.md says
-how). Merging it to `main` runs the publish workflow: the tests, then every package whose version isn't on npm yet is
-published, with provenance. npm trusts that workflow for
+how). Merging it to `main` runs the tests on Linux, macOS and Windows; once they all pass, the publish workflow
+publishes every package whose version isn't on npm yet, with provenance. npm trusts that workflow for
 each package (`scripts/trust.sh`, once per package, by a maintainer), so there are no tokens to keep.
 
 ```sh
