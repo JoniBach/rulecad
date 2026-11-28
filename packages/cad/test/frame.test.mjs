@@ -576,7 +576,7 @@ test('frame.heat: a frame grows with the air it runs in by its alloy\'s expansio
     const write = (name, heat) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Warm', kind: 'fit', items, joins, frame: { heat } }));
     const bed = { name: 'bed', at: [10, 10, -30], temperature: 60, reach: 30 };
     write('warm', { air: 45, heaters: [bed] }); write('warmer', { air: 50 }); write('none', {}); write('bad', { air: 45, heaters: [{ ...bed, reach: 0 }] });
-    const check = (name) => { const r = cad.run('check', `frame/${name}`, '--json'); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === 'frame.heat'); };
+    const check = (name) => cad.findings('check', `frame/${name}`, '--json').filter((x) => x.code === 'frame.heat');
     const warm = check('warm'), grow = warm.find((x) => x.values?.grows);
     // growth by hand, ΔT = 45 - 20 = 25 °C, α = 23.4e-6 /K (FRAME_HEAT.expansion, a community figure): the beams span
     // 280 mm in x (axis to axis), 300 mm in z: 23.4e-6 × 280 × 25 = 0.1638 mm and 23.4e-6 × 300 × 25 = 0.1755 mm
@@ -609,7 +609,7 @@ test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loos
     for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
     const write = (name, frame) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Side', kind: 'fit', items, joins, ...(frame ? { frame } : {}) }));
     write('side'); write('loose', { cut: { tolerance: 1 } }); write('bad', { cut: { tolerance: -1 } });
-    const check = (name, code = 'frame.square') => { const r = cad.run('check', `frame/${name}`, '--json'); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === code); };
+    const check = (name, code = 'frame.square') => cad.findings('check', `frame/${name}`, '--json').filter((x) => x.code === code);
     const [side] = check('side'), [loose] = check('loose');
     // Hand stack, MISUMI's ±0.5 mm cut (its set's cut_tolerance): x1 and x3 butt the posts, so their cut lengths set the
     // 260 mm width, each 0.5 × 260 / 328.024 = 0.39631 mm of diagonal difference; the four blind joins land on the posts,
@@ -628,7 +628,7 @@ test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loos
     assert.ok(check('loose', 'frame.cut').some((x) => /mark C \(x1, x3\): 2 beams of 260 mm, each cut to ±1 mm, may differ by up to 2 mm/.test(x.text)));
     // refused by name
     const bad = cad.run('check', 'frame/bad', '--json');
-    assert.match(JSON.parse(bad.stdout).error.message, /frame\.cut\.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more \(got -1\)/);
+    assert.equal(bad.status, 1, bad.out); assert.match(JSON.parse(bad.stdout).error.message, /frame\.cut\.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more \(got -1\)/);
     // measured: 0.6 mm is within, so it passes; 1.5 mm is more than its parts allow, so it leans
     assert.match(cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=0.6', '--source', 'tape, inside corners'), /frame\.square\.p1-p2-x1-x3: measured 0\.6 mm, predicted 1\.04/);
     let [m] = check('side');

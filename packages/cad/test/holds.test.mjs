@@ -27,7 +27,7 @@ export function main (v) {
     const write = (fastener, lid = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
       items: [{ id: 'base', object: 'plate' }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: lid }],
       fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
-    const check = () => { const r = cad.run('check', 'pins/lid', '--json'); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const check = () => cad.findings('check', 'pins/lid', '--json');
     const pinsOf = (all) => all.filter((x) => x.code === 'fit.pin');
     // Two snap pins 4x6 through 3 + 3 mm of plates, in sockets drawn 4 + 2 × x1c.snap_clearance 0.2 = 4.4 mm
     write({ pin: 'snap pin 4x6', count: 2, load: 20 });
@@ -73,7 +73,7 @@ export function main (v) {
     // a pin the schema does not know is refused by name
     write({ pin: 'snap pin 4x6', colour: 'red' });
     const r = cad.run('check', 'pins/lid', '--json');
-    assert.match(`${r.stdout}${r.stderr}`, /pins have no \\?"colour\\?": a fastener naming pins takes pin, count, fit, load, pull/);
+    assert.equal(r.status, 1, r.out); assert.match(`${r.stdout}${r.stderr}`, /pins have no \\?"colour\\?": a fastener naming pins takes pin, count, fit, load, pull/);
     const { schema, validate } = await import('../lib/schema.mjs'), asm = (fastener) => ({ title: 't', kind: 'fit', items: [], fits: [{ a: 'lid', b: 'base', fastener }] });
     assert.deepEqual(validate(asm({ pin: 'snap pin 4x6', count: 2, fit: 'press', load: 20, pull: 5 }), schema('assembly')), [], 'the schema takes pins');
     assert.ok(validate(asm({ pin: 'snap pin 4x6', colour: 'red' }), schema('assembly')).some((x) => /colour/.test(`${x.path} ${x.message}`)), 'and names what it does not');
@@ -109,7 +109,7 @@ export function main (v) {
     const write = (fastener, box = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its box', kind: 'fit',
       items: [{ id: 'box', object: 'box', set: box }, { id: 'lid', object: 'lid', at: [0, 0, 'box.thick'] }],
       fits: [{ a: 'lid', b: 'box', min: 0, note: 'The lid, held by magnets', fastener }] }));
-    const check = () => { const r = cad.run('check', 'mag/lid', '--json'); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const check = () => cad.findings('check', 'mag/lid', '--json');
     const of = (all, code) => all.filter((x) => x.code === code);
     // Two N35 discs 8 x 3 mm. By hand: the seller's 8 x 3 disc is N45 and pulls 14.7 N (magnets.disc_8x3_pull, supermagnete
     // S-08-03-N); as N35, by the square of the middles of the grades' remanence (magnets.remanence_*): N35 (1.17 + 1.21) / 2
@@ -176,7 +176,7 @@ export function main (v) {
     const write = (fastener, a = {}, b = {}, turn = 0) => fs.writeFileSync(file, JSON.stringify({ title: 'Two blocks pinned side by side', kind: 'fit',
       items: [{ id: 'left', object: 'block', set: b, rotate: [0, 0, turn] }, { id: 'right', object: 'block', at: turn ? [0, 6, 0] : [6, 0, 0], rotate: [0, 0, turn], set: a }],
       fits: [{ a: 'right', b: 'left', min: 0, note: 'The right block, pinned to the left', fastener }] }));
-    const check = () => { const r = cad.run('check', 'pins/pair', '--json'); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings.filter((x) => x.code === 'fit.pin'); };
+    const check = () => cad.findings('check', 'pins/pair', '--json').filter((x) => x.code === 'fit.pin');
     const said = (f, a, b, turn) => { write(f, a, b, turn); return check().map((x) => [x.level, x.text]); };
     // Two dowels 3x12 pressed across 6 + 6 mm: each teardrop's round is 3 + 0.1 (x1c.hole_comp) - 0.05 (x1c.pin_press)
     //   = 3.05 mm, its 45° roof left out of the circle the check fits, so it is found and held as a round hole is

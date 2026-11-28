@@ -61,7 +61,7 @@ test('a folding sheet in an assembly: the bench tray checked flat and folded, a 
   const bench = fileURLToPath(new URL('../../examples/bench/', CAD));
   try {
     for (const d of ['rules', 'projects/flexures']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
-    const check = (name) => { const r = cad.run('check', name, '--json'); assert.ok(r.json?.findings, r.out); return r.json.findings; }; // (pass or fail: the findings are what is read)
+    const check = (name) => cad.findings('check', name, '--json'); // (pass or fail: the findings are what is read)
     // the tray alone: its own fold check runs with the print checks, every joint within PETG's limit at 90°
     const t = check('flexures/tray');
     assert.deepEqual(t.filter((x) => x.code === 'fold.strain').map((x) => x.level), ['pass', 'pass', 'pass', 'pass']);

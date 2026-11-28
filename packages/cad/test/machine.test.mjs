@@ -18,7 +18,7 @@ test('wires: longest through the poses, a gauge against what it carries, the she
       joints: [{ id: 'j', type: 'revolute', parent: 'base.tip', child: 'arm.base', min: -90, max: 90 }], fits: [{ a: 'arm', b: 'base', min: -1000, silent: true }],
       wires: [{ id: 'm1', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg22' }, { id: 'thin', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg28' }] };
     fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = cad.run('check', 'home/arm', '--json').json.findings.filter((x) => x.code.startsWith('wire.'));
+    const check = cad.findings('check', 'home/arm', '--json').filter((x) => x.code.startsWith('wire.'));
     const len = check.find((x) => x.code === 'wire.length' && x.refs.wire === 'm1');
     assert.equal(len.values.length, Math.ceil(len.values.longest + 40), 'its longest, and the loop');
     assert.ok(len.values.longest > len.values.shortest + 50, 'it changes as the arm swings');
@@ -45,7 +45,7 @@ test('a task: reach and speed over a sheet, the error budget moved by a measurem
       joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 30] }, child: 'upper.base', min: -130, max: 130 }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150, errors: { play: 'armrig.play' } }],
       fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }], task });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = () => { const r = cad.run('check', 'home/arm', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => cad.findings('check', 'home/arm', '--json');
     const by = (list, code) => list.find((x) => x.code === code);
     write(asm());
     let f = check();
@@ -102,7 +102,7 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
       joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'upper.base', min: -130, max: 130, support }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150 }], fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }, { a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true }, { a: 'b1', b: 'upper', min: -1000, silent: true }, { a: 'm0', b: 'b1', min: -1000, silent: true }],
       task: { tool: 'fore.tip', sheet: { size: [60, 60], at: [200, 0, 80], normal: [0, 1, 0] }, speed: 20, payload } });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = () => { const r = cad.run('check', 'home/arm', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => cad.findings('check', 'home/arm', '--json');
     const by = (list, code, n = 0) => list.filter((x) => x.code === code)[n];
     write(asm({ bearings: ['b1'] }));
     let f = check();
@@ -147,7 +147,7 @@ test('a gait in an assembly: a crawl checked through its cycle, motors against i
     }
     const a = { title: 'Quad', kind: 'fit', items, joints, fits, gait: { legs: legs.map(([n]) => `${n}.tip`), pattern: 'crawl', stride: 30, lift: 12, period: 4, height: 150, mass: 1.5 } };
     const write = (x) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/quad.json'), JSON.stringify(x));
-    const check = () => { const r = cad.run('check', 'home/quad', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => cad.findings('check', 'home/quad', '--json');
     write(a);
     let f = check();
     assert.match(f.find((x) => x.code === 'gait.stable').text, /gait: statically stable: the least margin is/);
@@ -158,7 +158,7 @@ test('a gait in an assembly: a crawl checked through its cycle, motors against i
     write({ ...a, gait: { ...a.gait, stride: 500 } });
     f = check(); assert.equal(f.find((x) => x.code === 'gait.reach').level, 'fail'); assert.match(f.find((x) => x.code === 'gait.reach').text, /can't reach its foot/);
     write({ ...a, gait: { ...a.gait, legs: ['fl.nowhere'] } });
-    const bad = cad.run('check', 'home/quad', '--json').json; assert.match(bad.error.message, /gait: no anchor "fl\.nowhere"/);
+    const quad = cad.run('check', 'home/quad', '--json'), bad = quad.json; assert.equal(quad.status, 1, quad.out); assert.match(bad.error.message, /gait: no anchor "fl\.nowhere"/);
   } finally { done(); }
 });
 

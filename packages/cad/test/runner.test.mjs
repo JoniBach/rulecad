@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { workspace, runCad } from './helpers.mjs';
+import { workspace, runCad, findingsOf, object, BOX } from './helpers.mjs';
 
 const HERE = fileURLToPath(new URL('./', import.meta.url));
 
@@ -57,6 +57,24 @@ test('cad.run() keeps the exit status whatever it is, and a timeout stops a run 
     assert.throws(() => slow('--version'), /ran past 0\.001 s, so it may hang/);
     assert.throws(() => slow.refused('x', '--version'), /a run that should fail was stopped/, 'a run stopped by its timeout is no refusal');
     assert.equal(cad.with({ env: { CAD_TRUSTED: undefined } }).run('--version').status, 0, 'env adds to the environment, or takes a name out');
+  } finally { done(); }
+});
+
+test('cad.findings() gives a check\'s findings, pass or fail, and fails its test when the exit status disagrees with them', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const plate = (w) => ({ uses: ['x1c'], variables: { w: { value: w, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, h: { value: 2, unit: 'mm', rule: 'Height' } } });
+    object(ws, 'demo/plate', plate(40), BOX);
+    object(ws, 'demo/wide', plate(400), BOX);
+    assert.ok(!cad.findings('check', 'demo/plate', '--json').some((x) => x.level === 'fail'), 'a check that passes, exit 0');
+    assert.equal(cad.findings('check', 'demo/wide', '--json').find((x) => x.code === 'print.bed').level, 'fail', 'a check that fails, exit 1: its findings all the same');
+    // the same runs, as if the command had exited otherwise: a crash after printing, or a failure left at exit 0
+    const r = cad.run('check', 'demo/wide', '--json');
+    assert.throws(() => findingsOf({ ...r, json: r.json, status: 0 }), /a run with a failing finding should exit 1, and this one did not[\s\S]*exited 0/);
+    const p = cad.run('check', 'demo/plate', '--json');
+    assert.throws(() => findingsOf({ ...p, json: p.json, status: 1 }), /a run with no failing finding should exit 0/);
+    assert.throws(() => findingsOf({ ...p, json: p.json, status: null, signal: 'SIGKILL' }), /exited on SIGKILL/, 'a run stopped part way is no answer');
+    assert.throws(() => cad.findings('chekc', '--json'), /the run printed no findings[\s\S]*exited 1/, 'nor is a run that printed no findings');
   } finally { done(); }
 });
 

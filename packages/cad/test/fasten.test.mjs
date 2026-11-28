@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { workspace, fastened, object, run, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
+import { workspace, fastened, findingsOf, object, run, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
 
 test('v.fixings: a counterbored hole, a pilot and an insert boss with no number typed, each said in the check with the rule it rests on', () => {
   const { ws, cad, done } = workspace();
@@ -28,7 +28,7 @@ export function main (v) {
     fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['plate'] }));
     // no number in the design but 0, 1 and 2: a thread's name is text, so 'M3' and 'M3x12 cap' are no measurements
     assert.deepEqual([...new Set(js.replace(/'[^']*'/g, '').match(/\d+(\.\d+)?/g))].sort(), ['0', '2']);
-    const run = () => { const r = cad.run('check', 'demo/plate', '--json'); return { status: r.status, findings: JSON.parse(r.stdout).findings }; };
+    const run = () => { const r = cad.run('check', 'demo/plate', '--json'); return { status: r.status, findings: findingsOf(r) }; };
     const first = run(), by = (f, code) => f.filter((x) => x.code === code);
     assert.equal(first.status, 0); assert.deepEqual(first.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), [], 'it checks clean');
     assert.equal(by(first.findings, 'lint.numbers')[0].level, 'pass');
@@ -157,8 +157,8 @@ export function main (v) {
     const yoke = (fasten, run = true) => { fs.writeFileSync(file, JSON.stringify({ title: 'A block in a fork', kind: 'fit', items: [{ id: 'fork', object: 'fork' }, { id: 'block', object: 'block' }],
       fits: [{ a: 'block', b: 'fork', min: 0, note: 'In the slot' }], fasten: [{ screw: 'M3 cap', through: ['fork', 'block'], into: 'fork', at: ['fork.h'], nut: true, note: 'Across the fork', ...fasten }] }));
       if (!run) return null;
-      const out = cad.run('check', 'demo/yoke', '--json'); let j; try { j = JSON.parse(out.stdout); } catch { assert.fail(`${out.stdout}${out.stderr}`); }
-      if (!j.findings) assert.fail(JSON.stringify(j)); return { status: out.status, of: (code) => j.findings.filter((x) => x.code === code), fails: j.findings.filter((x) => x.level === 'fail').map((x) => `${x.code}: ${x.text}`) }; };
+      const out = cad.run('check', 'demo/yoke', '--json'), j = { findings: findingsOf(out) };
+      return { status: out.status, of: (code) => j.findings.filter((x) => x.code === code), fails: j.findings.filter((x) => x.level === 'fail').map((x) => `${x.code}: ${x.text}`) }; };
     r = yoke();
     assert.deepEqual(r.fails, [], 'the screw passes the near cheek and the block, and its nut holds it on the far cheek');
     assert.match(r.of('fasten.holes')[0].text, /Across the fork, an M3 cap screw: one axis from under the head through fork, block into fork/);
@@ -358,7 +358,7 @@ test('fasten.load: a bracket carrying 2 kg on two M3 screws into PLA pilots hold
     // The motor stand of the bench: motor.mount's numbers as they were before fasten.load (recorded 2026-11-15 on 0ef929d)
     const bench = fileURLToPath(new URL('../../examples/bench/', CAD)), stand = path.join(ws, 'stand');
     fs.cpSync(bench, stand, { recursive: true, filter: (p) => !p.includes('node_modules') }); fs.symlinkSync(ROOT_MODULES, path.join(stand, 'node_modules'), 'junction');
-    const motorOf = (name) => { const out = run(stand, ['check', `benchmarks/${name}`, '--json']).stdout; return JSON.parse(out).findings; };
+    const motorOf = (name) => findingsOf(run(stand, ['check', `benchmarks/${name}`, '--json']));
     const before = motorOf('motor-test').find((x) => x.code === 'motor.mount' && x.values?.bearing != null);
     assert.match(before.text, /motor on stand: 5 mm of plate at the screws, each taking 3\.2 N against the torque \(bearing 0\.2 MPa, 212 times under PLA's 39 MPa\)/);
     near(before.values.bearing, 0.18433179723502305, 1e-12, 'bearing as before'); near(before.values.margin, 211.575, 1e-9, 'margin as before');
@@ -590,7 +590,7 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
       items: [{ id: 'base', object: 'base', set: { thread, kind } }, { id: 'bracket', object: 'bracket', at: [0, 0, 24], set: { thread } }],
       fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
       fasten: [{ screw, through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }] }));
-    const check = () => { const r = cad.run('check', 'pb/joint', '--json'); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const check = () => cad.findings('check', 'pb/joint', '--json');
     // 20 kg hung over screw 2 pulls it with about 20 × 9.80665 = 196.1 N (and the bracket's own few grams). By hand, the M8
     // printed bolt's root as drawn: the basic minor 8 - 2 × (5/8)(√3/2)(1.25) = 6.6467 mm, less its half of x1c.thread_gap
     // (0.1 mm) each side, 6.446 mm; (π/4) 6.446² = 32.634 mm² at pla.strength 39 MPa (no strength_z, so the strength along

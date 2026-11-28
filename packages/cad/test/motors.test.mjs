@@ -8,7 +8,7 @@ import { workspace } from './helpers.mjs';
 test('a motor in an assembly: on the axis of its joint, torque reaching a load, holding on and off, a shaft read from its bore', () => {
   const { ws, cad, done } = workspace();
   const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
-  const findings = (a) => { const { out, json: r } = cad.run('check', `home/${a}`, '--json'); assert.ok(r?.findings, out); return r.findings.filter((x) => /^(motor|shaft)\./.test(x.code)); };
+  const findings = (a) => cad.findings('check', `home/${a}`, '--json').filter((x) => /^(motor|shaft)\./.test(x.code));
   const code = (list, c) => list.filter((x) => x.code === c);
   try {
     write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['arm', 'hub'] });
@@ -78,7 +78,7 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
 test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflection and warns on heat, a 6 mm plate held close passes', () => {
   const { ws, cad, done } = workspace();
   const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
-  const findings = (a) => { const { out, json: r } = cad.run('check', `home/${a}`, '--json'); assert.ok(r?.findings, out); return r.findings.filter((x) => /^motor\./.test(x.code)); };
+  const findings = (a) => cad.findings('check', `home/${a}`, '--json').filter((x) => /^motor\./.test(x.code));
   try {
     write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['plate', 'wall', 'arm'] });
     // A plate standing out 45 mm from a wall, the motor hung under it, its shaft up through the plate
@@ -166,7 +166,7 @@ test('a motor driving a slide: through a lead screw that holds, or a belt that d
       joints: [{ id: 'z', type: 'prismatic', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'carriage.base', min: 0, max: 50 }], fits: [{ a: 'm', b: 'carriage', min: -1000, silent: true }],
       loads: [{ joint: 'z', force: 10 }], task: { tool: 'carriage.tip', volume: { x: [20, 20], y: [0, 0], z: [0, 40] }, speed: 20 } });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/z.json'), JSON.stringify(a));
-    const check = () => cad.run('check', 'home/z', '--json').json.findings;
+    const check = () => cad.findings('check', 'home/z', '--json');
     write(asm({ leadscrew: { lead: 2 } }));
     let f = check();
     const holds = f.filter((x) => x.code === 'motor.holds');

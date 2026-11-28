@@ -51,6 +51,19 @@ function audit(r) {
 const told = (r) => `cad ${r.args.join(' ')}\n(in ${r.ws})\nexited ${r.status ?? `on ${r.signal}${r.timeout ? `: it ran past ${r.timeout / 1000} s, so it may hang` : ''}`}\n${r.out}`;
 
 /**
+ * The findings a `--json` run printed, after checking its exit status agrees with them: 1 when a finding fails, 0 when
+ * none does. A run that printed no findings, stopped, or exited otherwise fails the test.
+ * @param {ReturnType<typeof runCad>} r the run
+ */
+export function findingsOf(r) {
+  const findings = r.json?.findings;
+  if (!Array.isArray(findings)) assert.fail(`the run printed no findings:\n${told(r)}`);
+  const want = findings.some((x) => x.level === 'fail') ? 1 : 0;
+  if (r.status !== want && !AUDIT) assert.fail(`a run ${want ? 'with a failing finding should exit 1' : 'with no failing finding should exit 0'}, and this one did not:\n${told(r)}`);
+  return findings;
+}
+
+/**
  * The command run in a folder, as tests call it: `cad(...args)` gives what a run that must succeed printed on stdout
  * (its notes on stderr are left out, so --json output reads as JSON), and fails the test, with the command, its exit
  * status and output, on any other exit. The others:
@@ -59,6 +72,8 @@ const told = (r) => `cad ${r.args.join(' ')}\n(in ${r.ws})\nexited ${r.status ??
  *   any text, or a pattern); gives the output;
  * - `cad.run(...args)`: the run whatever its exit, as runCad gives it, for a test that reads the status itself;
  * - `cad.json(...args)`: a run that must succeed, its stdout read as JSON;
+ * - `cad.findings(...args)`: a `--json` check whose findings are read whether it passes or fails: it must print its
+ *   findings, and exit 1 when one of them fails and 0 when none does; gives the findings;
  * - `cad.with(options)`: the same functions with runCad's options (`env`, `timeout`, `node`) added to these.
  * @param {string} ws the folder to run in
  * @param {{ env?: Record<string, string | undefined>, timeout?: number, node?: string[] }} [options]
@@ -77,6 +92,7 @@ export function cadIn(ws, options = {}) {
       if (want instanceof RegExp ? !want.test(r.out) : !r.out.includes(want)) assert.fail(`a run failed, but without ${want instanceof RegExp ? want : JSON.stringify(want)}:\n${told(r)}`);
       return r.out;
     },
+    findings: (...args) => findingsOf(go(args)),
     with: (more) => cadIn(ws, { ...options, ...more, env: { ...options.env, ...more.env } }),
   });
   return cad;
@@ -124,7 +140,7 @@ export function main (v) {
     items: [{ id: 'base', object: 'base', set: base }, { id: 'bracket', object: 'bracket', at: [0, 0, 'base.tall'], set: bracket }],
     fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
     fasten: [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'], ...fasten }], ...more }));
-  const check = () => { const r = runCad(ws, ['check', 'demo/joint', '--json'], { env: { CAD_TRUSTED: path.join(ws, '.trusted.json') } }); let out; try { out = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { status: r.status, findings: out.findings, of: (code) => out.findings.filter((x) => x.code === code), fails: out.findings.filter((x) => x.level === 'fail').map((x) => x.code) }; };
+  const check = () => { const r = runCad(ws, ['check', 'demo/joint', '--json'], { env: { CAD_TRUSTED: path.join(ws, '.trusted.json') } }), findings = findingsOf(r); return { status: r.status, findings, of: (code) => findings.filter((x) => x.code === code), fails: findings.filter((x) => x.level === 'fail').map((x) => x.code) }; };
   return { file, write, check };
 }
 

@@ -151,7 +151,7 @@ test('a bought bearing: placed from its set, turning a shaft, its printed seat r
     fs.writeFileSync(path.join(ws, 'projects/home/objects/housing.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nconst bearing = { bore: 8, outer_diameter: 22, width: 7 }\nexport function main (v) {\n  const seat = v.shapes.bearingSeat(bearing, { fit: v.off ? -0.05 + v.off : 'press', printer: v.x1c, at: [0, 0, v.tall], into: '-z', relief: 2, through: true })\n  return v.ops.subtract(cuboid({ size: [34, 34, v.tall], center: [0, 0, v.tall / 2] }), seat)\n}\n");
     const a = { title: 'Seat', kind: 'fit', items: [{ id: 'housing', object: 'housing' }, { id: 'b1', bought: 'bearing-608', at: [0, 0, 5] }], fits: [{ a: 'b1', b: 'housing', seat: 'press', fastens: true }] };
     fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
-    const check = (o) => { const r = cad.run('check', 'home/seat', ...(o ?? []), '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = (o) => cad.findings('check', 'home/seat', ...(o ?? []), '--json');
     let f = check();
     assert.deepEqual(f.filter((x) => x.level === 'fail').map((x) => x.text), []);
     const seat = f.filter((x) => x.code === 'fit.seat');

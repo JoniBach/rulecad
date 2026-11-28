@@ -404,7 +404,7 @@ test('cad measured from the beam coupon: its sag becomes the modulus a printed b
     fs.mkdirSync(at('assemblies'), { recursive: true });
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'benchmarks', material: 'PLA', objects: [] }));
     fs.copyFileSync(new URL('../../examples/bench/projects/benchmarks/assemblies/beam-test.json', CAD), at('assemblies/beam-test.json'));
-    const check = () => cad.run('check', 'benchmarks/beam-test', '--json').json.findings; // (as drawn, k2 fails beam.creep, an estimate, until its strength is measured)
+    const check = () => cad.findings('check', 'benchmarks/beam-test', '--json'); // (as drawn, k2 fails beam.creep, an estimate, until its strength is measured)
     const coupon = (f, id, what) => f.find((x) => x.code === 'beam.coupon' && x.refs.beam === id && x.predict.name === `${id}.${what}`);
     const before = check();
     // Hand calculation: a beam on two bars 220 mm apart, 2 kg at its middle: sag = F L³ / (48 E I), F = 2 x 9.80665 = 19.613 N.

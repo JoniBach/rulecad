@@ -33,7 +33,7 @@ test('building it: the order worked out and refused when nothing reaches a part;
     // A wall over the screw, fastened on before the screw can go in: no order reaches it. The screw's anchor points up.
     write('walled', { title: 'Walled', kind: 'fit', uses: [], items: [{ id: 'base', object: 'block', set: { long: 60, tall: 10 } }, { id: 'clip', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 10] }, { id: 'stud', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 20] }, { id: 'wall', object: 'block', set: { long: 60, tall: 10 }, at: [0, 0, 30] }],
       fits: [{ a: 'wall', b: 'base', fastens: true, min: 0, note: 'The wall' }, { a: 'stud', b: 'wall', fastens: true, min: 0, note: 'The stud' }, { a: 'clip', b: 'stud', fastens: true, min: 0, note: 'The clip, to the stud', access: 'clip.head' }] });
-    const stuck = cad.run('check', 'home/walled', '--json').json.findings.find((x) => x.code === 'assembly.order');
+    const stuck = cad.findings('check', 'home/walled', '--json').find((x) => x.code === 'assembly.order');
     assert.equal(stuck.level, 'fail'); assert.match(stuck.text, /screw of "The clip, to the stud" can't be reached in any order: wall stands over it/); assert.equal(stuck.refs.wall, 'wall');
     // A part in a sealed box: nothing can reach it, and the finding names it
     object('shell', 'export function main (v) { return subtract(cuboid({ size: [40, 40, 40], center: [0, 0, 20] }), cuboid({ size: [30, 30, 30], center: [0, 0, 20] })) }', { variables: { deep: v(1) } });
@@ -195,7 +195,7 @@ export function main (v) {
   return { left, right, hat, table }
 }
 `);
-    const run = () => { const r = cad.run('check', 'demo/pair', '--json'); let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { of: (code) => j.findings.filter((x) => x.code === code) }; };
+    const run = () => { const found = cad.findings('check', 'demo/pair', '--json'); return { of: (code) => found.filter((x) => x.code === code) }; };
     // Apart by 0.7 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
     let r = run();
     assert.equal(r.of('inplace.bed')[0].level, 'pass'); assert.equal(r.of('inplace.support')[0].level, 'pass');
