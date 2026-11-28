@@ -4,6 +4,6 @@
   "finding": "foundations-5",
   "code": "var.resolved",
   "level": "pass",
-  "text": "\"wall\":1.26",
+  "text": "\"wall\":1.26,\"maker\":\"Bambu Lab\"",
   "must_not": ["var.unknown", "var.expression"]
 }
