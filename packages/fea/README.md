@@ -18,7 +18,9 @@ load[2 * g.node(100, 5) + 1] = -10;                 // 10 N down at the right en
 const r = analyse({ grid: g, density: new Float64Array(1000).fill(1), material: { E: 2680, nu: 0.36 }, thickness: 5, fixed, loads: [load] });
 r.u[0];            // each node's movement: x at 2n, y at 2n + 1
 r.compliance[0];   // the load times how far it moved (N·mm): lower is stiffer
-r.stress[0];       // each cell's von Mises stress (MPa)
+r.stress[0];       // each cell's von Mises stress (MPa) at its centre: reads bending stress low (see How fine a grid)
+r.surface[0];      // each solid cell's von Mises stress (MPa) at the part's surface: use this for strength
+r.findings;        // [{ level, text, code, values, at, box }]: a warning where the peak stress is in a member under 8 cells through
 r.deflection[0];   // { most, at }: the largest movement of solid material, and where
 r.thin;            // { share, cells }: how much of the part is in members under 4 cells thick (thinShare), where a cell's stiffness is rough
 ```
@@ -36,6 +38,17 @@ r.thin;            // { share, cells }: how much of the part is in members under
     iterations, where plain `cg` takes 371.
 - **Solving again:** `solve(...)` returns `again(loads)`, which solves more right-hand sides on the same matrix,
   reusing its factorisation or preconditioner: an adjoint, for a gradient.
+- **Stress at the surface:** `stress` is read at each cell's centre, half a cell inside the part. In bending the
+  stress peaks at the surface, so in a member n cells through the centre stress reads low by about one cell's share:
+  27 to 30% low at 4 cells, 10% at 10. `surface` (and `surfaceStress(g, u, modulus, nu, density)`, which also gives
+  each node's value) reads each cell at its corners and averages each stress component over the solid cells round
+  each node. At a corner it takes two thirds of what the cell's strains say and one third of the stress that
+  reproduces the forces on the cell's corners: square cells bend a little too stiffly, so their strains alone read
+  low (6% at 4 cells in 3D), and the second reading errs the other way by about twice as much. A cell under half
+  density keeps its centre stress. `analyse` adds a warning to `findings` (code `fea.coarse-stress`) for each load
+  whose peak surface stress is in a member under 8 cells through, counted along the directions the stress changes
+  fastest there (the shortest of them). At a sharp inside corner, or a curved edge stepped into cells, the peak keeps rising as cells shrink:
+  the stress concentrates there beyond what any grid settles on, so read it with care (a real part has a fillet).
 - **Stress at a point:** `centreStress(h, nu, dim)` is the matrix from a cell's movements to the stress at its centre
   (for Young's modulus 1), and `vonMises(s, dim, grad)` gives von Mises stress and, optionally, its gradient. Stress
   limits in @rulecad/topopt use both.
@@ -51,22 +64,28 @@ r.thin;            // { share, cells }: how much of the part is in members under
   memory (a few solves in sixty, more with more threads, none on Node 22 or 24), so there it is plain JavaScript
   under another name (its `name` says so).
 
-Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I` in 2D, and within 2% in 3D.
+Tested against beam theory with shear (Timoshenko's, `F L³ / 3 E I + F L / κ G A`): a cantilever's tip moves within
+1% of it in 2D at 10 cells through, and within 3% in 3D at 8, never more. The surface stress of a cantilever 4, 8 or
+10 cells deep is tested within 5% of `M c / I` at mid-span and a beam's depth from the support, in 2D and 3D (it
+comes within 2%); right at a clamped edge the stress concentrates, and beam theory doesn't hold.
 Multigrid is tested against the direct solver with stiffnesses a millionfold apart.
 
 **How fine a grid.** The cells are exact for a part that only stretches, and converge on beam theory with shear
 (Timoshenko's) as they shrink. What matters is how many cells cross the depth of whatever bends:
 
-| Cells through the depth | Too stiff by |
-|---|---|
-| 1 | about 32% |
-| 2 | about 11% |
-| 4 | about 3% |
-| 10 | under 1% |
+| Cells through the depth | Too stiff by | `stress` (cell centres) reads low by | `surface` is out by |
+|---|---|---|---|
+| 1 | about 32% | about 94% | about 24% low |
+| 2 | about 11% | about 55% | about 5% low |
+| 4 | about 3% (4% in 3D) | about 27% (29% in 3D) | under 1% |
+| 8 | about 1% | about 13% | about 1% high |
+| 10 | under 1% | about 10% | about 1% high |
+| 20 | under 0.5% | about 5% | under 1% high |
 
-So give every member that bends at least four cells, and check a final shape on cells half the size: if the
-stiffness moves by more than a few percent, the grid was too coarse. (Measured on cantilevers and a simply supported
-beam, in 2D and 3D.)
+So give every member that bends at least four cells, read its strength from `surface`, not `stress`, and check a
+final shape on cells half the size: if the stiffness or the peak stress moves by more than a few percent, the grid
+was too coarse. (Stiffness measured on cantilevers and a simply supported beam, in 2D and 3D; stress on a cantilever
+100 × 10 mm at mid-span, against `M c / I`, in 2D, and in 3D where they differ.)
 
 ## Frames of beams
 

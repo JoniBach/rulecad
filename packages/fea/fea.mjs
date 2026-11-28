@@ -636,14 +636,191 @@ export function stress(g, u, modulus, nu) {
   return out;
 }
 
+// The stress field a cell carries, as few terms as it has ways to deform (5 in 2D, 18 in 3D): each term a stress
+// component times a product of the natural coordinates (Pian and Sumihara 1984 in 2D, Pian and Tong 1986 in 3D).
+// Each term: [component, power of ξ, power of η, power of ζ].
+const STRESS_TERMS = {
+  2: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [0, 0, 1], [1, 1, 0]].map(([c, a, b]) => [c, a, b, 0]),
+  3: [[0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [0, 0, 1, 1], [1, 0, 0, 0], [1, 0, 0, 1], [1, 1, 0, 0], [1, 1, 0, 1],
+    [2, 0, 0, 0], [2, 1, 0, 0], [2, 0, 1, 0], [2, 1, 1, 0], [3, 0, 0, 0], [3, 0, 0, 1], [4, 0, 0, 0], [4, 1, 0, 0], [5, 0, 0, 0], [5, 0, 1, 0]],
+};
+const termsAt = (p, dim) => STRESS_TERMS[dim].map(([c, ...pow]) => [c, pow.slice(0, dim).reduce((f, k, a) => f * (k ? p[a] : 1), 1)]);
+
+// For each corner of a cell of side 1 and modulus 1, the matrix (rows × cell dofs) from its movements to the stress at
+// that corner, read from the forces the cell puts on its corners (K u) rather than from its strains: the stress field
+// (in STRESS_TERMS) whose work over the cell's strains gives exactly those forces. The cells' forces balance the load,
+// so across a section this field carries the whole bending moment, even where square cells bend too stiffly and their
+// strains read low; but it puts too much of the moment at each cell's edges, so alone it reads high (by about 9% at 4
+// cells through, 4% at 10). See surfaceStress.
+const balanced = new Map();
+function balancedCorners(nu, dim) {
+  const key = `${dim} ${nu}`;
+  if (balanced.has(key)) return balanced.get(key);
+  const m = CORNERS[dim].length * dim, n = STRESS_TERMS[dim].length, ke = cellStiffness(nu, dim), gp = 1 / Math.sqrt(3), w = 1 / (1 << dim);
+  const points = dim === 3 ? [-gp, gp].flatMap((a) => [-gp, gp].flatMap((b) => [-gp, gp].map((c) => [a, b, c]))) : [-gp, gp].flatMap((a) => [-gp, gp].map((b) => [a, b]));
+  const G = new Float64Array(n * m); // ∫ Pᵀ B over the cell: term t's work over dof a's strain
+  for (const p of points) {
+    const B = strains(p, 1, dim);
+    termsAt(p, dim).forEach(([c, v], t) => { for (let a = 0; a < m; a++) G[t * m + a] += w * v * B[c * m + a]; });
+  }
+  // R = (G Gᵀ)⁻¹ G ke: the terms whose forces Gᵀ β are the cell's K u (exactly: K u has no rigid part, and G's rows span the rest)
+  const A = new Float64Array(n * n), GK = new Float64Array(n * m);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { let t = 0; for (let a = 0; a < m; a++) t += G[i * m + a] * G[j * m + a]; A[i * n + j] = t; }
+  for (let i = 0; i < n; i++) for (let b = 0; b < m; b++) { let t = 0; for (let a = 0; a < m; a++) t += G[i * m + a] * ke[a * m + b]; GK[i * m + b] = t; }
+  const R = solveDense(A, GK, n, m);
+  const out = CORNERS[dim].map((c) => {
+    const S = new Float64Array((dim === 3 ? 6 : 3) * m);
+    termsAt(c.map((x) => 2 * x - 1), dim).forEach(([comp, v], t) => { for (let a = 0; a < m; a++) S[comp * m + a] += v * R[t * m + a]; });
+    return S;
+  });
+  balanced.set(key, out);
+  return out;
+}
+// A X = B for a small dense A (n × n, symmetric positive definite) and B (n × m), by Gaussian elimination
+function solveDense(A, B, n, m) {
+  const a = Float64Array.from(A), x = Float64Array.from(B);
+  for (let k = 0; k < n; k++) {
+    let piv = k;
+    for (let i = k + 1; i < n; i++) if (Math.abs(a[i * n + k]) > Math.abs(a[piv * n + k])) piv = i;
+    if (piv !== k) { for (let j = 0; j < n; j++) [a[k * n + j], a[piv * n + j]] = [a[piv * n + j], a[k * n + j]]; for (let j = 0; j < m; j++) [x[k * m + j], x[piv * m + j]] = [x[piv * m + j], x[k * m + j]]; }
+    for (let i = k + 1; i < n; i++) {
+      const f = a[i * n + k] / a[k * n + k];
+      if (!f) continue;
+      for (let j = k; j < n; j++) a[i * n + j] -= f * a[k * n + j];
+      for (let j = 0; j < m; j++) x[i * m + j] -= f * x[k * m + j];
+    }
+  }
+  for (let k = n - 1; k >= 0; k--) {
+    for (let j = 0; j < m; j++) { let t = x[k * m + j]; for (let i = k + 1; i < n; i++) t -= a[k * n + i] * x[i * m + j]; x[k * m + j] = t / a[k * n + k]; }
+  }
+  return x;
+}
+
+// How much of the force-balanced reading (balancedCorners) goes into the surface stress; the rest is the strain
+// reading. Square cells bend too stiffly (3% at 4 cells through in 2D, 4% in 3D), so the strains read low (4% and 6%
+// at 4 cells), and the force-balanced field reads high by about twice that: a third of one and two thirds of the other
+// cancel the two errors. Measured on cantilevers and a beam under pure moment, 2D and 3D, Poisson's ratio 0 to 0.45, 4
+// to 20 cells through: within 2% of beam theory at mid-span and a beam's depth from the support (test/surface-
+// stress.test.mjs; right at a clamped edge the stress is concentrated, and reads higher as cells shrink). Both
+// readings are exact for a cell in uniform stress, so the blend is too.
+const BALANCED_SHARE = 1 / 3;
+
+/**
+ * The stress at the part's surface, where bending puts its peak. `stress` reads each cell at its centre, half a cell
+ * inside the surface: in a member n cells through it reads the bending stress low by about one cell's share (27% at 4
+ * cells, 10% at 10). This reads each cell's stress at its corners instead, averages each stress component over the
+ * solid cells (density 0.5 or more) round each node, and gives von Mises there (patch recovery). Averaging over the
+ * cells round a node cancels the false shear a square cell shows at its corners when it bends. At a corner the stress
+ * is two thirds the cell's strains read there, and one third the stress field that reproduces the forces on its corners
+ * (BALANCED_SHARE): the strains alone read low where the cells bend too stiffly. A 4-cell-deep cantilever's surface
+ * stress is within 2% of M c / I, in 2D and 3D, away from the clamped end. At a sharp inside corner, or a curved edge stepped into cells, the
+ * peak keeps rising as the cells shrink: the stress there is concentrated beyond what any grid settles on. A node
+ * with no solid cell round it is averaged over the cells it has.
+ * @param {Grid} g @param {Float64Array} u @param {Float64Array} modulus each cell's Young's modulus (MPa) @param {number} nu
+ * @param {ArrayLike<number>} [density] each cell's density, 0 to 1 (all solid if left out)
+ * @returns {{ nodes: Float64Array, cells: Float64Array }} nodes: von Mises (MPa) at each node; cells: for a solid cell,
+ *   the largest of its corners' (its surface stress), and for a cell under 0.5, its centre stress (as `stress`)
+ */
+export function surfaceStress(g, u, modulus, nu, density) { return recover(g, u, modulus, nu, density, null); }
+// surfaceStress, given the centre stress where it is already worked out (analyse)
+function recover(g, u, modulus, nu, density, centres) {
+  const dim = g.dim, m = g.cellDofs, rows = dim === 3 ? 6 : 3, corners = CORNERS[dim], C = corners.length, D = elasticity(nu, dim);
+  // Each corner's matrix from the cell's movements to its stress there (modulus 1): D B at the corner, blended with the
+  // force-balanced field there (which scales as 1 / h, as B does)
+  const W = BALANCED_SHARE, bal = balancedCorners(nu, dim);
+  const S = corners.map((c, q) => {
+    const B = strains(c.map((x) => 2 * x - 1), g.h, dim), out = new Float64Array(rows * m);
+    for (let p = 0; p < rows; p++) for (let a = 0; a < m; a++) { let t = 0; for (let r = 0; r < rows; r++) t += D[p * rows + r] * B[r * m + a]; out[p * m + a] = (1 - W) * t + W * bal[q][p * m + a] / g.h; }
+    return out;
+  });
+  const solid = (e) => !density || density[e] >= 0.5;
+  const sumSolid = new Float64Array(g.nodes * rows), nSolid = new Uint8Array(g.nodes), sumAll = new Float64Array(g.nodes * rows), nAll = new Uint8Array(g.nodes);
+  const ue = new Float64Array(m);
+  for (let e = 0; e < g.cells; e++) {
+    const eo = e * m, inside = solid(e);
+    for (let a = 0; a < m; a++) ue[a] = u[g.edof[eo + a]];
+    for (let q = 0; q < C; q++) {
+      const n = g.edof[eo + q * dim] / dim, Sq = S[q];
+      for (let p = 0; p < rows; p++) {
+        let t = 0;
+        for (let a = 0, o = p * m; a < m; a++) t += Sq[o + a] * ue[a];
+        t *= modulus[e];
+        sumAll[n * rows + p] += t;
+        if (inside) sumSolid[n * rows + p] += t;
+      }
+      nAll[n]++;
+      if (inside) nSolid[n]++;
+    }
+  }
+  const nodes = new Float64Array(g.nodes), s = new Float64Array(rows);
+  for (let n = 0; n < g.nodes; n++) {
+    const [sum, k] = nSolid[n] ? [sumSolid, nSolid[n]] : [sumAll, nAll[n]];
+    if (!k) continue;
+    for (let p = 0; p < rows; p++) s[p] = sum[n * rows + p] / k;
+    nodes[n] = vonMises(s, dim);
+  }
+  const centre = density ? centres || stress(g, u, modulus, nu) : null, cells = new Float64Array(g.cells);
+  for (let e = 0; e < g.cells; e++) {
+    if (!solid(e)) { cells[e] = centre[e]; continue; }
+    let most = 0;
+    for (let q = 0; q < C; q++) most = Math.max(most, nodes[g.edof[e * m + q * dim] / dim]);
+    cells[e] = most;
+  }
+  return { nodes, cells };
+}
+
+// Members under this many cells through, at the peak stress, are said: the grid reads stress there roughly
+const STRESS_CELLS = 8;
+
+// Where a load's peak surface stress is in a member under STRESS_CELLS cells through, a finding saying so. The member's
+// thickness is counted in solid cells, from the peak cell to the first cell under 0.5 or the grid's edge each way, along
+// the axes the stress changes fastest across the peak cell (through the depth, for a beam that bends): the shortest.
+function coarsePeak(g, density, surface, centre, load, loads) {
+  const dim = g.dim, m = g.cellDofs, corners = CORNERS[dim], nz = dim === 3 ? g.nz : 1;
+  let peak = -1;
+  for (let e = 0; e < g.cells; e++) if (density[e] >= 0.5 && (peak < 0 || surface.cells[e] > surface.cells[peak])) peak = e;
+  if (peak < 0 || !(surface.cells[peak] > 0)) return null;
+  const at = [peak % g.nx, Math.floor(peak / g.nx) % g.ny, dim === 3 ? Math.floor(peak / (g.nx * g.ny)) : 0], sides = [g.nx, g.ny, nz];
+  const change = [...Array(dim)].map((_, a) => { // the corners' stress on the cell's far face less its near face, along each axis
+    let d = 0;
+    corners.forEach((c, q) => { d += (c[a] ? 1 : -1) * surface.nodes[g.edof[peak * m + q * dim] / dim]; });
+    return Math.abs(d);
+  });
+  const steepest = Math.max(...change), cell = (p) => (p[2] * g.ny + p[1]) * g.nx + p[0];
+  const run = (axis) => {
+    let n = 1;
+    for (const step of [-1, 1]) for (let p = at.slice(); ;) { p[axis] += step; if (p[axis] < 0 || p[axis] >= sides[axis] || !(density[cell(p)] >= 0.5)) break; n++; }
+    return n;
+  };
+  // At a clamped end the stress also changes fast along the member (the held face reads low), so the steepest axis
+  // alone can be the length: count each axis the stress changes across by at least half as much, and take the shortest
+  let through = Infinity;
+  for (let a = 0; a < dim; a++) if (change[a] >= steepest / 2) through = Math.min(through, run(a));
+  if (through >= STRESS_CELLS) return null;
+  const lo = at.slice(0, dim).map((i) => i * g.h), hi = lo.map((x) => x + g.h), r = (x) => Math.round(x * 1000) / 1000;
+  const most = surface.cells[peak], low = Math.max(0, Math.round((1 - centre[peak] / most) * 100));
+  return {
+    level: 'warn',
+    code: 'fea.coarse-stress',
+    text: `the highest stress${loads > 1 ? ` under load ${load + 1}` : ''}, ${r(most)} MPa at the part's surface, is in a member only ${through} cell${through === 1 ? '' : 's'} through, under the ${STRESS_CELLS} it takes to read stress closely: there the centre stress reads ${low}% lower, and even the surface stress can be some percent out. Check it on cells half the size, or with a member ${STRESS_CELLS} cells through`,
+    values: { surface: r(most), centre: r(centre[peak]), cells: through, need: STRESS_CELLS, load },
+    at: lo.map((x) => r(x + g.h / 2)),
+    box: { lo: lo.map(r), hi: hi.map(r) },
+  };
+}
+
 /**
  * Analyse a part: each cell's density (0 empty to 1 solid; Young's modulus scales with density^penal, never below
  * E × 1e-9 so empty cells don't leave the matrix singular), supports and loads. In 2D the part is a plate of the given
  * thickness; in 3D thickness is not used.
  * @param {{ grid: Grid, density: Float64Array, material: Material, thickness?: number, fixed: Uint8Array, loads: Float64Array[], penal?: number, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend }} o
- * @returns {{ u: Float64Array[], compliance: number[], stress: Float64Array[], deflection: { most: number, at: number[] }[] }}
- *   compliance: f · u per load (N·mm): the work the load does; lower is stiffer. deflection: the largest movement
- *   of any node in solid material, and where.
+ * @returns {{ u: Float64Array[], thin: { share: number, cells: number }, compliance: number[], stress: Float64Array[], surface: Float64Array[], findings: { level: 'warn', text: string, code: string, values: { surface: number, centre: number, cells: number, need: number, load: number }, at: number[], box: { lo: number[], hi: number[] } }[], deflection: { most: number, at: number[] }[] }}
+ *   compliance: f · u per load (N·mm): the work the load does; lower is stiffer. stress: each cell's von Mises stress
+ *   (MPa) at its centre, which reads bending stress low by about one cell's share of the member's depth (27% at 4
+ *   cells through, 10% at 10). surface: each solid cell's von Mises stress at its surface, the largest of its corners'
+ *   (surfaceStress): within 2% of beam theory at 4 cells through; use it for strength. findings: a warning
+ *   (fea.coarse-stress) for each load whose peak surface stress is in a member under 8 cells through. deflection: the
+ *   largest movement of any node in solid material, and where.
  */
 export function analyse({ grid: g, density, material, thickness = 1, fixed, loads, penal = 1, method = g.dim === 3 ? 'mg' : 'direct', backend }) {
   if (!(material?.E > 0)) throw new Error(`the material needs a modulus E above 0, in MPa (got ${material?.E})`);
@@ -666,12 +843,14 @@ export function analyse({ grid: g, density, material, thickness = 1, fixed, load
     for (let n = 0; n < g.nodes; n++) if (solidNode[n]) { solid++; for (let d = 0; d < g.dim; d++) if (!(Math.abs(x[g.dim * n + d]) < 1e4 * span)) { adrift++; break; } }
     if (adrift > solid / 2) throw Object.assign(new Error('the part is not held still (it can slide or turn under this load): fix more of it, in each direction it could move'), { code: 'fea.unheld' });
   }
-  const position = positions(g);
+  const position = positions(g), centre = u.map((x) => stress(g, x, modulus, nu)), surface = u.map((x, c) => recover(g, x, modulus, nu, density, centre[c]));
   return {
     u,
     thin: thinShare(g, density),
     compliance: u.map((x, c) => jsBackend.dot(loads[c], x)),
-    stress: u.map((x) => stress(g, x, modulus, nu)),
+    stress: centre,
+    surface: surface.map((s) => s.cells),
+    findings: surface.map((s, c) => coarsePeak(g, density, s, centre[c], c, loads.length)).filter(Boolean),
     deflection: u.map((x) => {
       let most = 0, at = position[0];
       for (let n = 0; n < g.nodes; n++) if (solidNode[n]) {
