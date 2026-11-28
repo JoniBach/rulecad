@@ -1,6 +1,16 @@
-# Every push and pull request: the tests on Linux, macOS and Windows, on the oldest and newest Node rulecad supports.
+# Every pull request and every push to main: the tests on Linux, macOS and Windows, on the oldest and newest Node
+# rulecad supports. A branch is tested through its pull request, so each commit runs once (a push to a branch with no
+# pull request is not tested). A newer push to a pull request cancels the run it replaces, which then shows as
+# cancelled. On main each commit has a group of its own, so its run is neither cancelled nor queued behind the last
+# merge's (a shared group would hold one run waiting and drop any older one still waiting).
 name: test
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: test-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
 jobs:

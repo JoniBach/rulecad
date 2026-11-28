@@ -13,6 +13,10 @@ concurrency: publish
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The whole suite runs again here (66 minutes on 2026-11-27), then the fresh install and the publishing: two hours
+    # stops a stuck run without cutting a slow one short. A run stopped part way leaves the rest of the packages to the
+    # next run (a rerun, or the next push to main), which publishes whatever is still not on npm.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
