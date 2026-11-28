@@ -54,7 +54,9 @@ jobs:
     # three axes, at the cruise and slowing down every step, each line sent when the last was answered: they must keep to
     # their planned time within 1%, or the streamer falls behind on short blocks. The leg's gait (cad plot leg/stand) is
     # streamed the same way, from its standing pose through three cycles and back, every step counted, and the quadruped's trot
-    # (cad plot leg/quadruped) on a simulated Mega 2560, its eight axes, ceilings and short blocks measured there too. A toolchain download that
+    # (cad plot leg/quadruped) on a simulated Mega 2560, its eight axes, ceilings and short blocks measured there too. Every
+    # step of each must come before the drivers go off (test/firmware-disable.test.mjs checks the same, and that each half
+    # of that repair, the streamer's d and the sender's wait before it, holds alone). A toolchain download that
     # still fails after three tries is a warning and skips the rest: the compile is what this job is for, not the download.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -88,6 +90,10 @@ jobs:
           node ../../packages/cad/bin/cad.mjs machine arm/arm && node ../../packages/cad/bin/cad.mjs plot arm/arm projects/arm/drawings/test.svg
           node ../../packages/cad/bin/cad.mjs machine leg/stand && node ../../packages/cad/bin/cad.mjs plot leg/stand
           node ../../packages/cad/bin/cad.mjs machine leg/quadruped && node ../../packages/cad/bin/cad.mjs plot leg/quadruped
+      - if: steps.toolchain.outcome == 'success'
+        run: node --test test/firmware-disable.test.mjs
+        env:
+          AVR8JS: .cache/avr8js/node_modules/avr8js
       - if: steps.toolchain.outcome == 'success'
         run: >-
           node scripts/firmware.mjs --simulate examples/bench/exports/arm/arm-test.steps.json --machine examples/bench/exports/arm/arm.machine.json

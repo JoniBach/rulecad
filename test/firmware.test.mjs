@@ -144,7 +144,7 @@ test('firmware: a block must last as long as its line and answer take, and the s
   // the soonest a block can be over is at its fastest of entry, peak and exit: 70 steps at a peak of 4000 last 17.5 ms
   assert.equal(send.dryRun(['m 70 0 0 0 4000 0 100000 35 35']).m, 1);
   // send.mjs checks the whole file before it opens the port, not only on a dry run
-  assert.match(read(`${ARM}/send.mjs`), /let r, lines, st;\n  try \{ st = streamerOf\(machine\); lines = \[.*\} catch \(e\) \{ console\.error\(`\$\{has\('dry-run'\) \? 'dry run' : 'not sent'\}.*\n  try \{ r = dryRun\(lines, \{ machine \}\); \} catch \(e\) \{ console\.error\(`\$\{has\('dry-run'\) \? 'dry run' : 'not sent'\}/);
+  assert.match(read(`${ARM}/send.mjs`), /let r, lines, st;\n  try \{ st = streamerOf\(machine\); lines = jobLines\(file, machine, \{ home: !has\('no-home'\) \}\); \} catch \(e\) \{ console\.error\(`\$\{has\('dry-run'\) \? 'dry run' : 'not sent'\}.*\n  try \{ r = dryRun\(lines, \{ machine \}\); \} catch \(e\) \{ console\.error\(`\$\{has\('dry-run'\) \? 'dry run' : 'not sent'\}/);
   // the worked arm plans with a least block time that covers a 60-character line: (60 + 1 + 4) x 10 / 115200 + 0.0051 =
   // 0.01074 s, under its task.blockTime of 0.011 (the worked file's lines are 34 to 41 characters)
   for (const f of [ARM, COPY]) {

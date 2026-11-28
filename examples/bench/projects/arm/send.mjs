@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Sends a step file (rulecad.steps/1, from cad plot: an arm's drawing or a leg's gait) to the streamer, line by line, each
 // after the last was answered. The streamer runs on an Uno under a CNC Shield V3 (three axes) or a Mega 2560 (eight): the
-// machine description's controller says which.
+// machine description's controller says which. The streamer answers a block when it is queued, not when it has run, so
+// before the last line (d, drivers off) the sender asks the board where it is until nothing is queued and nothing moves.
 //   node send.mjs <file.steps.json> --port /dev/tty.usbmodem101 [--machine arm.machine.json] [--no-home]
 //   node send.mjs <file.steps.json> --dry-run [--machine arm.machine.json] [--quiet]
 //                                                 echoes each line it would send with the answer the streamer would give,
@@ -115,6 +116,57 @@ export function dryRun(lines, { machine, turnaround = TURNAROUND } = {}) {
   return { lines: lines.length, ...seen, peakRate: peak, axisPeaks, position, said };
 }
 
+/** The lines of a whole job, in the order send.mjs sends them: drivers on, each axis homed (where the machine has a switch
+ * for it, and unless home is false), the file's blocks, drivers off. Throws as linesOf does, before anything is sent.
+ * @param {object} file a step file @param {object | null} [machine] cad machine's description @param {{ home?: boolean }} [o] */
+export function jobLines(file, machine, { home = true } = {}) {
+  const st = streamerOf(machine);
+  return ['e', ...(machine && home ? homeLines(machine) : []), ...linesOf(file, { ...(machine?.pen ? { pen: machine.pen } : {}), axes: st.axes, ...(machine ? { names: machine.axes.map((a) => a.name) } : {}) }), 'd'];
+}
+
+/** How long the sender waits between two questions to the board while its last moves run, ms. The slowest a block steps
+ * is the streamer's MIN_RATE, 80 steps/s, a step every 12.5 ms, so a moving machine always moves between two questions. */
+export const POLL = 100;
+
+/** The streamer's answer to `?` read: "q <a position for each axis> <blocks queued>". Null for any other line.
+ * @param {string} line @returns {{ position: number[], queued: number } | null} */
+export function report(line) {
+  if (!/^q( -?\d+){2,}$/.test(line ?? '')) return null;
+  const x = line.slice(2).split(' ').map(Number);
+  return { position: x.slice(0, -1), queued: x.at(-1) };
+}
+
+/** Wait until the board has run everything it was sent: ask it `?` every POLL ms until no block is queued and no axis has
+ * moved since the last answer. `?` counts the blocks waiting, not the one running, so 0 alone can mean the last block is
+ * still under way. A streamer flashed before d waited for its queue (it turned the drivers off at once, with up to 12
+ * blocks still to run) is kept safe by this; the streamer now waits too. A final wait or pen move, with no axis moving,
+ * is not waited for here (the streamer's own d waits for it).
+ * @param {(line: string) => Promise<string> | string} ask sends a line, gives its answer
+ * @param {(ms: number) => Promise<void> | void} [pause] @returns {Promise<string>} the board's last report */
+export async function settle(ask, pause = (ms) => new Promise((res) => setTimeout(res, ms))) {
+  let last = null;
+  for (;;) {
+    const a = await ask('?'), r = report(a);
+    if (!r) throw new Error(`the board answered "?" with "${a}", and the streamer answers "q <positions> <blocks queued>"`);
+    if (r.queued === 0 && last && r.position.join(' ') === last.position.join(' ')) return a;
+    last = r;
+    await pause(POLL);
+  }
+}
+
+/** Send a job's lines, each after the last was answered "ok", waiting for the board to finish moving (settle) before d.
+ * Throws at the first line answered otherwise, naming it, after stop() (the sender's "!": stop at once).
+ * @param {string[]} lines @param {(line: string) => Promise<string> | string} ask sends a line, gives its answer
+ * @param {{ pause?: (ms: number) => Promise<void> | void, say?: (text: string) => void, stop?: () => void }} [o] */
+export async function stream(lines, ask, { pause, say = () => {}, stop = () => {} } = {}) {
+  for (const [i, l] of lines.entries()) {
+    if (l === 'd') await settle(ask, pause);
+    const reply = await ask(l);
+    if (reply !== 'ok') { stop(); throw new Error(`line ${i + 1} ("${l}"): ${reply}`); }
+    if (i % 100 === 0) say(`${i} of ${lines.length}`);
+  }
+}
+
 /** What a gait's step file is, for the summary: its cycles, time and start pose (nothing for a drawing). @param {object} file */
 export const gait = (file) => (file?.kind === 'gait' ? `, ${file.cycles} cycle${file.cycles === 1 ? '' : 's'} of a gait, ${Number(file.time).toFixed(1)} s${file.pose ? ` from the pose "${file.pose}" and back` : ''}` : '');
 
@@ -124,16 +176,12 @@ async function send(port, lines, say, axes = 3) {
   const rd = fs.createReadStream(port), wr = fs.createWriteStream(port);
   let buffer = '', answer = null;
   let greeting = null;
-  rd.on('data', (d) => { buffer += d; let i; while ((i = buffer.indexOf('\n')) >= 0) { const l = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1); if (answer && /^(ok|error)/.test(l)) { const a = answer; answer = null; a(l); } else if (l) { greeting = /^streamer ready, (\d+) axes$/.exec(l)?.[1] ?? greeting; say(l); } } });
+  rd.on('data', (d) => { buffer += d; let i; while ((i = buffer.indexOf('\n')) >= 0) { const l = buffer.slice(0, i).trim(); buffer = buffer.slice(i + 1); if (answer && /^(ok|error|q )/.test(l)) { const a = answer; answer = null; a(l); } else if (l) { greeting = /^streamer ready, (\d+) axes$/.exec(l)?.[1] ?? greeting; say(l); } } });
   await new Promise((res) => setTimeout(res, 2500)); // the board resets when the port opens
   // the streamer says how many axes it was built for: lines written for another board would be misread
   if (greeting != null && +greeting !== axes) { rd.destroy(); wr.end(); throw new Error(`the board's streamer has ${greeting} axes, and the lines are written for ${axes}: flash the streamer built for this machine's controller`); }
-  for (const [i, l] of lines.entries()) {
-    const reply = await new Promise((res) => { answer = res; wr.write(`${l}\n`); });
-    if (reply !== 'ok') { wr.write('!\n'); throw new Error(`line ${i + 1} ("${l}"): ${reply}`); }
-    if (i % 100 === 0) say(`${i} of ${lines.length}`);
-  }
-  rd.destroy(); wr.end();
+  const ask = (l) => new Promise((res) => { answer = res; wr.write(`${l}\n`); });
+  try { await stream(lines, ask, { say, stop: () => wr.write('!\n') }); } finally { rd.destroy(); wr.end(); }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -143,7 +191,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const file = JSON.parse(fs.readFileSync(fileName, 'utf8')), machine = opt('machine') ? JSON.parse(fs.readFileSync(opt('machine'), 'utf8')) : null;
   // the whole file is checked before anything moves: a block refused halfway through a drawing would spoil it
   let r, lines, st;
-  try { st = streamerOf(machine); lines = ['e', ...(machine && !has('no-home') ? homeLines(machine) : []), ...linesOf(file, { ...(machine?.pen ? { pen: machine.pen } : {}), axes: st.axes, ...(machine ? { names: machine.axes.map((a) => a.name) } : {}) }), 'd']; } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
+  try { st = streamerOf(machine); lines = jobLines(file, machine, { home: !has('no-home') }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   try { r = dryRun(lines, { machine }); } catch (e) { console.error(`${has('dry-run') ? 'dry run' : 'not sent'}: ${e.message}`); process.exit(1); }
   if (has('dry-run')) {
     if (!has('quiet')) for (const s of r.said) console.log(s);
