@@ -24,5 +24,6 @@ them as possibly under the GPL as well, until they are replaced.
 
 The three functions are being rewritten from Svanberg's published description of the method alone (Svanberg 1987, in
 the *International Journal for Numerical Methods in Engineering* 24, 359-373, and his 2007 notes "MMA and GCMMA, two
-methods for nonlinear optimization"), without the MATLAB code to hand. Once the rewrite is released, this note
+methods for nonlinear optimization"), without the MATLAB code to hand
+([issue #348](https://github.com/JoniBach/rulecad/issues/348)). Once the rewrite is released, this note
 will say which version of the package is free of the GPL code, and the section above will go.

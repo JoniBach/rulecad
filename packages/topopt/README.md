@@ -417,3 +417,9 @@ Its gradients agree with finite differences through the filter and the projectio
   Structural Mechanics* 11, 523–544.
 - Svanberg (1987). The method of moving asymptotes: a new method for structural optimization. *International Journal
   for Numerical Methods in Engineering* 24, 359–373.
+
+## Licence
+
+MIT (see [LICENSE](LICENSE)), except the method of moving asymptotes: `mma`, `subsolve` and `gauss` in topopt.mjs
+follow Krister Svanberg's MATLAB code, which is under the GNU General Public License version 3 or later. Until they are
+rewritten, read [THIRD-PARTY.md](THIRD-PARTY.md) before you copy or reuse them.
