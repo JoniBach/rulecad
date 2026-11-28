@@ -986,7 +986,7 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its
 middle, sags 0.215 mm by hand with the joins rigid (a beam whose ends turn with the corners the legs and the side
 beams' twist hold) and 0.310 mm with the blind joins' estimated 1.5 N·m/mrad springs; the solve gives the same to three
-figures (`packages/cad/test.mjs`, "frame checks: a shelf frame").
+figures (`packages/cad/test/frame-checks.test.mjs`, "frame checks: a shelf frame").
 
 Two more: a 2020 gantry beam, 600 mm, fixed at both ends, with 2.01 kg carried at its middle, rings first at 74.2 Hz;
 the formula above gives 74.2 Hz (192 E I / L³ = 461.5 N/mm, M + 0.375 m = 2.1225 kg). An open 2020 cube, 420 mm

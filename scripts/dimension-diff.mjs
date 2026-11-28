@@ -57,8 +57,9 @@ export function treeOf(rev) {
 // A workspace: a folder with projects/ that cad builds in (examples/*, the template, each machine)
 const isWorkspaceFile = (f) => /^(examples\/[^/]+|packages\/create-rulecad\/template|packages\/create-rulecad\/machines\/[^/]+)\//.test(f);
 const workspaceOf = (f) => f.match(/^(examples\/[^/]+|packages\/create-rulecad\/template|packages\/create-rulecad\/machines\/[^/]+)\//)?.[1];
-// What builds read of the kit: its packages' code and rules, not their tests, documents or the viewer's site
-const isKit = (f) => (f.startsWith('packages/') && !isWorkspaceFile(f) && !/(^|\/)test[^/]*\.mjs$|\.test\.mjs$|\.md$|\/docs\/|^packages\/viewer\/|^packages\/[^/]+\/drawings\//.test(f)) || f === 'package-lock.json';
+// What builds read of the kit: its packages' code and rules, not their tests (a test folder's helpers too), documents or
+// the viewer's site
+const isKit = (f) => (f.startsWith('packages/') && !isWorkspaceFile(f) && !/(^|\/)test[^/]*\.mjs$|\.test\.mjs$|^packages\/[^/]+\/test\/|\.md$|\/docs\/|^packages\/viewer\/|^packages\/[^/]+\/drawings\//.test(f)) || f === 'package-lock.json';
 
 /**
  * Every example object in a tree, each with the key of everything it is built from.

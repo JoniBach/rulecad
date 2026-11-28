@@ -26,6 +26,7 @@ test('an object is known by what it is built from: its project, its workspace\'s
   assert.equal(moved(edit('packages/rules/m3.json')).length, was.size, 'the kit\'s rules move every object');
   assert.equal(moved(edit('packages/shapes/shapes.mjs')).length, was.size, 'the kit\'s code moves every object');
   assert.deepEqual(moved(edit('packages/shapes/test.mjs')), [], 'a test moves nothing');
+  assert.deepEqual(moved(edit('packages/cad/test/helpers.mjs')), [], 'nor does a helper in a package\'s test folder');
   assert.deepEqual(moved(edit('packages/cad/EXAMPLES.md')), [], 'a document moves nothing');
 });
 
