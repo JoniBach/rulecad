@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "a collar leaning 75 degrees over 1.15 mm is past the 45 degree limit and needs a warning",
+  "finding": "gap-print-without-supports-claims-8",
+  "code": ["print.overhang", "print.overhang.sliced"],
+  "level": "warn",
+  "todo": "#407 Hardening 2.50: printcheck judges supports by the area they cover and catches short steep overhangs"
+}

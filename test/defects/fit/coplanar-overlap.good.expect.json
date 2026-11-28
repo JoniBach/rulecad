@@ -1,0 +1,8 @@
+{
+  "check": "fit",
+  "about": "two cubes face to face touch, and do not overlap",
+  "finding": "foundations-1",
+  "code": "fit.clear",
+  "level": "pass",
+  "must_not": ["fit.overlap"]
+}

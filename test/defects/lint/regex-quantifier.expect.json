@@ -1,0 +1,9 @@
+{
+  "check": "lint",
+  "about": "the 3 in a regex's {3} is part of the pattern, not a measurement",
+  "finding": "foundations-6",
+  "code": "lint.clean",
+  "level": "pass",
+  "must_not": ["lint.number"],
+  "todo": "#414 Hardening 2.57: the raw-number check reads imported helpers, regex literals and sums of small numbers"
+}

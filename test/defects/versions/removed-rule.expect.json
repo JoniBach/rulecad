@@ -1,0 +1,9 @@
+{
+  "check": "versions",
+  "about": "the mx rule set is dropped from uses with nothing else changed: that is a change, and the reason names it",
+  "finding": "foundations-4",
+  "code": "versions.release",
+  "level": "patch",
+  "text": "mx",
+  "todo": "#425 Hardening 3.11: versions classes tweak-range changes and dropped rule sets correctly"
+}

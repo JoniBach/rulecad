@@ -1,0 +1,9 @@
+{
+  "check": "versions",
+  "about": "narrowing the tweak range of a chamfer that is not interface changes no fit: a patch",
+  "finding": "foundations-4",
+  "code": "versions.release",
+  "level": "patch",
+  "text": "chamfer",
+  "must_not": [{ "code": "versions.release", "level": ["major", "minor"] }]
+}

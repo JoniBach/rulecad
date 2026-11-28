@@ -1,0 +1,1 @@
+{ "source": "const three = /\\d{3}/;\nconst a = 45;\n" }

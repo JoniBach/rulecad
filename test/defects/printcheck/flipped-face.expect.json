@@ -1,0 +1,10 @@
+{
+  "check": "printcheck",
+  "about": "one triangle of a closed cube is turned the wrong way round: that is a face inside out, not holes",
+  "finding": "foundations-15",
+  "code": ["print.closed", "print.inside-out", "print.flipped"],
+  "level": ["warn", "fail"],
+  "text": "inside out",
+  "must_not": [{ "code": "print.closed", "text": "holes" }],
+  "todo": "#407 Hardening 2.50: printcheck judges supports by the area they cover and catches short steep overhangs"
+}

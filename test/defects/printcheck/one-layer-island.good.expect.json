@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "a slab three layers above the block is past the support gap: it starts in mid-air, and is told so",
+  "finding": "foundations-7",
+  "code": "print.mid-air",
+  "level": "warn",
+  "must_not": [{ "code": "print.breakaway", "level": "pass" }]
+}

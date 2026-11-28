@@ -1,0 +1,1 @@
+{ "source": "const quote = /'/;\nconst a = 45;\nconst b = 7;\n" }

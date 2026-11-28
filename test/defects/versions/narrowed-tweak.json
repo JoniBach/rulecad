@@ -1,0 +1,4 @@
+{
+  "before": { "object": { "variables": { "slot": { "value": 4.2, "unit": "mm", "interface": true, "tweak": { "min": 3, "max": 6 } } } } },
+  "after": { "object": { "variables": { "slot": { "value": 4.2, "unit": "mm", "interface": true, "tweak": { "min": 4, "max": 5 } } } } }
+}

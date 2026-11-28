@@ -1,0 +1,10 @@
+{
+  "check": "fit",
+  "about": "the same box 0.5 mm above the panel is clear of it, and is measured quickly",
+  "finding": "foundations-12",
+  "code": "fit.clear",
+  "level": "pass",
+  "text": "gap 0.5",
+  "must_not": ["fit.overlap"],
+  "within_ms": 2000
+}

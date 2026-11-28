@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "the same collar leaning 40 degrees is within the 45 degree limit",
+  "finding": "gap-print-without-supports-claims-8",
+  "code": "print.overhang.sliced",
+  "level": "pass",
+  "must_not": ["print.overhang", "print.overhang.sliced"]
+}

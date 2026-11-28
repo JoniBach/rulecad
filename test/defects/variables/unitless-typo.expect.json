@@ -1,0 +1,9 @@
+{
+  "check": "variables",
+  "about": "the rule wall = \"lnie * 3\" has a typo (line) and no unit: it must be refused with its name, not kept as the text \"lnie * 3\"",
+  "finding": "foundations-5",
+  "code": "var.unknown",
+  "level": "fail",
+  "text": "lnie",
+  "todo": "#539 Hardening 9.17: expressions flag typos, read any rule-set name, and refuse loose values"
+}

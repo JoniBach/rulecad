@@ -1,0 +1,9 @@
+{
+  "check": "printcheck",
+  "about": "a slab one layer above a breakaway support rests on it, so it is not an island as well",
+  "finding": "foundations-7",
+  "code": "print.breakaway",
+  "level": "pass",
+  "must_not": ["print.islands", "print.island"],
+  "todo": "#407 Hardening 2.50: printcheck judges supports by the area they cover and catches short steep overhangs"
+}
