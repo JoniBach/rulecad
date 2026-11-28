@@ -502,29 +502,69 @@ export function mesh(tris) {
   const area2 = (ids) => { const [a, b, c] = ids.map((i) => verts[i]); return Math.hypot(...cross(sub(b, a), sub(c, a))); };
   for (const t of tris) for (let i = 1; i < t.length - 1; i++) { const ids = [at(t[0]), at(t[i]), at(t[i + 1])]; if (new Set(ids).size === 3 && area2(ids) > 1e-9) out.push(ids); }
 
-  // Mend: split a triangle at a loose corner lying along its open edge, one corner at a time, until none is left
+  // Mend: split a triangle at a loose corner lying along its open edge, one corner at a time, until none is left.
+  // The loose corners are filed in 1 mm cells. A short or square-on edge looks in every cell of its box; a long slanted
+  // one looks only in the cells its line passes through and their neighbours (a corner within TOL of the line is at
+  // most one cell off it), whichever is fewer cells, so the work grows with the edge's length. (It always searched the
+  // box, which grows with the cube of a slanted edge's length: a short link holding one long diagonal triangle froze
+  // the writers for minutes.) The searches share a work budget sized from the mesh; an edge whose search would cost
+  // more than both what is left of it and a plain look at every loose corner looks at every loose corner instead, so
+  // the mend never costs more than loose corners times open edges. All three ways find the same corner: the nearest
+  // the line, ties going to the corner first in cell order, as the box search always did.
   const TOL = 2e-3, CELL = 1, cell = (x) => Math.floor(x / CELL);
+  let budget = 2e5 + 50 * out.length; // cells looked in, across all passes
   for (let pass = 0; pass < 50; pass++) {
     const edges = new Set(); for (const [a, b, c] of out) edges.add(`${a},${b}`).add(`${b},${c}`).add(`${c},${a}`);
     const isOpen = (a, b) => !edges.has(`${b},${a}`), loose = new Set();
     for (const [a, b, c] of out) for (const [x, y] of [[a, b], [b, c], [c, a]]) if (isOpen(x, y)) loose.add(x).add(y);
     if (!loose.size) break;
-    const grid = new Map();
-    for (const i of loose) { const k = verts[i].map(cell).join(','); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); }
+    const grid = new Map(), rank = new Map(), looseList = [...loose];
+    for (const i of looseList) { const k = verts[i].map(cell).join(','); if (!grid.has(k)) grid.set(k, []); rank.set(i, rank.size); grid.get(k).push(i); }
+    // Which of two corners the box search met first: the lower cell (x, then y, then z), then the one filed first
+    const before = (i, j) => {
+      for (let k = 0; k < 3; k++) { const ci = cell(verts[i][k]), cj = cell(verts[j][k]); if (ci !== cj) return ci < cj; }
+      return rank.get(i) < rank.get(j);
+    };
     // The loose corner along a -> b nearest the line, if any
     const along = (a, b) => {
-      const p = verts[a], d = sub(verts[b], p), len = Math.sqrt(dot(d, d));
-      const lo = [0, 1, 2].map((k) => cell(Math.min(p[k], verts[b][k]) - TOL)), hi = [0, 1, 2].map((k) => cell(Math.max(p[k], verts[b][k]) + TOL));
+      const p = verts[a], q = verts[b], d = sub(q, p), len = Math.sqrt(dot(d, d));
       let best = null;
-      for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) {
-        for (const i of grid.get(`${x},${y},${z}`) || []) {
-          if (i === a || i === b) continue;
-          const w = sub(verts[i], p), t = dot(w, d) / (len * len);
-          if (t * len < TOL || (1 - t) * len < TOL) continue;
-          const off = Math.hypot(...cross(w, d)) / len;
-          if (off < TOL && (!best || off < best[1])) best = [i, off];
-        }
+      const consider = (i) => {
+        if (i === a || i === b) return;
+        const w = sub(verts[i], p), t = dot(w, d) / (len * len);
+        if (t * len < TOL || (1 - t) * len < TOL) return;
+        const off = Math.hypot(...cross(w, d)) / len;
+        if (off < TOL && (!best || off < best[1] || (off === best[1] && before(i, best[0])))) best = [i, off];
+      };
+      const from = p.map(cell), to = q.map(cell), steps = [0, 1, 2].reduce((s, k) => s + Math.abs(to[k] - from[k]), 0);
+      const lo = [0, 1, 2].map((k) => cell(Math.min(p[k], q[k]) - TOL)), hi = [0, 1, 2].map((k) => cell(Math.max(p[k], q[k]) + TOL));
+      const box = (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1), walk = 27 * (steps + 1), cost = Math.min(box, walk);
+      if (cost > loose.size && cost > budget) { for (const i of looseList) consider(i); return best; }
+      budget -= cost;
+      if (box <= walk) { // a short or square-on edge: its box is fewer cells than the walk
+        for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) for (const i of grid.get(`${x},${y},${z}`) || []) consider(i);
+        return best;
       }
+      // Walk the cells the segment passes through (a 3D grid walk), looking in each and its 26 neighbours once
+      const seen = new Set(), look = (c) => {
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          const k = `${c[0] + dx},${c[1] + dy},${c[2] + dz}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          for (const i of grid.get(k) || []) consider(i);
+        }
+      };
+      const c = [...from], step = d.map(Math.sign);
+      const tMax = [0, 1, 2].map((k) => (d[k] ? ((c[k] + (d[k] > 0 ? 1 : 0)) * CELL - p[k]) / d[k] : Infinity));
+      const tDelta = [0, 1, 2].map((k) => (d[k] ? CELL / Math.abs(d[k]) : Infinity));
+      look(c);
+      for (let n = 0; n < steps; n++) {
+        const k = tMax[0] <= tMax[1] ? (tMax[0] <= tMax[2] ? 0 : 2) : (tMax[1] <= tMax[2] ? 1 : 2);
+        if (c[k] === to[k]) { tMax[k] = Infinity; n--; continue; } // rounding: this axis is already at the end cell
+        c[k] += step[k]; tMax[k] += tDelta[k];
+        look(c);
+      }
+      look(to);
       return best;
     };
     let split = 0;
