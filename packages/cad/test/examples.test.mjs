@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { run, replay, CAD } from './helpers.mjs';
+import { run, replay, CAD, SLOW } from './helpers.mjs';
 
 test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
@@ -25,7 +25,8 @@ test('the tutorial: every file and command in TUTORIAL.md works as written, in a
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('the worked examples: every file and command in EXAMPLES.md works as written, parts to a mechanism', () => {
+// About 26 minutes alone (40 beside other files): nightly and on release pull requests, not on every pull request
+test('the worked examples: every file and command in EXAMPLES.md works as written, parts to a mechanism', SLOW, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'examples-')), ws = path.join(root, 'my-designs');
   try {
     const { files, commands } = replay(fileURLToPath(new URL('./EXAMPLES.md', CAD)), ws);

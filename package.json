@@ -8,7 +8,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "node --test packages/*/test.mjs packages/*/test/*.test.mjs test/*.test.mjs",
+    "test": "node scripts/test.mjs",
     "test:browser": "node --test --test-concurrency=1 test/viewer.browser.mjs test/docs.browser.mjs test/live.browser.mjs",
     "types": "node scripts/types.mjs",
     "docs": "node packages/viewer/scripts/build.mjs && node docs/build.mjs"

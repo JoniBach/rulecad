@@ -1,0 +1,46 @@
+# The slowest end-to-end tests, which the test workflow skips: the EXAMPLES.md walk-through (about half an hour alone)
+# and the fresh --machine workspaces checked from end to end (three to five minutes each). They are marked SLOW in their
+# files and run when RULECAD_SLOW_TESTS is set; node scripts/test.mjs --slow runs the files that hold them, with it set.
+# They run every night on main, on the platforms the test workflow uses, and on a pull request that touches what they
+# replay or a CHANGELOG: a release pull request (scripts/release.mjs) is the one kind that writes CHANGELOGs, so every
+# release is walked through before it is published. Started by hand: gh workflow run slow-tests.yml --ref <branch>.
+# A failure here does not stop publishing (publish.yml follows the test workflow): it shows in the Actions tab, and
+# GitHub emails whoever last changed the schedule.
+name: slow tests
+on:
+  schedule:
+    - cron: '17 2 * * *' # every night at 02:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packages/*/CHANGELOG.md
+      - packages/cad/EXAMPLES.md
+      - packages/cad/test/examples.test.mjs
+      - packages/create-rulecad/test.mjs
+      - scripts/test.mjs
+      - .github/workflows/slow-tests.yml
+concurrency:
+  group: slow-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+jobs:
+  slow:
+    name: slow tests (${{ matrix.platform.os }}, ${{ matrix.platform.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-latest, node: 20 }
+          - { os: ubuntu-latest, node: 24 }
+          - { os: macos-latest, node: 24 }
+          - { os: windows-latest, node: 24 }
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.platform.node }}
+      - run: npm ci
+      - run: npm test -- --slow
