@@ -327,7 +327,11 @@ export function main (v) {
 
 `"role": "board"` says the fab makes it: it is not printed, and a list leaves it out of the plastic.
 
+A board design runs in the tool's own process, with the board engine, not in the design sandbox, so the first command
+in a workspace with one stops and asks you to trust it: run `cad trust` once, after reading the designs.
+
 ```sh
+npx cad trust             # once: this workspace's board designs may run
 npx cad check home/pad
 npx cad export home/pad
 ```
