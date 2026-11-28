@@ -129,11 +129,11 @@ test('a trusted workspace does not run a board design from outside its folder', 
     assert.equal(w.cad('trust').status, 0);
     const mark = path.join(other.ws, 'ran.txt');
     other.board('b', mark);
-    const r = w.cad('check', path.join(other.ws, 'projects/p/objects/b.json'));
+    const r = w.cad('check', path.relative(w.ws, path.join(other.ws, 'projects/p/objects/b.json'))); // (by a path from the workspace: a Windows path's drive letter reads as a variant, C:…)
     assert.notEqual(r.status, 0, r.stdout);
     assert.match(r.stdout + r.stderr, /outside this workspace/);
     assert.ok(!fs.existsSync(mark), 'the other workspace\'s board did not run under this one\'s trust');
-    assert.equal(w.cad('check', path.join(w.ws, 'projects/p/objects/b.json')).status, 0, 'its own board, by its full path, still runs');
+    assert.equal(w.cad('check', path.join('projects', 'p', 'objects', 'b.json')).status, 0, 'its own board, by its path, still runs');
   } finally { w.done(); other.done(); }
 });
 
