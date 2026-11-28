@@ -6,8 +6,8 @@
 // draws every track by rule, from the switch's footprint (mx rules) and our margins (the board's track and clear):
 //   columns  on the front copper: down each column from pin 2 to pin 2, jogging between the centre post and the left
 //            peg; then below the keys, right, and up a lane beside the Pico to its pin
-//   diodes   SOD-123s on the back, under each switch below the centre post; pin 1 runs to the anode up a lane right
-//            of the right peg
+//   diodes   SOD-123s on the back, under each switch below the centre post, turned half round so that pad 1, the
+//            cathode, is on the row's side; the switch's pin 1 runs to the anode (pad 2) up a lane right of the right peg
 //   rows     on the back copper: cathode to cathode under each row of switches, then right and up or down a lane
 //            beside the Pico to its pin
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
@@ -248,7 +248,9 @@ export function keyboard(v, keys) {
   // Around each switch (from its centre): the diode on the back below the post, its anode lane right of the right peg,
   // the row line below the diodes; the column lane on the front between the post and the left peg
   const anodeX = m.pcb_peg_x + m.pcb_peg_hole / 2 + v.clear + v.track / 2;
-  const diode = { x: anodeX - d.pad_x, y: -(m.pcb_centre_hole / 2 + v.clear + d.pad_h / 2) }; // on the back, the anode is at +pad_x
+  // On the back, turned half round, the diode's pad 1 (its cathode, as KiCad and assemblers number it) is at -pad_x
+  // and its anode at +pad_x: the anode by its switch's pin, the cathode on the row line's side
+  const diode = { x: anodeX - d.pad_x, y: -(m.pcb_centre_hole / 2 + v.clear + d.pad_h / 2) };
   const cathodeX = anodeX - 2 * d.pad_x, lineY = diode.y - d.pad_h / 2 - v.clear - v.track / 2;
   const jogX = -(m.pcb_centre_hole / 2 + (m.pcb_peg_x - m.pcb_peg_hole / 2 - m.pcb_centre_hole / 2) / 2), slant = Math.abs(m.pcb_pin2_x) - Math.abs(jogX);
   const pegEdge = m.pcb_peg_x + m.pcb_peg_hole / 2 + v.clear + v.track / 2; // a track this far from a key's centre clears its pegs
@@ -299,7 +301,7 @@ export function keyboard(v, keys) {
   const pts = (list) => list.map(([x, y]) => ({ x, y })); // a track's corners between its two pads, on the board
   for (const k of keys) {
     parts.push(mx(`K${k.n}`, k.x, k.y, m, { x: k.c * SX, y: -k.r * SY }),
-      { name: `D${k.n}`, ftype: 'simple_diode', footprint: 'sod123', package: 'SOD-123', mpn: '1N4148W', x: k.x + diode.x, y: k.y + diode.y, layer: 'bottom', sch: { x: k.c * SX + 1, y: -k.r * SY - 0.8 } });
+      { name: `D${k.n}`, ftype: 'simple_diode', footprint: 'sod123', package: 'SOD-123', mpn: '1N4148W', x: k.x + diode.x, y: k.y + diode.y, layer: 'bottom', rotation: 180, sch: { x: k.c * SX + 1, y: -k.r * SY - 0.8 } });
     traces.push({ from: [`D${k.n}`, 'anode'], to: [`K${k.n}`, 'pin1'], width: v.track, path: pts([[k.x + anodeX, k.y + m.pcb_pin1_y]]) });
   }
 
