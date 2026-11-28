@@ -213,9 +213,10 @@ function mayRunHere(d, object, trusted) {
   }
   if (object.engine !== 'pcb') return;
   const real = (f) => { try { return fs.realpathSync(f); } catch { return path.resolve(f); } }; // (one folder by any spelling: a link, /var and /private/var)
-  const where = path.relative(real(WS), real(d.json));
-  if ((where === '..' || where.startsWith(`..${path.sep}`) || path.isAbsolute(where)) && process.env.CAD_TRUST !== '1') {
-    throw Object.assign(new Error(`${path.resolve(d.json)} is a board design outside this workspace (${WS}): this workspace's trust covers only its own boards. Run it from its own workspace (cd there, read its designs, and run cad trust there if you trust them); until then, it isn't run`), { code: 'workspace.untrusted' });
+  const outside = (f) => { const where = path.relative(real(WS), real(f)); return where === '..' || where.startsWith(`..${path.sep}`) || path.isAbsolute(where); };
+  const away = [d.json, d.js].find(outside); // (the .js is the code that runs: a link to one elsewhere is elsewhere)
+  if (away && process.env.CAD_TRUST !== '1') {
+    throw Object.assign(new Error(`${real(away)} is a board design outside this workspace (${WS}): this workspace's trust covers only its own boards. Run it from its own workspace (cd there, read its designs, and run cad trust there if you trust them); until then, it isn't run`), { code: 'workspace.untrusted' });
   }
   sawBoard(d.json); needTrust(config, { board: d.json });
 }

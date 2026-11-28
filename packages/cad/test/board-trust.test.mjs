@@ -149,3 +149,24 @@ test('a workspace in memory runs designs only for trusted: true itself, not a va
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a board design linked into a trusted workspace from elsewhere is elsewhere', () => {
+  const w = workspace(), other = workspace();
+  try {
+    w.board('b', path.join(w.ws, 'ran.txt'));
+    assert.equal(w.cad('trust').status, 0);
+    const mark = path.join(other.ws, 'ran.txt');
+    other.board('b', mark);
+    fs.symlinkSync(path.join(other.ws, 'projects/p'), path.join(w.ws, 'projects/q'), 'junction'); // a whole project linked in
+    fs.mkdirSync(path.join(w.ws, 'projects/r/objects'), { recursive: true }); // and only the code linked in, beside a .json of its own
+    fs.copyFileSync(path.join(other.ws, 'projects/p/objects/b.json'), path.join(w.ws, 'projects/r/objects/b.json'));
+    let fileLinks = true;
+    try { fs.symlinkSync(path.join(other.ws, 'projects/p/objects/b.js'), path.join(w.ws, 'projects/r/objects/b.js')); } catch (e) { if (e.code !== 'EPERM') throw e; fileLinks = false; } // (Windows makes a file link only with developer mode on)
+    for (const ref of fileLinks ? ['q/b', 'r/b'] : ['q/b']) {
+      const r = w.cad('check', ref);
+      assert.notEqual(r.status, 0, r.stdout);
+      assert.match(r.stdout + r.stderr, /outside this workspace/, ref);
+    }
+    assert.ok(!fs.existsSync(mark), 'the linked board did not run');
+  } finally { w.done(); other.done(); }
+});
