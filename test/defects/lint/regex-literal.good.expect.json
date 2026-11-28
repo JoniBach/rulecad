@@ -1,0 +1,8 @@
+{
+  "check": "lint",
+  "about": "the same code with its measurements named has no raw numbers",
+  "finding": "foundations-6",
+  "code": "lint.clean",
+  "level": "pass",
+  "must_not": ["lint.number"]
+}

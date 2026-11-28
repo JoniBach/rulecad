@@ -1,0 +1,8 @@
+{
+  "check": "lint",
+  "about": "a raw 45 after the same regex is still found",
+  "finding": "foundations-6",
+  "code": "lint.number",
+  "level": "fail",
+  "text": "line 2: 45"
+}

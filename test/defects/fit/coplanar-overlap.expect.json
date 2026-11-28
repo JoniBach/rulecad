@@ -1,0 +1,7 @@
+{
+  "check": "fit",
+  "about": "two cubes sharing half their volume run into each other, though their faces share planes",
+  "finding": "foundations-1",
+  "code": "fit.overlap",
+  "level": "fail"
+}

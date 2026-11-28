@@ -1,0 +1,9 @@
+{
+  "check": "keyboard-layout",
+  "about": "the same row with the width as a number places Tab, Q and W side by side",
+  "finding": "foundations-18",
+  "code": "layout.keys",
+  "level": "pass",
+  "text": "Tab at -1, Q at 0.25, W at 1.25",
+  "must_not": ["layout.refused"]
+}

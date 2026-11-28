@@ -1,0 +1,8 @@
+{
+  "check": "keyboard-layout",
+  "about": "a key width written as text (\"1.5\") must be refused, not joined onto the positions as text",
+  "finding": "foundations-18",
+  "code": "layout.refused",
+  "level": "fail",
+  "todo": "#547 Hardening 9.25: model-link, keyboard-layout and versions name bad input and document their readers"
+}

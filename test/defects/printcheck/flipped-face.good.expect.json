@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "a cube with a triangle missing has a hole in its surface, and is told so",
+  "finding": "foundations-15",
+  "code": "print.closed",
+  "level": "warn",
+  "text": "holes"
+}

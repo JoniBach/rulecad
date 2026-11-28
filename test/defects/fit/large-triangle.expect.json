@@ -1,0 +1,9 @@
+{
+  "check": "fit",
+  "about": "a small box through a 2 m panel of a few big triangles is found to overlap it, in well under 2 s",
+  "finding": "foundations-12",
+  "code": "fit.overlap",
+  "level": "fail",
+  "within_ms": 2000,
+  "todo": "#516 Hardening 8.5: fit's overlap test stays fast for nested parts and long flat panels"
+}

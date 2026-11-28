@@ -1,0 +1,1 @@
+{ "source": "const quote = /'/;\nconst a = v.width;\nconst b = v.depth;\n" }

@@ -1,0 +1,8 @@
+{
+  "check": "versions",
+  "about": "the same design with its rule set kept and nothing changed needs no release",
+  "finding": "foundations-4",
+  "code": "versions.release",
+  "level": "none",
+  "must_not": [{ "code": "versions.release", "level": ["major", "minor", "patch"] }]
+}

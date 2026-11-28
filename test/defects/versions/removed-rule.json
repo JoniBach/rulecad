@@ -1,0 +1,7 @@
+{
+  "before": {
+    "object": { "uses": ["mx"], "variables": { "wall": { "value": 1.2, "unit": "mm" } } },
+    "sets": { "mx": { "name": "mx", "rules": { "slot": { "value": 4.1, "unit": "mm" } } } }
+  },
+  "after": { "object": { "variables": { "wall": { "value": 1.2, "unit": "mm" } } } }
+}

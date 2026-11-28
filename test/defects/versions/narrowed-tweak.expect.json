@@ -1,0 +1,8 @@
+{
+  "check": "versions",
+  "about": "an interface slot whose tweak range narrows from 3 to 6 to 4 to 5 no longer allows a part set at 3, so the release is major",
+  "finding": "foundations-4",
+  "code": "versions.release",
+  "level": "major",
+  "todo": "#425 Hardening 3.11: versions classes tweak-range changes and dropped rule sets correctly"
+}

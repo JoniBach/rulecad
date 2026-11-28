@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "a slab over a pad as big as itself rests wholly on its breakaway support",
+  "finding": "foundations-3",
+  "code": "print.breakaway",
+  "level": "pass",
+  "must_not": ["print.ledge", "print.mid-air", "print.bridge"]
+}

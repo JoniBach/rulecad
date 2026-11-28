@@ -1,0 +1,8 @@
+{
+  "check": "printcheck",
+  "about": "a 40 mm slab on a 14 mm breakaway pad hangs 13 mm free each side, so it is a ledge, not wholly supported",
+  "finding": "foundations-3",
+  "code": "print.ledge",
+  "level": "warn",
+  "todo": "#407 Hardening 2.50: printcheck judges supports by the area they cover and catches short steep overhangs"
+}

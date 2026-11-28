@@ -1,0 +1,4 @@
+{
+  "object": { "uses": ["printer"], "variables": {} },
+  "sets": { "printer": { "name": "printer", "rules": { "line": { "value": 0.42, "unit": "mm" }, "wall": { "value": "line * 3" }, "maker": { "value": "Bambu Lab" } } } }
+}

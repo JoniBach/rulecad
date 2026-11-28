@@ -46,6 +46,11 @@ test/fresh-install.sh  # the packages installed as a stranger gets them: no lock
   files. Never give a test file a `workspace()` of its own: `packages/cad/test/split.test.mjs` fails if one does.
 - Run one file's tests alone: `node --test packages/cad/test/fasten.test.mjs`; one test in it:
   `node --test --test-name-pattern="a yoke" packages/cad/test/fasten.test.mjs`.
+- A check is tested on what it should fail as well as on what it should pass. A new check, or a fix to one, adds a
+  seeded defect to `test/defects/`: a small mesh or design wrong in exactly one way, the finding it must give, and a
+  good twin (the same shape made right) that must pass. `test/defects/README.md` shows how. A fix for a fault that
+  already has a case marked `todo` takes the mark off in the same pull request: the end of the test run lists the todo
+  cases that now pass.
 - Plain words in messages and docs: say what happened and what to do, for people who aren't programmers too.
 - Designs are code: rulecad never runs code from a link, a rule file or a layout, and nothing may change that.
 
