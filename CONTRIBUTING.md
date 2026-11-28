@@ -23,7 +23,7 @@ someone else's model: check it against the real thing), `estimate`. A test holds
 ```sh
 git clone https://github.com/JoniBach/rulecad && cd rulecad
 npm install
-npm test               # every package, with node:test
+npm test               # every package, with node:test (scripts/test.mjs; the slowest few are skipped, see below)
 npm run test:browser   # the model page in headless Chrome (needs Chrome or Chromium)
 test/fresh-install.sh  # the packages installed as a stranger gets them: no lockfile
 ```
@@ -51,6 +51,21 @@ test/fresh-install.sh  # the packages installed as a stranger gets them: no lock
   good twin (the same shape made right) that must pass. `test/defects/README.md` shows how. A fix for a fault that
   already has a case marked `todo` takes the mark off in the same pull request: the end of the test run lists the todo
   cases that now pass.
+- **How CI runs the tests.** Each platform's test files are shared out over three jobs that run side by side
+  (`npm test -- --shard 2/3` runs the second part on your machine), and a quick job runs the files that take under a
+  minute (`npm test -- --quick`) for a first verdict in a few minutes. `scripts/test.mjs` shares the files out by how
+  long each took on CI, from the table at its top: when one part runs much longer than the others, refresh the table
+  from a run's log. A file that takes many minutes still holds up its part, so keep a slow command's tests apart from
+  its quick ones, in a file of their own.
+- **Tests that run nightly.** The slowest end-to-end tests are skipped on pull requests: the EXAMPLES.md walk-through
+  (`packages/cad/test/examples.test.mjs`, about half an hour alone) and the fresh `--machine arm`, `leg` and `frame`
+  workspaces checked from end to end (`packages/create-rulecad/test.mjs`, three to five minutes each). They run every
+  night on `main` on every platform, and on any pull request that changes a CHANGELOG (a release pull request), EXAMPLES.md
+  or those test files (`.github/workflows/slow-tests.yml`). To run them on your machine, set `RULECAD_SLOW_TESTS=1`
+  (`RULECAD_SLOW_TESTS=1 node --test packages/cad/test/examples.test.mjs`), or run `npm test -- --slow`, which runs the
+  files that hold them, with it set. A test that takes several minutes and checks the same as quicker ones can be marked
+  the same way: give it the option `SLOW` (from `packages/cad/test/helpers.mjs` in cad's tests), as in
+  `test('...', SLOW, () => { ... })`. A fault only these tests catch shows in the nightly run, not on the pull request.
 - Plain words in messages and docs: say what happened and what to do, for people who aren't programmers too.
 - Designs are code: rulecad never runs code from a link, a rule file or a layout, and nothing may change that.
 
@@ -114,9 +129,10 @@ it, run the workflow again). Run them one at a time: each asks for two-factor in
 trusts the publish job only: the workflow file `publish.yml`, in the environment `npm-publish`.
 
 **Protecting `main`.** A ruleset in the repository's settings (Settings, Rules, Rulesets) lets a pull request merge
-only when the four `test` jobs have passed: `test (ubuntu-latest, 20)`, `test (ubuntu-latest, 24)`,
-`test (macos-latest, 24)` and `test (windows-latest, 24)`. A failed or cancelled one blocks the merge. Where the
-ruleset isn't set up yet, keep to the same rule by hand: never merge with a check that failed or was cancelled.
+only when the `tests` check has passed: a job of `test.yml` that passes only when the quick job and every part of the
+tests on every platform (Linux on Node 20 and 24, macOS, Windows) passed, so the ruleset names one check, whatever the
+parts are called. A failed or cancelled one blocks the merge. Where the ruleset isn't set up yet, keep to the same
+rule by hand: never merge with a check that failed or was cancelled.
 
 ## Conduct
 

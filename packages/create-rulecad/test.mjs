@@ -9,6 +9,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const CREATE = fileURLToPath(new URL('./index.mjs', import.meta.url));
 const CAD = fileURLToPath(new URL('../cad/bin/cad.mjs', import.meta.url));
 const MODULES = fileURLToPath(new URL('../../node_modules', import.meta.url));
+// A fresh --machine workspace checked from end to end takes three to five minutes: those tests run nightly and on release
+// pull requests (.github/workflows/slow-tests.yml), with RULECAD_SLOW_TESTS=1, which also runs them here (CONTRIBUTING.md).
+// scripts/test.mjs --slow finds the files that hold such tests by this name.
+const SLOW = { skip: process.env.RULECAD_SLOW_TESTS ? false : 'one of the slowest tests: it runs nightly and on release pull requests (RULECAD_SLOW_TESTS=1 runs it here)' };
 
 test('npm create rulecad: a workspace whose soap tray passes every check', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-')), dir = path.join(root, 'my-designs');
@@ -86,7 +90,7 @@ test('the folder is named apart from --share\'s value, and any folder name makes
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('--machine arm: a fresh workspace, sized from the sheet and the accuracy, checks clean and plots its test drawing with no edits', () => {
+test('--machine arm: a fresh workspace, sized from the sheet and the accuracy, checks clean and plots its test drawing with no edits', SLOW, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-')), dir = path.join(root, 'my-arm');
   try {
     const made = execFileSync(process.execPath, [CREATE, dir, '--no-install', '--machine', 'arm', '--sheet', 'a5', '--accuracy', '0.3'], { encoding: 'utf8', env: { ...process.env, RULECAD_LOCAL: path.resolve(MODULES, '..') } });
@@ -143,7 +147,7 @@ test('--machine arm sizes itself, refuses what it cannot make, and asks no one w
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('--machine leg: the stand checks with no failures, and its step of a gait can be animated', () => {
+test('--machine leg: the stand checks with no failures, and its step of a gait can be animated', SLOW, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-')), dir = path.join(root, 'my-leg');
   try {
     execFileSync(process.execPath, [CREATE, dir, '--no-install', '--machine', 'leg'], { encoding: 'utf8' });
@@ -157,7 +161,7 @@ test('--machine leg: the stand checks with no failures, and its step of a gait c
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('--machine frame: a box from its inside size and profile checks clean on a fresh install, in every profile offered', () => {
+test('--machine frame: a box from its inside size and profile checks clean on a fresh install, in every profile offered', SLOW, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-'));
   const make = (name, ...a) => execFileSync(process.execPath, [CREATE, path.join(root, name), '--no-install', '--machine', 'frame', ...a], { encoding: 'utf8', stdio: 'pipe' });
   try {

@@ -1,5 +1,5 @@
 # Every pull request and every push to main: the tests on Linux, macOS and Windows, on the oldest and newest Node
-# rulecad supports. A branch is tested through its pull request, so each commit runs once (a push to a branch with no
+# rulecad supports, each platform's in three parts side by side, and the quick files alone for a first verdict. A branch is tested through its pull request, so each commit runs once (a push to a branch with no
 # pull request is not tested). A newer push to a pull request cancels the run it replaces, which then shows as
 # cancelled. On main each commit has a group of its own, so its run is neither cancelled nor queued behind the last
 # merge's (a shared group would hold one run waiting and drop any older one still waiting).
@@ -14,25 +14,58 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, node: 20 }
-          - { os: ubuntu-latest, node: 24 }
-          - { os: macos-latest, node: 24 }
-          - { os: windows-latest, node: 24 }
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+  quick:
+    # The test files that take under a minute (node scripts/test.mjs --quick: every file not in its table of slow ones),
+    # on Linux: a first verdict in a few minutes. The same files run again in the parts below, on every platform.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 24
       - run: npm ci
-      - run: npm test
-      - run: npm run types # the JSDoc must make valid declarations
+      - run: npm test -- --quick
+  test:
+    # Every test file, in three parts run side by side on each platform (scripts/test.mjs shares the files out by how long
+    # each took, so the parts take about as long as each other): one job that ran the whole suite took 50 to 85 minutes.
+    # The slowest end-to-end tests (the EXAMPLES.md walk-through, the fresh --machine workspaces) are skipped here: they
+    # run nightly and on release pull requests (slow-tests.yml). The limit is about twice the slowest part's time.
+    name: test (${{ matrix.platform.os }}, ${{ matrix.platform.node }}, part ${{ matrix.shard }} of 3)
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-latest, node: 20 }
+          - { os: ubuntu-latest, node: 24 }
+          - { os: macos-latest, node: 24 }
+          - { os: windows-latest, node: 24 }
+        shard: [1, 2, 3]
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.platform.node }}
+      - run: npm ci
+      - run: npm test -- --shard ${{ matrix.shard }}/3
+      - if: matrix.shard == 1
+        run: npm run types # the JSDoc must make valid declarations (once a platform: it doesn't depend on the part)
+  tests:
+    # One check that stands for all the tests, for a ruleset to require: it passes only when the quick job and every
+    # part on every platform passed, so the names of the parts can change without the ruleset changing.
+    needs: [quick, test]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          QUICK: ${{ needs.quick.result }}
+          PARTS: ${{ needs.test.result }}
+        run: |
+          echo "quick: $QUICK, the parts on every platform: $PARTS"
+          [ "$QUICK" = success ] && [ "$PARTS" = success ]
   dimension-guards:
     # The fixings migration's guards: screw sizes typed by hand held to the recorded count, and the dimension table's own
     # test. These fail the run when they fail.

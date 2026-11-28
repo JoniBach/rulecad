@@ -15,6 +15,14 @@ export const BIN = fileURLToPath(new URL('./bin/cad.mjs', CAD));
 /** The repository's node_modules, linked into each workspace: it stands in for npm install @jscad/modeling. */
 export const ROOT_MODULES = fileURLToPath(new URL('../../../node_modules', import.meta.url));
 
+/**
+ * The option that keeps one of the slowest end-to-end tests out of the pull request run: `test(name, SLOW, fn)`. Those
+ * tests run nightly and on release pull requests (.github/workflows/slow-tests.yml), with RULECAD_SLOW_TESTS=1, which
+ * also runs them on your own machine (CONTRIBUTING.md, "Tests that run nightly"). scripts/test.mjs --slow finds the
+ * files that hold such tests by this name.
+ */
+export const SLOW = { skip: process.env.RULECAD_SLOW_TESTS ? false : 'one of the slowest tests: it runs nightly and on release pull requests (RULECAD_SLOW_TESTS=1 runs it here)' };
+
 /** A fresh workspace, as the README's quick start makes one: `{ ws, cad, done }`, cad(...args) giving the output. */
 export function workspace(config) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-'));
