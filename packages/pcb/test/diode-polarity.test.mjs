@@ -40,6 +40,17 @@ test('a DO-35 diode: a track to its cathode ends on the square pad, at the band\
   }
 });
 
+test('a DO-35 diode joined by a net, as the thin-picro macropad joins its rows: the net named for its cathode reaches the square pad', async () => {
+  const D = do35('D1', 0, 0, rules('do35'), { rotation: 90 });
+  const json = await render({ center: { x: 0, y: 0 }, width: 30, height: 30, thickness: 1.6, track: 0.3, autoroute: true,
+    parts: [D, part('J1', 'pinrow2', 8, 8)], traces: [], nets: { ROW0: ['D1.cathode', 'J1.pin1'] } });
+  const joined = new Set(json.filter((e) => e.type === 'source_trace').flatMap((t) => t.connected_source_port_ids));
+  const onNet = portsOf(json, 'D1').filter((p) => joined.has(p.sp.source_port_id));
+  assert.equal(onNet.length, 1, 'one of the diode\'s pads is on the net');
+  assert.equal(onNet[0].pad.shape, 'circular_hole_with_rect_pad', 'the row\'s net reaches the square pad, at the band');
+  assert.ok(near(onNet[0].pad, { x: 0, y: -rules('do35').pitch / 2 }), 'turned 90°, the cathode is at the bottom, where the macropad prints its band');
+});
+
 test('a diode\'s pads with no names: pad 1 is the cathode; two pads at one end are refused', async () => {
   const pad = (pin, x) => ({ pin, x, y: 0, hole: 0.8, outer: 1.6 });
   const D = { name: 'D1', ftype: 'simple_diode', x: 0, y: 0, layer: 'top', pads: [pad('pin2', -2), pad('pin1', 2)] };

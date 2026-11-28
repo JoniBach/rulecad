@@ -804,7 +804,7 @@ async function pours(out, add, board, nets, netOf) {
   }
 }
 
-// A part's port names, in pad order: a switch's pin1 and pin2, a diode's anode and cathode, a chip's pins by label
+// A part's port names, in pad order: a switch's pin1 and pin2, a diode's cathode and anode by its pads (diodePorts), a chip's pins by label
 function portNames(part, pads) {
   if (part.ftype === 'simple_diode') return diodePorts(part, pads);
   return (part.pads || pads).map((p) => {
