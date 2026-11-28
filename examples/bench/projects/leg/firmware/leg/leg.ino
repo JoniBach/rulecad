@@ -6,7 +6,7 @@
 // next line only after the answer: that is the flow control, and the buffer can never overrun.
 //
 //   e                      drivers on (the motors hold)
-//   d                      drivers off
+//   d                      drivers off, once everything queued has run (like h, it waits; answers "ok" when off)
 //   h <axis> <dir> <rate> <back>   home an axis (0 to AXES - 1): step towards dir (1 or -1) at rate steps/s until its
 //                          endstop closes, then come back off it by back steps. Answers "ok" when done, "error: endstop" if none in 60 s
 //   p <deg> <ms>           the pen servo to deg, then wait ms before anything after it
@@ -156,7 +156,12 @@ bool obey() {
   char c = cmd;
   if (bad) { Serial.println(F("error: line")); return true; }
   if (c == 'e') { digitalWrite(ENABLE_PIN, LOW); Serial.println(F("ok")); return true; }
-  if (c == 'd') { digitalWrite(ENABLE_PIN, HIGH); Serial.println(F("ok")); return true; }
+  if (c == 'd') {
+    // drivers off only once every queued block, pen move and wait has run: "ok" to a block means it is queued, not done,
+    // so a d obeyed at once left the last blocks (up to the 12 the queue holds) to run with the motors slack
+    if (running || waiting || count()) return false;
+    digitalWrite(ENABLE_PIN, HIGH); Serial.println(F("ok")); return true;
+  }
   if (c == '!') { head = tail = 0; running = false; waiting = false; chained = false; Serial.println(F("ok")); return true; }
   if (c == '?') { Serial.print(F("q ")); for (uint8_t i = 0; i < AXES; i++) { Serial.print(ax[i].position); Serial.print(' '); } Serial.println(count()); return true; }
   if (c == 'h') {

@@ -35,7 +35,7 @@ measured milestone.
 1. Flash the sketch: `arduino-cli compile --fqbn arduino:avr:uno firmware/arm` then `arduino-cli upload -p <port> --fqbn arduino:avr:uno firmware/arm`, or open `firmware/arm/arm.ino` in the Arduino IDE and upload it.
 2. Write the machine description and a step file: `npx cad machine arm/arm` writes `exports/arm/arm.machine.json`, and `npx cad plot arm/arm projects/arm/drawings/test.svg` writes `exports/arm/arm-test.steps.json`. `npx cad plot arm/arm --calibrate` writes the calibration drawing (a 100 mm square and a circle at three places on the sheet).
 3. Dry run, with no board: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --dry-run`. It prints each line it would send with the answer the streamer would give, then a summary. `--quiet` prints the summary only. A dry run has no clock, so it takes each block as finished before the next line: its answer to `?` is the positions summed from the blocks so far, with 0 blocks queued.
-4. Draw: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --port <port>`. It turns the drivers on, homes each axis, sends the file, reports every hundredth line, and turns the drivers off. `--no-home` skips homing.
+4. Draw: `node projects/arm/send.mjs exports/arm/arm-test.steps.json --machine exports/arm/arm.machine.json --port <port>`. It turns the drivers on, homes each axis, sends the file, reports every hundredth line, waits until the last move has run, and turns the drivers off. `--no-home` skips homing.
 
 ## A leg on the same streamer
 
@@ -50,7 +50,7 @@ hip's motor on the shield's X slot and the knee's on Y) takes the same sketch, t
 3. Dry run: `node projects/leg/send.mjs exports/leg/stand-gait.steps.json --machine exports/leg/stand.machine.json --dry-run`.
 4. Stand the leg in its pose, then send the file with `--port <port>`. The stand has no home switches, so the streamer
    counts from where the motors are when it starts: the file's first block takes the leg from its pose to the cycle, and
-   its last brings it back. At the end the drivers go off and the carriage settles on its stop collars.
+   its last brings it back. Once it is back in its pose the drivers go off and the carriage settles on its stop collars.
 
 How the gait becomes blocks:
 
@@ -114,7 +114,8 @@ shield's limit pins; the leg's printed parts do not yet carry a switch's post an
 ## The line protocol
 
 115200 baud, 8 data bits, no parity, 1 stop bit. One command a line, ended by a newline. The streamer answers every
-line once: `ok` when it has taken the line, or `error: <what>` when it cannot. The sender waits for that answer before
+line once: `ok` when it has taken the line, or `error: <what>` when it cannot. A block's `ok` means it is queued, not that
+it has run: up to 12 can still be waiting when the last one is answered. The sender waits for that answer before
 it sends the next line. That is the flow control: a line that finds the queue full is held until a block finishes,
 and only then answered, so the 12-block queue never overruns. A line is at most 95 characters on the Uno and 127 on the
 Mega. Every number is a whole number.
@@ -129,7 +130,7 @@ block, naming its line, before it sends anything (see Timing). `cad plot` plans 
 | Command | Arguments | What it does | Answers |
 |---|---|---|---|
 | `e` | | Drivers on: the motors hold | `ok` |
-| `d` | | Drivers off: the motors go slack | `ok` |
+| `d` | | Drivers off: the motors go slack. Like `h`, it waits until every block, pen move and wait queued before it has run, so the last moves never run slack | `ok`, once the drivers are off |
 | `h` | axis, direction, rate, back | Home one axis (0, 1 or 2 on the Uno, 0 to 7 on the Mega): step towards direction (1 or -1) at rate steps/s until its switch closes, then step back off it by back steps, and call that position 0. It waits for the queue to empty first | `ok`; `error: endstop` if the switch has not closed after 60 s; `error: home` for a bad axis or rate |
 | `p` | degrees, milliseconds | Queue the pen servo to degrees, then a wait of milliseconds before the next block | `ok` |
 | `w` | milliseconds | Queue a wait | `ok` |
@@ -142,6 +143,13 @@ block, naming its line, before it sends anything (see Timing). `cad plot` plans 
 On power-up, and each time the serial port opens (which resets the board), the streamer prints
 `streamer ready, 3 axes` (`8 axes` on the Mega). The sender waits 2.5 s for it, and refuses to send lines written for
 the other board.
+
+**The end of a job.** The sender's last line is `d`. Before it, the sender asks `?` every 100 ms until no block is
+queued and no axis has moved since the last answer (`?` counts the blocks waiting, not the one running, so a count of
+0 alone can mean the last block is still under way), then sends `d`, which the streamer itself holds until everything
+queued has run. So the drivers stay on until the last step, and the final `done` comes when the machine has stopped.
+A streamer flashed before November 2026 turned the drivers off the moment `d` arrived, with the last blocks still to
+run: the sender's wait keeps such a board safe, but reflash it to be sure (step 1 above).
 
 ## Timing
 
@@ -207,3 +215,4 @@ board. On the simulated Mega the trot's 148 lines stream in 14.43 s against 14.5
 | MAX_RATE | a block 1 step/s past it is answered `error: rate`, a block at it `ok` |
 | Ceiling | the loop steps one to all its axes faster than MAX_RATE at the cruise, speeding up and slowing down (nine figures on the Uno, twenty-four on the Mega), and no axis of the machine asks more than MAX_RATE |
 | STEP pulse | at least 1.9 µs high |
+| Drivers off | every step of the job comes before the enable pin goes high, the lines sent through `send.mjs`'s own `stream`; `test/firmware-disable.test.mjs` checks the same for the arm and the stand, and that the streamer's `d` and the sender's wait each keep the drivers on alone |

@@ -30,14 +30,14 @@ export const STEP_HIGH_US = 1.9;
 const eight = [0, 1, 2, 3, 4, 5, 6, 7];
 /** The boards the streamer is built for, as the simulation sees them. Uno: the CNC Shield V3's pins as the streamer has them,
  * step X, Y, Z on D2, D3, D4 (port D bits 2 to 4), direction on D5, D6, D7 (bits 5 to 7), the X, Y, Z limit switches on D9,
- * D10, D12 (port B bits 1, 2, 4). Mega 2560: step on D22 to D29 (port A bits 0 to 7), direction on D37 to D30 (port C bits
- * 0 to 7), home switches on A8 to A15 (port K bits 0 to 7) (ArduinoCore-avr 1.8.8, variants/mega/pins_arduino.h). The Mega's
- * interrupt vectors are not the Uno's: avr8js's timer and USART settings are the Uno's, so its vectors are given here, as
- * word addresses, twice the vector numbers in avr-libc's iomxx0_1.h (TIMER0_OVF_vect_num 23, USART0_RX_vect_num 25 ..). Its
- * data space runs to RAMEND 0x21FF (iom2560.h), 0x2100 bytes past avr8js's 0x100 of registers. */
+ * D10, D12 (port B bits 1, 2, 4), the drivers' shared enable on D8 (port B bit 0, low for on). Mega 2560: step on D22 to
+ * D29 (port A bits 0 to 7), direction on D37 to D30 (port C bits 0 to 7), home switches on A8 to A15 (port K bits 0 to 7),
+ * enable on D38 (port D bit 7) (ArduinoCore-avr 1.8.8, variants/mega/pins_arduino.h). The Mega's interrupt vectors are
+ * not the Uno's: avr8js's timer and USART settings are the Uno's, so its vectors are given here, as word addresses, twice
+ * the vector numbers in avr-libc's iomxx0_1.h (TIMER0_OVF_vect_num 23, USART0_RX_vect_num 25 ..). Its data space runs to RAMEND 0x21FF (iom2560.h), 0x2100 bytes past avr8js's 0x100 of registers. */
 export const BOARDS = {
-  uno: { fqbn: 'arduino:avr:uno', axes: 3, flash: 0x8000, sram: 0x800, step: ['D', [2, 3, 4]], dir: ['D', [5, 6, 7]], limit: ['B', [1, 2, 4]], ports: ['B', 'C', 'D'], vectors: {} },
-  mega: { fqbn: 'arduino:avr:mega', axes: 8, flash: 0x40000, sram: 0x2100, step: ['A', eight], dir: ['C', eight], limit: ['K', eight], ports: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L'],
+  uno: { fqbn: 'arduino:avr:uno', axes: 3, flash: 0x8000, sram: 0x800, step: ['D', [2, 3, 4]], dir: ['D', [5, 6, 7]], limit: ['B', [1, 2, 4]], enable: ['B', 0], ports: ['B', 'C', 'D'], vectors: {} },
+  mega: { fqbn: 'arduino:avr:mega', axes: 8, flash: 0x40000, sram: 0x2100, step: ['A', eight], dir: ['C', eight], limit: ['K', eight], enable: ['D', 7], ports: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L'],
     vectors: { timer0: { compAInterrupt: 0x2a, compBInterrupt: 0x2c, ovfInterrupt: 0x2e }, timer1: { captureInterrupt: 0x20, compAInterrupt: 0x22, compBInterrupt: 0x24, compCInterrupt: 0x26, ovfInterrupt: 0x28 },
       timer2: { compAInterrupt: 0x1a, compBInterrupt: 0x1c, ovfInterrupt: 0x1e }, usart0: { rxCompleteInterrupt: 0x32, dataRegisterEmptyInterrupt: 0x34, txCompleteInterrupt: 0x36 } } },
 };
@@ -109,7 +109,8 @@ export function compile(dir, out, defines = [], fqbn = FQBN) {
   return { ok: r.status === 0, output, hex: path.join(out, `${path.basename(dir)}.ino.hex`), ...sizes(output) };
 }
 
-/** A board running a compiled sketch on avr8js, with the streamer's step, direction and limit pins watched and driven.
+/** A board running a compiled sketch on avr8js, with the streamer's step, direction and limit pins watched and driven, and
+ * its drivers' enable pin watched: offAt is the cycle it last went high (drivers off), null while the drivers are on.
  * @param {Uint8Array} flash @param {object} avr the avr8js module @param {{ limits?: ({ dir: number, at: number } | null)[], board?: 'uno' | 'mega' }} [o]
  * where each axis's limit switch closes: past at steps in the direction dir; the board, BOARDS' key (the Uno by default) */
 export function uno(flash, avr, { limits = [], board = 'uno' } = {}) {
@@ -121,7 +122,7 @@ export function uno(flash, avr, { limits = [], board = 'uno' } = {}) {
   const usart = new avr.AVRUSART(cpu, { ...avr.usart0Config, ...(v.usart0 ?? {}) }, CLOCK);
   const ports = Object.fromEntries(B.ports.map((p) => [p, new avr.AVRIOPort(cpu, avr[`port${p}Config`])]));
   const stepPort = ports[B.step[0]], dirReg = avr[`port${B.dir[0]}Config`].PORT, limitPort = ports[B.limit[0]], STEP = B.step[1], DIR = B.dir[1], LIMIT = B.limit[1];
-  const s = { cpu, board, axes: n, position: new Array(n).fill(0), edges: Array.from({ length: n }, () => []), highMin: Infinity, lines: [], text: '', rx: [] };
+  const s = { cpu, board, axes: n, position: new Array(n).fill(0), edges: Array.from({ length: n }, () => []), highMin: Infinity, lines: [], text: '', rx: [], offAt: null };
   const highSince = new Array(n).fill(0);
   const switches = () => { for (const [k, l] of limits.entries()) if (l) limitPort.setPin(LIMIT[k], !(s.position[k] * l.dir >= l.at)); };
   for (const b of LIMIT) limitPort.setPin(b, true); // open: the pull-up reads high
@@ -132,6 +133,8 @@ export function uno(flash, avr, { limits = [], board = 'uno' } = {}) {
       if (!(value & m) && old & m) s.highMin = Math.min(s.highMin, cpu.cycles - highSince[k]);
     }
   });
+  const EN = 1 << B.enable[1];
+  ports[B.enable[0]].addListener((value, old) => { if ((value ^ old) & EN) s.offAt = value & EN ? cpu.cycles : null; });
   usart.onByteTransmit = (c) => { if (c === 10) { s.lines.push(s.text.replace(/\r$/, '')); s.text = ''; } else s.text += String.fromCharCode(c); };
   const feed = () => { if (s.rx.length && !usart.rxBusy) usart.writeByte(s.rx.shift()); };
   usart.onRxComplete = feed;
@@ -241,49 +244,60 @@ export function stream(flash, avr, { n, line }, rate, blocks, board = 'uno') {
   return { blocks, steps: e.length, seconds, planned: (blocks * n - 1) / rate, rate: (e.length - 1) / seconds, shortestUs: (lo / CLOCK) * 1e6, longestUs: (hi / CLOCK) * 1e6 };
 }
 
-/** The streamer on a simulated board (the machine's controller's), fed a step file the way send.mjs feeds a board.
- * @param {{ hex: string, fastHex: string, steps: string, machine: string, sender?: string, maxRate: number, measure?: boolean }} o the
- * build for the machine's board, the same built with its rate limit raised (for its loop's own ceiling), the step file, cad
- * machine's description, send.mjs, MAX_RATE; measure: the loop's ceilings and the shortest blocks too
- * @returns {object} what it measured */
-export async function simulate({ hex, fastHex, steps: stepsFile, machine: machineFile, sender = path.join(ROOT, 'examples/bench/projects/arm/send.mjs'), maxRate, measure = true }) {
+/** The streamer on a simulated board (the machine's controller's), fed a step file the way send.mjs feeds a board: the
+ * lines send.mjs's jobLines writes, sent through its own stream (each line after the last was answered, the board asked
+ * where it is before d), the simulated clock running while the sender pauses. drivers says when the drivers went off
+ * against the job's last step: every step must come before.
+ * @param {{ hex: string, fastHex?: string, steps: string, machine: string, sender?: string, maxRate: number, measure?: boolean, streamWith?: Function }} o the
+ * build for the machine's board, the same built with its rate limit raised (for its loop's own ceiling; needed only to
+ * measure), the step file, cad machine's description, send.mjs, MAX_RATE; measure: the loop's ceilings and the shortest
+ * blocks too; streamWith: what sends the lines, (lines, ask, { pause }) as send.mjs's stream takes them (that by default)
+ * @returns {Promise<object>} what it measured */
+export async function simulate({ hex, fastHex, steps: stepsFile, machine: machineFile, sender = path.join(ROOT, 'examples/bench/projects/arm/send.mjs'), maxRate, measure = true, streamWith }) {
   const avr = loadAvr(), file = JSON.parse(fs.readFileSync(stepsFile, 'utf8')), machine = JSON.parse(fs.readFileSync(machineFile, 'utf8'));
   const board = boardOf(machine), B = BOARDS[board], n = B.axes, all = Array.from({ length: n }, (_, k) => k);
-  const flash = hexBytes(fs.readFileSync(hex, 'utf8'), B.flash), fast = hexBytes(fs.readFileSync(fastHex, 'utf8'), B.flash);
+  const flash = hexBytes(fs.readFileSync(hex, 'utf8'), B.flash), fast = measure ? hexBytes(fs.readFileSync(fastHex, 'utf8'), B.flash) : null;
   const send = await import(pathToFileURL(sender).href);
   // the shortest blocks the sender passes, at MAX_RATE on every axis, at the cruise and changing speed on every step;
   // the simulation has no USB link, so no turnaround: the line and its answer on the wire are the whole wait
   const least = (l) => send.leastBlockTime(l, { turnaround: 0 });
   const short = !measure ? {} : Object.fromEntries(['cruise', 'down'].map((p) => { const b = shortBlock(n, p, maxRate, least, n); return [p, { block: b, ...stream(flash, avr, b, maxRate, Math.ceil(2000 / b.n), board) }]; }));
-  const homes = send.homeLines(machine), body = send.linesOf(file, { ...(machine.pen ? { pen: machine.pen } : {}), axes: n });
+  const lines = send.jobLines(file, machine);
   // every homed axis's switch 300 steps from where it starts, in its homing direction
   const limits = machine.axes.map((a) => (a.homing ? { dir: a.homing.direction, at: 300 } : null));
   const u = uno(flash, avr, { limits, board });
   ready(u);
   const greeting = u.lines.find((l) => READY.test(l));
   const problems = [], answer = (l) => { const a = u.ask(l); if (a !== 'ok') problems.push(`"${l}": ${a}`); };
-  answer('e');
   const homed = [];
-  for (const l of homes) {
-    const k = +l.split(' ')[1], before = u.edges[k].length;
-    answer(l);
-    homed.push({ axis: k, steps: u.edges[k].length - before, closedAt: u.edges[k].length - before - machine.axes[k].homing.back });
-    u.position[k] = 0; // the streamer counts from its switch; so does this
-  }
-  for (const k of all) u.edges[k] = [];
-  const t0 = u.cpu.cycles;
-  for (const l of body) answer(l);
-  // the last blocks are still running when their lines are answered: wait for the queue to empty and the steps to stop
-  let report = '';
-  for (let i = 0; i < 600; i++) {
+  let t0 = null;
+  // the board as the sender sees it: each line's answer; a home is measured, and the steps are counted from the first block
+  const ask = (l) => {
+    if (l.startsWith('h ')) {
+      const k = +l.split(' ')[1], before = u.edges[k].length, a = u.ask(l);
+      homed.push({ axis: k, steps: u.edges[k].length - before, closedAt: u.edges[k].length - before - machine.axes[k].homing.back });
+      u.position[k] = 0; // the streamer counts from its switch; so does this
+      return a;
+    }
+    if (t0 === null && /^[mpw] /.test(l)) { for (const k of all) u.edges[k] = []; t0 = u.cpu.cycles; }
+    return u.ask(l);
+  };
+  const pause = (ms) => { u.run(() => false, (ms / 1000) * CLOCK); };
+  try { await (streamWith ?? send.stream)(lines, ask, { pause }); } catch (e) { problems.push(e.message); }
+  t0 ??= u.cpu.cycles;
+  // anything the board still has to run after the last answer (a streamer whose d did not wait), run out before counting
+  for (let i = 0, quiet = false; i < 600 && !quiet; i++) {
     const c = u.edges.reduce((t, e) => t + e.length, 0);
     u.run(() => false, CLOCK / 10);
-    report = u.ask('?');
-    if (/ 0$/.test(report) && u.edges.reduce((t, e) => t + e.length, 0) === c) break;
+    quiet = / 0$/.test(u.ask('?')) && u.edges.reduce((t, e) => t + e.length, 0) === c;
   }
-  const seconds = (Math.max(t0, ...u.edges.map((e) => e.at(-1) ?? t0)) - t0) / CLOCK; // to the last step
+  const lastStep = Math.max(t0, ...u.edges.map((e) => e.at(-1) ?? t0)), seconds = (lastStep - t0) / CLOCK; // to the last step
+  // the drivers go off (d) after the job's last step, or the last blocks run with the motors slack
+  const drivers = { offAt: u.offAt, lastStep, late: u.offAt === null ? null : u.edges.reduce((t, e) => t + e.filter((c) => c > u.offAt).length, 0) };
+  const report = u.ask('?');
   // a block past the streamer's limit is refused by name, and one at it is taken
   const position = [...u.position], rest = all.slice(1).map(() => 0).join(' ');
+  answer('e');
   const over = u.ask(`m 100 ${rest} 0 ${maxRate + 1} 0 1000 0 0`), at = u.ask(`m 100 ${rest} ${maxRate} ${maxRate} ${maxRate} 1000 0 0`);
   u.run(() => false, CLOCK / 10);
   answer('d');
@@ -292,7 +306,7 @@ export async function simulate({ hex, fastHex, steps: stepsFile, machine: machin
   const counted = u.edges.map((e, k) => (k ? e.length : e.length - 100)); // less the 100 of the block at the limit
   // the shortest gap between two steps, as a rate: past the block's own rate where a late step is caught up
   const shortest = u.edges.map((e) => { let g = Infinity; for (let i = 1; i < e.length - 100; i++) g = Math.min(g, e[i] - e[i - 1]); return e.length > 101 ? CLOCK / g : 0; });
-  return { board, axes: n, greeting, lines: homes.length + body.length + 2, problems, homed, want, total, counted, position, report, over, at,
+  return { board, axes: n, greeting, lines: lines.length, problems, homed, want, total, counted, position, report, over, at, drivers,
     seconds, planned: typeof file.time === 'number' ? file.time : null, peakAsked: Math.max(0, ...file.blocks.filter((b) => b.type === 'move').map((b) => b.rate.peak)), shortest,
     highUs: (u.highMin / CLOCK) * 1e6, short, ceilings: measure ? Object.fromEntries(PHASES.map((p) => [p, all.map((k) => ceiling(fast, avr, k + 1, p, board))])) : null, maxRates: machine.axes.map((a) => a.maxRate) };
 }
@@ -365,11 +379,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const fail = (t) => { failed++; console.log(`FAIL ${run.steps}: ${t}`); }, round = (a) => a.map((x) => Math.round(x)).join(', ');
       const all = r.counted.map((_, k) => k), counts = all.map((k) => k + 1).join(', ');
       console.log(`simulated ${r.board === 'mega' ? 'Mega 2560' : 'Uno'} ("${r.greeting}"), ${run.steps}: ${r.lines} lines sent, ${r.homed.length} axes homed, ${r.seconds.toFixed(2)} s from the first step to the last (planned ${r.planned?.toFixed(2)} s)`);
+      if (r.drivers.offAt !== null) console.log(`  the drivers went off ${((r.drivers.offAt - r.drivers.lastStep) / CLOCK).toFixed(3)} s after the last step, ${r.drivers.late} steps after it`);
       console.log(`  steps counted ${r.counted.join(', ')}, in the file ${r.total.join(', ')}; net ${r.position.join(', ')}, in the file ${r.want.join(', ')}; the streamer's own report "${r.report}"`);
       console.log(`  the file asks up to ${Math.round(r.peakAsked)} steps/s; the shortest gap between steps ${round(r.shortest)} steps/s (a late step caught up); STEP pulses at least ${r.highUs.toFixed(2)} µs high`);
       for (const p of r.problems) fail(`the streamer answered ${p}`);
       for (const h of r.homed) if (h.closedAt !== 300) fail(`axis ${h.axis} homed ${h.closedAt} steps to its switch, and it was 300 away`);
       for (const k of all) if (r.counted[k] !== r.total[k] || r.position[k] !== r.want[k]) fail(`axis ${k}: ${r.counted[k]} steps (net ${r.position[k]}), and the file has ${r.total[k]} (net ${r.want[k]})`);
+      if (r.drivers.offAt === null) fail('the drivers were still on after the last line (d)');
+      else if (r.drivers.late) fail(`${r.drivers.late} steps ran after the drivers went off (d): the last blocks ran with the motors slack`);
       if (r.report !== `q ${r.want.join(' ')} 0`) fail(`the streamer reports "${r.report}", and the file ends at "q ${r.want.join(' ')} 0"`);
       if (r.highUs < STEP_HIGH_US) fail(`a STEP pulse ${r.highUs.toFixed(2)} µs high, under the DRV8825's ${STEP_HIGH_US} µs`);
       if (r.planned && r.seconds > r.planned * 1.05) fail(`the moves took ${r.seconds.toFixed(2)} s, over the planned ${r.planned.toFixed(2)} s by more than 5%: the streamer falls behind`);
