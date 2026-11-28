@@ -1,33 +1,120 @@
-# On main: publish every package whose version isn't on npm yet (scripts/publish.mjs). To release, merge a release pull
-# request made by scripts/release.mjs from the change notes (CONTRIBUTING.md). npm trusts this workflow for each package (trusted publishing), so there are
-# no tokens or one-time passwords, and every release carries provenance.
+# Publishes every package whose version isn't on npm yet (scripts/publish.mjs), once the tests have passed on every
+# platform. To release, merge a release pull request made by scripts/release.mjs from the change notes (CONTRIBUTING.md,
+# Releasing). npm trusts this workflow for each package (trusted publishing), so there are no tokens or one-time
+# passwords, and every release carries provenance.
+# It starts when a test run of a push to main finishes (workflow_run), and goes on only if that run passed: the whole of
+# test.yml, on Linux (Node 20 and 24), macOS and Windows, with the fresh install. Three jobs, each holding only the rights
+# it needs:
+#   plan      read-only, nothing installed: which commit was tested, and whether any version is due (publish-plan.mjs).
+#             Nothing due, and the run ends here. It also stands down when main has moved on since (that commit's own
+#             run publishes, and an older commit must never set npm's latest version back), and, started by hand, it
+#             publishes only from main and only a commit whose test run passed.
+#   publish   the only job that can publish (id-token: write), in the npm-publish environment: installs with no install
+#             scripts (a dependency's script could otherwise ask for the token) and runs no tests (they ran already).
+#   releases  a GitHub Release for each version published, tagged at the tested commit: may write to the repository,
+#             cannot publish, installs nothing.
+# Started by hand on another branch (gh workflow run publish.yml --ref <branch>), it only says what is due.
 name: publish
 on:
-  push:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
-permissions:
-  contents: write # a GitHub Release for each published version
-  id-token: write # proves to npm that this workflow, in this repository, is publishing
+permissions: {} # nothing by default: each job asks for its own
 concurrency: publish
 jobs:
-  publish:
+  plan:
+    # A pull request from a fork whose branch is called main also reports head_branch "main": the event and the
+    # repository rule it out.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
-    # The whole suite runs again here (66 minutes on 2026-11-27), then the fresh install and the publishing: two hours
-    # stops a stuck run without cutting a slow one short. A run stopped part way leaves the rest of the packages to the
-    # next run (a rerun, or the next push to main), which publishes whatever is still not on npm.
-    timeout-minutes: 120
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # to find the test run of a commit when the workflow is started by hand
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      allowed: ${{ steps.commit.outputs.allowed }}
+      due: ${{ steps.plan.outputs.due }}
+      versions: ${{ steps.plan.outputs.versions }}
     steps:
-      - uses: actions/checkout@v4
+      - id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Under workflow_run, GITHUB_SHA is main's latest commit, which may not be the one the tests passed on
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then sha="$TESTED_SHA"; else sha="$GITHUB_SHA"; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          allowed=true
+          main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            allowed=false
+            echo "::notice::Started on ${GITHUB_REF#refs/heads/}: this run only says what is due. Releases are published from main."
+          elif [ "$sha" != "$main" ]; then
+            allowed=false
+            echo "::notice::main has moved on from $sha to $main: the run for $main publishes whatever is due, once its tests pass."
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Asked on a line of its own, so a failed request stops the step rather than counting as a pass
+            passed="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&event=push&status=success" --jq .total_count)"
+            if ! [ "${passed:-0}" -gt 0 ] 2>/dev/null; then
+              allowed=false
+              echo "::warning::$sha has no passing test run on main, so nothing is published. Re-run its failed test jobs: publishing follows when they pass."
+            fi
+          fi
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          echo "commit $sha, publishing allowed: $allowed"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          fetch-depth: 0 # history and tags, for each release's notes
-      - uses: actions/setup-node@v4
+          ref: ${{ steps.commit.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - id: plan
+        run: node scripts/publish-plan.mjs
+  publish:
+    needs: plan
+    if: needs.plan.outputs.due == 'true' && needs.plan.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    # The declarations and the publishing only (the tests ran before): half an hour stops a stuck run. A run stopped part
+    # way leaves the rest of the packages to the next run, which publishes whatever is still not on npm.
+    timeout-minutes: 30
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # proves to npm that this workflow, in this repository, is publishing
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24 # npm 11.5 or later for trusted publishing
           registry-url: https://registry.npmjs.org
-      - run: npm ci
-      - run: npm test
-      - run: test/fresh-install.sh # as a stranger installs them, with no lockfile
+      - run: npm ci --ignore-scripts # no dependency's install script runs where the token can be asked for
       - run: node scripts/publish.mjs
+  releases:
+    needs: [plan, publish]
+    # Also after a publish job that failed part way (a package new to npm, say): whatever did go out gets its release
+    if: ${{ !cancelled() && needs.publish.result != 'skipped' && needs.plan.outputs.versions != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # a GitHub Release, and its tag, for each published version
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0 # history and tags, for each release's notes
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: node scripts/publish.mjs --releases-only
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.plan.outputs.sha }}
+          RELEASES: ${{ needs.plan.outputs.versions }}

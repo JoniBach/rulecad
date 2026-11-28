@@ -17,7 +17,7 @@ test('firmware: every sketch in the kit is found, and the CI job compiles them a
   assert.deepEqual(found, [`${ARM}/firmware/arm/arm.ino`, 'examples/bench/projects/benchmarks/firmware/bench/bench.ino', `${LEG}/firmware/leg/leg.ino`, `${COPY}/firmware/arm/arm.ino`, `${LEG_COPY}/firmware/leg/leg.ino`]);
   const yml = read('.github/workflows/test.yml'), job = yml.slice(yml.indexOf('\n  firmware:'), yml.indexOf('\n  dimensions:'));
   assert.ok(job.length > 100, 'a firmware job');
-  for (const want of ['arduino/setup-arduino-cli@v2', 'arduino-cli core install arduino:avr@', 'arduino-cli lib install Servo@', 'avr8js@'])
+  for (const want of ['arduino/setup-arduino-cli@', 'arduino-cli core install arduino:avr@', 'arduino-cli lib install Servo@', 'avr8js@'])
     assert.ok(job.includes(want), want);
   // the run that compiles is the job's last step, and it is never allowed to fail quietly
   const last = job.slice(job.lastIndexOf('      - '));

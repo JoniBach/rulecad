@@ -56,7 +56,7 @@ test('Pages is built in one job and deployed in another that needs it, and the d
   const deploy = block(jobs, 'deploy', 2);
   assert.ok(build, 'pages.yml has a build job');
   assert.ok(deploy, 'pages.yml has a deploy job');
-  assert.match(build, /uses:\s*actions\/upload-pages-artifact@v4/, 'the build job uploads the site');
+  assert.match(build, /uses:\s*actions\/upload-pages-artifact@/, 'the build job uploads the site');
   assert.doesNotMatch(deploy, /upload-pages-artifact/, 'the deploy job only deploys');
   assert.match(deploy, /needs:\s*(\[\s*)?build/, 'the deploy job waits for the build');
   const deploys = deploy.match(/uses:\s*actions\/deploy-pages@/g) || [];
