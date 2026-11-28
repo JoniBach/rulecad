@@ -35,6 +35,17 @@ test/fresh-install.sh  # the packages installed as a stranger gets them: no lock
 - New behaviour comes with a test. Fix a bug with a test that failed before the fix. New tests go in a file of their
   own (`packages/<name>/test/<topic>.test.mjs`, or `test/<topic>.test.mjs` across packages) rather than at the end of a
   package's `test.mjs`, so two pull requests don't add at the same place.
+- The `cad` command's tests are a file per command or topic in `packages/cad/test/`: `rules`, `start` (the quick
+  start, `cad new`, the command line), `check`, `edit` (`cad set`, `add`, `move`, `remove`), `links`, `clone`,
+  `fasten`, `measure`, `sandbox`, `assembly`, `mechanisms`, `holds`, `optimise`, `motors`, `gears`, `machine`, `build`
+  (`cad order`, `plates`, `kit`), `examples` (TUTORIAL.md and EXAMPLES.md replayed), `versions`, `frame`, `fittings`,
+  `guides`, `frame-checks`, `frame-sizing` and `printed-beams`, each `<name>.test.mjs`. Add a test to the file of its
+  command, or start a new file for a new one. Every file starts the command through `packages/cad/test/helpers.mjs`:
+  `workspace()` makes a fresh workspace and gives its `cad()` runner, `run()` keeps the exit status, `write()` puts a
+  file in a workspace, `object()` writes an object, and `CAD` is the URL of `packages/cad/` for reading the kit's own
+  files. Never give a test file a `workspace()` of its own: `packages/cad/test/split.test.mjs` fails if one does.
+- Run one file's tests alone: `node --test packages/cad/test/fasten.test.mjs`; one test in it:
+  `node --test --test-name-pattern="a yoke" packages/cad/test/fasten.test.mjs`.
 - Plain words in messages and docs: say what happened and what to do, for people who aren't programmers too.
 - Designs are code: rulecad never runs code from a link, a rule file or a layout, and nothing may change that.
 
