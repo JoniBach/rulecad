@@ -122,3 +122,30 @@ test('a design in a workspace held in memory is refused unless the caller passes
     assert.ok(fs.existsSync(mark), 'with trusted: true it runs, in the tool\'s process');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Ways round the gate found after it was written
+test('a trusted workspace does not run a board design from outside its folder', () => {
+  const w = workspace(), other = workspace();
+  try {
+    w.board('b', path.join(w.ws, 'ran.txt'));
+    assert.equal(w.cad('trust').status, 0);
+    const mark = path.join(other.ws, 'ran.txt');
+    other.board('b', mark);
+    const r = w.cad('check', path.join(other.ws, 'projects/p/objects/b.json'));
+    assert.notEqual(r.status, 0, r.stdout);
+    assert.match(r.stdout + r.stderr, /outside this workspace/);
+    assert.ok(!fs.existsSync(mark), 'the other workspace\'s board did not run under this one\'s trust');
+    assert.equal(w.cad('check', path.join(w.ws, 'projects/p/objects/b.json')).status, 0, 'its own board, by its full path, still runs');
+  } finally { w.done(); other.done(); }
+});
+
+test('a workspace in memory runs designs only for trusted: true itself, not a value that merely looks true', () => {
+  const root = path.resolve('/rulecad-memory-trust-test'), dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-memtrust-')), mark = path.join(dir, 'ran.txt');
+  try {
+    for (const trusted of ['false', 1, 'yes', {}]) {
+      const r = memoryBuild(root, mark, { trusted });
+      assert.equal(r.code, 'workspace.untrusted', `${JSON.stringify(trusted)}: ${r.message}`);
+      assert.ok(!fs.existsSync(mark), `${JSON.stringify(trusted)}: the design did not run`);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -204,12 +204,20 @@ function syntaxAt(e, d) {
 // the sandbox is off, which sandbox.mjs already decides by trust. A host of another kind (memoryHost: a workspace in
 // memory, for tests and later a browser or editor's server) has no sandbox and no trust list of its own, so its
 // designs run only when the caller says it trusts them: build(d, set, { trusted: true }).
+// The trust list names a folder, so it covers the board designs in that folder: one elsewhere (a path to another
+// workspace's file) is refused here, to be run from its own workspace once that is trusted.
 function mayRunHere(d, object, trusted) {
   if (host.name !== 'node') {
-    if (trusted) return;
+    if (trusted === true) return; // (only true itself: not a string or number a caller passed on)
     throw Object.assign(new Error(`${path.relative(WS, d.json).split(path.sep).join('/')} would run in the tool's own process, without the sandbox: this workspace is held ${host.name === 'memory' ? 'in memory' : `by the ${host.name} host`}, where designs can't be sandboxed. Build it with { trusted: true } only if you trust its designs; until then, it isn't run`), { code: 'workspace.untrusted' });
   }
-  if (object.engine === 'pcb') { sawBoard(d.json); needTrust(config, { board: d.json }); }
+  if (object.engine !== 'pcb') return;
+  const real = (f) => { try { return fs.realpathSync(f); } catch { return path.resolve(f); } }; // (one folder by any spelling: a link, /var and /private/var)
+  const where = path.relative(real(WS), real(d.json));
+  if ((where === '..' || where.startsWith(`..${path.sep}`) || path.isAbsolute(where)) && process.env.CAD_TRUST !== '1') {
+    throw Object.assign(new Error(`${path.resolve(d.json)} is a board design outside this workspace (${WS}): this workspace's trust covers only its own boards. Run it from its own workspace (cd there, read its designs, and run cad trust there if you trust them); until then, it isn't run`), { code: 'workspace.untrusted' });
+  }
+  sawBoard(d.json); needTrust(config, { board: d.json });
 }
 
 // build(design, set, { mirror, trusted }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export), fixings? }
