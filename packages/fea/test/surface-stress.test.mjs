@@ -9,7 +9,7 @@ const E = 2000, nu = 0.3, P = 10, L = 100, H = 10, WIDTH = 5;
 
 // A cantilever n cells deep, held all over its left end, P down spread over its right end: 2D (a plate WIDTH thick) or
 // 3D (WIDTH wide). Its section's second moment I, for M c / I.
-function cantilever(dim, n, { load = 'tip' } = {}) {
+function cantilever(dim, n, { load = 'tip', poisson = nu, twice = false } = {}) {
   const h = H / n, nx = L / h, ny = dim === 2 ? n : WIDTH / h, I = (WIDTH * H ** 3) / 12;
   const g = dim === 2 ? grid({ nx, ny, h }) : grid({ nx, ny, nz: n, h }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
   const end = (i) => (dim === 2 ? [...Array(ny + 1)].map((_, j) => [g.node(i, j), j]) : [...Array((ny + 1) * (n + 1))].map((_, q) => [g.node(i, q % (ny + 1), Math.floor(q / (ny + 1))), Math.floor(q / (ny + 1))]));
@@ -32,7 +32,7 @@ function cantilever(dim, n, { load = 'tip' } = {}) {
       }
     }
   }
-  const r = analyse({ grid: g, density: new Float64Array(g.cells).fill(1), material: { E, nu }, thickness: WIDTH, fixed, loads: [f] });
+  const r = analyse({ grid: g, density: new Float64Array(g.cells).fill(1), material: { E, nu: poisson }, thickness: WIDTH, fixed, loads: twice ? [f, f.map((x) => 2 * x)] : [f] });
   // The largest surface (and centre) stress in the cells whose near face is at x, over M c / I there
   const at = (x) => {
     const i = Math.round(x / h), M = load === 'tip' ? P * (L - i * h) : 1000, hand = (M * (H / 2)) / I;
@@ -116,4 +116,22 @@ test('a peak in a member under 8 cells through comes with a warning, in the kit\
     assert.match(w.text, /only 4 cells through, under the 8 it takes/);
     assert.equal(cantilever(dim, 10).r.findings.length, 0, `${dim}D: 10 cells through, nothing to say`);
   }
+});
+
+test('the warning comes at a clamped end too, where the stress also changes fast along the member (Poisson\'s ratio 0.45)', () => {
+  // At 0.45 the peak is in the cell at the clamp, whose held face reads low: along the length the stress changes faster
+  // than through the depth, and counting the length alone (40 cells) said nothing
+  for (const dim of [2, 3]) {
+    const { r } = cantilever(dim, 4, { poisson: 0.45 });
+    assert.equal(r.findings.length, 1, `${dim}D: one finding`);
+    assert.equal(r.findings[0].values.cells, 4, `${dim}D: 4 cells through`);
+  }
+});
+
+test('with more than one load, each warning says which load it is for, the first included', () => {
+  const { r } = cantilever(2, 4, { twice: true });
+  assert.deepEqual(r.findings.map((w) => w.values.load), [0, 1]);
+  assert.match(r.findings[0].text, /under load 1,/);
+  assert.match(r.findings[1].text, /under load 2,/);
+  assert.doesNotMatch(cantilever(2, 4).r.findings[0].text, /under load/, 'one load: no number');
 });

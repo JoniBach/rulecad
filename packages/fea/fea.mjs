@@ -773,30 +773,36 @@ function recover(g, u, modulus, nu, density, centres) {
 const STRESS_CELLS = 8;
 
 // Where a load's peak surface stress is in a member under STRESS_CELLS cells through, a finding saying so. The member's
-// thickness is counted in solid cells along the axis the stress changes fastest across the peak cell (through the
-// depth, for a beam that bends), from the peak cell to the first cell under 0.5 or the grid's edge each way.
-function coarsePeak(g, density, surface, centre, load) {
+// thickness is counted in solid cells, from the peak cell to the first cell under 0.5 or the grid's edge each way, along
+// the axes the stress changes fastest across the peak cell (through the depth, for a beam that bends): the shortest.
+function coarsePeak(g, density, surface, centre, load, loads) {
   const dim = g.dim, m = g.cellDofs, corners = CORNERS[dim], nz = dim === 3 ? g.nz : 1;
   let peak = -1;
   for (let e = 0; e < g.cells; e++) if (density[e] >= 0.5 && (peak < 0 || surface.cells[e] > surface.cells[peak])) peak = e;
   if (peak < 0 || !(surface.cells[peak] > 0)) return null;
   const at = [peak % g.nx, Math.floor(peak / g.nx) % g.ny, dim === 3 ? Math.floor(peak / (g.nx * g.ny)) : 0], sides = [g.nx, g.ny, nz];
-  let axis = 0, steepest = -1;
-  for (let a = 0; a < dim; a++) { // the corners' stress on the cell's far face less its near face, along each axis
+  const change = [...Array(dim)].map((_, a) => { // the corners' stress on the cell's far face less its near face, along each axis
     let d = 0;
     corners.forEach((c, q) => { d += (c[a] ? 1 : -1) * surface.nodes[g.edof[peak * m + q * dim] / dim]; });
-    if (Math.abs(d) > steepest) { steepest = Math.abs(d); axis = a; }
-  }
-  const cell = (p) => (p[2] * g.ny + p[1]) * g.nx + p[0];
-  let through = 1;
-  for (const step of [-1, 1]) for (let p = at.slice(); ;) { p[axis] += step; if (p[axis] < 0 || p[axis] >= sides[axis] || !(density[cell(p)] >= 0.5)) break; through++; }
+    return Math.abs(d);
+  });
+  const steepest = Math.max(...change), cell = (p) => (p[2] * g.ny + p[1]) * g.nx + p[0];
+  const run = (axis) => {
+    let n = 1;
+    for (const step of [-1, 1]) for (let p = at.slice(); ;) { p[axis] += step; if (p[axis] < 0 || p[axis] >= sides[axis] || !(density[cell(p)] >= 0.5)) break; n++; }
+    return n;
+  };
+  // At a clamped end the stress also changes fast along the member (the held face reads low), so the steepest axis
+  // alone can be the length: count each axis the stress changes across by at least half as much, and take the shortest
+  let through = Infinity;
+  for (let a = 0; a < dim; a++) if (change[a] >= steepest / 2) through = Math.min(through, run(a));
   if (through >= STRESS_CELLS) return null;
   const lo = at.slice(0, dim).map((i) => i * g.h), hi = lo.map((x) => x + g.h), r = (x) => Math.round(x * 1000) / 1000;
-  const most = surface.cells[peak], low = Math.round((1 - centre[peak] / most) * 100);
+  const most = surface.cells[peak], low = Math.max(0, Math.round((1 - centre[peak] / most) * 100));
   return {
     level: 'warn',
     code: 'fea.coarse-stress',
-    text: `the highest stress${load > 0 ? ` under load ${load + 1}` : ''}, ${r(most)} MPa at the part's surface, is in a member only ${through} cell${through === 1 ? '' : 's'} through, under the ${STRESS_CELLS} it takes to read stress closely: there the centre stress reads ${low}% lower, and even the surface stress can be some percent out. Check it on cells half the size, or with a member ${STRESS_CELLS} cells through`,
+    text: `the highest stress${loads > 1 ? ` under load ${load + 1}` : ''}, ${r(most)} MPa at the part's surface, is in a member only ${through} cell${through === 1 ? '' : 's'} through, under the ${STRESS_CELLS} it takes to read stress closely: there the centre stress reads ${low}% lower, and even the surface stress can be some percent out. Check it on cells half the size, or with a member ${STRESS_CELLS} cells through`,
     values: { surface: r(most), centre: r(centre[peak]), cells: through, need: STRESS_CELLS, load },
     at: lo.map((x) => r(x + g.h / 2)),
     box: { lo: lo.map(r), hi: hi.map(r) },
@@ -844,7 +850,7 @@ export function analyse({ grid: g, density, material, thickness = 1, fixed, load
     compliance: u.map((x, c) => jsBackend.dot(loads[c], x)),
     stress: centre,
     surface: surface.map((s) => s.cells),
-    findings: surface.map((s, c) => coarsePeak(g, density, s, centre[c], c)).filter(Boolean),
+    findings: surface.map((s, c) => coarsePeak(g, density, s, centre[c], c, loads.length)).filter(Boolean),
     deflection: u.map((x) => {
       let most = 0, at = position[0];
       for (let n = 0; n < g.nodes; n++) if (solidNode[n]) {

@@ -46,8 +46,8 @@ r.thin;            // { share, cells }: how much of the part is in members under
   reproduces the forces on the cell's corners: square cells bend a little too stiffly, so their strains alone read
   low (6% at 4 cells in 3D), and the second reading errs the other way by about twice as much. A cell under half
   density keeps its centre stress. `analyse` adds a warning to `findings` (code `fea.coarse-stress`) for each load
-  whose peak surface stress is in a member under 8 cells through, counted along the direction the stress changes
-  fastest there. At a sharp inside corner, or a curved edge stepped into cells, the peak keeps rising as cells shrink:
+  whose peak surface stress is in a member under 8 cells through, counted along the directions the stress changes
+  fastest there (the shortest of them). At a sharp inside corner, or a curved edge stepped into cells, the peak keeps rising as cells shrink:
   the stress concentrates there beyond what any grid settles on, so read it with care (a real part has a fillet).
 - **Stress at a point:** `centreStress(h, nu, dim)` is the matrix from a cell's movements to the stress at its centre
   (for Young's modulus 1), and `vonMises(s, dim, grad)` gives von Mises stress and, optionally, its gradient. Stress
