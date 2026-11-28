@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { resolve } from '@rulecad/variables';
 import { grid, keyboard, do35, part, render, kicadFiles, fabFiles } from '@rulecad/pcb';
 
+const node22 = Number(process.versions.node.split('.')[0]) >= 22; // the autorouter needs Node 22
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`);
 const rules = (name) => Object.fromEntries(Object.entries(loadRuleSet(name).rules).map(([k, r]) => [k, r.value]));
 const keyboardValues = (controller) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -40,7 +41,7 @@ test('a DO-35 diode: a track to its cathode ends on the square pad, at the band\
   }
 });
 
-test('a DO-35 diode joined by a net, as the thin-picro macropad joins its rows: the net named for its cathode reaches the square pad', async () => {
+test('a DO-35 diode joined by a net, as the thin-picro macropad joins its rows: the net named for its cathode reaches the square pad', { skip: !node22 && 'the autorouter needs Node 22' }, async () => {
   const D = do35('D1', 0, 0, rules('do35'), { rotation: 90 });
   const json = await render({ center: { x: 0, y: 0 }, width: 30, height: 30, thickness: 1.6, track: 0.3, autoroute: true,
     parts: [D, part('J1', 'pinrow2', 8, 8)], traces: [], nets: { ROW0: ['D1.cathode', 'J1.pin1'] } });
