@@ -503,16 +503,17 @@ export function mesh(tris) {
   for (const t of tris) for (let i = 1; i < t.length - 1; i++) { const ids = [at(t[0]), at(t[i]), at(t[i + 1])]; if (new Set(ids).size === 3 && area2(ids) > 1e-9) out.push(ids); }
 
   // Mend: split a triangle at a loose corner lying along its open edge, one corner at a time, until none is left.
-  // The loose corners are filed in 1 mm cells. A short or square-on edge looks in every cell of its box; a long slanted
-  // one looks only in the cells its line passes through and their neighbours (a corner within TOL of the line is at
-  // most one cell off it), whichever is fewer cells, so the work grows with the edge's length. (It always searched the
-  // box, which grows with the cube of a slanted edge's length: a short link holding one long diagonal triangle froze
-  // the writers for minutes.) The searches share a work budget sized from the mesh; an edge whose search would cost
-  // more than both what is left of it and a plain look at every loose corner looks at every loose corner instead, so
-  // the mend never costs more than loose corners times open edges. All three ways find the same corner: the nearest
-  // the line, ties going to the corner first in cell order, as the box search always did.
+  // The loose corners are filed in 1 mm cells. Each open edge takes the cheapest of three searches: every cell of its
+  // box (a short or square-on edge), only the cells its line passes through and their neighbours (a long slanted edge:
+  // a corner within TOL of the line is at most one cell off it, so the work grows with the edge's length), or a plain
+  // look at every loose corner (few loose corners). (It always searched the box, which grows with the cube of a slanted
+  // edge's length: a short link holding one long diagonal triangle froze the writers for minutes.) All three find the
+  // same corner: the nearest the line, ties going to the corner first in cell order, as the box search always did.
+  // The searches share a work budget sized from the mesh, cells and corners looked at across all passes, so a mesh
+  // made to be slow (thousands of long open edges among thousands of loose corners) cannot freeze the writers: once
+  // it is spent, the edges left are not mended and are written as they are.
   const TOL = 2e-3, CELL = 1, cell = (x) => Math.floor(x / CELL);
-  let budget = 2e5 + 50 * out.length; // cells looked in, across all passes
+  let budget = 2e6 + 100 * out.length; // cells and corners looked at, across all passes
   for (let pass = 0; pass < 50; pass++) {
     const edges = new Set(); for (const [a, b, c] of out) edges.add(`${a},${b}`).add(`${b},${c}`).add(`${c},${a}`);
     const isOpen = (a, b) => !edges.has(`${b},${a}`), loose = new Set();
@@ -538,9 +539,11 @@ export function mesh(tris) {
       };
       const from = p.map(cell), to = q.map(cell), steps = [0, 1, 2].reduce((s, k) => s + Math.abs(to[k] - from[k]), 0);
       const lo = [0, 1, 2].map((k) => cell(Math.min(p[k], q[k]) - TOL)), hi = [0, 1, 2].map((k) => cell(Math.max(p[k], q[k]) + TOL));
-      const box = (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1), walk = 27 * (steps + 1), cost = Math.min(box, walk);
-      if (cost > loose.size && cost > budget) { for (const i of looseList) consider(i); return best; }
+      const box = (hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1), walk = 27 * (steps + 1);
+      const cost = Math.min(box, walk, looseList.length);
+      if (cost > budget) return null; // the budget is spent: this edge is left open
       budget -= cost;
+      if (cost === looseList.length && cost < box && cost < walk) { for (const i of looseList) consider(i); return best; }
       if (box <= walk) { // a short or square-on edge: its box is fewer cells than the walk
         for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) for (const i of grid.get(`${x},${y},${z}`) || []) consider(i);
         return best;

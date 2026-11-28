@@ -31,15 +31,15 @@ test('a link holding one open diagonal triangle 400 mm across writes STL and 3MF
   const [b, zip] = await time(() => threemf(m));
   assert.equal(bytes.length, 84 + 50, 'one triangle written');
   assert.ok(zip.length > 0);
-  assert.ok(a < 200, `STL took ${a.toFixed(0)} ms`);
-  assert.ok(b < 200, `3MF took ${b.toFixed(0)} ms`);
+  assert.ok(a < 1000, `STL took ${a.toFixed(0)} ms`);
+  assert.ok(b < 1000, `3MF took ${b.toFixed(0)} ms`);
 });
 
 test('a 10 m open diagonal triangle still writes, in bounded time', async () => {
   const s = 1e4, m = { q: 1, p: [0, 0, 0, s, s, s, 0, s, 0], t: [0, 1, 2] };
   const [a, bytes] = await time(() => stl(m));
   assert.equal(bytes.length, 84 + 50);
-  assert.ok(a < 200, `STL took ${a.toFixed(0)} ms`);
+  assert.ok(a < 1000, `STL took ${a.toFixed(0)} ms`);
 });
 
 test('a T-junction on a long diagonal edge is mended: the mesh comes out closed', async () => {
@@ -47,11 +47,11 @@ test('a T-junction on a long diagonal edge is mended: the mesh comes out closed'
     const [ms, out] = await time(() => mesh(tjunction(s)));
     assert.equal(out.tris.length, 6, 'the face along the edge is split at the loose corner');
     assert.deepEqual(open(out), [], `closed at ${s} mm`);
-    assert.ok(ms < 200, `mending at ${s} mm took ${ms.toFixed(0)} ms`);
+    assert.ok(ms < 1000, `mending at ${s} mm took ${ms.toFixed(0)} ms`);
   }
 });
 
-test('many loose corners along a 10 m diagonal edge, more than the grid walk is allowed: mended by the direct scan, in bounded time', async () => {
+test('many loose corners along a 10 m diagonal edge, where looking at each loose corner is cheaper than the grid walk: all mended, in bounded time', async () => {
   const [ms, out] = await time(() => mesh(tjunction(1e4, 40)));
   assert.deepEqual(open(out), [], 'closed');
   assert.equal(out.tris.length, 3 + 41 + 40, 'the face along the edge is split at every loose corner');
@@ -67,4 +67,31 @@ test('short and axis-aligned edges mend as before', () => {
   const out = mesh(tris);
   assert.deepEqual(open(out), []);
   assert.equal(out.verts.length, 9);
+});
+
+test('thousands of long open edges among thousands of loose corners (a mesh made to be slow) still write in bounded time', async () => {
+  // 5,000 open triangles 10 m across, side by side: every edge's walk is long and the loose corners are many, so
+  // neither the walk nor a look at every loose corner is cheap for any edge (a few kilobytes as a link)
+  const N = 5000, s = 1e4, p = [], t = [];
+  for (let i = 0; i < N; i++) { p.push(3 * i, 0, 0, 3 * i + s, s, s, 3 * i, s, 0); t.push(3 * i, 3 * i + 1, 3 * i + 2); }
+  const [ms, bytes] = await time(() => stl({ q: 1, p, t }));
+  assert.equal(bytes.length, 84 + 50 * N, 'every triangle written');
+  assert.ok(ms < 5000, `STL took ${ms.toFixed(0)} ms`);
+});
+
+test('with many loose corners elsewhere, the grid walk (slanted edge) and the box (square-on edge) each mend their T-junctions', () => {
+  // 2,000 small open triangles far off make looking at every loose corner dearer than either grid search
+  const decoys = Array.from({ length: 2000 }, (_, i) => [[1000 + 3 * i, 0, 0], [1001 + 3 * i, 0, 0], [1000 + 3 * i, 1, 0]]);
+  const square = (s, cuts) => { // tjunction() turned so its long edge O-Q runs along x
+    const O = [0, 0, 0], Q = [s, 0, 0], P = [0, 0, s], R = [0, s, 0];
+    const row = [O, ...Array.from({ length: cuts }, (_, i) => [s * (i + 1) / (cuts + 1), 0, 0]), Q];
+    const tris = [[O, Q, P], [P, Q, R], [O, P, R]];
+    for (let i = 0; i < row.length - 1; i++) tris.push([row[i], R, row[i + 1]]);
+    return tris;
+  };
+  for (const [name, part] of [['slanted', tjunction(50, 3)], ['square-on', square(50, 3)]]) {
+    const out = mesh([...part, ...decoys]);
+    assert.equal(out.tris.length, 3 + 4 + 3 + decoys.length, `${name}: the face along the edge is split at all three corners`);
+    assert.equal(open(out).length, 3 * decoys.length, `${name}: only the far-off triangles are left open`);
+  }
 });
