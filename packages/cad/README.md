@@ -387,14 +387,19 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
   reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
   (`console.log`) comes out on stderr. A workspace that trusts its designs sets `"sandbox": false` in cad.config.json
-  (or `CAD_TRUST=1`). Board designs (engine pcb) run in the tool's process, with the board engine.
-- **Trust, asked once:** what a workspace's cad.config.json asks to run outside the sandbox (`"sandbox": false`, a
-  target that is a module of its own) isn't done until you run `cad trust` in it. Only the kit's own targets, by their
+  (or `CAD_TRUST=1`). Board designs (`"engine": "pcb"` in the object's JSON) run in the tool's process, with the board
+  engine, not in the sandbox, so a workspace with any is asked about first (below).
+- **Trust, asked once:** what a workspace asks to run outside the sandbox isn't done until you run `cad trust` in it:
+  `"sandbox": false` or a target that is a module of its own (in cad.config.json), and board designs (any object whose
+  JSON says `"engine": "pcb"`; the message names the file). Only the kit's own targets, by their
   exact names (today only `gist`), run without asking: every other target name, with or without a slash or an
   extension, is the workspace's own code, and one outside the workspace's folder is never run. `cad trust` records the
-  folder and what it asked for in your own list (`~/.config/rulecad/trusted.json`, or `$CAD_TRUSTED`), so a workspace
-  cloned from elsewhere can't turn the sandbox off or run its own code on its first command; one that later asks for
-  more is asked again.
+  folder and what it asked for, in words such as "board designs run outside the sandbox", in your own list
+  (`~/.config/rulecad/trusted.json`, or `$CAD_TRUSTED`), so a workspace cloned from elsewhere can't turn the sandbox
+  off, run its own code or run a board design on its first command; one that later asks for more is asked again (a
+  second board design is not more: the answer covers the workspace's boards). A workspace held in memory
+  (`memoryHost`, for tests and later a browser) has no sandbox, so `build` runs its designs only when called with
+  `{ trusted: true }`.
 - **Mistakes are named:** a design that reads a variable that isn't there (`v.widht`) stops with the name it
   probably meant, not a shape drawn from `undefined`; errors in a design carry its file and line.
 - **Units:** `cad check` warns where an expression mixes units (millimetres added to degrees, a sine of a length) or

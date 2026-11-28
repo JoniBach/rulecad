@@ -27,7 +27,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
-import { WS, paths, printerOf, RULE_DIRS } from './workspace.mjs';
+import { WS, paths, printerOf, RULE_DIRS, config, needTrust, sawBoard } from './workspace.mjs';
 import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
 import { optimised, forDesign } from './optimise.mjs';
 import * as shapes from '@rulecad/shapes';
@@ -65,7 +65,7 @@ export function locate(ref) {
 // its version; "macropad/pcb@0.2.0" reads that release instead of the working copy.
 export const isObjectRef = (u) => String(u).includes('/');
 const building = new Set();
-export async function objectSets(d, object) {
+export async function objectSets(d, object, { trusted = false } = {}) {
   const refs = (object.uses || []).filter(isObjectRef), sets = {}, extra = {};
   if (!refs.length) return { sets, extra };
   const self = `${d.project}/${d.name}`;
@@ -74,7 +74,7 @@ export async function objectSets(d, object) {
     for (const u of refs) {
       const [ref, want] = u.split('@'), exact = /^\d+\.\d+\.\d+$/.test(want || '');
       if (building.has(ref)) throw new Error(`${self} and ${ref} read each other's numbers: one of them has to give its numbers to the other, not both`);
-      const base = locate(ref), b = await build(exact ? materialise(base, want) : base), version = b.object.version;
+      const base = locate(ref), b = await build(exact ? materialise(base, want) : base, {}, { trusted }), version = b.object.version;
       if (want && !exact && !satisfies(version, want)) throw new Error(`${self} uses ${ref} ${want}, but ${ref} is ${version}: change the range, or the design to suit ${version}`);
       const units = Object.fromEntries(Object.entries(b.object.variables || {}).map(([k, x]) => [k, x.unit]));
       const rules = {};
@@ -199,13 +199,28 @@ function syntaxAt(e, d) {
   return e;
 }
 
-// build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export), fixings? }
+// Who may run a design in the tool's own process, outside the sandbox. On Node's file system (the CLI), a board design
+// (engine pcb) only once the workspace is trusted for its board designs (cad trust); a JSCAD design runs here only when
+// the sandbox is off, which sandbox.mjs already decides by trust. A host of another kind (memoryHost: a workspace in
+// memory, for tests and later a browser or editor's server) has no sandbox and no trust list of its own, so its
+// designs run only when the caller says it trusts them: build(d, set, { trusted: true }).
+function mayRunHere(d, object, trusted) {
+  if (host.name !== 'node') {
+    if (trusted) return;
+    throw Object.assign(new Error(`${path.relative(WS, d.json).split(path.sep).join('/')} would run in the tool's own process, without the sandbox: this workspace is held ${host.name === 'memory' ? 'in memory' : `by the ${host.name} host`}, where designs can't be sandboxed. Build it with { trusted: true } only if you trust its designs; until then, it isn't run`), { code: 'workspace.untrusted' });
+  }
+  if (object.engine === 'pcb') { sawBoard(d.json); needTrust(config, { board: d.json }); }
+}
+
+// build(design, set, { mirror, trusted }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export), fixings? }
+//   trusted: the caller trusts the design, for a host with no sandbox (memoryHost): see mayRunHere
 //   fixings: what the design's calls to v.fixings found (each hole and seat, what it was drawn to and rests on), as findings
 //   parts: [{ name, role, label, geometry, polygons, triangles }]; polygons and triangles: every part together
-export async function build(d, set = {}, { mirror = false } = {}) {
+export async function build(d, set = {}, { mirror = false, trusted = false } = {}) {
   const object = readObject(d);
+  if (object.engine === 'pcb') mayRunHere(d, object, trusted); // (asked before anything of it is read or kept: a board workspace is asked once, built or cached)
   set = variantSet(d, object, set);
-  const refs = await objectSets(d, object); // other objects' numbers, when it reads them
+  const refs = await objectSets(d, object, { trusted }); // other objects' numbers, when it reads them
   const sets = { ...(d.rulesDir ? Object.fromEntries((object.uses || []).filter((u) => !isObjectRef(u)).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}), ...refs.sets }; // a release's own rules
   const display = mirror ? object.mirror || {} : {};
   let resolved;
@@ -243,13 +258,15 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   }
 
   // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
-  // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
+  // the network) unless the workspace trusts its designs; a board design runs here, with the board engine, once the
+  // workspace is trusted for it (mayRunHere, above)
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   let parts, board = null, read, mechanism = null, fixings = null, mounted = false;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
   const stages = stageStore();
   if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism, fixings } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, { frames: framed, fixings: fixed().context }).catch((e) => { throw syntaxAt(e, d); }));
   else {
+    mayRunHere(d, object, trusted);
     flexures.laminaCache(stages);
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
