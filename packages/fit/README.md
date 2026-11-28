@@ -11,9 +11,18 @@ const gap = closest(capTriangles, stemTriangles);   // 0.05: a press fit? a slid
 closest(a, b, 5);                                   // look up to 5 mm away (default 2); farther is Infinity
 ```
 
-It measures from each mesh's corners and edge midpoints to the other's faces (Ericson, Real-Time Collision Detection
-5.1.5), both ways. Two solids that run into each other have no gap, however far their corners are from each other's
-faces: `closest` is 0 for them, and `closestAt` says `overlap: true` and where (an edge of one through a face of the
-other, or a corner of one inside the other; `overlapAt(a, b)` on its own). Touching faces are not an overlap. How
-much they overlap needs a CAD kernel's booleans, so that stays out of this package; with JSCAD it's
-`measureVolume(intersect(a, b))`.
+It measures from each mesh's corners to the other's faces, and from each mesh's edges to the other's edges (Ericson,
+Real-Time Collision Detection 5.1.5 and 5.1.9), so the nearest two faces can be is found even where two edges pass
+each other mid-span. Two solids that run into each other have no gap, however far their corners are from each other's
+faces: `closest` is 0 for them, and `closestAt` says `overlap: true` and where (`overlapAt(a, b)` on its own). They run
+into each other when an edge of one passes through a face of the other, a corner of one is inside the other, or a
+point just inside a face of one is inside the other: the last finds solids that share face planes, such as two boxes
+half into each other on one plane, or a part placed twice. Touching faces are not an overlap. How much they overlap
+needs a CAD kernel's booleans, so that stays out of this package; with JSCAD it's `measureVolume(intersect(a, b))`.
+
+Two smaller tools, for checks of your own (cad's assembly checks use both):
+
+- `inside(point, faces)`: is a point inside a closed solid? True or false, by counting how many of its faces a straight
+  line out from the point passes through: an odd number means inside.
+- `distanceToFace(point, face)`: how far a point is from one face (a polygon), in mm, to its nearest point, inside it
+  or on its edge.
