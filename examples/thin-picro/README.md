@@ -177,7 +177,11 @@ its documentation doesn't describe it, so check Sea-Picro's schematic before usi
 
 ## Build it
 
+Board designs run in the tool's own process, with the board engine, not in the design sandbox, so cad asks you once to
+trust this workspace: read the designs in `projects/thin-picro/objects/`, then run `npx cad trust` here.
+
 ```sh
+npx cad trust                        # once: this workspace's board designs may run (kept in your own list)
 npx cad check thin-picro/module      # build, route and check (routing takes about 40 minutes)
 npx cad preview thin-picro/module:with-headers   # the same board in 3D with pin headers fitted
 npx cad export thin-picro/module     # Gerbers, drill files, BOM and placement for JLCPCB

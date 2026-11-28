@@ -66,7 +66,7 @@ test('host: the core builds and checks a design from a workspace in memory, writ
     useHost(h);
     const { build, locate, printer } = await import(${lib('design.mjs')});
     const { check } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../../printcheck/printcheck.mjs')).href)});
-    const d = locate('demo/box'), b = await build(d);
+    const d = locate('demo/box'), b = await build(d, {}, { trusted: true }); // (a workspace in memory has no sandbox: its designs run only when the caller trusts them)
     const found = check(b.triangles, printer(b, d));
     console.log(JSON.stringify({ size: found.find((f) => f.code === 'print.bed').values.size.map((x) => +x.toFixed(2)),
       onDisk: fs.existsSync(${JSON.stringify(root)}), cached: [...h.files.keys()].some((k) => k.includes('.cache')), rules: [...h.files.keys()].some((k) => k.endsWith('x1c.json')) }));

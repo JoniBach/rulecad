@@ -27,6 +27,8 @@ test('the tutorial: every file and command in TUTORIAL.md works as written, in a
 
 test('the worked examples: every file and command in EXAMPLES.md works as written, parts to a mechanism', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'examples-')), ws = path.join(root, 'my-designs');
+  const trustedBefore = process.env.CAD_TRUSTED;
+  process.env.CAD_TRUSTED = path.join(root, '.trusted.json'); // (chapter 6's cad trust, for its board, goes in a list of the test's own, not the user's)
   try {
     const { files, commands } = replay(fileURLToPath(new URL('./EXAMPLES.md', CAD)), ws);
     assert.ok(files >= 14 && commands >= 16, `${files} files, ${commands} commands`);
@@ -206,7 +208,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     const row = page.split('\n').find((l) => l.startsWith('| print/printed-base-1.3mf | PETG |'));
     assert.equal(row.split(' | ')[2].split(', ').length, 73, 'every printed part on the one plate'); assert.match(row, /\| [\d.]+ \| [\d.]+ \| clean \|$/);
     assert.match(page, /^\| 1 \| rpi4 \| board \|/m);
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  } finally { if (trustedBefore === undefined) delete process.env.CAD_TRUSTED; else process.env.CAD_TRUSTED = trustedBefore; fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('docs: the key a joint support takes to refine link.deflection is the one the finding names, in the schema, the worked examples and the changelog', () => {

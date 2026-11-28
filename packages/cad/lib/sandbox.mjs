@@ -10,7 +10,7 @@
 // read the workspace as it does. So: run only designs you trust, as with any code.
 // It gets its values as data and sends back its parts' faces. A workspace that trusts its designs sets
 // "sandbox": false in cad.config.json (or CAD_TRUST=1). Board designs (engine pcb) run in the tool's own process,
-// with the board engine.
+// with the board engine, once the workspace is trusted for them (cad trust: design.mjs's mayRunHere).
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';

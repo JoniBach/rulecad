@@ -462,6 +462,7 @@ test('a holes fit follows a board\'s mounting holes into what they screw into: i
       w: { value: 30, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, thickness: { value: 'jlcpcb.thickness', unit: 'mm', rule: 'Standard' },
       hx: { value: 11, unit: 'mm', rule: 'Hole from the centre' } } },
     "export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: v.d, thickness: v.thickness, parts: [], traces: [], silk: [], holes: [-1, 1].map((s) => v.pcb.mount('M2', s * v.hx, 0)) } }\n"); // (named by thread: m2.clearance, as drilled)
+    assert.match(cad('trust'), /for board designs run outside the sandbox/); // (a board design runs in the tool's process: asked once)
     const block = (offset) => `import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives, { translate } = jscad.transforms, { subtract } = jscad.booleans
 export function main (v) {
@@ -504,6 +505,7 @@ test('fasten.suggest: a holes fit and a fit that fastens the same parts suggest 
       w: { value: 30, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, thickness: { value: 'jlcpcb.thickness', unit: 'mm', rule: 'Standard' },
       hx: { value: 11, unit: 'mm', rule: 'Hole from the centre' }, hd: { value: 'm2.clearance', unit: 'mm', rule: 'M2 clearance' } } },
     'export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: v.d, thickness: v.thickness, parts: [], traces: [], silk: [], holes: [-1, 1].map((s) => ({ x: s * v.hx, y: 0, d: v.hd })) } }\n');
+    cad('trust'); // (a board design runs in the tool's process: asked once)
     object(ws, 'demo/block', { uses: ['x1c', 'demo/board'], variables: { h: { value: 'x1c.layer * 30', unit: 'mm', rule: 'Whole layers' } } }, `import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
 export function main (v) {

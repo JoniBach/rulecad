@@ -231,6 +231,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 
 ## Circuit boards
 - `"engine": "pcb"` in the .json; `main(v)` returns a board built with `v.pcb` (see @rulecad/pcb's README).
+- A board design runs in the tool's own process, not the sandbox, so a workspace with one stops with
+  `workspace.untrusted` until `cad trust` is run there. Ask the person to read the designs and run it; don't run it
+  yourself for a workspace that came from elsewhere.
 - Parts come from rule sets where one exists (`v.pcb.xiao`, `qwiic`, `jstph`, `header`), or any standard footprint by
   name (`v.pcb.part('U2', 'soic8', x, y)`). Turn parts in quarter turns with `rotation`, held in a variable.
 - A board's mounting holes are named by their screws' thread, never typed: `v.pcb.mount('M2', x, y)` in its `holes`
