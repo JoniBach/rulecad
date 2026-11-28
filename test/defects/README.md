@@ -87,7 +87,7 @@ alone with `node --test test/defects.test.mjs`; set `DEFECTS_SHOW=1` to print ev
 | `printcheck/one-layer-island` | a one-layer breakaway support passes, and the slab on it is also called an island | #407 |
 | `printcheck/short-steep-overhang` | a collar leaning 75 degrees over 1.15 mm passes | #407 |
 | `printcheck/flipped-face` | one face turned the wrong way round is reported as holes | #407 |
-| `fit/coplanar-overlap` | two cubes sharing half their volume on one plane read as touching | #371 |
+| `fit/coplanar-overlap` | two cubes sharing half their volume on one plane read as touching | fixed by #371 |
 | `fit/large-triangle` | a box through a 2 m panel of big triangles takes seconds | #516 |
 | `versions/narrowed-tweak` | narrowing an interface tweak range is called a patch | #425 |
 | `versions/removed-rule` | a rule set dropped from `uses` is no change at all | #425 |

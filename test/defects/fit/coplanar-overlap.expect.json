@@ -3,6 +3,5 @@
   "about": "two cubes sharing half their volume run into each other, though their faces share planes",
   "finding": "foundations-1",
   "code": "fit.overlap",
-  "level": "fail",
-  "todo": "#371 Hardening 2.14: fit finds the overlap between solids that share face planes"
+  "level": "fail"
 }
