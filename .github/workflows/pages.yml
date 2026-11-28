@@ -1,6 +1,11 @@
 # The public model page (@rulecad/viewer's site) on GitHub Pages, https://jonibach.github.io/rulecad/, and beside it
 # the libraries' documentation, https://jonibach.github.io/rulecad/docs/ (docs/build.mjs: a page per package, its
 # README as the reference, live demonstrations). Deployed from main whenever a package or the docs change.
+# Two jobs: build makes the site and uploads it, deploy (which waits for build) puts it on Pages. The deploy is tried
+# a second time, half a minute later, if the first try fails: about half the deploys up to 2026-11-27 failed with
+# "No artifacts named github-pages were found" just after a good upload, and nothing tried again, so the site lagged
+# behind main until the next merge. upload-pages-artifact@v4 leaves dot-files out; the site's one, .nojekyll, does
+# nothing for a site deployed from Actions (it is served as uploaded, never through Jekyll).
 name: pages
 on:
   push:
@@ -13,11 +18,9 @@ permissions:
   id-token: write
 concurrency: pages
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +29,22 @@ jobs:
       - run: npm ci
       - run: node packages/viewer/scripts/build.mjs
       - run: node docs/build.mjs --out _site
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.retry.outputs.page_url }}
+    steps:
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - id: retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
