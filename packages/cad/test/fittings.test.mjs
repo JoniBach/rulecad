@@ -74,7 +74,7 @@ test('printed fittings: a bracket join with "fitting": "printed" adds a printed 
     assert.deepEqual([r.items.length, r.hardware, by('join.fitting').map((x) => x.level)], [2, [], ['warn']]);
     assert.match(by('join.fitting')[0].text, /A printed one is drawn now: give "fitting": "printed"/);
     // refused by name: a brace on a join with no printed fitting, a bracket with no room on a short beam
-    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/corner'), pattern); };
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); cad.refused(pattern, 'check', 'frame/corner'); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.top@100', brace: true }]; }, /join 1: brace is for a printed fitting: give "fitting": "printed" on a bracket, gusset, splice join, or leave brace out/);
     refused((b) => { b.items[0].to = [40, 0, 0]; b.items[1].from = [20, 0, 10]; b.items[1].to = [20, 0, 210]; b.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.top@20', fitting: 'printed' }; }, /join 1: a printed bracket's 24 mm leg runs 14 mm past x1's end b: it goes on the side of y1 with more of x1, and there is only 10 mm there/);
     write();
@@ -117,7 +117,7 @@ test('printed fittings: a gusset join puts an L plate on a corner and a T where 
     assert.equal(r.box[0][0], 150 - r.fitting.arm); assert.equal(r.box[1][0], 150 + r.fitting.arm);
     // refused by name: a gusset with no room on a short beam
     write({ ...a, items: [beam('x1', [0, 0, 0], [30, 0, 0]), beam('y1', [10, 0, 10], [10, 0, 210])], joins: [{ kind: 'gusset', a: 'y1.a', b: 'x1.top@10', fitting: 'printed' }] });
-    assert.match(cad('check', 'frame/plates'), /join 1: a printed gusset's [\d.]+ mm arm runs past x1's ends: there is 10 mm beside y1, and it needs [\d.]+\. A bracket will do/);
+    cad.refused(/join 1: a printed gusset's [\d.]+ mm arm runs past x1's ends: there is 10 mm beside y1, and it needs [\d.]+\. A bracket will do/, 'check', 'frame/plates');
   } finally { done(); }
 });
 
@@ -172,16 +172,16 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
     // with its turn-button latch shut over the door, the sweep finds the door can't open: it lifts into the tab within
     // its first degree, so the sweep also tries it 0.5° off shut, finer than its 5° steps (which jump past the tab)
     write('door', { door: { hinge: 'z1', latch: true } });
-    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '24'), /✗ sweep door-hinge, 0 to 120° in 24 steps \(door-latch shut over door: also tried 0\.5° off shut\): at 0\.5°: door\.body hits door-latch\.body/);
+    cad.refused(/✗ sweep door-hinge, 0 to 120° in 24 steps \(door-latch shut over door: also tried 0\.5° off shut\): at 0\.5°: door\.body hits door-latch\.body/, 'check', 'frame/door', '--sweep', '--steps', '24');
     write('door', { door: { hinge: 'z1', latch: true, open: 4 } });
-    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '8'), /sweep door-hinge, 0 to 4° in 8 steps \(door-latch shut over door: also tried 0\.5° off shut\): 0\.5 to 1°: door\.body hits door-latch\.body/);
+    cad.refused(/sweep door-hinge, 0 to 4° in 8 steps \(door-latch shut over door: also tried 0\.5° off shut\): 0\.5 to 1°: door\.body hits door-latch\.body/, 'check', 'frame/door', '--sweep', '--steps', '8');
     // refused by name
     write('door', { door: { hinge: 'y9' } });
-    assert.match(cad('check', 'frame/door'), /door\.hinge is the beam of the bay its hinges go on, one of x1, z2, x2, z1 \(got "y9"\)/);
+    cad.refused(/door\.hinge is the beam of the bay its hinges go on, one of x1, z2, x2, z1 \(got "y9"\)/, 'check', 'frame/door');
     write('bay', { out: [0, 0, 1] });
-    assert.match(cad('check', 'frame/bay'), /z2 runs across the bay's plane, not in it: its beams lie square to out/);
+    cad.refused(/z2 runs across the bay's plane, not in it: its beams lie square to out/, 'check', 'frame/bay');
     fs.writeFileSync(at('assemblies/bay.json'), JSON.stringify({ title: 'bay', kind: 'fit', items: [...frame, { id: 'front', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'z2', 'x2', 'x2'], out: [0, -1, 0] } }] }));
-    assert.match(cad('check', 'frame/bay'), /bay is four different beams/);
+    cad.refused(/bay is four different beams/, 'check', 'frame/bay');
   } finally { done(); }
 });
 
@@ -194,16 +194,16 @@ test('printed fittings in a project of another plastic: refused by name where no
     fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
     // once sized as PLA without a word; now refused by name, with what would do: every plastic the kit has a rule set
     // for (one with strength, modulus, density and modulus_z, the modulus across the layers), not only pla and petg
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament/);
+    cad.refused(/project frame: its material is "PC", and printed fittings are sized from their plastic's strength, modulus and density: the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json\. Give rules\/pc\.json with all three, or set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament/, 'check', 'frame/clip');
     fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
     const pla = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/pla.json'), 'utf8'));
     fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { strength: pla.rules.strength } }));
-    assert.match(cad('check', 'frame/clip'), /rules\/pc\.json gives no modulus, density/);
+    cad.refused(/rules\/pc\.json gives no modulus, density/, 'check', 'frame/clip');
     fs.writeFileSync(path.join(ws, 'rules/pc.json'), JSON.stringify({ name: 'pc', rules: { ...pla.rules, density: { ...pla.rules.density, value: 1.04 } } }));
     assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of pc/);
     // a set the workspace gives is one of its plastics from then on: another missing plastic's refusal names it too
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'nylon', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, pc, petg, petg-polylite, pla, pla-prusament, and there is no rules\/nylon\.json/);
+    cad.refused(/the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, pc, petg, petg-polylite, pla, pla-prusament, and there is no rules\/nylon\.json/, 'check', 'frame/clip');
     // and a plastic the kit gives a set for (#27's abs) is sized from it, with no set of the workspace's own
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
     assert.match(cad('check', 'frame/clip'), /c: it weighs [\d.]+ g of abs/);
@@ -300,7 +300,7 @@ test('bought fittings: the same frame with a printed and with a cast bracket lis
     assert.match(list, /Cost: 0\.36 EUR bought \(no price given for profile-2020-motedis-b6\); fixings and bars are not priced/);
     const other = frame('fitting-motedis-bracket-20-b6'); for (const it of other.items) it.beam.profile = '2020-misumi-hfs5';
     fs.writeFileSync(file, JSON.stringify(other));
-    assert.match(cad('check', 'frame/corner'), /fitting-motedis-bracket-20-b6 is made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/);
+    cad.refused(/fitting-motedis-bracket-20-b6 is made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/, 'check', 'frame/corner');
   } finally { done(); }
 });
 
@@ -357,7 +357,7 @@ test('bought fittings: a T plate, an inner connector and an anchor in joins, an 
     assert.match(by(r, 'frame.nut').find((x) => x.refs.item === 'x1').text, /slide-in nut .*into x1's top slot from an end before (foot and cap|cap and foot) go on$/); // (both ends capped: each named)
     // refused by name: a set the join does not take
     fs.writeFileSync(file, JSON.stringify({ title: 'Bought', kind: 'fit', items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'hidden', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-plate-t-20' }] }));
-    assert.match(cad('check', 'frame/bought'), /join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/);
+    cad.refused(/join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/, 'check', 'frame/bought');
   } finally { done(); }
 });
 
@@ -377,7 +377,7 @@ test('a kit of fittings alone for a named profile (examples/bench fittings/kit-2
     // refused by name: an M5 nut is too big for a carrier in a 6 mm slot
     const a = JSON.parse(fs.readFileSync(path.join(ws, 'projects/fittings/assemblies/kit-2020.json'), 'utf8'));
     fs.writeFileSync(path.join(ws, 'projects/fittings/assemblies/m5.json'), JSON.stringify({ title: 'm5', kind: 'fit', items: [{ id: 'c', fitting: { ...a.items.find((x) => x.id === 'carrier-1').fitting, thread: 'M5' } }] }));
-    assert.match(cad('check', 'fittings/m5'), /item c: .*M5/);
+    cad.refused(/item c: .*M5/, 'check', 'fittings/m5');
   } finally { done(); }
 });
 
@@ -390,8 +390,8 @@ test('printed fittings in TPU: refused by name as a rubber, and left out of the 
     // the kit's tpu.json has strength, modulus, density and modulus_z, as a plastic's set does; but 29.6 / 9.2 = 3.22,
     // a strain where a stiff plastic would long have yielded: the clip's sums are not for it
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'TPU', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /project frame: its material is "TPU", a rubber \(its strength over its modulus is 3\.22, a strain far past where its stiffness holds\), and printed fittings are sized with sums for a stiff plastic that do not hold for it\. Set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament$/m);
+    cad.refused(/project frame: its material is "TPU", a rubber \(its strength over its modulus is 3\.22, a strain far past where its stiffness holds\), and printed fittings are sized with sums for a stiff plastic that do not hold for it\. Set the material to one of abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament$/m, 'check', 'frame/clip');
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PC', objects: [] }));
-    assert.match(cad('check', 'frame/clip'), /the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json/);
+    cad.refused(/the kit and this workspace have rule sets for abs, asa, asa-polylite, pa_cf, petg, petg-polylite, pla, pla-prusament, and there is no rules\/pc\.json/, 'check', 'frame/clip');
   } finally { done(); }
 });

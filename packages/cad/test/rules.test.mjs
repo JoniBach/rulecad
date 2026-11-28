@@ -3,8 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { workspace, object, BIN, CAD } from './helpers.mjs';
+import { workspace, object, CAD } from './helpers.mjs';
 
 test('cad rules check, draw and draft: a set held to its rules, drawn from them, and a datasheet\'s figures offered, never trusted', () => {
   const { ws, cad, done } = workspace();
@@ -12,7 +11,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     assert.match(cad('rules', 'check', 'nema17'), /1 of 1 rule sets pass/);
     fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
     fs.writeFileSync(path.join(ws, 'rules/bad.json'), JSON.stringify({ name: 'bad', rules: { width: { value: 3, unit: 'mm', rule: 'A width in mm', kind: 'guess', checked: 'soon' } } }));
-    const r = spawnSync('node', [BIN, 'rules', 'check', 'bad'], { cwd: ws, encoding: 'utf8' });
+    const r = cad.run('rules', 'check', 'bad');
     assert.equal(r.status, 1); assert.match(r.stdout, /kind "guess"/); assert.match(r.stdout, /has no source/); assert.match(r.stdout, /YYYY-MM-DD/);
     const check = JSON.parse(cad('rules', 'check', 'pico', '--json'));
     assert.deepEqual(check.map((x) => [x.name, x.findings, x.notes.map((n) => [n.level, n.code, n.rule, n.values.alias])]), [['pico', [], [['info', 'rules.alias', 'length', 'body_length'], ['info', 'rules.alias', 'width', 'body_width'], ['info', 'rules.alias', 'mount_hole', 'mount_hole_diameter']]]], 'an alias is a note, never a failure');
@@ -23,7 +22,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
       head: { value: 5.5, unit: 'mm', rule: 'M3 socket head cap screw head diameter', kind: 'spec', source: 'ISO 4762', checked: '2026-11-08' },
       head_height: { value: 3, unit: 'mm', rule: 'M3 socket head cap screw head height', kind: 'spec', source: 'ISO 4762', checked: '2026-11-08' } } };
     fs.writeFileSync(path.join(ws, 'rules/m3.json'), JSON.stringify(old, null, 2));
-    const copy = spawnSync('node', [BIN, 'rules', 'check', 'm3'], { cwd: ws, encoding: 'utf8' });
+    const copy = cad.run('rules', 'check', 'm3');
     assert.equal(copy.status, 0, copy.stdout); assert.match(copy.stdout, /1 of 1 rule sets pass/);
     assert.match(copy.stdout, /m3: NOTE {2}clearance is also read as screw_clearance, head is also read as screw_head, head_height is also read as screw_head_height {2}\(rules\.alias\)/);
     assert.match(copy.stdout, /m3: NOTE {2}your copy is used as it is; the kit's m3 now also has thread_form, thread, .* and \d+ more \(--json lists them\): copy any you want into rules\/m3\.json, or delete it to read the kit's own {2}\(rules\.new\)/);
@@ -35,7 +34,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     cad('rules', 'draw', 'nema17');
     const svg = fs.readFileSync(path.join(ws, 'nema17.svg'), 'utf8');
     for (const t of ['42.3', 'holes 31', 'boss Ø22', 'shaft 24', 'flat 15', '4 × M3, 4.5 deep']) assert.ok(svg.includes(t), `the drawing shows ${t}`);
-    assert.equal(spawnSync('node', [BIN, 'rules', 'draw', 'x1c'], { cwd: ws, encoding: 'utf8' }).status, 1);
+    assert.equal(cad.run('rules', 'draw', 'x1c').status, 1);
     // a small PDF with figures in its text, and one with none (a scan): only ever estimates
     const pdf = (body) => Buffer.from(`%PDF-1.4\n1 0 obj<<>>stream\n${body}\nendstream\nendobj\n`, 'latin1');
     fs.writeFileSync(path.join(ws, 'sheet.pdf'), pdf('BT (Shaft 5 mm, torque 0.59 N m) Tj ET'));
@@ -54,7 +53,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     cad('rules', 'draw', 'unc_6_32'); for (const t of ['6-32 UNC, unified', 'countersunk 82°', 'Ø5.74']) assert.ok(fs.readFileSync(path.join(ws, 'unc_6_32.svg'), 'utf8').includes(`>${t}`), `the 6-32 drawing shows ${t}`);
     const thin = JSON.parse(fs.readFileSync(new URL('../rules/m3.json', CAD), 'utf8')); thin.name = 'thin'; thin.rules.head.value = 3.5; thin.rules.lengths.value = [6, 5, 8];
     fs.writeFileSync(path.join(ws, 'rules/thin.json'), JSON.stringify(thin));
-    const t = spawnSync('node', [BIN, 'rules', 'check', 'thin', '--json'], { cwd: ws, encoding: 'utf8' });
+    const t = cad.run('rules', 'check', 'thin', '--json');
     assert.equal(t.status, 1); assert.deepEqual(JSON.parse(t.stdout)[0].findings.map((x) => [x.code, x.rule]), [['rules.order', 'lengths'], ['rules.order', 'head']]);
     assert.match(JSON.parse(t.stdout)[0].findings[1].text, /head \(3.5\) is not larger than clearance_loose \(3.6\): a cap head is wider than the loosest clearance hole/);
     // the drawings in the rules package are what the sets say today
@@ -65,7 +64,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
 test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet passes the check and draws as the sheet does; slots, bores and section figures are held to sense', () => {
   const { ws, cad, done } = workspace();
   try {
-    const read = (f) => JSON.parse(fs.readFileSync(path.join(ws, f), 'utf8')), write = (f, x) => fs.writeFileSync(path.join(ws, f), JSON.stringify(x, null, 2)), run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' });
+    const read = (f) => JSON.parse(fs.readFileSync(path.join(ws, f), 'utf8')), write = (f, x) => fs.writeFileSync(path.join(ws, f), JSON.stringify(x, null, 2)), run = (...a) => cad.run(...a);
     const vocabulary = JSON.parse(fs.readFileSync(new URL('../rules/vocabulary.json', CAD), 'utf8')), published = (n) => JSON.parse(fs.readFileSync(new URL(`../rules/${n}.json`, CAD), 'utf8'));
     // the published sets: three makers' 20 mm profiles pass, and a warning is said without failing the set
     assert.match(cad('rules', 'check', 'profile-2020-misumi-hfs5', 'profile-2040-misumi-hfs5', 'slot-6-misumi', 'al6n01-t5'), /^4 of 4 rule sets pass\n$/);
@@ -105,8 +104,8 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     lit.rules.width = { ...lit.rules.width, rule: 'DRAFT: name and check me. From: "20 x 20"', kind: 'estimate' }; write('rules/lit-2020.json', lit);
     assert.deepEqual(JSON.parse(run('rules', 'check', 'lit-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, ['width']);
     fs.rmSync(path.join(ws, 'rules/lit-2020.json'));
-    assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
-    assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
+    cad.refused(/already exists \(--force replaces it\)/, 'rules', 'draft', 'profile', 'my-2020');
+    cad.refused(/usage: cad rules draft profile <name>/, 'rules', 'draft', 'profile');
     cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
     assert.deepEqual(Object.keys(read('rules/my-slot.json').rules), Object.keys(vocabulary.drafts.slot)); assert.deepEqual(Object.keys(read('rules/my-nut.json').rules), Object.keys(vocabulary.drafts.slot_nut));
     assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass \(2 with something to know\)/);
@@ -143,7 +142,7 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     cad('rules', 'draw', 'my-2020'); assert.ok(fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8').includes('drawn from its outline: a bar from the shelf, traced'));
     write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar', loops: [[[0, 0], [1, 0]]] });
     const bad = run('rules', 'check', 'my-2020'); assert.equal(bad.status, 1); assert.match(bad.stdout, /outlines\/my-2020\.json: \(top\): needs "licence"/); assert.match(bad.stdout, /loops\[0\]: needs at least 3 entries/);
-    assert.match(cad('rules', 'check'), /rule sets pass/, 'an outline is not taken for a rule set');
+    cad.refused(/rule sets pass/, 'rules', 'check'); // an outline is not taken for a rule set
   } finally { done(); }
 });
 

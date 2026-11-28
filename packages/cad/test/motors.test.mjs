@@ -3,13 +3,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { workspace, BIN } from './helpers.mjs';
+import { workspace } from './helpers.mjs';
 
 test('a motor in an assembly: on the axis of its joint, torque reaching a load, holding on and off, a shaft read from its bore', () => {
   const { ws, cad, done } = workspace();
   const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
-  const findings = (a) => { const out = cad('check', `home/${a}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings.filter((x) => /^(motor|shaft)\./.test(x.code)); };
+  const findings = (a) => { const { out, json: r } = cad.run('check', `home/${a}`, '--json'); assert.ok(r?.findings, out); return r.findings.filter((x) => /^(motor|shaft)\./.test(x.code)); };
   const code = (list, c) => list.filter((x) => x.code === c);
   try {
     write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['arm', 'hub'] });
@@ -68,18 +67,18 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
     assert.equal(code(stuck, 'shaft.hoop').length, 0, 'a slide is never pressed on');
     // refusals by name
     write('projects/home/assemblies/nojoint.json', arm({ drives: 'nope' }));
-    assert.match(cad('check', 'home/nojoint'), /drives "nope", which isn't a joint/);
+    cad.refused(/drives "nope", which isn't a joint/, 'check', 'home/nojoint');
     write('projects/home/assemblies/two.json', { ...arm({}), items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'n', motor: { model: 'nema17', drives: 'j' } }, { id: 'arm', object: 'arm' }] });
-    assert.match(cad('check', 'home/two'), /driven by m already/);
+    cad.refused(/driven by m already/, 'check', 'home/two');
     write('projects/home/assemblies/nomotor.json', arm({ model: 'nema99' }));
-    assert.match(cad('check', 'home/nomotor'), /no motor "nema99"/);
+    cad.refused(/no motor "nema99"/, 'check', 'home/nomotor');
   } finally { done(); }
 });
 
 test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflection and warns on heat, a 6 mm plate held close passes', () => {
   const { ws, cad, done } = workspace();
   const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
-  const findings = (a) => { const out = cad('check', `home/${a}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings.filter((x) => /^motor\./.test(x.code)); };
+  const findings = (a) => { const { out, json: r } = cad.run('check', `home/${a}`, '--json'); assert.ok(r?.findings, out); return r.findings.filter((x) => /^motor\./.test(x.code)); };
   try {
     write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['plate', 'wall', 'arm'] });
     // A plate standing out 45 mm from a wall, the motor hung under it, its shaft up through the plate
@@ -167,7 +166,7 @@ test('a motor driving a slide: through a lead screw that holds, or a belt that d
       joints: [{ id: 'z', type: 'prismatic', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'carriage.base', min: 0, max: 50 }], fits: [{ a: 'm', b: 'carriage', min: -1000, silent: true }],
       loads: [{ joint: 'z', force: 10 }], task: { tool: 'carriage.tip', volume: { x: [20, 20], y: [0, 0], z: [0, 40] }, speed: 20 } });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/z.json'), JSON.stringify(a));
-    const check = () => JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/z', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings;
+    const check = () => cad.run('check', 'home/z', '--json').json.findings;
     write(asm({ leadscrew: { lead: 2 } }));
     let f = check();
     const holds = f.filter((x) => x.code === 'motor.holds');

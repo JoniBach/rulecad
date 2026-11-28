@@ -6,20 +6,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { run, replay, CAD } from './helpers.mjs';
+import { run, ok, replay, CAD } from './helpers.mjs';
 
 test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
   try {
     const { text, files, commands } = replay(fileURLToPath(new URL('./TUTORIAL.md', CAD)), ws);
     assert.ok(files >= 5 && commands >= 10, `${files} files, ${commands} commands`);
-    assert.match(run(ws, ['check', 'home/hook-on-screw']).out, /The screw in its hole: closest gap 0\.\d+ mm/);
+    assert.match(ok(ws, ['check', 'home/hook-on-screw']), /The screw in its hole: closest gap 0\.\d+ mm/);
     // and the mistakes it lists are reported in the words it gives
     const js = path.join(ws, 'projects/home/objects/hook.js'), good = fs.readFileSync(js, 'utf8');
     for (const [from, to, said] of [['v.plate / 2 / 2', 'v.plate / 4', 'numbers in hook.js that should be variables: line 10: 4'], ['v.thick / 2', 'v.thik / 2', 'v.thik: the design has no variable "thik" (did you mean "thick"?)'], ['return v.ops', 'v.ops', 'main() returned no shape: return a JSCAD solid, or named parts']]) {
       fs.writeFileSync(js, good.replace(from, to));
-      const out = run(ws, ['check', 'home/hook']).out;
-      assert.ok(out.includes(said), `${to}: ${out}`);
+      const { out, code } = run(ws, ['check', 'home/hook']);
+      assert.ok(code !== 0 && out.includes(said), `${to}: exited ${code}\n${out}`);
       assert.ok(text.includes(said), `the tutorial's table says: ${said}`);
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -32,36 +32,36 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.ok(files >= 14 && commands >= 16, `${files} files, ${commands} commands`);
     // What each example promises
     assert.ok(fs.existsSync(path.join(ws, 'exports/home/tag@0.1.0.3mf')), 'the tag exported with its parts');
-    assert.match(run(ws, ['check', 'home/tag:long']).out, /88 × 28 × [\d.]+ mm/, 'the long variant: 80 mm with its brim');
-    assert.match(run(ws, ['check', 'home/box']).out, /2 poses checked: shut, open/);
+    assert.match(ok(ws, ['check', 'home/tag:long']), /88 × 28 × [\d.]+ mm/, 'the long variant: 80 mm with its brim');
+    assert.match(ok(ws, ['check', 'home/box']), /2 poses checked: shut, open/);
     const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/basemodel.json'), 'utf8')).rules;
     assert.equal(rules.size_x?.kind, 'derived', 'the measured model became draft rules');
-    assert.match(run(ws, ['check', 'home/arm']).out, /arm down: moves [\d.]+ mm under 10 N/);
-    assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
+    assert.match(ok(ws, ['check', 'home/arm']), /arm down: moves [\d.]+ mm under 10 N/);
+    assert.match(ok(ws, ['check', 'home/pad']), /matrix: 4 keys on 2 rows × 2 columns/);
     // the pad in its case (chapter 6): the board's own M2 holes followed into insert bosses from v.fixings, and the screws on the list
-    const cased = run(ws, ['check', 'home/padcase']).out;
+    const cased = ok(ws, ['check', 'home/padcase']);
     assert.match(cased, /4 M2 cap screws: pad's hole measures 2\.4 mm, an M2 clearance hole/, cased);
     assert.match(cased, /ends in case, in a heat-set insert's hole: 3\.2 mm as drawn \(m2\.insert_hole/);
     assert.match(cased, /M2x4 cap chosen, the shortest sold that fits/);
-    assert.match(run(ws, ['list', 'home/padcase']).out, /4 ×\s+M2x4 cap[\s\S]*4 ×\s+M2 insert/);
+    assert.match(ok(ws, ['list', 'home/padcase']), /4 ×\s+M2x4 cap[\s\S]*4 ×\s+M2 insert/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
-    const slider = run(ws, ['check', 'home/slider']).out;
+    const slider = ok(ws, ['check', 'home/slider']);
     assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');
     assert.match(slider, /knob and slide: centre distance 7\.2 mm, as they need/);
-    assert.match(run(ws, ['check', 'home/slider', '--sweep', '--steps', '12']).out, /sweep knob, -180 to 180° in 12 steps: nothing collides/);
-    const winder = run(ws, ['check', 'home/winder']).out;
+    assert.match(ok(ws, ['check', 'home/slider', '--sweep', '--steps', '12']), /sweep knob, -180 to 180° in 12 steps: nothing collides/);
+    const winder = ok(ws, ['check', 'home/winder']);
     assert.match(winder, /the carrier drives the sun and the planets \(the ring held\): 4 turns of the sun for each turn of the carrier, the same way/, 'the planetary: four turns a crank');
     assert.doesNotMatch(winder, /✗/, winder);
-    assert.match(run(ws, ['check', 'home/winder', '--sweep', '--steps', '24']).out, /sweep crank, -180 to 180° in 24 steps: nothing collides/);
-    const driven = run(ws, ['check', 'home/driven']).out;
+    assert.match(ok(ws, ['check', 'home/winder', '--sweep', '--steps', '24']), /sweep crank, -180 to 180° in 24 steps: nothing collides/);
+    const driven = ok(ws, ['check', 'home/driven']);
     assert.match(driven, /drive: 28byj48, 30 g, drives pinion, 0\.0879° a step/, 'the motor');
     assert.match(driven, /drive into slide: [\d.]+ N there against 1 N needed .*rests on community figures/, 'the torque, and what it rests on');
     assert.match(driven, /slide holds with the power off/);
     assert.match(driven, /✓ drive on rail: under the motor's 30 g and [\d.]+ N m, the shaft's tip moves [\d.]+ mm/, 'the rail bent under its motor, by FE');
     assert.doesNotMatch(driven, /✗/, driven);
-    assert.match(run(ws, ['check', 'home/driven', '--sweep', '--steps', '12']).out, /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
+    assert.match(ok(ws, ['check', 'home/driven', '--sweep', '--steps', '12']), /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
     // The winder, driven: the sun on an N20, the spool on the carrier; enough torque, and an honest unknown when unpowered
-    const wound = run(ws, ['check', 'home/winder-driven']).out;
+    const wound = ok(ws, ['check', 'home/winder-driven']);
     assert.match(wound, /the sun drives the carrier and the planets \(the ring held\): 0\.25 turns of the carrier for each turn of the sun/);
     assert.match(wound, /The motor's shaft in the sun: 6\.6 mm of the flat in the bore/);
     assert.match(wound, /drive into reel: 0\.45 N m there against 0\.2 N m needed .*2\.25 times over/, 'the 150:1 gearbox, scaled');
@@ -85,13 +85,13 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(drawn.drive, /at [\d.]+ mm: base, ring, sun, reel/);
     assert.ok((drawn.drive.match(/animateTransform/g) || []).length >= 10, 'the sun, the planets and the reel each turn and move');
     assert.ok(drawn.drive.length < 400000, `small: ${drawn.drive.length} bytes`);
-    const shoulder = run(ws, ['check', 'home/shoulder']).out;
+    const shoulder = ok(ws, ['check', 'home/shoulder']);
     assert.match(shoulder, /the second ring turns 0\.02632 of the sun's turn, the other way \(38:1/, 'the compound planetary');
     assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');
     assert.match(shoulder, /out holds with the power off: the gears/);
     assert.doesNotMatch(shoulder, /✗/, shoulder);
     // The leg (chapter 14): it stands and steps, nothing overlaps (the output ring's phase, a joint whose range leaves out 0), and the motors carry it
-    const stand = JSON.parse(run(ws, ['check', 'leg/stand', '--json']).out).findings, of = (c) => stand.filter((x) => x.code === c);
+    const stand = JSON.parse(ok(ws, ['check', 'leg/stand', '--json'])).findings, of = (c) => stand.filter((x) => x.code === c);
     assert.equal(of('overlap')[0].level, 'pass', of('overlap')[0].text);
     assert.equal(of('gait.clearance')[0].level, 'pass'); assert.equal(of('gait.sweep')[0].level, 'pass');
     assert.ok(stand.some((x) => x.code === 'motor.torque' && /gait: knee needs/.test(x.text) && x.level === 'pass'), JSON.stringify(of('motor.torque')));
@@ -111,7 +111,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(of('gait.stable')[0].text, /one leg, on a stand/);
     assert.ok(fs.existsSync(path.join(ws, '.preview/leg/stand-gait.svg')), 'its step animated');
     // The bracket screwed on (chapter 15): each end found where v.fixings drew it, the lengths chosen, the shelf's load carried; a short screw and one the wall hides each fail by name
-    const shelf = JSON.parse(run(ws, ['check', 'fix/shelf', '--json']).out).findings, at = (c) => shelf.filter((x) => x.code === c);
+    const shelf = JSON.parse(ok(ws, ['check', 'fix/shelf', '--json'])).findings, at = (c) => shelf.filter((x) => x.code === c);
     assert.deepEqual(shelf.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
     const ends = at('fasten.end').map((x) => x.text).join('\n');
     assert.match(ends, /screw 1 \(bracket\.pilot\): ends in plate, in a pilot .* 2\.9 mm as drawn \(x1c\.pilot_m3, measured\)/);
@@ -120,7 +120,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.deepEqual(at('fasten.length').map((x) => x.text.match(/(M3x\d+ \w+) chosen/)[1]), ['M3x10 cap', 'M3x8 cap', 'M3x16 countersunk']);
     assert.match(at('fasten.seat').map((x) => x.text).join('\n'), /countersunk head sits in a (89\.\d|90)° countersink in plate/);
     assert.deepEqual(at('fasten.load').filter((x) => x.values?.margin != null).map((x) => Math.round(x.values.margin)), [41, 33], 'the margins the chapter gives');
-    assert.match(run(ws, ['list', 'fix/shelf']).out, /2 ×\s+M3x16 countersunk[\s\S]*2 ×\s+M3 hex nut[\s\S]*1 ×\s+M3 insert[\s\S]*5\.9 g\s+about \d+ min\s+plate\s+11\.8 g\s+about \d+ min\s+bracket/);
+    assert.match(ok(ws, ['list', 'fix/shelf']), /2 ×\s+M3x16 countersunk[\s\S]*2 ×\s+M3 hex nut[\s\S]*1 ×\s+M3 insert[\s\S]*5\.9 g\s+about \d+ min\s+plate\s+11\.8 g\s+about \d+ min\s+bracket/);
     const short = run(ws, ['check', 'fix/short']);
     assert.equal(short.code, 1); assert.match(short.out, /✗ Front screws, screw 1 \(bracket\.pilot\): M3x6 cap engages 2\.6 mm of thread in pla .* M3x10 cap would do/);
     assert.match(short.out, /✗ Front screws, screw 2 \(bracket\.insert\): M3x6 cap engages 2\.6 mm of thread in the insert.* M3x8 cap would do/);
@@ -130,14 +130,14 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     // The frame (chapter 16): a box of one profile, every end joined or capped, its axis driven within its margins; the
     // cut list from one bar, a sheet per mark and the jigs; its printed fittings on one plate; 37 steps from bars to
     // square; a trapped nut and a plate drawn for another slot spacing each fail by name
-    const box = JSON.parse(run(ws, ['check', 'frame/box', '--json']).out).findings, of16 = (c) => box.filter((x) => x.code === c);
+    const box = JSON.parse(ok(ws, ['check', 'frame/box', '--json'])).findings, of16 = (c) => box.filter((x) => x.code === c);
     assert.deepEqual(box.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
     assert.equal(of16('join.geometry').length, 16); assert.match(of16('join.end')[0].text, /every beam end is joined or capped \(24 ends\)/);
     assert.match(of16('guide.travel')[0].text, /slides 99\.5 mm/); assert.match(of16('guide.coupler')[0].text, /reaches 12\.5 mm into coupler-5-8/);
     assert.equal(+of16('motor.torque')[0].values.margin.toFixed(2), 6.36); assert.match(of16('motor.heat')[0].text, /at 1\.2 A, under PLA's 57 °C/);
     assert.ok(of16('fasten.length').some((x) => /^The board plate, 2 M4 button screws: M4x8 button chosen/.test(x.text)));
     assert.deepEqual([...new Set(of16('frame.nut').map((x) => x.level))], ['pass']); assert.equal(of16('frame.square').length, 4);
-    const cut = run(ws, ['list', 'frame/box']).out;
+    const cut = ok(ws, ['list', 'frame/box']);
     assert.match(cut, /profile-2020-misumi-hfs5: buy 1 × 4000 mm; kerf 3, trim 10; 1234 mm left over/);
     assert.match(cut, /12 ×\s+M5x12 button[\s\S]*18 ×\s+slot-nut-6-misumi-m4-drop-in/); assert.match(cut, /Total: 124 g printed/);
     // the chapter's fasteners as cad list gives them: the 18 nuts are 16 for the brackets, holders and motor plate and 2 for the board plate
@@ -152,7 +152,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.ok(fs.existsSync(path.join(ws, 'exports/frame/box.jigs.3mf')), 'the jigs as one plate');
     const bed = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/box-base-1.json'), 'utf8'));
     assert.equal(bed.items.length, 17, 'every printed part on one plate'); assert.ok(!fs.existsSync(path.join(ws, 'projects/frame/assemblies/box-base-2.json')));
-    assert.equal(run(ws, ['order', 'frame/box']).out.split('\n').filter((l) => /^\s+\d+\. /.test(l)).length, 37);
+    assert.equal(ok(ws, ['order', 'frame/box']).split('\n').filter((l) => /^\s+\d+\. /.test(l)).length, 37);
     const trapped = run(ws, ['check', 'frame/trapped']);
     assert.equal(trapped.code, 1); assert.match(trapped.out, /✗ The board plate: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) go into x1's top slot at 105 and 155 mm, between .* which close it at both ends: .* give "nut": "drop-in"/);
     const shut = run(ws, ['order', 'frame/trapped']);
@@ -162,7 +162,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     // The case of printed beams (chapter 17): drawn in aluminium, every beam could be printed in PETG; printed (posts and
     // rails standing, the cross beam lying), it checks clean, its posts' ends an M3 captive nut each; the sag under the
     // board for both; a rail longer than the bed refused and spliced; a foot for the aluminium post refused by name; the kit
-    const al = JSON.parse(run(ws, ['check', 'case/aluminium', '--json']).out).findings, pr = JSON.parse(run(ws, ['check', 'case/printed', '--json']).out).findings;
+    const al = JSON.parse(ok(ws, ['check', 'case/aluminium', '--json'])).findings, pr = JSON.parse(ok(ws, ['check', 'case/printed', '--json'])).findings;
     for (const f of [al, pr]) assert.deepEqual(f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
     const each = al.filter((x) => x.code === 'beam.printable' && x.refs?.beam), all17 = al.find((x) => x.code === 'beam.printable' && x.refs?.printable && !x.refs.beam);
     assert.equal(each.length, 13); assert.ok(each.every((x) => x.level === 'pass' && x.refs.printable && x.values.margin > 50), JSON.stringify(each.map((x) => [x.refs.beam, x.values.margin])));
@@ -192,7 +192,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     const intoM1 = ofPr('fasten.length').filter((x) => /the gusset into m1/.test(x.text));
     assert.equal(intoM1.length, 2); assert.ok(intoM1.every((x) => /M4x12 cap chosen, the shortest sold that fits: 8\.55 mm under its head \(m1-x\d-gusset and the 3\.95 mm down to its nut's seat/.test(x.text)), intoM1.map((x) => x.text).join('\n'));
     assert.ok(ofPr('fasten.engagement').length > 40 && ofPr('fasten.engagement').every((x) => x.level === 'pass'));
-    const spliced = JSON.parse(run(ws, ['check', 'case/spliced', '--json']).out).findings;
+    const spliced = JSON.parse(ok(ws, ['check', 'case/spliced', '--json'])).findings;
     assert.deepEqual(spliced.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
     assert.deepEqual(spliced.filter((x) => x.code === 'fasten.engagement').map((x) => [x.level, x.values.engaged]), [['pass', 4.1], ['pass', 4.1]]);
     const longRail = run(ws, ['check', 'case/long']);

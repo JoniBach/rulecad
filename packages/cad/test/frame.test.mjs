@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { workspace, object, BIN, ROOT_MODULES } from './helpers.mjs';
 
 test('beams in an assembly: four placed by their ends make a rectangle, a plate at x1.top@50% sits on the slot\'s centre line, and an address past the end is refused with the length', () => {
@@ -53,7 +53,7 @@ test('beams in an assembly: four placed by their ends make a rectangle, a plate 
     assert.deepEqual(r.parts['x1.body'], [[-10, -20, 0], [10, 20, 100], 'reference']);
     assert.deepEqual(r.parts['plate.body'], [[-13, -30, 30], [-7, 10, 70], 'part']);
     // refused by name: past the end (with the length), a length that disagrees with the ends, a printed beam
-    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); fs.writeFileSync(file, JSON.stringify(b)); assert.match(cad('check', 'frame/frame'), pattern); };
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); fs.writeFileSync(file, JSON.stringify(b)); cad.refused(pattern, 'check', 'frame/frame'); };
     refused((b) => { b.items[1].at = 'x1.top@120'; }, /item plate: at: x1: "top@120" is past the end of profile-2040-misumi-hfs5 x 100: it is 100 mm long/);
     refused((b) => { b.items[1].at = 'x1.top@-101'; }, /"top@-101" is past the end of .* it is 100 mm long/);
     refused((b) => { b.loops = [{ a: 'plate.centre', b: 'x1.side@20' }]; }, /x1: profile-2040-misumi-hfs5 x 100 has no "side@20": it has a, b, a\.1/);
@@ -92,9 +92,9 @@ test('beam operations in an assembly: an end tapped M5 and an access hole by exp
     assert.ok(r.findings.some((f) => f.level === 'info' && /x1: .*its 300 mm is measured on the long side, back; mitred, the front is 280 mm/.test(f.text)), JSON.stringify(r.findings));
     // a hole across the tapped thread is a beam.op failure on cad check, named by item
     a.items[0].beam.ops.push({ op: 'drill', at: 'top@8', diameter: 3 }); write();
-    assert.match(cad('check', 'frame/ops'), /x1: profile-2020-misumi-hfs5 x 300: the drill at top@8 \(Ø3 mm, 8 mm from end a\) crosses the M5 thread tapped 10 mm into a\.1/);
+    cad.refused(/x1: profile-2020-misumi-hfs5 x 300: the drill at top@8 \(Ø3 mm, 8 mm from end a\) crosses the M5 thread tapped 10 mm into a\.1/, 'check', 'frame/ops');
     // refused by name: a tap in a tube, with no end bore; an operation the kit does not have
-    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/ops'), pattern); };
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); cad.refused(pattern, 'check', 'frame/ops'); };
     refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
     refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
     refused((b) => { b.items[0].beam.laid = true; }, /item x1: beam.laid draws a printed beam as it prints: true or false, with printed \(got true on a bought beam\)/);
@@ -159,16 +159,16 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     assert.deepEqual([by('join.geometry').map((x) => [x.level, x.values.miss]), by('join.fitting').map((x) => x.level)], [[['pass', 0]], ['warn']]);
     assert.match(by('join.fitting')[0].text, /The mitres are cut; the corner key or plate comes with a later release/);
     ell.items[1].from = [300, 0, 0]; ell.items[1].to = [500, 0, 0]; write(ell);
-    assert.match(cad('check', 'frame/tee'), /join 1: x1 and y1 lie along one line, so there is no corner to mitre: a splice joins them end to end/);
+    cad.refused(/join 1: x1 and y1 lie along one line, so there is no corner to mitre: a splice joins them end to end/, 'check', 'frame/tee');
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
-    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); cad.refused(pattern, 'check', 'frame/tee'); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, face, shape, note/);
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'y1.back@120' }]; }, /join 1: a and b are on one beam, y1/);
     write({ ...a, joins: [] });
     assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120'), /added a join/);
     assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).joins, [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120' }]);
-    assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'q1.a', '--b', 'x1.back@120'), /join a: no beam "q1" in frame\/tee \(beams: x1, y1\)/);
+    cad.refused(/join a: no beam "q1" in frame\/tee \(beams: x1, y1\)/, 'add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'q1.a', '--b', 'x1.back@120');
     assert.match(cad('check', 'frame/tee'), /files match their schemas/);
   } finally { done(); }
 });
@@ -212,7 +212,7 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
     assert.deepEqual(r.build.sheets.find((x) => x.mark === 'D'), { mark: 'D', items: ['z1'], file: 'exports/frame/box.beam-D.svg', written: true });
     // a beam longer than any length sold fails on cad check
     items[0].to = [4100, 0, 0]; fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items }));
-    assert.match(cad('check', 'frame/box'), /x1: 4100 mm of profile-2020-misumi-hfs5 is longer than any length it is sold in \(1000, 4000 mm\)/);
+    cad.refused(/x1: 4100 mm of profile-2020-misumi-hfs5 is longer than any length it is sold in \(1000, 4000 mm\)/, 'check', 'frame/box');
   } finally { done(); }
 });
 
@@ -369,7 +369,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     // the assembly order lists them at the step that makes that join: before y1 goes on (a frame's build page shows the frame's build instead)
     assert.deepEqual(r.order.steps.filter((st) => st.load).map((st) => [st.items, st.load]), [[['y1'], [load]]]);
     // cad order, a frame's build: x1's nuts would be shut in by its second join, so it is refused with the slot and the join
-    assert.match(cad('order', 'frame/frame'), /frame\/frame: x1's top slot: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) for plate would be shut in between the blind join of x1\.a to p1\.back@120 and the blind join of x1\.b to p2\.front@120: whichever of the two is made second shuts them in/);
+    cad.refused(/frame\/frame: x1's top slot: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) for plate would be shut in between the blind join of x1\.a to p1\.back@120 and the blind join of x1\.b to p2\.front@120: whichever of the two is made second shuts them in/, 'order', 'frame/frame');
     // with drop-ins, x1's plate passes frame.nut: they go in through the opening; cad list counts the nuts by name
     a.fasten[0].nut = 'drop-in'; write();
     r = probe();
@@ -412,7 +412,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     thick.fasten[0].screw = 'M4x10 button'; write(thick); r = probe();
     assert.match(by('fasten.length', 0)[0].text, /M4x10 button reaches the slot's floor: with 6 mm under its head its tip goes 6 mm into x1's top slot, whose floor is 6 mm under the face/);
     // refused by name: a slot the face has not got, a kind not made for the thread, a slot nut's kind into a part
-    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/frame'), pattern); };
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); cad.refused(pattern, 'check', 'frame/frame'); };
     refused((b) => { b.fasten[0].into = 'x1.top.2'; }, /fasten 1: x1's top face has 1 slot: into names x1\.top\.1/);
     refused((b) => { b.fasten[0].screw = 'M5 button'; b.fasten[0].nut = 'drop-in'; }, /fasten 1: no M5 drop-in nut is made for profile-2020-misumi-hfs5's top face/);
     refused((b) => { b.fasten[0].nut = 'wing'; }, /fasten 1: into a slot, "nut" is the slot nut's kind, slide-in, drop-in/);
@@ -519,10 +519,10 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.deepEqual([r.bench, r.moving], [['p3', 'x2'], ['x2']]);
     // the plate on slide-in nuts: x1's slot is closed by a join at each end, so whichever is made second shuts them in
     write('slide-in');
-    const refused = spawnSync(process.execPath, [BIN, 'order', 'frame/box'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    const refused = cad.run('order', 'frame/box');
     assert.equal(refused.status, 1);
     assert.equal(refused.stdout.trim(), 'frame/box: x1\'s top slot: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) for plate would be shut in between the blind join of x1.a to p1.back@30 and the blind join of x1.b to p2.front@30: whichever of the two is made second shuts them in, and a nut loaded before it can never be taken out or replaced: give "nut": "drop-in" (slot-nut-6-misumi-m4-drop-in), which goes in through the opening anywhere');
-    const stuck = JSON.parse(cad('order', 'frame/box', '--json')).frame.stuck;
+    const stuck = JSON.parse(cad.refused('"stuck"', 'order', 'frame/box', '--json')).frame.stuck;
     assert.deepEqual([stuck.item, stuck.place, stuck.joins, stuck.alternative], ['x1', 'top.1', [0, 1], 'slot-nut-6-misumi-m4-drop-in']);
     // every screw reached in the frame's own order: with x3 lowered to 70 mm it stands 15 mm over the plate's screws on
     // x1, so the plate goes on while side 1 is built, before x3, not with the rest at the end
@@ -538,7 +538,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.match(lowCheck, new RegExp(`✓ goes together in ${lowSteps.length} steps from bars to a square frame \\(cad order\\), p1 first`));
     assert.match(lowCheck, new RegExp(`plate to x1\\.top, 2 M4 button screws: a 2\\.5 mm hex key reaches the head before x3 \\(step ${x3Step}\\) goes on over it`));
     low.fasten[0].nut = 'slide-in'; fs.writeFileSync(file, JSON.stringify(low));
-    const lowRefused = cad('check', 'frame/box');
+    const lowRefused = cad.refused('✗ no build from bars to a square frame', 'check', 'frame/box');
     assert.match(lowRefused, /plate to x1\.top, 2 M4 button screws: a 2\.5 mm hex key reaches the head before x3 goes on over it/);
     assert.match(lowRefused, /✗ no build from bars to a square frame: x1's top slot: 2 slide-in nuts/);
     // a side goes on as one only where its joins let it: a middle rail m from x3 to x4 puts a head in x4's slot, which runs
@@ -563,7 +563,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
 });
 
 test('frame.heat: a frame grows with the air it runs in by its alloy\'s expansion, and a printed fitting near a heater is held to its plastic\'s softening point', () => {
-  const { ws, done } = workspace();
+  const { ws, cad, done } = workspace();
   try {
     const at = (f) => path.join(ws, 'projects/frame', f);
     fs.mkdirSync(at('assemblies'), { recursive: true });
@@ -576,7 +576,7 @@ test('frame.heat: a frame grows with the air it runs in by its alloy\'s expansio
     const write = (name, heat) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Warm', kind: 'fit', items, joins, frame: { heat } }));
     const bed = { name: 'bed', at: [10, 10, -30], temperature: 60, reach: 30 };
     write('warm', { air: 45, heaters: [bed] }); write('warmer', { air: 50 }); write('none', {}); write('bad', { air: 45, heaters: [{ ...bed, reach: 0 }] });
-    const check = (name) => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === 'frame.heat'); };
+    const check = (name) => { const r = cad.run('check', `frame/${name}`, '--json'); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === 'frame.heat'); };
     const warm = check('warm'), grow = warm.find((x) => x.values?.grows);
     // growth by hand, ΔT = 45 - 20 = 25 °C, α = 23.4e-6 /K (FRAME_HEAT.expansion, a community figure): the beams span
     // 280 mm in x (axis to axis), 300 mm in z: 23.4e-6 × 280 × 25 = 0.1638 mm and 23.4e-6 × 300 × 25 = 0.1755 mm
@@ -609,7 +609,7 @@ test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loos
     for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
     const write = (name, frame) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Side', kind: 'fit', items, joins, ...(frame ? { frame } : {}) }));
     write('side'); write('loose', { cut: { tolerance: 1 } }); write('bad', { cut: { tolerance: -1 } });
-    const check = (name, code = 'frame.square') => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === code); };
+    const check = (name, code = 'frame.square') => { const r = cad.run('check', `frame/${name}`, '--json'); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === code); };
     const [side] = check('side'), [loose] = check('loose');
     // Hand stack, MISUMI's ±0.5 mm cut (its set's cut_tolerance): x1 and x3 butt the posts, so their cut lengths set the
     // 260 mm width, each 0.5 × 260 / 328.024 = 0.39631 mm of diagonal difference; the four blind joins land on the posts,
@@ -627,7 +627,7 @@ test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loos
     // the cut list takes the workshop's tolerance too
     assert.ok(check('loose', 'frame.cut').some((x) => /mark C \(x1, x3\): 2 beams of 260 mm, each cut to ±1 mm, may differ by up to 2 mm/.test(x.text)));
     // refused by name
-    const bad = spawnSync(process.execPath, [BIN, 'check', 'frame/bad', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    const bad = cad.run('check', 'frame/bad', '--json');
     assert.match(JSON.parse(bad.stdout).error.message, /frame\.cut\.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more \(got -1\)/);
     // measured: 0.6 mm is within, so it passes; 1.5 mm is more than its parts allow, so it leans
     assert.match(cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=0.6', '--source', 'tape, inside corners'), /frame\.square\.p1-p2-x1-x3: measured 0\.6 mm, predicted 1\.04/);

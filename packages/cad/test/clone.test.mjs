@@ -14,7 +14,7 @@ test('import-kle: a keyboard-layout-editor.com layout into the project, with not
     assert.match(out, /note: rotated keys/);
     const layout = JSON.parse(fs.readFileSync(path.join(ws, 'projects/keys/layouts/mine.json'), 'utf8'));
     assert.deepEqual(layout.rows[0], ['Esc', { gap: 0.5 }, 'F1']);
-    assert.match(cad('import-kle', 'kle.json', 'keys/mine'), /already exists/);
+    cad.refused(/already exists/, 'import-kle', 'kle.json', 'keys/mine');
   } finally { done(); }
 });
 
@@ -48,10 +48,10 @@ test('cad clone: a published KiCad board into a rule set, its source and licence
     const { resolve } = await import('@rulecad/variables');
     const v = resolve({ uses: ['tiny'], variables: {} }, { load: () => set }).values;
     assert.deepEqual(v.tiny.circuit.nets, set.circuit.nets, 'a design gets the circuit');
-    assert.match(cad('clone', 'tiny.kicad_pcb', 'tiny'), /already exists/);
+    cad.refused(/already exists/, 'clone', 'tiny.kicad_pcb', 'tiny');
     assert.match(cad('clone', 'tiny.kicad_pcb', 'tiny2'), /no licence given/);
-    assert.match(cad('clone', 'tiny.kicad_pcb', 'Tiny'), /usage: cad clone/);
-    assert.match(cad('clone', 'missing.kicad_pcb', 'x'), /no file missing\.kicad_pcb/);
+    cad.refused(/usage: cad clone/, 'clone', 'tiny.kicad_pcb', 'Tiny');
+    cad.refused(/no file missing\.kicad_pcb/, 'clone', 'missing.kicad_pcb', 'x');
   } finally { done(); }
 });
 

@@ -3,15 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { workspace, object, BIN } from './helpers.mjs';
+import { workspace, object } from './helpers.mjs';
 
 test('a link too long for chat says so, and how to get short ones', () => {
   const { ws, cad, done } = workspace();
   try {
     object(ws, 'demo/ball', { variables: { r: { value: 10, unit: 'mm', rule: 'Radius' }, n: { value: 256, unit: 'segments', rule: 'Smooth' } } },
       "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.transforms.translate([0, 0, v.r], jscad.primitives.sphere({ radius: v.r, segments: v.n })) }\n");
-    const r = spawnSync(process.execPath, [BIN, 'link', 'demo/ball', '--md'], { cwd: ws, encoding: 'utf8' });
+    const r = cad.run('link', 'demo/ball', '--md'); assert.equal(r.status, 0, r.out);
     assert.ok(/too long for chat or email\. For short links, add "shorten": "gist"/.test(r.stderr), 'the warning is on stderr'); // (no regex match: the link is huge)
     assert.equal(r.stdout.trim().split('\n').length, 1, '--md still prints one line');
   } finally { done(); }
@@ -35,7 +34,7 @@ test('a machine\'s link: the task, the step file, the wires and the build page t
     const sheetFile = path.join(ws, 'exports/home/arm.wiring.md');
     assert.match(fs.readFileSync(sheetFile, 'utf8'), /\| elbow-motor \| upper\.connector \| fore\.connector \|/, 'the wiring sheet in the exports');
     fs.writeFileSync(path.join(ws, 'square.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210"><rect id="sq" x="24" y="55" width="100" height="100" fill="none"/></svg>');
-    assert.equal(spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'square.svg'], { cwd: ws, encoding: 'utf8' }).status, 0);
+    assert.equal(cad.run('plot', 'home/arm', 'square.svg').status, 0);
     cad('measured', 'home/arm', 'task.accuracy=0.4', '--source', 'bench');
     const out = cad('link', 'home/arm', '--long');
     assert.match(out, /carries the drawing arm-square/);
@@ -51,7 +50,7 @@ test('a machine\'s link: the task, the step file, the wires and the build page t
     // A step file for another machine's joints is refused by name
     const steps = path.join(ws, 'exports/home/arm-square.steps.json'), data = JSON.parse(fs.readFileSync(steps, 'utf8'));
     data.axes[0].name = 'other'; fs.writeFileSync(path.join(ws, 'wrong.steps.json'), JSON.stringify(data));
-    assert.match(cad('link', 'home/arm', '--steps', 'wrong.steps.json'), /for joints other, elbow, and this machine's are shoulder, elbow: plot it again/);
+    cad.refused(/for joints other, elbow, and this machine's are shoulder, elbow: plot it again/, 'link', 'home/arm', '--steps', 'wrong.steps.json');
     assert.match(cad('preview', 'home/arm').trim(), /arm\.png$/, 'a preview takes the wires too');
     const { check } = await import('@rulecad/model-link');
     assert.equal(check({ q: 1, p: [], t: [], task: { tool: 1 } })[0].text, 'broken task', 'a link with bad task data is turned away');

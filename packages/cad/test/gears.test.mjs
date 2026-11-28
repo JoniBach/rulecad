@@ -38,17 +38,17 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     assert.match(swept, /sweep drive, -90 to 90° in 18 steps: nothing collides/, swept);
     // the same follow without the phase: the teeth meet
     train(24, { follow: 'drive', ratio: -0.6, offset: 0 });
-    assert.match(cad('check', 'demo/train', '--sweep', '--steps', '18'), /sweep drive, -90 to 90° in 18 steps: .*pinion\.body hits wheel\.body/);
+    cad.refused(/sweep drive, -90 to 90° in 18 steps: .*pinion\.body hits wheel\.body/, 'check', 'demo/train', '--sweep', '--steps', '18');
     // axes too close: more than the backlash allows, said between them
     train(23.7, meshed);
-    const close = JSON.parse(cad('check', 'demo/train', '--json')).findings.find((x) => x.code === 'mesh.centre' && x.text.startsWith('drive and wheel'));
+    const close = JSON.parse(cad.refused('"mesh.centre"', 'check', 'demo/train', '--json')).findings.find((x) => x.code === 'mesh.centre' && x.text.startsWith('drive and wheel'));
     assert.equal(close.level, 'fail'); assert.match(close.text, /0\.3 mm closer than these gears need \(24 mm\): more than their 0\.15 mm of backlash allows, and the teeth jam/);
     assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.7, 2]]);
     // what isn't a mesh
     train(24, { mesh: { with: 'nothing', module: 1, teeth: [18, 30] } });
-    assert.match(cad('check', 'demo/train'), /joint wheel: mesh: "with" names the driving joint/);
+    cad.refused(/joint wheel: mesh: "with" names the driving joint/, 'check', 'demo/train');
     train(24, { mesh: { with: 'drive', module: 1, teeth: [12, 30] } });
-    assert.match(cad('check', 'demo/train'), /joint wheel: mesh: gearModel: 12 teeth at 20° are undercut/);
+    cad.refused(/joint wheel: mesh: gearModel: 12 teeth at 20° are undercut/, 'check', 'demo/train');
   } finally { done(); }
 });
 
@@ -94,7 +94,7 @@ test('a planetary gearbox in an assembly: the carrier drives, the sun and every 
     assert.match(swept, /sweep carrier, -60 to 60° in 16 steps: nothing collides/, swept);
     // a planet out of place: it can't mesh with both
     box(250);
-    assert.match(cad('check', 'box/gearbox'), /✗ planet p2 can't mesh with the sun and the ring at once where it is/);
+    cad.refused(/✗ planet p2 can't mesh with the sun and the ring at once where it is/, 'check', 'box/gearbox');
   } finally { done(); }
 });
 
@@ -122,7 +122,7 @@ test('a worm and its wheel in an assembly: the wheel follows a tooth a turn, in 
     assert.match(cad('check', 'drive/box', '--sweep', '--steps', '16'), /sweep turn, -720 to 720° in 16 steps: nothing collides/);
     // the same ratio with no phase: the thread runs into the teeth
     drive({ follow: 'turn', ratio: 1 / 30, offset: 0 });
-    assert.match(cad('check', 'drive/box', '--sweep', '--steps', '16'), /worm\.body hits wheel\.body/);
+    cad.refused(/worm\.body hits wheel\.body/, 'check', 'drive/box', '--sweep', '--steps', '16');
   } finally { done(); }
 });
 
@@ -148,7 +148,7 @@ test('bevel gears in an assembly: cones that share their apex mesh in phase at 9
     assert.match(cad('check', 'corner/pair', '--sweep', '--steps', '16'), /sweep input, -90 to 90° in 16 steps: nothing collides/);
     // the cones' apexes apart: said
     pair([16, 0, 22.5]);
-    assert.match(cad('check', 'corner/pair'), /✗ .*the cones' apexes are 1 mm apart/);
+    cad.refused(/✗ .*the cones' apexes are 1 mm apart/, 'check', 'corner/pair');
   } finally { done(); }
 });
 
@@ -177,6 +177,6 @@ test('a compound planetary whose planets mesh the output ring a tooth of their f
     assert.ok(!r.findings.some((x) => x.level === 'fail' && /overlap/.test(x.text)), r.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
     // printInPlace names items printed together; a name that isn't one is refused
     write('projects/home/assemblies/box.json', box({ printInPlace: ['held', 'sun', 'nope'] }));
-    assert.match(cad('check', 'home/box'), /printInPlace names "nope", which isn't an item \(held, sun, carrier, p1, p2, p3, out\)/);
+    cad.refused(/printInPlace names "nope", which isn't an item \(held, sun, carrier, p1, p2, p3, out\)/, 'check', 'home/box');
   } finally { done(); }
 });

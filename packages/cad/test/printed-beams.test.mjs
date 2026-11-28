@@ -32,7 +32,7 @@ test('a printed beam in an assembly: a printed part weighed by its walls and inf
     assert.deepEqual(plate.items.map((it) => [it.beam?.profile, it.beam?.laid, it.beam?.length]), [['2020-printed', true, 240]]);
     // refused by name: printed as a word
     a.items[0].beam.printed = { pose: 'upside-down' }; fs.writeFileSync(file, JSON.stringify(a));
-    assert.match(cad('check', 'frame/frame'), /item x1: printed.pose is lying \(on its bottom face, layers along the beam\) or standing/);
+    cad.refused(/item x1: printed.pose is lying \(on its bottom face, layers along the beam\) or standing/, 'check', 'frame/frame');
   } finally { done(); }
 });
 
@@ -42,7 +42,7 @@ test('a printed beam\'s end in a frame: a post printed standing takes a foot\'s 
     const at = (f) => path.join(ws, 'projects/frame', f);
     fs.mkdirSync(at('assemblies'), { recursive: true });
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PETG', objects: [] }));
-    const findings = (name) => { const out = cad('check', `frame/${name}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings; };
+    const findings = (name) => { const { out, json: r } = cad.run('check', `frame/${name}`, '--json'); assert.ok(r?.findings, out); return r.findings; };
     // a post of MISUMI's 2020 printed standing (its four slots kept), a rail of the kit's printable 2020 lying down,
     // a printed bracket on drop-in nuts between them, and a printed foot under the post screwed into its end
     const post = { id: 'p1', beam: { profile: '2020-misumi-hfs5', material: 'petg', printed: { pose: 'standing', pull: 50, end: 'nut' }, ops: [{ op: 'tap', at: 'a' }] }, from: [10, 10, 0], to: [10, 10, 120] };

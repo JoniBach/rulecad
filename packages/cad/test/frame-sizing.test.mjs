@@ -65,10 +65,10 @@ test('generated frames: a box asked for by its inside size expands into beams on
     assert.deepEqual([written.items[0].beam.ops, written.fasten[0]], [[{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }], { screw: 'M5 cap', through: ['foot-z1'], into: 'z1', at: ['foot-z1.b1'], note: 'foot-z1 screwed into z1\'s end a' }]);
     r = probe('box');
     assert.deepEqual([r.bad, r.generated, Object.values(r.lengths).join(' ')], [[], null, '408.5 408.5 408.5 408.5 300 300 300 300 300 300 300 300']);
-    assert.match(cad('frame', 'frame/box'), /asks for no generated frame/);
+    cad.refused(/asks for no generated frame/, 'frame', 'frame/box');
     // an item of the assembly's own named as the frame names its parts is refused by name
     write('clash', { frame: ask, items: [{ id: 'z1', beam: { profile: '2020-misumi-hfs5', length: 100 } }] });
-    assert.match(cad('check', 'frame/clash'), /frame: the box names its parts z1, z2, z3 \.\., and this assembly already has z1: rename it/);
+    cad.refused(/frame: the box names its parts z1, z2, z3 \.\., and this assembly already has z1: rename it/, 'check', 'frame/clash');
     // 4. A gantry: its moving beam rides the left top side beam on a sliding joint through 476 mm (the outside depth
     // 540 less the two uprights, 2 x 2 mm clear and its own 20 mm), and its caps and feet are held by the beams they are
     // on, so nothing is loose; a box braced on its left side (printed corner brackets) with a back panel checks clean too
@@ -110,17 +110,17 @@ test('generated frames: a box asked for by its inside size expands into beams on
     const g = JSON.parse(fs.readFileSync(file('gussets'), 'utf8'));
     assert.deepEqual([g.joins[0].b, g.joins[0].face], ['z1.back@10', 'bottom']);
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: 'back' }, ...g.joins.slice(1)] }));
-    assert.match(cad('check', 'frame/gussets'), /join 1: face is the face of z1 a printed gusset lies on, square to x1: top or bottom \(got "back"\)/);
+    cad.refused(/join 1: face is the face of z1 a printed gusset lies on, square to x1: top or bottom \(got "back"\)/, 'check', 'frame/gussets');
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, face: 'bottom' }, ...g.joins.slice(1)] }));
-    assert.match(cad('check', 'frame/gussets'), /join 1: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out/);
+    cad.refused(/join 1: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out/, 'check', 'frame/gussets');
     // a gusset's shape: T only where b runs on both sides of a far enough for its bar (a box's corner has none below its
     // bottom ring), never turned over onto the other face, and only on a printed gusset
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], shape: 'T' }, ...g.joins.slice(1)] }));
-    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed gusset turned onto z1's bottom face is an L only \(a T's bar would lie along x1\): give shape L, or leave face out/);
+    cad.refused(/join 1: shape T: a printed gusset turned onto z1's bottom face is an L only \(a T's bar would lie along x1\): give shape L, or leave face out/, 'check', 'frame/gussets');
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: undefined, shape: 'T' }, ...g.joins.slice(1)] }));
-    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed T gusset's bar runs [\d.]+ mm along z1 on both sides of x1, and there is 0 mm on one side: give shape L, or leave shape out/);
+    cad.refused(/join 1: shape T: a printed T gusset's bar runs [\d.]+ mm along z1 on both sides of x1, and there is 0 mm on one side: give shape L, or leave shape out/, 'check', 'frame/gussets');
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, shape: 'L' }, ...g.joins.slice(1)] }));
-    assert.match(cad('check', 'frame/gussets'), /join 1: shape names a printed gusset's shape \(L or T\): give it on a gusset join with "fitting": "printed", or leave shape out/);
+    cad.refused(/join 1: shape names a printed gusset's shape \(L or T\): give it on a gusset join with "fitting": "printed", or leave shape out/, 'check', 'frame/gussets');
     // a gantry in 3030 by printed gussets: its uprights run one width (30 mm) above the top side beams, room for a T's
     // bar, but a T there puts the inside round between its bar and the arm along the side beam where the moving beam's
     // end cap passes at either end of its travel (an overlap of about 52 mm³ at rest). Its top side beams' gussets are
@@ -156,7 +156,7 @@ test('generated frames: a portal, which lies in one plane and tips over on its f
     // any check, and says how to hold it
     const ask = { kind: 'portal', inside: [400, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
     write('portal', { frame: ask });
-    assert.match(cad('check', 'frame/portal'), /frame: a portal stands in one plane \(x-z\) on its two feet[^]*it tips over sideways \(frame\.buckling fails it, frame\.rack finds it free along y\)\. Say how its feet are held down, bolted to a bench or a wall: "supports": \{ "z1\.a": "fixed", "z2\.a": "fixed" \}; or, to stand free, generate a table or a box/);
+    cad.refused(/frame: a portal stands in one plane \(x-z\) on its two feet[^]*it tips over sideways \(frame\.buckling fails it, frame\.rack finds it free along y\)\. Say how its feet are held down, bolted to a bench or a wall: "supports": \{ "z1\.a": "fixed", "z2\.a": "fixed" \}; or, to stand free, generate a table or a box/, 'check', 'frame/portal');
     // its feet bolted down, it checks clean: in 2020 joined blind, and by printed gussets in MISUMI's and Bosch's 3030
     // and item's 4040 (each checked with nothing failed or warned)
     const held = { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' } };
@@ -219,15 +219,15 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     write('grouped', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'x2', 'y1', 'y2'] } } }, loads });
     const gr = sized('grouped');
     assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '2020-misumi-hfs5']]);
-    const check = cad('check', 'frame/table');
+    const check = cad.refused('(frame.sag)', 'check', 'frame/table'); // (as drawn, all 2020, its long rails sag)
     assert.match(check, /sized: z1, z2, z3, z4: 2020-misumi-hfs5, 1\.44 kg, set by a join: with 1515-openbeam, blind join of x1\.a to z1\.back@710 does not go together \(an M5 screw[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
     // refused by name
     write('bad', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'q9'] } } }, loads });
-    assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.groups\.rails: q9 is not a beam of the frame \(its beams: z1, z2/);
+    cad.refused(/frame\.size\.groups\.rails: q9 is not a beam of the frame \(its beams: z1, z2/, 'frame', 'frame/bad', '--size');
     write('bad', { frame: { ...table, size: { profiles: ['2020-nobody'] } }, loads });
-    assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.profiles: .*2020-nobody/);
+    cad.refused(/frame\.size\.profiles: .*2020-nobody/, 'frame', 'frame/bad', '--size');
     write('bad', { frame: { ...table, size: { shape: 1 } }, loads });
-    assert.match(cad('check', 'frame/bad'), /frame\.size has no "shape": it takes profiles, groups, limits, by/);
+    cad.refused(/frame\.size has no "shape": it takes profiles, groups, limits, by/, 'check', 'frame/bad');
     // Written in: one family (MISUMI HFS5, whose joins fit each other), so the written frame builds. The long rails
     // stand 2040 on edge, their tops kept level with the legs' (the ring's centre line drops from 710 to 700 mm), and
     // each blind join at a rail's end becomes one join a bore, at 690 and 710 mm up the leg (the bores 20 mm apart)
@@ -241,10 +241,10 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
       { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [20, 10, 700], to: [820, 10, 700], roll: 90 }, { id: 'z1', beam: { profile: '2020-misumi-hfs5', ops: [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }] }, from: [10, 10, 0], to: [10, 10, 720] }]); // (its foot's tap: the generator's)
     assert.deepEqual(w.joins.slice(0, 2), [{ kind: 'blind', a: 'x1.a.1', b: 'z1.back@690' }, { kind: 'blind', a: 'x1.a.2', b: 'z1.back@710' }]);
     // it checks with nothing failing; the one warning is the table's racking, which its 2020 drawing has as well
-    const bad = (n) => cad('check', `frame/${n}`).split('\n').filter((l) => /^\s*[✗!]/.test(l));
+    const bad = (n, status = 0) => { const r = cad.run('check', `frame/${n}`); assert.equal(r.status, status, r.out); return r.out.split('\n').filter((l) => /^\s*[✗!]/.test(l)); };
     assert.deepEqual(bad('hfs5').map((l) => l.trim().slice(0, 18)), ['! racked along y: '], bad('hfs5').join('\n'));
     write('drawn', { frame: table, loads });
-    assert.ok(bad('drawn').some((l) => /racked along y/.test(l)));
+    assert.ok(bad('drawn', 1).some((l) => /racked along y/.test(l)));
     // sized again, the written frame keeps its profiles
     assert.deepEqual(sized('hfs5').groups.map((x) => x.choice), ['2020-misumi-hfs5', '2040-misumi-hfs5', '2020-misumi-hfs5']);
   } finally { done(); }
@@ -291,7 +291,7 @@ test('frame sizing: a drawn table written in moves a deeper rail down its legs s
     for (const j of e.joins) j.b = j.b.replace(/^(z[24]\.\w+)@760$/, '$1@10');
     fs.writeFileSync(file('e'), JSON.stringify(e));
     const before = fs.readFileSync(file('e'), 'utf8');
-    assert.match(cad('frame', 'frame/e', '--size', '--write'), /the sized profiles do not fit as drawn, so nothing is written: join x1\.a\.3 would meet z1 at 780 mm, past its 770 mm/);
+    cad.refused(/the sized profiles do not fit as drawn, so nothing is written: join x1\.a\.3 would meet z1 at 780 mm, past its 770 mm/, 'frame', 'frame/e', '--size', '--write');
     assert.equal(fs.readFileSync(file('e'), 'utf8'), before);
   } finally { done(); }
 });

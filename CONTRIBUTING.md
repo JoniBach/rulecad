@@ -41,9 +41,14 @@ test/fresh-install.sh  # the packages installed as a stranger gets them: no lock
   (`cad order`, `plates`, `kit`), `examples` (TUTORIAL.md and EXAMPLES.md replayed), `versions`, `frame`, `fittings`,
   `guides`, `frame-checks`, `frame-sizing` and `printed-beams`, each `<name>.test.mjs`. Add a test to the file of its
   command, or start a new file for a new one. Every file starts the command through `packages/cad/test/helpers.mjs`:
-  `workspace()` makes a fresh workspace and gives its `cad()` runner, `run()` keeps the exit status, `write()` puts a
-  file in a workspace, `object()` writes an object, and `CAD` is the URL of `packages/cad/` for reading the kit's own
-  files. Never give a test file a `workspace()` of its own: `packages/cad/test/split.test.mjs` fails if one does.
+  `workspace()` makes a fresh workspace and gives its `cad()` runner, `write()` puts a file in a workspace, `object()`
+  writes an object, and `CAD` is the URL of `packages/cad/` for reading the kit's own files. `cad(...)` is for a run
+  that should succeed: it fails the test, with the command, its exit status and its output, on any other exit. A run
+  that should fail is `cad.refused(want, ...)`, `want` being the finding or refusal code, or the words, it should print;
+  a test that reads the status itself takes `cad.run(...)` (`{ status, out, stdout, stderr, json }`), and
+  `cad.with({ timeout })` stops a run that would hang. Never give a test file a `workspace()` of its own, nor start
+  `bin/cad.mjs` itself: `split.test.mjs` and `runner.test.mjs` in `packages/cad/test/` fail if one does. To find every
+  run that fails at once, run the tests with `CAD_TEST_AUDIT=<file>`: each is listed in the file, with its test's line.
 - Run one file's tests alone: `node --test packages/cad/test/fasten.test.mjs`; one test in it:
   `node --test --test-name-pattern="a yoke" packages/cad/test/fasten.test.mjs`.
 - A check is tested on what it should fail as well as on what it should pass. A new check, or a fix to one, adds a

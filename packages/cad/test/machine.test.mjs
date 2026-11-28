@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { workspace, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
 
 test('wires: longest through the poses, a gauge against what it carries, the sheet; a bad route refused by name', async () => {
@@ -18,7 +18,7 @@ test('wires: longest through the poses, a gauge against what it carries, the she
       joints: [{ id: 'j', type: 'revolute', parent: 'base.tip', child: 'arm.base', min: -90, max: 90 }], fits: [{ a: 'arm', b: 'base', min: -1000, silent: true }],
       wires: [{ id: 'm1', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg22' }, { id: 'thin', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg28' }] };
     fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings.filter((x) => x.code.startsWith('wire.'));
+    const check = cad.run('check', 'home/arm', '--json').json.findings.filter((x) => x.code.startsWith('wire.'));
     const len = check.find((x) => x.code === 'wire.length' && x.refs.wire === 'm1');
     assert.equal(len.values.length, Math.ceil(len.values.longest + 40), 'its longest, and the loop');
     assert.ok(len.values.longest > len.values.shortest + 50, 'it changes as the arm swings');
@@ -26,9 +26,9 @@ test('wires: longest through the poses, a gauge against what it carries, the she
     const thin = check.find((x) => x.code === 'wire.gauge' && x.refs.wire === 'thin');
     assert.equal(thin.level, 'fail'); assert.match(thin.text, /awg28 carries 0\.81 A at most, and this carries 2 A/);
     a.wires = [{ from: 'arm.nothing', to: 'base.tip' }]; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    assert.match(cad('check', 'home/arm'), /wire w1: no anchor "arm\.nothing" .*arm has base, tip/);
+    cad.refused(/wire w1: no anchor "arm\.nothing" .*arm has base, tip/, 'check', 'home/arm');
     a.wires = [{ from: 'arm.tip', to: 'base.tip', gauge: 'thick' }]; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    assert.match(cad('check', 'home/arm'), /wire 1: gauge is awg and a number/);
+    cad.refused(/wire 1: gauge is awg and a number/, 'check', 'home/arm');
   } finally { done(); }
 });
 
@@ -45,7 +45,7 @@ test('a task: reach and speed over a sheet, the error budget moved by a measurem
       joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 30] }, child: 'upper.base', min: -130, max: 130 }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150, errors: { play: 'armrig.play' } }],
       fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }], task });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => { const r = cad.run('check', 'home/arm', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
     const by = (list, code) => list.find((x) => x.code === code);
     write(asm());
     let f = check();
@@ -66,7 +66,7 @@ test('a task: reach and speed over a sheet, the error budget moved by a measurem
     f = check(); assert.equal(by(f, 'task.reach').level, 'fail'); assert.match(by(f, 'task.reach').text, /the (upper|lower) right corner of the sheet can't be reached: fore\.tip misses it by [\d.]+ mm/);
     assert.ok(by(f, 'task.reach').at, 'it says where');
     // a machine needs steppers on every joint of the chain, and says which is missing
-    write(asm()); assert.match(cad('machine', 'home/arm'), /joint shoulder has no stepper driving it/);
+    write(asm()); cad.refused(/joint shoulder has no stepper driving it/, 'machine', 'home/arm');
     const two = asm(); two.items.push({ id: 'm0', motor: { model: 'nema17', drives: 'shoulder', speed: 300, microsteps: 16 }, at: [0, 0, 0] }); two.fits.push({ a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true });
     two.items[3].motor.driver = undefined; write(two);
     const machine = JSON.parse(cad('machine', 'home/arm', '--json'));
@@ -75,7 +75,7 @@ test('a task: reach and speed over a sheet, the error budget moved by a measurem
     assert.match(machine.axes[0]._why.microsteps, /resolution only/);
     // a drawing, planned and replayed; one bigger than the sheet refused at the stroke that leaves it
     fs.writeFileSync(path.join(ws, 'square.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210"><rect id="sq" x="24" y="55" width="100" height="100" fill="none"/><circle id="c" cx="74" cy="105" r="20" fill="none"/></svg>');
-    const plotted = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'square.svg', '--json'], { cwd: ws, encoding: 'utf8' }), p = JSON.parse(plotted.stdout);
+    const plotted = cad.run('plot', 'home/arm', 'square.svg', '--json'), p = JSON.parse(plotted.stdout);
     assert.equal(p.ok, true, plotted.stdout.slice(0, 400)); assert.equal(plotted.status, 0);
     const steps = JSON.parse(fs.readFileSync(p.file, 'utf8'));
     assert.equal(steps.format, 'rulecad.steps/1'); assert.ok(steps.drawn.length >= 2 && steps.drawn[0].error, 'lines carry their predicted error');
@@ -84,7 +84,7 @@ test('a task: reach and speed over a sheet, the error budget moved by a measurem
     const send = await import(pathToFileURL(fileURLToPath(new URL('../../examples/bench/projects/arm/send.mjs', CAD))).href), lines = send.linesOf(steps), dry = send.dryRun(['e', ...lines, 'd']);
     assert.ok(dry.m > 50 && dry.p > 1, 'the sender takes it'); assert.throws(() => send.linesOf({ format: 'x' }), /not a step file/);
     fs.writeFileSync(path.join(ws, 'big.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="400mm" viewBox="0 0 400 400"><rect id="huge" x="10" y="10" width="380" height="380" fill="none"/></svg>');
-    const big = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'big.svg'], { cwd: ws, encoding: 'utf8' });
+    const big = cad.run('plot', 'home/arm', 'big.svg');
     assert.equal(big.status, 1); assert.match(big.stdout, /stroke huge leaves the 148 × 210 mm sheet/);
   } finally { done(); }
 });
@@ -102,7 +102,7 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
       joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'upper.base', min: -130, max: 130, support }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150 }], fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }, { a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true }, { a: 'b1', b: 'upper', min: -1000, silent: true }, { a: 'm0', b: 'b1', min: -1000, silent: true }],
       task: { tool: 'fore.tip', sheet: { size: [60, 60], at: [200, 0, 80], normal: [0, 1, 0] }, speed: 20, payload } });
     const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
-    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => { const r = cad.run('check', 'home/arm', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
     const by = (list, code, n = 0) => list.filter((x) => x.code === code)[n];
     write(asm({ bearings: ['b1'] }));
     let f = check();
@@ -131,7 +131,7 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
 });
 
 test('a gait in an assembly: a crawl checked through its cycle, motors against its torque, and legs that collide found', async () => {
-  const { ws, done } = workspace();
+  const { ws, cad, done } = workspace();
   try {
     fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
     fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link', 'body'] }));
@@ -147,7 +147,7 @@ test('a gait in an assembly: a crawl checked through its cycle, motors against i
     }
     const a = { title: 'Quad', kind: 'fit', items, joints, fits, gait: { legs: legs.map(([n]) => `${n}.tip`), pattern: 'crawl', stride: 30, lift: 12, period: 4, height: 150, mass: 1.5 } };
     const write = (x) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/quad.json'), JSON.stringify(x));
-    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/quad', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = () => { const r = cad.run('check', 'home/quad', '--json').json; assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
     write(a);
     let f = check();
     assert.match(f.find((x) => x.code === 'gait.stable').text, /gait: statically stable: the least margin is/);
@@ -158,7 +158,7 @@ test('a gait in an assembly: a crawl checked through its cycle, motors against i
     write({ ...a, gait: { ...a.gait, stride: 500 } });
     f = check(); assert.equal(f.find((x) => x.code === 'gait.reach').level, 'fail'); assert.match(f.find((x) => x.code === 'gait.reach').text, /can't reach its foot/);
     write({ ...a, gait: { ...a.gait, legs: ['fl.nowhere'] } });
-    const bad = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/quad', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.match(bad.error.message, /gait: no anchor "fl\.nowhere"/);
+    const bad = cad.run('check', 'home/quad', '--json').json; assert.match(bad.error.message, /gait: no anchor "fl\.nowhere"/);
   } finally { done(); }
 });
 
@@ -189,7 +189,7 @@ test('a gait of one leg: its foot out of the hip anchor\'s plane, a joint behind
     write('projects/home/objects/shin.json', { name: 'shin', title: 'Shin', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: ['long', 8, 0], axis: [0, 1, 0] } }, variables: { long: { value: 80, unit: 'mm', rule: 'Long' } } });
     write('projects/home/objects/shin.js', LINK);
     write('projects/home/assemblies/leg.json', asm);
-    const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/leg', '--json'], { cwd: ws, encoding: 'utf8' }).stdout), f = r.findings;
+    const r = cad.json('check', 'home/leg', '--json'), f = r.findings;
     assert.ok(f, JSON.stringify(r.error));
     assert.ok(!f.some((x) => x.code === 'gait.reach'), JSON.stringify(f.filter((x) => x.code?.startsWith('gait')))); // reached: the foot stays in its own plane
     assert.equal(f.find((x) => x.code === 'gait.clearance').level, 'pass');
@@ -215,7 +215,7 @@ test('tool.grip reads the finger\'s own material when it names one; a link bends
   const run = (grip) => { const out = []; gripChecks({ a: { task: { grip } }, motion: { drives: [servo] }, task: { payload: 0.05, accel: 300 }, num: (x) => x, project: 'x' }, (level, text, card, extra) => out.push({ level, text, ...extra })); return out; };
   assert.match(run({ ...spec, material: 'petg' }).find((x) => x.code === 'tool.strain').text, /in a PETG leaf/);
   assert.doesNotMatch(run(spec).find((x) => x.code === 'tool.strain').text, /PETG/, 'the project\'s material when it names none');
-  const { ws, done } = workspace();
+  const { ws, cad, done } = workspace();
   const write = (f, x) => { fs.mkdirSync(path.join(ws, path.dirname(f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
   const obj = (name, size, anchors) => { write(`projects/home/objects/${name}.json`, { name, version: '0.1.0', engine: 'manifold', anchors, variables: { x: { value: size[0], unit: 'mm', rule: 'Long' }, y: { value: size[1], unit: 'mm', rule: 'Wide' }, z: { value: size[2], unit: 'mm', rule: 'Thick' } } }); write(`projects/home/objects/${name}.js`, "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.x, v.y, v.z], center: [v.x / 2, 0, v.z / 2] }) }\n"); };
   try {
@@ -226,7 +226,7 @@ test('tool.grip reads the finger\'s own material when it names one; a link bends
     write('projects/home/assemblies/lift.json', { title: 'A link', kind: 'fit', gravity: [0, 0, -1], items: [{ id: 'hub', object: 'hub' }, { id: 'bar', object: 'bar' }, { id: 'turn', object: 'hub' }],
       joints: [{ id: 'drive', type: 'revolute', parent: { at: [-200, 0, 0], axis: [0, 0, 1] }, child: 'turn.base', min: -360, max: 360 }, { id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'hub.base', follow: 'drive', ratio: 0.5, min: -90, max: 90 }, { id: 'bolted', type: 'fixed', parent: 'hub.out', child: 'bar.in' }],
       task: { tool: 'bar.tip', volume: { x: [r * Math.cos(a30), r * Math.cos(a30)], y: [r * Math.sin(a30), r * Math.sin(a30)], z: [0, 0] }, payload: 0.1, accel: 100 } });
-    const res = spawnSync(process.execPath, [BIN, 'check', 'home/lift', '--json'], { cwd: ws, encoding: 'utf8' }), json = JSON.parse(res.stdout);
+    const json = cad.json('check', 'home/lift', '--json');
     const link = json.findings.find((x) => x.code === 'link.deflection');
     assert.ok(link, json.findings.map((x) => x.code).join(', '));
     assert.ok(link.values.total > 0.05 && link.values.total < 5, `the bar, bolted to the joint's hub, bends as a cantilever (${link.values.total} mm)`);
@@ -295,14 +295,14 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
     assert.match(round, /power: 360 mm along rail\.top\.1 from 20 to 380 mm, held by 6 cable clips no more than 100 mm apart but across psu-mount \((\d+(\.\d+)?) mm, a clip each side\), for a 6 mm bundle/);
     assert.match(round, /! power: its run along rail\.top\.1 passes psu-mount \(psu's mount\) from 132\.75 to 267\.25 mm: no clip goes under the plate, so one is set each side of it, and the wire must go round the mount there/);
     write([{ id: 'psu', bought: 'supply-24v', variant: 'LRS-50-24', mount: { on: 'rail.top@200' } }], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.top', from: 150, to: 250 }] }]);
-    assert.match(cad('check', 'rack/rack'), /wire power: a run along rail\.top\.1 from 150 to 250 mm lies under psu-mount: no clip has room there; run it along another face/);
+    cad.refused(/wire power: a run along rail\.top\.1 from 150 to 250 mm lies under psu-mount: no clip has room there; run it along another face/, 'check', 'rack/rack');
     // refused by name
-    write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/);
-    write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item d1: mount holds a bought board or supply, and drv8825 is a driver/);
-    write([{ id: 'p12', bought: 'supply-12v', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item p12: supply-12v gives no mounting holes \(mount_holes/);
-    write([{ ...mine('psu'), mount: { on: 'rail.side@100' } }]); assert.match(cad('check', 'rack/rack'), /item psu: on: profile-2020-misumi-hfs5 x 400 has no "side@100": it has a, b, a\.1, b\.1, top\.1, top/);
-    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 500 }] }]); assert.match(cad('check', 'rack/rack'), /wire power: a run's to is from 0 to 400 mm along rail \(got 500\)/);
-    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 100, every: 50 }] }]); assert.match(cad('check', 'rack/rack'), /wire power: a run along a slot has no "every": it takes along, from, to, pitch, cable|must NOT have additional properties/);
+    write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); cad.refused(/item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/, 'check', 'rack/rack');
+    write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); cad.refused(/item d1: mount holds a bought board or supply, and drv8825 is a driver/, 'check', 'rack/rack');
+    write([{ id: 'p12', bought: 'supply-12v', mount: { on: 'rail.top@100' } }]); cad.refused(/item p12: supply-12v gives no mounting holes \(mount_holes/, 'check', 'rack/rack');
+    write([{ ...mine('psu'), mount: { on: 'rail.side@100' } }]); cad.refused(/item psu: on: profile-2020-misumi-hfs5 x 400 has no "side@100": it has a, b, a\.1, b\.1, top\.1, top/, 'check', 'rack/rack');
+    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 500 }] }]); cad.refused(/wire power: a run's to is from 0 to 400 mm along rail \(got 500\)/, 'check', 'rack/rack');
+    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 100, every: 50 }] }]); cad.refused(/wire power: a run along a slot has no "every": it takes along, from, to, pitch, cable|must NOT have additional properties/, 'check', 'rack/rack');
   } finally { done(); }
 });
 
@@ -413,12 +413,12 @@ test('the leg\'s gait as a step file: cad machine and cad plot on the stand, the
     wire('hip_wire').to = 'shield.Y'; wire('knee_wire').to = 'shield.X'; fs.writeFileSync(file, JSON.stringify(a));
     assert.deepEqual(JSON.parse(cad('machine', 'leg/stand', '--json')).axes.map((x) => `${x.name} ${x.slot}`), ['kd X', 'hd Y']);
     wire('knee_wire').to = 'shield.Z'; fs.writeFileSync(file, JSON.stringify(a));
-    const bad = spawnSync(process.execPath, [BIN, 'plot', 'leg/stand', '--json'], { cwd: ws, encoding: 'utf8' }), out = JSON.parse(bad.stdout);
+    const bad = cad.run('plot', 'leg/stand', '--json'), out = JSON.parse(bad.stdout);
     assert.equal(bad.status, 1);
     assert.equal(out.findings.find((x) => x.code === 'stream.wiring').text, "hd's motor m1 is wired to the shield's Y, and the streamer steps axis 0 on X");
     // refused by name
-    assert.match(cad('plot', 'leg/stand', '--cycles', '0'), /--cycles is a whole number, 1 or more \(got 0\)/);
-    assert.match(cad('plot', 'leg/stand', '--pose', 'sitting'), /--pose sitting: no such pose \(poses: standing\)/);
+    cad.refused(/--cycles is a whole number, 1 or more \(got 0\)/, 'plot', 'leg/stand', '--cycles', '0');
+    cad.refused(/--pose sitting: no such pose \(poses: standing\)/, 'plot', 'leg/stand', '--pose', 'sitting');
   } finally { done(); }
 });
 

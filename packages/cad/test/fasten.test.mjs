@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { workspace, fastened, object, run, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
 
 test('v.fixings: a counterbored hole, a pilot and an insert boss with no number typed, each said in the check with the rule it rests on', () => {
@@ -28,7 +28,7 @@ export function main (v) {
     fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['plate'] }));
     // no number in the design but 0, 1 and 2: a thread's name is text, so 'M3' and 'M3x12 cap' are no measurements
     assert.deepEqual([...new Set(js.replace(/'[^']*'/g, '').match(/\d+(\.\d+)?/g))].sort(), ['0', '2']);
-    const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/plate', '--json'], { cwd: ws, encoding: 'utf8' }); return { status: r.status, findings: JSON.parse(r.stdout).findings }; };
+    const run = () => { const r = cad.run('check', 'demo/plate', '--json'); return { status: r.status, findings: JSON.parse(r.stdout).findings }; };
     const first = run(), by = (f, code) => f.filter((x) => x.code === code);
     assert.equal(first.status, 0); assert.deepEqual(first.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), [], 'it checks clean');
     assert.equal(by(first.findings, 'lint.numbers')[0].level, 'pass');
@@ -48,7 +48,7 @@ export function main (v) {
     assert.deepEqual(by(run().findings, 'hole.drawn').map((x) => [x.values.diameter, x.refs.kind]), [[3.7, 'measured'], [2.8, 'measured']]);
     // a typed diameter is still a number that should be a variable, and a design may import the package itself in the sandbox
     object(ws, 'demo/typed', { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } } }, "import jscad from '@jscad/modeling'\nimport { holeModel } from '@rulecad/fixings'\nexport function main (v) { const r = 2.9 / 2 + holeModel('M3').diameter * 0; return jscad.primitives.cuboid({ size: [v.w, v.w, r * 2], center: [0, 0, r] }) }\n");
-    const typed = cad('check', 'demo/typed');
+    const typed = cad.refused('should be variables: line 3: 2.9', 'check', 'demo/typed');
     assert.match(typed, /should be variables: line 3: 2\.9/); assert.match(typed, /fits the bed/);
     // the notes for agents say where holes come from, the kit's and the template's alike
     const notes = fs.readFileSync(new URL('./AGENTS.md', CAD), 'utf8');
@@ -106,13 +106,13 @@ test('fasten: a bracket screwed to a base passes; moved 1 mm, a 3 mm hole, a sho
     assert.match(r.of('fasten.length')[0].text, /no length chosen: .*leaves 3 mm of room for the screw .* where 5 mm of thread is asked: no length can do both\. Deepen the far end to 6 mm or more/);
 
     // bad input is refused by name before anything is measured
-    write({ fasten: { screw: 'M7 cap' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: .*M7.*M3/s);
-    write({ fasten: { into: 'lid' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: no part "lid" \(items: base, bracket\)/);
-    write({ fasten: { holes: 'bracket.body' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: give "at" .* or "holes" .*, one of the two/);
-    write({ fasten: { nut: 'wing' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: "nut" is true \(a hexagon nut\) or hex, square, lock \(got "wing"\)/);
-    write({ fasten: { screw: 'M3x12 cap', length: 10 } }); assert.match(cad('check', 'demo/joint'), /fasten 1: M3x12 cap gives the length, and "length" says 10: give it once/);
+    write({ fasten: { screw: 'M7 cap' } }); cad.refused(/fasten 1: .*M7.*M3/s, 'check', 'demo/joint');
+    write({ fasten: { into: 'lid' } }); cad.refused(/fasten 1: no part "lid" \(items: base, bracket\)/, 'check', 'demo/joint');
+    write({ fasten: { holes: 'bracket.body' } }); cad.refused(/fasten 1: give "at" .* or "holes" .*, one of the two/, 'check', 'demo/joint');
+    write({ fasten: { nut: 'wing' } }); cad.refused(/fasten 1: "nut" is true \(a hexagon nut\) or hex, square, lock \(got "wing"\)/, 'check', 'demo/joint');
+    write({ fasten: { screw: 'M3x12 cap', length: 10 } }); cad.refused(/fasten 1: M3x12 cap gives the length, and "length" says 10: give it once/, 'check', 'demo/joint');
     // and a misspelt key by the schema, with its path
-    write({ fasten: { thru: ['bracket'] } }); assert.match(cad('check', 'demo/joint'), /fasten\[0\]\.thru: not allowed here/);
+    write({ fasten: { thru: ['bracket'] } }); cad.refused(/fasten\[0\]\.thru: not allowed here/, 'check', 'demo/joint');
 
     // a fasten holds its parts as a fit that fastens does: in a mechanism, a bracket only placed is loose, and fastened it is held, in every pose
     object(ws, 'demo/knob', { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } }, anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n");
@@ -157,7 +157,7 @@ export function main (v) {
     const yoke = (fasten, run = true) => { fs.writeFileSync(file, JSON.stringify({ title: 'A block in a fork', kind: 'fit', items: [{ id: 'fork', object: 'fork' }, { id: 'block', object: 'block' }],
       fits: [{ a: 'block', b: 'fork', min: 0, note: 'In the slot' }], fasten: [{ screw: 'M3 cap', through: ['fork', 'block'], into: 'fork', at: ['fork.h'], nut: true, note: 'Across the fork', ...fasten }] }));
       if (!run) return null;
-      const out = spawnSync(process.execPath, [BIN, 'check', 'demo/yoke', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(out.stdout); } catch { assert.fail(`${out.stdout}${out.stderr}`); }
+      const out = cad.run('check', 'demo/yoke', '--json'); let j; try { j = JSON.parse(out.stdout); } catch { assert.fail(`${out.stdout}${out.stderr}`); }
       if (!j.findings) assert.fail(JSON.stringify(j)); return { status: out.status, of: (code) => j.findings.filter((x) => x.code === code), fails: j.findings.filter((x) => x.level === 'fail').map((x) => `${x.code}: ${x.text}`) }; };
     r = yoke();
     assert.deepEqual(r.fails, [], 'the screw passes the near cheek and the block, and its nut holds it on the far cheek');
@@ -170,7 +170,7 @@ export function main (v) {
     assert.deepEqual(yoke().fails, []);
     // a part's own holes can't say which cheek the head is on: refused by name
     yoke({ at: undefined, holes: 'fork' }, false);
-    assert.match(cad('check', 'demo/yoke'), /fasten 1: a screw that ends in fork, the part under its head, is placed with "at"/);
+    cad.refused(/fasten 1: a screw that ends in fork, the part under its head, is placed with "at"/, 'check', 'demo/yoke');
   } finally { done(); }
 });
 
@@ -230,8 +230,8 @@ test('fasten: seats and ends read from the parts: a counterbore on an insert, a 
     assert.match(r.of('fasten.length')[0].text, /M3x12 cap chosen, the shortest sold that fits: 5\.5 mm under its head \(its washer with it\)/);
     // cad add fasten writes the relation, and refuses one that names no item of the assembly or no place for its screws
     const a = JSON.parse(fs.readFileSync(file, 'utf8')); delete a.fasten; fs.writeFileSync(file, JSON.stringify(a, null, 2));
-    assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'lid', '--into', 'base', '--holes', 'bracket.body'), /fasten: no item "lid" in demo\/joint \(items: base, bracket\)/);
-    assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'bracket', '--into', 'base'), /a fasten needs where its screws go: --at .* or --holes/);
+    cad.refused(/fasten: no item "lid" in demo\/joint \(items: base, bracket\)/, 'add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'lid', '--into', 'base', '--holes', 'bracket.body');
+    cad.refused(/a fasten needs where its screws go: --at .* or --holes/, 'add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'bracket', '--into', 'base');
     assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'bracket', '--into', 'base', '--at', 'bracket.h1,bracket.h2', '--washer', '--note', 'Bracket screwed down'), /added a fasten to/);
     assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fasten, [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'], washer: true, note: 'Bracket screwed down' }]);
     assert.match(cad('check', 'demo/joint'), /Bracket screwed down, 2 M3 cap screws: M3x12 cap chosen/);
@@ -491,7 +491,7 @@ export function main (v) {
     fs.rmSync(path.join(ws, 'rules/m2.json'));
     const bj = path.join(ws, 'projects/demo/objects/block.json'), b = JSON.parse(fs.readFileSync(bj, 'utf8'));
     fs.writeFileSync(bj, JSON.stringify({ ...b, variables: { ...vars, shift: { ...vars.shift, value: 4 } } }));
-    const moved = cad('check', 'demo/stack');
+    const moved = cad.refused('✗ Screws find their inserts', 'check', 'demo/stack');
     assert.match(moved, /Screws find their inserts: hole at -11, 0 mm: solid/, 'moved inserts: the screws hit solid');
     assert.match(moved, /pcb\.board \/ blk\.body: closest gap 0 mm/, 'while the gap fit alone still passes');
   } finally { done(); }
@@ -553,7 +553,7 @@ export function main (v) {
     const j = JSON.parse(cad('add', 'fasten', 'demo/stack', '--from-fits', '--screw', 'M2x6 cap', '--json'));
     assert.deepEqual(j.added.map((x) => x.screw), ['M2x6 cap']);
     assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fits, []);
-    assert.match(cad('add', 'fasten', 'demo/stack', '--from-fits'), /no holes fit with a fit that fastens the same two items/);
+    cad.refused(/no holes fit with a fit that fastens the same two items/, 'add', 'fasten', 'demo/stack', '--from-fits');
   } finally { done(); }
 });
 
@@ -590,7 +590,7 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
       items: [{ id: 'base', object: 'base', set: { thread, kind } }, { id: 'bracket', object: 'bracket', at: [0, 0, 24], set: { thread } }],
       fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
       fasten: [{ screw, through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }] }));
-    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const check = () => { const r = cad.run('check', 'pb/joint', '--json'); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
     // 20 kg hung over screw 2 pulls it with about 20 × 9.80665 = 196.1 N (and the bracket's own few grams). By hand, the M8
     // printed bolt's root as drawn: the basic minor 8 - 2 × (5/8)(√3/2)(1.25) = 6.6467 mm, less its half of x1c.thread_gap
     // (0.1 mm) each side, 6.446 mm; (π/4) 6.446² = 32.634 mm² at pla.strength 39 MPa (no strength_z, so the strength along
@@ -637,7 +637,7 @@ export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], cen
     assert.equal(check().find((x) => x.code === 'fasten.load' && x.values?.margin != null).level, 'fail');
     // an M5 printed bolt: its 0.8 mm pitch is finer than five 0.2 mm layers, so it is refused, naming M6
     write('M5 hex printed', 1);
-    const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint'], { cwd: ws, encoding: 'utf8' });
+    const r = cad.run('check', 'pb/joint');
     assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /fasten 1: M5 has a 0\.8 mm pitch, finer than x1c prints.*The smallest metric thread that would print is M6/s);
   } finally { done(); }
 });
