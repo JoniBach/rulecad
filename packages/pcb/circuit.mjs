@@ -15,6 +15,8 @@
 //            holes: [{ x, y, d }], courtyard: { w, h } | null,
 //            footprint: 'sod123' | 'jst4_sh' | 'pinrow4' ... (a footprinter string, SMD or through-hole, instead of pads),
 //            sch: { x, y, symbol?, pinLabels? } }
+//          a diode's two ports are its 'cathode' (pin 1, also 'K') and 'anode' (pin 2, also 'A'): a pad whose pin is
+//          'cathode' or 'anode' is that end, else pad 1 is the cathode, as KiCad and assemblers number a diode's pads
 //   trace  { from: [part, port], to: [part, port], width, path: [{ x, y }] (absolute, between the two ports), layer }; a trace
 //            without a path is left to the autorouter when board.autoroute is set
 //   nets   { GND: ['U1.GND', 'J1.1', 'J2.1'] } or { GND: { pins: [...], width } }: each net's pins are joined by the
@@ -804,11 +806,27 @@ async function pours(out, add, board, nets, netOf) {
 
 // A part's port names, in pad order: a switch's pin1 and pin2, a diode's anode and cathode, a chip's pins by label
 function portNames(part, pads) {
-  if (part.ftype === 'simple_diode') return [{ name: 'pin1', n: 1, hints: ['pin1', 'pos', 'anode', 'left', '1'] }, { name: 'pin2', n: 2, hints: ['pin2', 'neg', 'cathode', 'right', '2'] }];
+  if (part.ftype === 'simple_diode') return diodePorts(part, pads);
   return (part.pads || pads).map((p) => {
     const n = Number(p.pin.replace(/\D/g, '')), label = part.sch?.pinLabels?.[p.pin];
     return { name: label || p.pin, n, hints: label ? [label, p.pin, String(n)] : [p.pin, String(n)] };
   });
+}
+
+// A diode's two ports, each named for the end of the diode its pad is. A pad that says which end it is (do35's
+// 'cathode' and 'anode') is that end; otherwise pad 1 is the cathode (K) and pad 2 the anode (A), as KiCad's diode
+// footprints and assemblers number them. The cathode is port 1 and the anode port 2, whatever order the pads come in,
+// so a KiCad export and a placement file give pad 1 as the cathode, and the band goes at that end.
+function diodePorts(part, pads) {
+  if (pads.length !== 2) throw new Error(`${part.name}: a diode has two pads, one for each end, and this one has ${pads.length}`);
+  const said = pads.map((p) => (/^(anode|a)$/i.test(p.pin) ? 'anode' : /^(cathode|k)$/i.test(p.pin) ? 'cathode' : null));
+  const other = (end) => (end === 'anode' ? 'cathode' : 'anode');
+  const byNumber = (p) => (Number(String(p.hint ?? p.pin).replace(/\D/g, '')) === 1 ? 'cathode' : 'anode');
+  const ends = said.map((s, i) => s ?? (said[1 - i] ? other(said[1 - i]) : byNumber(pads[i])));
+  if (ends[0] === ends[1]) throw new Error(`${part.name}: both of the diode's pads are its ${ends[0]}. Name one pad 'cathode' and the other 'anode', or number them 1 (cathode) and 2 (anode)`);
+  return ends.map((end) => end === 'cathode'
+    ? { name: 'pin1', n: 1, end, hints: ['pin1', 'cathode', 'neg', 'K', '1'] }
+    : { name: 'pin2', n: 2, end, hints: ['pin2', 'anode', 'pos', 'A', '2'] });
 }
 
 // A net's connections: its pins joined by the shortest set of straight links between them (Prim's minimum spanning
@@ -876,9 +894,11 @@ function schematic(out, add, placed, board, port, netOf = new Map()) {
     // one symbol pin per pin: a pin with more than one pad (a hybrid switch's) draws its other pads as that one
     const firsts = sourcePorts.filter((sp, i) => sourcePorts.findIndex((o) => o.name === sp.name) === i);
     firsts.forEach((sp, i) => {
-      const q = symbol.ports[i], center = { x: s.x + q.x - symbol.center.x, y: s.y + q.y - symbol.center.y };
+      // (the diode symbol's first port is its anode, at the top: each diode port goes to its own end of the symbol)
+      const k = part.ftype === 'simple_diode' ? (sp.port_hints.includes('anode') ? 0 : 1) : i;
+      const q = symbol.ports[k], center = { x: s.x + q.x - symbol.center.x, y: s.y + q.y - symbol.center.y };
       sch.set(sp.source_port_id, add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
-        facing_direction: part.ftype === 'simple_diode' ? (i ? 'down' : 'up') : (i ? 'right' : 'left'), distance_from_component_edge: 0.4 }));
+        facing_direction: part.ftype === 'simple_diode' ? (k ? 'down' : 'up') : (k ? 'right' : 'left'), distance_from_component_edge: 0.4 }));
     });
     for (const sp of sourcePorts) if (!sch.has(sp.source_port_id)) sch.set(sp.source_port_id, sch.get(firsts.find((o) => o.name === sp.name).source_port_id));
   }
