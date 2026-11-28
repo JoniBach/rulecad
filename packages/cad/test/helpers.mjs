@@ -15,14 +15,96 @@ export const BIN = fileURLToPath(new URL('./bin/cad.mjs', CAD));
 /** The repository's node_modules, linked into each workspace: it stands in for npm install @jscad/modeling. */
 export const ROOT_MODULES = fileURLToPath(new URL('../../../node_modules', import.meta.url));
 
-/** A fresh workspace, as the README's quick start makes one: `{ ws, cad, done }`, cad(...args) giving the output. */
+/**
+ * A run of the cad command in a folder, its exit status kept: the one way cad's tests start the command.
+ * `{ status, signal, out, stdout, stderr, json, code }`: out is stdout then stderr; json is stdout read as JSON
+ * (undefined when it is not JSON); code is status under its older name. A run that outlasts `timeout` ms is stopped
+ * and its status is null. `env` adds to (or, with a value of undefined, removes from) the environment; `node` is
+ * flags for node itself, before the command (`['--import', hooks]`).
+ * @param {string} ws the folder to run in
+ * @param {string[]} args the command's arguments
+ * @param {{ env?: Record<string, string | undefined>, timeout?: number, input?: string, node?: string[] }} [options]
+ */
+export function runCad(ws, args, { env = {}, timeout, input, node = [] } = {}) {
+  const r = spawnSync(process.execPath, [...node, BIN, ...args], { cwd: ws, encoding: 'utf8', env: { ...process.env, ...env }, timeout, input, maxBuffer: 1 << 28 });
+  const stdout = r.stdout ?? '', stderr = r.stderr ?? '';
+  const result = { status: r.status, signal: r.signal, out: `${stdout}${stderr}`, stdout, stderr, code: r.status, args, ws, timeout };
+  let json;
+  Object.defineProperty(result, 'json', { enumerable: false, get: () => { if (json === undefined) { try { json = JSON.parse(stdout); } catch { json = null; } } return json ?? undefined; } });
+  audit(result);
+  return result;
+}
+
+// CAD_TEST_AUDIT=<file>: every run that does not exit 0 is noted in the file (a line of JSON: the test line that
+// started it, the command, its status, its failing findings or refusal), and a run that should succeed gives its output
+// rather than failing its test, so that one pass of the suite lists every run that fails
+const AUDIT = process.env.CAD_TEST_AUDIT;
+function audit(r) {
+  if (!AUDIT || r.status === 0) return;
+  const at = (new Error().stack ?? '').split('\n').map((l) => l.match(/[\\/]test[\\/]([\w.-]+\.test\.mjs):(\d+)/)).find(Boolean);
+  const fails = [...(r.json?.findings ?? []).filter((x) => x.level === 'fail').map((x) => `${x.code}: ${x.text}`), ...(r.json?.error ? [JSON.stringify(r.json.error)] : []),
+    ...r.out.split('\n').filter((l) => /^\s*✗|error/.test(l))].slice(0, 8);
+  fs.appendFileSync(AUDIT, `${JSON.stringify({ at: at ? `${at[1]}:${at[2]}` : '?', args: r.args, status: r.status, signal: r.signal, out: r.out.slice(0, 600), fails })}\n`);
+}
+
+/** What a run printed, with the command and its exit status, for a failed assertion. */
+const told = (r) => `cad ${r.args.join(' ')}\n(in ${r.ws})\nexited ${r.status ?? `on ${r.signal}${r.timeout ? `: it ran past ${r.timeout / 1000} s, so it may hang` : ''}`}\n${r.out}`;
+
+/**
+ * The findings a `--json` run printed, after checking its exit status agrees with them: 1 when a finding fails, 0 when
+ * none does. A run that printed no findings, stopped, or exited otherwise fails the test.
+ * @param {ReturnType<typeof runCad>} r the run
+ */
+export function findingsOf(r) {
+  const findings = r.json?.findings;
+  if (!Array.isArray(findings)) assert.fail(`the run printed no findings:\n${told(r)}`);
+  const want = findings.some((x) => x.level === 'fail') ? 1 : 0;
+  if (r.status !== want && !AUDIT) assert.fail(`a run ${want ? 'with a failing finding should exit 1' : 'with no failing finding should exit 0'}, and this one did not:\n${told(r)}`);
+  return findings;
+}
+
+/**
+ * The command run in a folder, as tests call it: `cad(...args)` gives what a run that must succeed printed on stdout
+ * (its notes on stderr are left out, so --json output reads as JSON), and fails the test, with the command, its exit
+ * status and output, on any other exit. The others:
+ * - `cad.ok(...args)`, the same, by name;
+ * - `cad.refused(want, ...args)`: a run that must fail (a non-zero exit), and print `want` (a finding or refusal code,
+ *   any text, or a pattern); gives the output;
+ * - `cad.run(...args)`: the run whatever its exit, as runCad gives it, for a test that reads the status itself;
+ * - `cad.json(...args)`: a run that must succeed, its stdout read as JSON;
+ * - `cad.findings(...args)`: a `--json` check whose findings are read whether it passes or fails: it must print its
+ *   findings, and exit 1 when one of them fails and 0 when none does; gives the findings;
+ * - `cad.with(options)`: the same functions with runCad's options (`env`, `timeout`, `node`) added to these.
+ * @param {string} ws the folder to run in
+ * @param {{ env?: Record<string, string | undefined>, timeout?: number, node?: string[] }} [options]
+ */
+export function cadIn(ws, options = {}) {
+  const go = (args) => runCad(ws, args, options);
+  const ok = (...args) => { const r = go(args); if (r.status !== 0 && !AUDIT) assert.fail(`a run that should succeed did not:\n${told(r)}`); return r.status === 0 ? r.stdout : r.out; };
+  const cad = Object.assign(ok, {
+    ok,
+    run: (...args) => go(args),
+    json: (...args) => { const r = go(args); if (r.status !== 0 && !AUDIT) assert.fail(`a run that should succeed did not:\n${told(r)}`); if (r.json === undefined) assert.fail(`the run printed no JSON:\n${told(r)}`); return r.json; },
+    refused: (want, ...args) => {
+      const r = go(args);
+      if (r.status === 0) assert.fail(`a run that should fail succeeded:\n${told(r)}`);
+      if (r.status === null) assert.fail(`a run that should fail was stopped:\n${told(r)}`);
+      if (want instanceof RegExp ? !want.test(r.out) : !r.out.includes(want)) assert.fail(`a run failed, but without ${want instanceof RegExp ? want : JSON.stringify(want)}:\n${told(r)}`);
+      return r.out;
+    },
+    findings: (...args) => findingsOf(go(args)),
+    with: (more) => cadIn(ws, { ...options, ...more, env: { ...options.env, ...more.env } }),
+  });
+  return cad;
+}
+
+/** A fresh workspace, as the README's quick start makes one: `{ ws, cad, done }`, cad as cadIn gives it. */
 export function workspace(config) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-'));
   fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
   if (config) fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify(config));
   fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction');
-  const env = { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') }; // (the user's own trust list, kept out of their home)
-  const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe', env }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
+  const cad = cadIn(ws, { env: { CAD_TRUSTED: path.join(ws, '.trusted.json') } }); // (the user's own trust list, kept out of their home)
   return { ws, cad, done: () => fs.rmSync(ws, { recursive: true, force: true }) };
 }
 
@@ -58,7 +140,7 @@ export function main (v) {
     items: [{ id: 'base', object: 'base', set: base }, { id: 'bracket', object: 'bracket', at: [0, 0, 'base.tall'], set: bracket }],
     fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
     fasten: [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'], ...fasten }], ...more }));
-  const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/joint', '--json'], { cwd: ws, encoding: 'utf8' }); let out; try { out = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { status: r.status, findings: out.findings, of: (code) => out.findings.filter((x) => x.code === code), fails: out.findings.filter((x) => x.level === 'fail').map((x) => x.code) }; };
+  const check = () => { const r = runCad(ws, ['check', 'demo/joint', '--json'], { env: { CAD_TRUSTED: path.join(ws, '.trusted.json') } }), findings = findingsOf(r); return { status: r.status, findings, of: (code) => findings.filter((x) => x.code === code), fails: findings.filter((x) => x.level === 'fail').map((x) => x.code) }; };
   return { file, write, check };
 }
 
@@ -92,8 +174,10 @@ export async function railPart() {
   return polygons(g, { triangulate: true }).flatMap((p) => p.slice(1, -1).map((_, i) => [p[0], p[i + 1], p[i + 2]]));
 }
 
-/** A run of the command in a workspace with its exit status kept (workspace()'s cad() gives the output only): `{ out, stdout, code }`. */
-export const run = (ws, a, env = {}) => { const r = spawnSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', env: { ...process.env, ...env } }); return { out: `${r.stdout}${r.stderr}`, stdout: r.stdout, code: r.status }; };
+/** A run of the command in a workspace with its exit status kept, whatever it is: runCad with only `env`. */
+export const run = (ws, a, env = {}) => runCad(ws, a, { env });
+/** A run of the command in a workspace that must succeed (cadIn's cad() with only `env`): its output. */
+export const ok = (ws, a, env = {}) => cadIn(ws, { env })(...a);
 
 /** A document replayed in a workspace npm create rulecad makes: each file it names written, each `npx cad` command run to pass. */
 // Its fenced blocks in turn: a block named for a file is written there; a sh block's cad commands are run (previews

@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { workspace, object, railPart, BIN, CAD } from './helpers.mjs';
 
 test('mesh: the stretches with the same section, lines along a part, and STL and 3MF files read back', async () => {
@@ -40,7 +39,7 @@ test('cad measure and cad match: a model measured into draft rules, and a design
     const same = cad('match', 'bathroom/soap-tray', file, '--no-pictures', '--samples', '3000');
     assert.match(same, /✓ the design's surface: 95% within 0 mm/);
     assert.match(same, /✓ the reference's surface/);
-    const wider = cad('match', 'bathroom/soap-tray', file, '--no-pictures', '--samples', '3000', '--set', 'width=60');
+    const wider = cad.refused("✗ the design's surface", 'match', 'bathroom/soap-tray', file, '--no-pictures', '--samples', '3000', '--set', 'width=60');
     assert.match(wider, /✗ the design's surface/);
     assert.match(wider, /outside the reference \(extra material\)/);
     const measured = cad('measure', file, '--no-pictures', '--rules', 'tray', '--licence', 'CC BY-NC-SA 4.0', '--line', '0,1');
@@ -51,7 +50,7 @@ test('cad measure and cad match: a model measured into draft rules, and a design
     assert.equal(rules.size_x.value, 40);
     assert.equal(rules.size_x.kind, 'derived');
     assert.equal(rules.size_x.licence, 'CC BY-NC-SA 4.0');
-    assert.match(cad('measure', file, '--no-pictures', '--rules', 'tray'), /already exists/);
+    cad.refused(/already exists/, 'measure', file, '--no-pictures', '--rules', 'tray');
   } finally { done(); }
 });
 
@@ -59,7 +58,7 @@ test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft
   const { profileModel, outline, slotModel } = await import('@rulecad/frames'), jscad = (await import('@jscad/modeling')).default, { readDxf } = await import('../lib/profilemeasure.mjs');
   const { ws, cad, done } = workspace();
   try {
-    const run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' }), read = (p) => JSON.parse(fs.readFileSync(path.join(ws, p), 'utf8'));
+    const run = (...a) => cad.run(...a), read = (p) => JSON.parse(fs.readFileSync(path.join(ws, p), 'utf8'));
     // a beam built from the kit's own outline: the outline extruded with JSCAD, off the origin, written as a binary STL
     const stl = (file, loops, length = 90, [dx, dy] = [0, 0]) => {
       const solid = jscad.extrusions.extrudeLinear({ height: length }, jscad.primitives.polygon({ points: loops.map((l) => l.map(([x, y]) => [x + dx, y + dy])) }));
@@ -92,7 +91,7 @@ test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft
     // and it is a profile the kit can use: it checks, and draws from the measured outline
     assert.match(cad('rules', 'check', 'profile-2020-measured'), /^1 of 1 rule sets pass\n$/);
     cad('rules', 'draw', 'profile-2020-measured'); assert.match(fs.readFileSync(path.join(ws, 'profile-2020-measured.svg'), 'utf8'), />drawn from its outline: https:\/\/example\.com\/hfs5-2020\.step</);
-    assert.match(cad('measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures'), /already exists \(--force to replace them\)/);
+    cad.refused(/already exists \(--force to replace them\)/, 'measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures');
 
     // ---- the same section from a DXF: the outside as lines one by one in any order, the bore a CIRCLE, in inches ----
     const loops = outline(kit).loops, dxf = (entities, units = 4) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(units), '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF'].join('\r\n') + '\r\n';
@@ -103,7 +102,7 @@ test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft
     assert.match(fromDxf, /opening 6, lip 2, 12 under the lips, 6 deep, floor 5\.9\d?\n {4}matches slot-6-misumi within 0(\.0\d)? mm/); assert.match(fromDxf, /1 bore Ø4\.2 at the cells' middles/); assert.match(fromDxf, /no --licence given: say what terms the model came under/);
     const d = read('rules/profile-2020-dxf.json').rules; assert.deepEqual([d.slot.value, d.bore_diameter.value, d.width.value, d.slot.licence], ['slot-6-misumi', 4.2, 20, undefined]);
     assert.match(cad('rules', 'check', 'profile-2020-dxf'), /^1 of 1 rule sets pass\n$/);
-    assert.match(cad('measure', 'section.dxf'), /a DXF is a drawing of a section, not a model: cad measure <section\.dxf> --profile <name>/);
+    cad.refused(/a DXF is a drawing of a section, not a model: cad measure <section\.dxf> --profile <name>/, 'measure', 'section.dxf');
     // the reader on its own: a polyline's bulges are arcs, an ARC and lines join into a loop, and what it cannot read it refuses by name
     const rounded = readDxf(dxf(['0', 'LWPOLYLINE', '90', '8', '70', '1', ...[[-8, -5, 0], [8, -5, Math.tan(Math.PI / 8)], [10, -3, 0], [10, 3, Math.tan(Math.PI / 8)], [8, 5, 0], [-8, 5, Math.tan(Math.PI / 8)], [-10, 3, 0], [-10, -3, Math.tan(Math.PI / 8)]].flatMap(([x, y, b]) => ['10', String(x), '20', String(y), '42', String(b)])]));
     const area = (l) => Math.abs(l.reduce((sum, [x, y], i) => sum + x * l[(i + 1) % l.length][1] - l[(i + 1) % l.length][0] * y, 0) / 2);
@@ -135,10 +134,10 @@ test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft
     const tube = cad('measure', 'tube.stl', '--profile', 'profile-tube-measured', '--no-pictures'); assert.match(tube, /30 × 20 mm, 1 hole, area 184 mm²/); assert.match(tube, /no slot for a nut found: written as a custom profile/);
     assert.equal(read('rules/profile-tube-measured.json').rules.family.value, 'custom'); assert.match(cad('rules', 'check', 'profile-tube-measured'), /^1 of 1 rule sets pass\n$/);
     // refusals, by name
-    assert.match(cad('measure', 'hfs5.stl', '--profile', 'Profile 2020'), /--profile <name>: lower case, digits, - and _/);
-    assert.match(cad('measure', 'hfs5.stl', '--profile'), /--profile needs a value after it/);
-    assert.match(cad('measure', 'hfs5.stl', '--profile', 'x', '--tol', '0'), /--tol is how close a slot must be to a known family, in mm, above 0/);
-    fs.writeFileSync(path.join(ws, 'beam.step'), 'ISO-10303-21;'); assert.match(cad('measure', 'beam.step', '--profile', 'x'), /a profile is measured from an STL or 3MF model of the beam, or a DXF of its section \(not \.step\)/);
+    cad.refused(/--profile <name>: lower case, digits, - and _/, 'measure', 'hfs5.stl', '--profile', 'Profile 2020');
+    cad.refused(/--profile needs a value after it/, 'measure', 'hfs5.stl', '--profile');
+    cad.refused(/--tol is how close a slot must be to a known family, in mm, above 0/, 'measure', 'hfs5.stl', '--profile', 'x', '--tol', '0');
+    fs.writeFileSync(path.join(ws, 'beam.step'), 'ISO-10303-21;'); cad.refused(/a profile is measured from an STL or 3MF model of the beam, or a DXF of its section \(not \.step\)/, 'measure', 'beam.step', '--profile', 'x');
     assert.equal(run('measure', 'nothing.stl', '--profile', 'x').status, 1);
   } finally { done(); }
 });
@@ -161,9 +160,9 @@ test('cad measured: a measurement where the estimate was, what moved, the ledger
     assert.doesNotMatch(cad('check', 'home/one'), /x1c\.press\. /, 'no longer an estimate');
     assert.match(cad('history', 'home/one'), /x1c\.press: measured 0\.08/);
     assert.match(cad('history', 'home'), /ratio 1\.6/);
-    assert.match(cad('measured', 'home/one', 'x1c.nothing=1'), /x1c has no rule "nothing"/);
-    assert.match(cad('measured', 'home/one', 'x1c.press=2', '--unit', 'in'), /is in mm, and this is in in/);
-    assert.match(cad('measured', 'home/none', 'x1c.press=2'), /no assembly "home\/none"/);
+    cad.refused(/x1c has no rule "nothing"/, 'measured', 'home/one', 'x1c.nothing=1');
+    cad.refused(/is in mm, and this is in in/, 'measured', 'home/one', 'x1c.press=2', '--unit', 'in');
+    cad.refused(/no assembly "home\/none"/, 'measured', 'home/none', 'x1c.press=2');
   } finally { done(); }
 });
 
@@ -185,7 +184,7 @@ test('cad measured from the slot coupon: the slot fit lands in the printer\'s ru
     const kit = ['x1c', 'slot-8'].map((n) => fs.readFileSync(new URL(`../rules/${n}.json`, CAD), 'utf8'));
     const own = (n) => path.join(ws, `rules/${n}.json`), measuredIn = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
     // figures that make no slot are refused, and nothing is written
-    assert.match(cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'slot-8.opening=17'), /slot-8: .*cavity_width is wider than opening, 17/);
+    cad.refused(/slot-8: .*cavity_width is wider than opening, 17/, 'measured', 'home/coupon', 'x1c.slot_fit=0.15', 'slot-8.opening=17');
     assert.ok(!measuredIn('x1c', 'slot_fit') && !measuredIn('slot-8', 'opening'), 'nothing written');
     const out = cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'x1c.printed_slot_fit=0.25', 'slot-8.opening=8.1', 'slot-8.cavity_width=16.3');
     assert.match(out, /x1c\.slot_fit: measured 0\.15 mm, predicted 0\.2 \(x1c\.fit, community\), ratio 0\.75/);
@@ -221,7 +220,7 @@ export function main (v) {
     assert.deepEqual([pilot(drawn()).refs.rule, pilot(drawn()).refs.kind], ['m4.pilot', 'community'], 'before: the thread\'s starting figure');
     const kit = fs.readFileSync(new URL('../rules/x1c.json', CAD), 'utf8');
     // a refusal writes nothing: the flank is one of the two forms the coupon prints
-    assert.match(cad('measured', 'home/coupon', 'x1c.pilot_m4=3.85', 'x1c.thread_flank=50'), /x1c\.thread_flank is 45 or 60: the flank forms the coupon prints \(got 50\)/);
+    cad.refused(/x1c\.thread_flank is 45 or 60: the flank forms the coupon prints \(got 50\)/, 'measured', 'home/coupon', 'x1c.pilot_m4=3.85', 'x1c.thread_flank=50');
     assert.ok(!fs.existsSync(path.join(ws, 'rules/x1c.json')) || !JSON.parse(fs.readFileSync(path.join(ws, 'rules/x1c.json'), 'utf8')).rules.pilot_m4, 'nothing written');
     const out = cad('measured', 'home/coupon', 'x1c.pilot_m4=3.85', 'x1c.nut_fit=0.05', 'x1c.thread_gap=0.25', 'x1c.thread_flank=60');
     assert.match(out, /x1c\.pilot_m4: measured 3\.85 mm, predicted 3\.75 \(m4\.pilot, community\), ratio 1\.0267/);
@@ -246,7 +245,7 @@ export function main (v) {
     const history = cad('history', 'home/coupon');
     assert.match(history, /predicted against measured:/); assert.match(history, /x1c\.pilot_m4: measured 3\.85 mm, predicted 3\.75/);
     // a rule the coupon does not measure, and no rule given, is still refused by name
-    assert.match(cad('measured', 'home/coupon', 'x1c.pilot_m7=3'), /x1c has no rule "pilot_m7"/);
+    cad.refused(/x1c has no rule "pilot_m7"/, 'measured', 'home/coupon', 'x1c.pilot_m7=3');
   } finally { done(); }
 });
 
@@ -272,9 +271,9 @@ export function main (v) {
     const own = (n) => path.join(ws, `rules/${n}.json`), written = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
     // refused by name, with what would be accepted, and nothing written: a diameter given for a clearance, and a strength
     // across the layers above PLA's 39 MPa along them
-    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=3'), /x1c\.pin_press is from 0 to 0\.3 mm: how much smaller a hole is drawn than the pin it grips, .* \(got 3\)/);
-    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0'), /x1c\.snap_clearance is above 0 and up to 0\.5 mm: its gap is drawn with no hole compensation, so at 0 the printed socket comes out smaller than the peg/);
-    assert.match(cad('measured', 'home/coupon', 'pla.strength_z=45'), /pla\.strength_z is above 0 and no more than pla\.strength, 39 MPa: a print holds less across its layers than along them/);
+    cad.refused(/x1c\.pin_press is from 0 to 0\.3 mm: how much smaller a hole is drawn than the pin it grips, .* \(got 3\)/, 'measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=3');
+    cad.refused(/x1c\.snap_clearance is above 0 and up to 0\.5 mm: its gap is drawn with no hole compensation, so at 0 the printed socket comes out smaller than the peg/, 'measured', 'home/coupon', 'x1c.snap_clearance=0');
+    cad.refused(/pla\.strength_z is above 0 and no more than pla\.strength, 39 MPa: a print holds less across its layers than along them/, 'measured', 'home/coupon', 'pla.strength_z=45');
     assert.ok(!written('x1c', 'snap_clearance') && !written('pla', 'strength_z'), 'nothing written');
     const out = cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=0.1', 'x1c.pin_slip=0.25', 'x1c.magnet_press=0.05', 'x1c.magnet_glue=0.15', 'x1c.magnet_crush=0.3', 'x1c.snap_barb=0.5', 'pla.strength_z=21.5');
     // each against what the kit drew it from
@@ -348,10 +347,10 @@ test('cad measured from the joint rig: a drop read on the dial becomes the join\
     assert.deepEqual([drop(before, 'c2').refs.rule, drop(before, 'c3').refs.rule], ['joins.bracket_printed_share', 'fitting-misumi-hmj5.bending_stiffness']);
     const fe = spring(before, 'c2.a').refs.rests[0].value, beamDrop = drop(before, 'c1').predict.rig.beam;
     // a drop no more than the beam bends by itself is refused, and nothing is written
-    assert.match(cad('measured', 'home/rig', 'c1.drop=0.03'), /c1\.drop: 0\.03 mm is no more than the 0\.042 mm the beam bends by itself .*stiffer than solid metal/);
+    cad.refused(/c1\.drop: 0\.03 mm is no more than the 0\.042 mm the beam bends by itself .*stiffer than solid metal/, 'measured', 'home/rig', 'c1.drop=0.03');
     assert.ok(!fs.existsSync(path.join(ws, 'rules/joins.json')), 'nothing written, not even the joins set\'s first copy');
     // nor when a later value is refused: the good drop before it is not written either, nor any set copied for it
-    assert.match(cad('measured', 'home/rig', 'c1.drop=0.5', 'c3.drop=0.03'), /c3\.drop: 0\.03 mm is no more than/);
+    cad.refused(/c3\.drop: 0\.03 mm is no more than/, 'measured', 'home/rig', 'c1.drop=0.5', 'c3.drop=0.03');
     for (const n of ['joins', 'fitting-misumi-hmj5']) assert.ok(!fs.existsSync(path.join(ws, `rules/${n}.json`)), `${n}: nothing written on a refusal`);
     const out = cad('measured', 'home/rig', 'c1.drop=0.5', 'c2.drop=3', 'c3.drop=0.4', 'slot-nut-6-misumi-m5-slide-in.hold_along=420');
     assert.match(out, /c1\.drop: measured 0\.5 mm, predicted 0\.337/);
@@ -405,7 +404,7 @@ test('cad measured from the beam coupon: its sag becomes the modulus a printed b
     fs.mkdirSync(at('assemblies'), { recursive: true });
     fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'benchmarks', material: 'PLA', objects: [] }));
     fs.copyFileSync(new URL('../../examples/bench/projects/benchmarks/assemblies/beam-test.json', CAD), at('assemblies/beam-test.json'));
-    const check = () => JSON.parse(cad('check', 'benchmarks/beam-test', '--json')).findings;
+    const check = () => cad.findings('check', 'benchmarks/beam-test', '--json'); // (as drawn, k2 fails beam.creep, an estimate, until its strength is measured)
     const coupon = (f, id, what) => f.find((x) => x.code === 'beam.coupon' && x.refs.beam === id && x.predict.name === `${id}.${what}`);
     const before = check();
     // Hand calculation: a beam on two bars 220 mm apart, 2 kg at its middle: sag = F L³ / (48 E I), F = 2 x 9.80665 = 19.613 N.
@@ -443,7 +442,7 @@ test('cad measured from the beam coupon: its sag becomes the modulus a printed b
     assert.match(b2b.text, /\(pla\.beam_strength_z, measured\)/);
     assert.match(after.find((x) => x.code === 'beam.mass' && /k1/.test(x.text)).text, /\(pla\.beam_modulus, measured, from the beam coupon/);
     // refused by name: a sag of nothing
-    assert.match(cad('measured', 'benchmarks/beam-test', 'k1.sag=0'), /k1\.sag: a sag is above 0/);
+    cad.refused(/k1\.sag: a sag is above 0/, 'measured', 'benchmarks/beam-test', 'k1.sag=0');
     assert.match(cad('history', 'benchmarks/beam-test'), /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
   } finally { done(); }
 });

@@ -3,8 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { workspace, BIN } from './helpers.mjs';
+import { workspace } from './helpers.mjs';
 
 test('building it: the order worked out and refused when nothing reaches a part; plates by filament, re-packed only where a part changed', async () => {
   const { ws, cad, done } = workspace();
@@ -29,17 +28,17 @@ test('building it: the order worked out and refused when nothing reaches a part;
     assert.deepEqual(order.steps.map((x) => x.items[0]), ['cup', 'nut', 'lid'], JSON.stringify(order.steps));
     assert.match(order.steps[2].text, /The lid, on two screws \(2 × M3x10\)/, 'its fasteners named from the fit');
     assert.deepEqual(order.steps[2].dir, [0, 0, 1], 'and it comes down from above');
-    const check = () => JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/pile', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings;
+    const check = () => cad.json('check', 'home/pile', '--json').findings;
     assert.equal(check().find((x) => x.code === 'assembly.order').level, 'pass', 'found by cad check');
     // A wall over the screw, fastened on before the screw can go in: no order reaches it. The screw's anchor points up.
     write('walled', { title: 'Walled', kind: 'fit', uses: [], items: [{ id: 'base', object: 'block', set: { long: 60, tall: 10 } }, { id: 'clip', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 10] }, { id: 'stud', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 20] }, { id: 'wall', object: 'block', set: { long: 60, tall: 10 }, at: [0, 0, 30] }],
       fits: [{ a: 'wall', b: 'base', fastens: true, min: 0, note: 'The wall' }, { a: 'stud', b: 'wall', fastens: true, min: 0, note: 'The stud' }, { a: 'clip', b: 'stud', fastens: true, min: 0, note: 'The clip, to the stud', access: 'clip.head' }] });
-    const stuck = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/walled', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings.find((x) => x.code === 'assembly.order');
+    const stuck = cad.findings('check', 'home/walled', '--json').find((x) => x.code === 'assembly.order');
     assert.equal(stuck.level, 'fail'); assert.match(stuck.text, /screw of "The clip, to the stud" can't be reached in any order: wall stands over it/); assert.equal(stuck.refs.wall, 'wall');
     // A part in a sealed box: nothing can reach it, and the finding names it
     object('shell', 'export function main (v) { return subtract(cuboid({ size: [40, 40, 40], center: [0, 0, 20] }), cuboid({ size: [30, 30, 30], center: [0, 0, 20] })) }', { variables: { deep: v(1) } });
     write('sealed', { title: 'Sealed', kind: 'fit', uses: [], items: [{ id: 'shell', object: 'shell' }, { id: 'loose', object: 'block', set: { long: 10, tall: 5 }, at: [-5, 0, 10] }], fits: [{ a: 'loose', b: 'shell', fastens: true, min: 0 }] });
-    const sealed = JSON.parse(cad('order', 'home/sealed', '--json'));
+    const sealed = JSON.parse(cad.refused('"stuck"', 'order', 'home/sealed', '--json'));
     assert.match(sealed.stuck.text, /shell can't be reached in any order|loose can't be reached in any order/, JSON.stringify(sealed));
     // A bearing pressed in before the shaft goes through it, whichever order they're written in; the shaft is listed first
     write('spindle', { title: 'Spindle', kind: 'fit', uses: [], items: [{ id: 'pin', object: 'block', set: { long: 5, tall: 40 }, at: [-2.5, 0, 45] }, { id: 'brg', bought: 'bearing-608', at: [0, 0, 30] }, { id: 'housing', object: 'block', set: { long: 60, tall: 10 }, at: [-30, 0, 0] }],
@@ -67,7 +66,7 @@ test('building it: the order worked out and refused when nothing reaches a part;
     assert.equal(again.plates.find((x) => x.name === 'kit-base-legend-1').stood, true);
     // Too big for the bed, by name
     asm.items[2].set = { long: 400 }; write('kit', asm);
-    const big = spawnSync(process.execPath, [BIN, 'plates', 'home/kit', '--json'], { cwd: ws, encoding: 'utf8' });
+    const big = cad.run('plates', 'home/kit', '--json');
     assert.equal(big.status, 1); assert.match(big.stdout, /c \(block\) is 400 × 20 mm: bigger than the 256 mm bed/);
     assert.equal(JSON.parse(big.stdout).findings[0].code, 'plate.bed');
   } finally { done(); }
@@ -126,9 +125,9 @@ test('cad plates and cad kit: plates by material, a frame\'s jigs and its feet\'
     assert.match(buy, /\nscrew,4,M5x16 cap,1 pack of 10,foot-z1 screwed into z1's end a;/);
     // 4. Refused by name: a design that fails its check, and an object that is not an assembly
     write('bad', { items: [{ id: 'a1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [100, 0, 0] }, { id: 'a2', beam: { profile: '2020-misumi-hfs5' }, from: [50, 0, 0], to: [150, 0, 0] }] });
-    assert.match(cad('kit', 'frame/bad'), /frame\/bad: cad check fails 1 check \(a1\.body and a2\.body overlap[^)]*\), and a kit is written only for a design that checks with nothing failing: cad check frame\/bad/);
+    cad.refused(/frame\/bad: cad check fails 1 check \(a1\.body and a2\.body overlap[^)]*\), and a kit is written only for a design that checks with nothing failing: cad check frame\/bad/, 'kit', 'frame/bad');
     assert.ok(!fs.existsSync(path.join(ws, 'exports/frame/bad-kit')));
-    assert.match(cad('kit', 'frame/none'), /cad kit works on an assembly \(<project>\/<assembly>\), and there is no "frame\/none"/);
+    cad.refused(/cad kit works on an assembly \(<project>\/<assembly>\), and there is no "frame\/none"/, 'kit', 'frame/none');
   } finally { done(); }
 });
 
@@ -162,7 +161,7 @@ test('"have": a bought part or motor in hand is listed apart from what is to buy
     assert.ok(page.indexOf('### Bought parts') < page.indexOf('### In hand'), 'to buy, then in hand');
     // a printed part is never in hand: refused by name, with what can be
     write('projects/home/assemblies/bad.json', { title: 'Bad', kind: 'fit', items: [{ id: 'block', object: 'block', have: true }] });
-    assert.match(cad('check', 'home/bad'), /item block: "have" marks a bought part or a motor as in hand, and block is printed \(object block\)/);
+    cad.refused(/item block: "have" marks a bought part or a motor as in hand, and block is printed \(object block\)/, 'check', 'home/bad');
     // "have" holds on a repeat's copies (r-0, r-1) and on a component's parts (k.s): all three bearings in hand, none to buy
     write('projects/home/assemblies/sub.json', { title: 'Sub', kind: 'fit', items: [{ id: 's', bought: 'bearing-608', have: true }] });
     write('projects/home/assemblies/top.json', { title: 'Top', kind: 'fit', items: [{ id: 'k', assembly: 'sub', at: [0, 200, 0] },
@@ -196,7 +195,7 @@ export function main (v) {
   return { left, right, hat, table }
 }
 `);
-    const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/pair', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { of: (code) => j.findings.filter((x) => x.code === code) }; };
+    const run = () => { const found = cad.findings('check', 'demo/pair', '--json'); return { of: (code) => found.filter((x) => x.code === code) }; };
     // Apart by 0.7 mm, all on the bed, a 4 mm bridge (the X1C spans 5): every check passes
     let r = run();
     assert.equal(r.of('inplace.bed')[0].level, 'pass'); assert.equal(r.of('inplace.support')[0].level, 'pass');

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { workspace, BIN, CAD } from './helpers.mjs';
 
 test('an optimisation\'s densities are kept by everything that makes them: the problem, topopt\'s solver, the FE\'s code and its threads backend, and cad\'s own code that readies the problem, so a change in any is never read as the old result', async () => {
@@ -50,7 +50,7 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
     assert.match(first, /settled/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-optimised.svg')));
     assert.match(cad('optimise', 'beam/arm'), /\(cached\)/);
-    assert.match(cad('optimise', 'beam/arm:nope'), /no variant "nope"/);
+    cad.refused(/no variant "nope"/, 'optimise', 'beam/arm:nope');
     const checked = cad('check', 'beam/arm');
     assert.match(checked, /✓ arm down: moves [\d.]+ mm under 10 N/);
     assert.ok(!/under 4 cells/.test(checked) || /! arm: [\d.]+% of the part is in members under 4 cells \([\d.]+ mm\) thick/.test(checked), 'thin members, if any, are a warning with the cell to use');
@@ -89,15 +89,16 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     assert.match(out, /push: moves [\d.e-]+ mm along its load/);
     assert.match(out, /printable built \+z/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'post', 'post-optimised.png')), 'a preview of the surface');
-    const checked = cad('check', 'post/post');
+    const RAW = 'numbers in post.js that should be variables'; // (the post's own design has typed sizes, failing that check; the rest is what is tested)
+    const checked = cad.refused(RAW, 'check', 'post/post');
     assert.match(checked, /closed solid/);
     assert.match(checked, /post push: moves [\d.e-]+ mm under 10 N/);
     const stiffness = (out) => Number(out.match(/post push: moves [\d.e-]+ mm under 10 N, ([\d.e+-]+) N\/mm/)[1]);
-    const lying = cad('check', 'post/post:lying');
+    const lying = cad.refused(RAW, 'check', 'post/post:lying');
     assert.match(lying, /24 × [\d.]+ × 12 mm, fits the bed/, 'drawn lying down');
     assert.ok(Math.abs(stiffness(lying) / stiffness(checked) - 1) < 0.02, `turned back, it analyses as it stands: ${stiffness(lying)} against ${stiffness(checked)} N/mm`);
     // A variant with no problem builds without the optimiser: a rig, or the regions a problem reads
-    const plain = cad('check', 'post/post:plain');
+    const plain = cad.refused(RAW, 'check', 'post/post:plain');
     assert.match(plain, /12 × 12 × 24 mm, fits the bed/, 'drawn without the result');
     assert.doesNotMatch(plain, /optimising/);
     // Verified: on finer cells, checked against cells a quarter bigger, with a report; safety-critical, it's
@@ -107,7 +108,7 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     const o = JSON.parse(fs.readFileSync(objectFile, 'utf8'));
     o.analysis = [{ problem: 'post', cell: 1, min_safety: 2 }];
     fs.writeFileSync(objectFile, JSON.stringify(o));
-    const verified = cad('check', 'post/post');
+    const verified = cad.refused(RAW, 'check', 'post/post');
     assert.match(verified, /post push: stiffness [+-][\d.]+% from 1.25 mm cells/);
     assert.match(verified, /✓ post push: peak stress [\d.]+ MPa at \([\d., -]+\): [\d.]+× under pla's strength \(at least 2×\)/);
     assert.match(verified, /post is safety-critical and unverified/);
@@ -117,7 +118,7 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     assert.equal(JSON.parse(fs.readFileSync(path.join(ws, '.preview', 'post', 'post-report-post.json'), 'utf8')).cases[0].name, 'push');
     o.verification = [{ kind: 'test', date: '2026-10-28', summary: 'Pushed with 10 N three times: moved 0.03 mm' }];
     fs.writeFileSync(objectFile, JSON.stringify(o));
-    assert.match(cad('check', 'post/post'), /post is safety-critical: verified by test \(2026-10-28\)/);
+    cad.refused(/post is safety-critical: verified by test \(2026-10-28\)/, 'check', 'post/post');
   } finally { done(); }
 });
 
@@ -259,10 +260,10 @@ test('a problem at a design\'s anchors: its supports, loads and keeps follow the
     fs.writeFileSync(path.join(project, 'objects', 'ring.json'), JSON.stringify({ name: 'ring', version: '0.1.0', variables: { problem: { type: 'problem', value: 'loop' } }, anchors: { hole: { at: [0, 0, 0] } } }));
     fs.writeFileSync(path.join(project, 'objects', 'ring.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: 1 }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
     fs.writeFileSync(path.join(project, 'problems', 'loop.json'), JSON.stringify({ ...arm, keep: [], avoid: [], supports: [{ anchor: 'ring.hole', r: 1.6 }] }));
-    assert.match(cad('optimise', 'lev/loop'), /loop\.json: the anchor "ring\.hole" is on ring, which is built from this problem \(its variable problem\): name a part or anchor of what it is fixed to instead/);
+    cad.refused(/loop\.json: the anchor "ring\.hole" is on ring, which is built from this problem \(its variable problem\): name a part or anchor of what it is fixed to instead/, 'optimise', 'lev/loop');
     // Named wrong: refused with the anchors there are
     fs.writeFileSync(path.join(project, 'problems', 'typo.json'), JSON.stringify({ ...arm, supports: [{ anchor: 'plate.pivto', r: 1.6 }] }));
-    assert.match(cad('optimise', 'lev/typo'), /typo\.json: plate has no anchor "pivto" \(anchors: pivot, pin\)/);
+    cad.refused(/typo\.json: plate has no anchor "pivto" \(anchors: pivot, pin\)/, 'optimise', 'lev/typo');
     // Fine cells: the filter is two of the printer's lines, the thinnest wall it lays solid. Hand sum: x1c's line is
     // 0.42 mm, so two are 0.84 mm; a cell and a half of 0.5 mm cells is 0.75 mm, under it, so 0.84 mm is used
     fs.writeFileSync(path.join(project, 'problems', 'fine.json'), JSON.stringify({ ...arm, cell: 0.5 }));
@@ -344,7 +345,7 @@ test('a solid result with fewer triangles by default: outline.reduce keeps the s
     assert.ok(sliced(b) <= sliced(a), `${sliced(a)} to ${sliced(b)} islands`);
     // A tolerance that isn't a distance is refused by name
     fs.writeFileSync(path.join(project, 'problems', 'bad.json'), JSON.stringify({ ...post, outline: { reduce: 0 } }));
-    assert.match(cad('optimise', 'post/bad'), /reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/);
+    cad.refused(/reduce: the tolerance is a distance in mm, more than 0 \(got 0\)/, 'optimise', 'post/bad');
   } finally { done(); }
 });
 
@@ -401,8 +402,7 @@ test('problems that read each other through designs built from them are refused 
     fs.writeFileSync(path.join(project, 'problems', 'pa.json'), JSON.stringify({ ...base, supports: [{ anchor: 'xa.h', r: 1.6 }] }));
     fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'yb.h', r: 1.6 }] }));
     // Before the chain was carried this ran out of memory: give it a minute, then call it a hang
-    const run = (ref) => { try { return execFileSync(process.execPath, [BIN, 'optimise', ref], { cwd: ws, encoding: 'utf8', stdio: 'pipe', timeout: 60000, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); } catch (e) { return e.signal ? `hung (${e.signal})` : `${e.stdout}${e.stderr}`; } };
-    assert.match(run('cyc/pa'), /pa\.json: problems read each other through designs built from them: pa reads xa, built from pb, then pb reads yb, built from pa\. Fix one of them to a part or anchor of a design that is not made from the others/);
+    cad.with({ timeout: 60000 }).refused(/pa\.json: problems read each other through designs built from them: pa reads xa, built from pb, then pb reads yb, built from pa\. Fix one of them to a part or anchor of a design that is not made from the others/, 'optimise', 'cyc/pa');
     // The same pair with the loop broken (pb held at a plain design's anchor) is read and optimised
     fs.writeFileSync(path.join(project, 'problems', 'pb.json'), JSON.stringify({ ...base, supports: [{ anchor: 'plate.h', r: 1.6 }] }));
     assert.match(cad('optimise', 'cyc/pa'), /moves [\d.]+ mm along its load/);
@@ -436,17 +436,17 @@ test('a problem milled, cast or printed in a powder bed: cad optimise says how i
     // A powder bed print with a hollow box kept: its 3 mm inside can't be emptied of powder
     const hollow = { overhang: '+z', keep: [{ at: [0, 0, 6], size: [6, 6, 6] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] };
     write('powder', { uses: ['dmls'], voids: 'refused', ...hollow });
-    const r = spawnSync(process.execPath, [BIN, 'optimise', 'made/powder'], { cwd: ws, encoding: 'utf8' });
+    const r = cad.run('optimise', 'made/powder');
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\): powder or a core can't get out: open it to the outside with an avoid region \(an escape hole\), or allow voids/);
     write('allowed', hollow);
     assert.doesNotMatch(cad('optimise', 'made/allowed'), /enclosed void/);
     // Two processes at once are refused before any maths
     write('both', { overhang: '+z', mill: '+z' });
-    assert.match(cad('optimise', 'made/both'), /printed \(overhang\), milled \(mill\) or cast \(cast\), one of them: this problem gives overhang and mill/);
+    cad.refused(/printed \(overhang\), milled \(mill\) or cast \(cast\), one of them: this problem gives overhang and mill/, 'optimise', 'made/both');
     // So is a mirror that swaps the tool's side for its opposite
     write('clash', { mill: '+z', symmetry: { mirror: 'z' } });
-    assert.match(cad('optimise', 'made/clash'), /symmetry: milled from \+z, a part can't be the same mirrored across z \(the tool's side\)/);
+    cad.refused(/symmetry: milled from \+z, a part can't be the same mirrored across z \(the tool's side\)/, 'optimise', 'made/clash');
     // A 2D section milled from its top edge comes out grey, and cad optimise says its outline is a guess: a 30 × 20 mm
     // cantilever on 1 mm cells, held at its left side and loaded down at its right side's middle
     fs.writeFileSync(path.join(project, 'problems', 'section.json'), JSON.stringify({ title: 'section', material: 'al6061', thickness: 3, cell: 1, volume: 0.4, steps: 200, mill: '+y',
@@ -476,7 +476,7 @@ test('a robust problem: cad optimise reports the design made a little thin and a
     assert.match(out, /made a little thin, its output moves [\d.e-]+ mm; a little thick, [\d.e-]+ mm/);
     assert.match(out, /made a little thin, peak stress [\d.e-]+ MPa; a little thick, [\d.e-]+ MPa/);
     fs.writeFileSync(path.join(project, 'problems', 'stiff.json'), JSON.stringify({ ...inverter, output: undefined, input_spring: undefined, robust: true }));
-    assert.match(cad('optimise', 'mech/stiff'), /robust is for a mechanism \(with output: the worst of its eroded, as-made and dilated copies\) or a stress limit/);
+    cad.refused(/robust is for a mechanism \(with output: the worst of its eroded, as-made and dilated copies\) or a stress limit/, 'optimise', 'mech/stiff');
   } finally { done(); }
 });
 
@@ -500,17 +500,17 @@ test('a problem milled from two sides by a tool of a size, or cast with a draft 
     assert.deepEqual(JSON.parse(cad('optimise', 'made/draft', '--json')).process, { cast: '+z', draft: 15, every: 3, made: 18.43 });
     // 3°: a step every 19 layers (1 / tan 3° = 19.1), and the cube has 8; a 1 mm tool on 1.5 mm cells; a draft on a milled part
     write('shallow', { uses: ['mould-injection'], cast: '+z', draft: 3 });
-    assert.match(cad('optimise', 'made/shallow'), /a draft of 3° steps out a cell every 19 layers, and this grid has 8 along z: give it more than 19 layers there \(smaller cells\), or more draft/);
+    cad.refused(/a draft of 3° steps out a cell every 19 layers, and this grid has 8 along z: give it more than 19 layers there \(smaller cells\), or more draft/, 'optimise', 'made/shallow');
     write('small', { mill: '+z', tool: 1 });
-    assert.match(cad('optimise', 'made/small'), /a tool's radius of 1 mm is under a cell \(1\.5 mm\) and changes nothing on the grid/);
+    cad.refused(/a tool's radius of 1 mm is under a cell \(1\.5 mm\) and changes nothing on the grid/, 'optimise', 'made/small');
     write('milldraft', { mill: '+z', draft: 5 });
-    assert.match(cad('optimise', 'made/milldraft'), /a draft is for a cast or moulded part \(cast\): a milled part's walls come out straight down the tool's side/);
+    cad.refused(/a draft is for a cast or moulded part \(cast\): a milled part's walls come out straight down the tool's side/, 'optimise', 'made/milldraft');
     // Voids prevented: the optimiser keeps every pocket open (topopt's test twists a block into a tube and vents it),
     // and says so; one a keep region walls in can't be opened, and is still an error, said to be left though prevented
     write('vented', { uses: ['dmls'], voids: 'prevented' });
     assert.match(cad('optimise', 'made/vented'), /voids prevented: none enclosed, every empty pocket open to the outside/);
     write('walled', { uses: ['dmls'], voids: 'prevented', keep: [{ at: [0, 0, 6], size: [6, 6, 6] }], avoid: [{ at: [0, 0, 6], size: [3, 3, 3] }] });
-    const r = spawnSync(process.execPath, [BIN, 'optimise', 'made/walled'], { cwd: ws, encoding: 'utf8' });
+    const r = cad.run('optimise', 'made/walled');
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /error: 1 enclosed void \(27 mm³ at 0, 0, 6\), left though voids were prevented \(a keep region or the space walls it in\)/);
   } finally { done(); }
@@ -538,7 +538,7 @@ test('a problem\'s thinnest member from the printer\'s line (#35): met by the gr
     // 4 mm: (4 - 1) / 2 = 1.5, so 2 cells, past three across; 4 / 3 = 1.333, so cells of 1.34 mm hold it (4 / 1.34 =
     // 2.985 cells, (2.985 - 1) / 2 = 0.99, a ball of 1), and do
     write('wide', { feature: 4 });
-    assert.match(cad('optimise', 'thin/wide'), /a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.34 mm or more, or a feature of 3 mm or less/);
+    cad.refused(/a feature of 4 mm is more than three cells \(3 mm\) across: the optimiser holds members to three cells at most, so give cells of 1\.34 mm or more, or a feature of 3 mm or less/, 'optimise', 'thin/wide');
     write('wide', { feature: 4, cell: 1.34 });
     assert.deepEqual(JSON.parse(cad('optimise', 'thin/wide', '--json')).feature.cells, 1);
   } finally { done(); }
@@ -615,13 +615,13 @@ test('a problem placed in an assembly: a support at one of its joints, and a par
     // Optimised as any problem is, kept until the assembly moves what it read; cad why names the assembly and the sweep
     assert.match(cad('optimise', 'swing/plate'), /moves [\d.]+ mm along its load/);
     assert.match(cad('optimise', 'swing/plate'), /\(cached\)/);
-    assert.match(cad('check', 'swing/plate'), /✓ closed solid/);
+    cad.refused(/✓ closed solid/, 'check', 'swing/plate');
     // The load at (14, 14) and the support at (28, -10) lie either side of the gate's swing: the plate goes round it, and
     // the assembly, the plate drawn from its result, is clear all through the swing. Without the sweep it is struck.
     assert.match(cad('check', 'swing/bench', '--sweep'), /✓ sweep swing, 90 to 180° in 24 steps: nothing collides/);
     write('bare', { ...problem, avoid: [] });
     cad('set', 'swing/plate', 'problem=bare');
-    assert.match(cad('check', 'swing/bench', '--sweep'), /✗ sweep swing, 90 to 180° in 24 steps: [^\n]*gate[^\n]* hits plate|plate[^\n]* hits gate/);
+    cad.refused(/✗ sweep swing, 90 to 180° in 24 steps: [^\n]*gate[^\n]* hits plate|plate[^\n]* hits gate/, 'check', 'swing/bench', '--sweep');
     cad('set', 'swing/plate', 'problem=plate');
     const why = cad('why', 'swing/plate.problem');
     assert.match(why, /in the assembly bench, item plate: joints read: hinge at \(0, 0, 4\); swept: gate through swing, 90 to 180 in 64 steps/);

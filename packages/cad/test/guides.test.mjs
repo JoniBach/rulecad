@@ -89,17 +89,17 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
     // refused by name
     write('bad', { items: [x1], guides: [{ kind: 'belt', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: a belt guide has no "rail": it takes id, kind, guide, motor|guides\/0/);
+    cad.refused(/guide 1: a belt guide has no "rail": it takes id, kind, guide, motor|guides\/0/, 'check', 'slide/bad');
     write('bad', { items: [x1], guides: [{ kind: 'chain', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or belt .*|guides\/0\/kind/);
+    cad.refused(/guide 1: kind is rail \(a miniature linear rail\), wheels .* or belt .*|guides\/0\/kind/, 'check', 'slide/bad');
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
+    cad.refused(/guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/, 'check', 'slide/bad');
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: the rail runs from 200 to 500 mm along x1, which is 400 mm long/);
+    cad.refused(/guide 1: the rail runs from 200 to 500 mm along x1, which is 400 mm long/, 'check', 'slide/bad');
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12X', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: rail-mgn12 has no carriage "MGN12X": it has MGN12C, MGN12H/);
+    cad.refused(/guide 1: rail-mgn12 has no carriage "MGN12X": it has MGN12C, MGN12H/, 'check', 'slide/bad');
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', length: 300, speed: 3 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: a rail guide has no "speed"|guides\/0.*speed/);
+    cad.refused(/guide 1: a rail guide has no "speed"|guides\/0.*speed/, 'check', 'slide/bad');
   } finally { done(); }
 });
 
@@ -165,18 +165,18 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     const heavy = by(probe('heavy'), 'joint.moment')[0];
     assert.equal(heavy.level, 'fail'); assert.match(heavy.text, /its most loaded wheel, w\d, takes .* past its rating/); assert.ok(heavy.values.margin < 1);
     // the same guide on a plain T-slot is refused, with why
-    assert.match(cad('check', 'roll/plain'), /guide 1: wheels are refused on profile-2040-misumi-hfs5 under its top face: profile-2040-misumi-hfs5's front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on and centre in/);
+    cad.refused(/guide 1: wheels are refused on profile-2040-misumi-hfs5 under its top face: profile-2040-misumi-hfs5's front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on and centre in/, 'check', 'roll/plain');
     // a printed slider: its clearance the printer's fit, its friction said to rest on a working figure; it slides its stretch less its 40 mm
     const sl = probe('slider');
     assert.deepEqual(sl.joints, [['g1-1', 'prismatic', [0, 160, 0]]]); assert.deepEqual(sl.sweep.map((x) => [x.level, x.values.to]), [['pass', 160]]);
     assert.match(by(sl, 'guide.friction')[0].text, /PLA on anodised aluminium taken as μ 0\.3/); assert.match(by(sl, 'guide.clearance')[0].text, /0\.2 mm clear a side/);
     // refused by name
     write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', on: 'x1.top.2', length: 400 }] });
-    assert.match(cad('check', 'roll/bad'), /guide 1: on is the face the plate lies over, as x1\.top/);
+    cad.refused(/guide 1: on is the face the plate lies over, as x1\.top/, 'check', 'roll/bad');
     write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', on: 'x1.top', length: 60 }] });
-    assert.match(cad('check', 'roll/bad'), /guide 1: its carriage is 63\.9 mm long over its wheels, so a 60 mm stretch leaves it no travel/);
+    cad.refused(/guide 1: its carriage is 63\.9 mm long over its wheels, so a 60 mm stretch leaves it no travel/, 'check', 'roll/bad');
     write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', rail: 'rail-mgn12', on: 'x1.top', length: 400 }] });
-    assert.match(cad('check', 'roll/bad'), /guide 1: a wheels guide has no "rail"|guides\/0/);
+    cad.refused(/guide 1: a wheels guide has no "rail"|guides\/0/, 'check', 'roll/bad');
   } finally { done(); }
 });
 
@@ -200,7 +200,7 @@ test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carr
     run('set', 'axes/x-moved', 'g2.across=12'); run('set', 'axes/x-long', 'g2.cut=830');
     // a belt names a rail guide by its id: refused by name, nothing written
     const before = fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8');
-    assert.match(cad('add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17'), /no guide "g9"/);
+    cad.refused(/no guide "g9"/, 'add', 'guide', 'axes/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17');
     assert.equal(fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8'), before);
     // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
     const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
@@ -331,7 +331,7 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
     const screw = { kind: 'screw', guide: 'g1', screw: 't8-screw', motor: { model: '28byj48', microsteps: 1, duty: 0.3 }, friction: 'lift.z_friction' };
     // placed by an address: one beside the holder is refused, saying where the switch's flag would meet its lever
     write('z-far', [rods('x1.front@60'), screw]);
-    const said = cad('check', 'arm/z-far'), place = /at (x1\.front@[\d.]+) it trips 0 mm from the travel's start/.exec(said);
+    const said = cad.refused('its mount reaches back over', 'check', 'arm/z-far'), place = /at (x1\.front@[\d.]+) it trips 0 mm from the travel's start/.exec(said);
     assert.match(said, /guide 1: endstop at x1\.front@60: its mount reaches back over g1-holder-a's leg \(to 71\.5 mm along x1\)/); assert.ok(place, said);
     write('z-rods', [rods(`x1.front@${Math.ceil(parseFloat(place[1].split('@')[1]))}`), screw]);
     // (the probe is a file, not node -e: a worker thread the motor's finite elements start takes its parent's -e as its own)
@@ -374,7 +374,7 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
     for (const b of [[2, 'rod-8'], [2, 'lm8uu'], [1, '28byj48'], [1, 'coupler-5-8'], [1, 't8-nut'], [2, 'bearing-608'], [1, 'endstop-10t85']]) assert.ok(z.bought.some((x) => x[0] === b[0] && x[1] === b[1]), `${b[1]}: ${JSON.stringify(z.bought)}`);
     for (const x of [[9, 'M5x12 cap'], [4, 'M3x12 button'], [2, 'M2x12 cap']]) assert.ok(z.fasteners.some((f) => f[0] === x[0] && f[1] === x[1]), `${x[1]}: ${JSON.stringify(z.fasteners)}`);
     // refused by name: a screw on wheels, a screw naming no guide, a belt, a motor plate past the beam's end
-    const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [0, 0, 300] }), bad = (guides, profile = '2020-misumi-hfs5') => { fs.writeFileSync(path.join(ws, 'projects/arm/assemblies/bad.json'), JSON.stringify({ title: 'bad', kind: 'fit', items: [beam(profile)], guides })); return cad('check', 'arm/bad'); };
+    const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [0, 0, 300] }), bad = (guides, profile = '2020-misumi-hfs5') => { fs.writeFileSync(path.join(ws, 'projects/arm/assemblies/bad.json'), JSON.stringify({ title: 'bad', kind: 'fit', items: [beam(profile)], guides })); return cad.refused(/guide 2: |guides\/1/, 'check', 'arm/bad'); };
     assert.match(bad([{ kind: 'wheels', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }], '2040-openbuilds'), /guide 2: a screw drives a rods guide's carriage, and g1 is a wheels guide/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g9', motor: { model: '28byj48' } }]), /guide 2: guide names the rods guide whose carriage the screw drives, by its id \(got "g9"; guides: g1, g2\)/);
     assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'belt', guide: 'g1', motor: { model: 'nema17' } }]), /guide 2: a belt drives a rail guide's carriage, and g1 is a rods guide; a rods guide is driven by a screw|guides\/1/);
@@ -397,7 +397,7 @@ test('guides on a frame: a rods guide on a beam joined at both ends shuts its ho
       guides: [{ kind: 'rods', on: 'x1.top', from: 50, length: 200, spacing: 40, height: 22.5, ...rods }] }));
     // slide-in, the strongest made for the slot: shut in by the joins, and said in the check of every pose (g1-a, g1-b)
     write({});
-    const slide = cad('check', 'frame/frame');
+    const slide = cad.refused('no build from bars to a square frame', 'check', 'frame/frame');
     assert.match(slide, /2 poses checked: g1-a, g1-b/);
     assert.match(slide, /✗ g1: g1-holder-a's leg into x1's front slot: 1 slide-in nut \(slot-nut-6-misumi-m5-slide-in\) goes into x1's front slot at [\d.]+ mm, between x1's end a \(the blind join of x1\.a to p1\.back@120\) and x1's end b \(the blind join of x1\.b to p2\.front@120\), which close it at both ends/);
     // drop-in: through the opening, anywhere, for the holders' legs on both sides

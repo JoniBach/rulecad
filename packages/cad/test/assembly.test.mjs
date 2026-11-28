@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { workspace, object, BOX, BIN } from './helpers.mjs';
 
 test('objects read each other: a frame sized from a plate follows it, versions are checked, and loops are named', () => {
@@ -19,9 +19,9 @@ test('objects read each other: a frame sized from a plate follows it, versions a
     fs.writeFileSync(pj, JSON.stringify({ ...plate, variables: { ...plate.variables, w: { ...plate.variables.w, value: 50 } } }));
     assert.match(cad('check', 'demo/frame'), /52 × 22 × 2 mm/, 'the frame follows the plate');
     fs.writeFileSync(pj, JSON.stringify({ ...plate, version: '1.0.0' }));
-    assert.match(cad('check', 'demo/frame'), /uses demo\/plate \^0\.1\.0, but demo\/plate is 1\.0\.0/);
+    cad.refused(/uses demo\/plate \^0\.1\.0, but demo\/plate is 1\.0\.0/, 'check', 'demo/frame');
     fs.writeFileSync(pj, JSON.stringify({ ...plate, uses: ['demo/frame'] }));
-    assert.match(cad('check', 'demo/frame'), /read each other's numbers/);
+    cad.refused(/read each other's numbers/, 'check', 'demo/frame');
   } finally { done(); }
 });
 
@@ -37,7 +37,7 @@ test('a pose that sets an item\'s variables: the part drawn that way in that pos
       items: [{ id: 'base', object: 'base' }, { id: 'post', object: 'post', at: [0, 0, 'base.h'] }, { id: 'stop', object: 'base' }],
       joints: [{ id: 'slide', type: 'prismatic', parent: { at: [0, 0, 8], axis: [0, 0, 1] }, child: { item: 'stop', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 50 }], poses }));
     write({ pressed: { slide: 0, 'post.h': 5 }, free: { slide: 0 } });
-    const out = cad('check', 'demo/press');
+    const out = cad.refused(/free: post\.body and stop\.body overlap/, 'check', 'demo/press');
     assert.match(out, /2 poses checked: pressed, free/);
     assert.match(out, /free: post\.body and stop\.body overlap/, 'as printed, the post reaches the stop');
     assert.doesNotMatch(out, /pressed: post\.body and stop\.body overlap/, 'pressed, it clears it');
@@ -78,7 +78,7 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.match(checked, /2 poses checked: closed, open/);
     assert.match(checked, /Lid and tab line up: closed/);
     assert.doesNotMatch(checked, /✗|fail/i);
-    assert.match(cad('check', 'demo/box', '--sweep', '--steps', '7'), /sweep hinge, -180 to 30° in 7 steps: at 30°: base\.body hits lid\.body/);
+    cad.refused(/sweep hinge, -180 to 30° in 7 steps: at 30°: base\.body hits lid\.body/, 'check', 'demo/box', '--sweep', '--steps', '7');
     assert.match(cad('check', 'demo/box', '--pose', 'open'), /Box \(open\)/);
     // A fit near an anchor (only the faces within 3 mm of base@hinge), and findings that say which anchor they're near
     box({}, [{ a: 'base@hinge', b: 'lid', within: 3, min: 5, note: 'Lid clear of the hinge' }]);
@@ -86,7 +86,7 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.ok(near, nearOut);
     assert.equal(near.level, 'warn'); assert.equal(near.refs.near.endsWith('@hinge'), true); assert.ok(near.at);
     box();
-    assert.match(cad('check', 'demo/box', '--pose', 'wide'), /no pose "wide"/);
+    cad.refused(/no pose "wide"/, 'check', 'demo/box', '--pose', 'wide');
     // The library, as a program uses it: progress while it builds and sweeps, and the joints' data for the page
     const lib = path.join(path.dirname(BIN), '../lib/assembly.mjs');
     const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -98,9 +98,9 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
       console.log(JSON.stringify({ build: seen.filter((x) => x === 'build').length, sweep: seen.filter((x) => x === 'sweep').length, joints: m.motion.joints.length }));`], { cwd: ws, encoding: 'utf8' });
     assert.deepEqual(JSON.parse(out), { build: 5, sweep: 5, joints: 2 }); // four items, and the spare component's own one
     box({ ratio: 2 }); // the tab turns twice as far: the loop comes apart once open
-    assert.match(cad('check', 'demo/box'), /open: .*Lid and tab line up: apart/);
+    cad.refused(/open: .*Lid and tab line up: apart/, 'check', 'demo/box');
     box({ type: 'ball' });
-    assert.match(cad('check', 'demo/box'), /joint tab \(ball\) takes 3 values, but follows hinge \(revolute\), which takes 1/);
+    cad.refused(/joint tab \(ball\) takes 3 values, but follows hinge \(revolute\), which takes 1/, 'check', 'demo/box');
   } finally { done(); }
 });
 
@@ -117,7 +117,7 @@ test('engage: a sleeve seated over a post passes; resting on the post\'s end, to
       joints: [{ id: 'on', type: 'fixed', parent: 'post.top', child: 'sleeve.seat' }],
       fits: [{ a: 'sleeve', b: 'post', engage: 'sleeve.t', note: 'Sleeve over the post' }] }));
     sleeve(0); // its anchor on its bottom face: it stands on the post's end
-    const resting = cad('check', 'shaft/pair');
+    const resting = cad.refused('✗ Sleeve over the post: not on at all', 'check', 'shaft/pair');
     assert.match(resting, /no parts overlap/, 'touching end to end overlaps nothing');
     assert.match(resting, /✗ Sleeve over the post: not on at all \(end to end\) along their joint, where it should go 4 mm on/);
     sleeve('t'); // its anchor on its top face: it goes down over the post
@@ -151,7 +151,7 @@ test('a bought bearing: placed from its set, turning a shaft, its printed seat r
     fs.writeFileSync(path.join(ws, 'projects/home/objects/housing.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nconst bearing = { bore: 8, outer_diameter: 22, width: 7 }\nexport function main (v) {\n  const seat = v.shapes.bearingSeat(bearing, { fit: v.off ? -0.05 + v.off : 'press', printer: v.x1c, at: [0, 0, v.tall], into: '-z', relief: 2, through: true })\n  return v.ops.subtract(cuboid({ size: [34, 34, v.tall], center: [0, 0, v.tall / 2] }), seat)\n}\n");
     const a = { title: 'Seat', kind: 'fit', items: [{ id: 'housing', object: 'housing' }, { id: 'b1', bought: 'bearing-608', at: [0, 0, 5] }], fits: [{ a: 'b1', b: 'housing', seat: 'press', fastens: true }] };
     fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
-    const check = (o) => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/seat', ...(o ?? []), '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const check = (o) => cad.findings('check', 'home/seat', ...(o ?? []), '--json');
     let f = check();
     assert.deepEqual(f.filter((x) => x.level === 'fail').map((x) => x.text), []);
     const seat = f.filter((x) => x.code === 'fit.seat');
@@ -163,7 +163,7 @@ test('a bought bearing: placed from its set, turning a shaft, its printed seat r
     assert.equal(f[0].level, 'fail'); assert.match(f[0].text, /0\.3\d? mm too small: it will not press in/);
     assert.match(cad('list', 'home/seat'), /1 ×\s+bearing-608\s+a bearing/);
     a.items[1].bought = 'bearing-999'; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
-    assert.match(cad('check', 'home/seat'), /no bought part "bearing-999" \(.*bearing-608/);
+    cad.refused(/no bought part "bearing-999" \(.*bearing-608/, 'check', 'home/seat');
   } finally { done(); }
 });
 

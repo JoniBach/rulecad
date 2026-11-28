@@ -25,11 +25,11 @@ export function main (v) {
   })
 }
 `);
-    const ok = cad('check', 'demo/flick');
+    const ok = cad.refused('its strain peaks at a square corner', 'check', 'demo/flick'); // (its leaf's square root fails the corner check; what is tested here passes)
     assert.match(ok, /✓ everything clears what it isn't joined to by 0\.3 mm/);
     assert.match(ok, /✓ leaf: stopped by the ground at [\d.]+ mm, before its limit/);
     assert.match(ok, /✓ rest to bent: clear all the way/);
-    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/, 'the same from the cache');
+    assert.match(cad.refused('its strain peaks at a square corner', 'check', 'demo/flick'), /✓ rest to bent: clear all the way/); // the same from the cache
     // The physics, the slow stage, is kept apart (.cache/stages): the sandbox handed it back and the tool wrote it
     const stages = path.join(ws, '.cache', 'stages'), kept = fs.readdirSync(stages);
     assert.ok(kept.some((f) => f.startsWith('physics-')) && JSON.parse(fs.readFileSync(path.join(stages, kept.find((f) => f.startsWith('physics-'))), 'utf8')).transitions, `the physics kept as JSON: ${kept.join(', ')}`);
@@ -37,12 +37,12 @@ export function main (v) {
     const file = path.join(ws, 'projects', 'demo', 'objects', 'flick.json'), json = JSON.parse(fs.readFileSync(file, 'utf8'));
     json.variables.len.rule = 'The leaf, reworded'; fs.writeFileSync(file, JSON.stringify(json, null, 2));
     const before = kept.length;
-    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/);
+    assert.match(cad.refused('its strain peaks at a square corner', 'check', 'demo/flick'), /✓ rest to bent: clear all the way/);
     assert.equal(fs.readdirSync(stages).length, before, 'reworded: nothing computed again');
     json.variables.bend.value = 0.2; fs.writeFileSync(file, JSON.stringify(json, null, 2));
-    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/);
+    assert.match(cad.refused('its strain peaks at a square corner', 'check', 'demo/flick'), /✓ rest to bent: clear all the way/);
     assert.ok(fs.readdirSync(stages).length > before, 'a value changed: the physics made again');
-    assert.match(cad('check', 'demo/flick:fused'), /✗ the ground and tip are 0\.1 mm apart at rest: under the 0\.3 mm gap, they print as one/);
+    cad.refused(/✗ the ground and tip are 0\.1 mm apart at rest: under the 0\.3 mm gap, they print as one/, 'check', 'demo/flick:fused');
     const outs = cad('animate', 'demo/flick').trim().split('\n'), out = outs.find((l) => l.endsWith('.svg'));
     assert.ok(out.endsWith('flick-sequence.svg') && /<svg[\s\S]*<animate attributeName="display"[\s\S]*rest to bent/.test(fs.readFileSync(out, 'utf8')));
     // and as data, every frame's shapes and what acts on them, with a page that plays it
@@ -52,7 +52,7 @@ export function main (v) {
     const page = fs.readFileSync(outs.find((l) => l.endsWith('-player.html')), 'utf8');
     assert.ok(/<canvas id="view">/.test(page) && page.includes('"frames":'), 'a page that plays it, its data inside');
     object(ws, 'demo/cube', { variables: { w: n(10, 'Width') } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n");
-    assert.match(cad('animate', 'demo/cube'), /isn't a lamina mechanism/);
+    cad.refused(/isn't a lamina mechanism/, 'animate', 'demo/cube');
   } finally { done(); }
 });
 
@@ -61,7 +61,7 @@ test('a folding sheet in an assembly: the bench tray checked flat and folded, a 
   const bench = fileURLToPath(new URL('../../examples/bench/', CAD));
   try {
     for (const d of ['rules', 'projects/flexures']) fs.cpSync(path.join(bench, d), path.join(ws, d), { recursive: true });
-    const check = (name) => JSON.parse(cad('check', name, '--json')).findings;
+    const check = (name) => cad.findings('check', name, '--json'); // (pass or fail: the findings are what is read)
     // the tray alone: its own fold check runs with the print checks, every joint within PETG's limit at 90°
     const t = check('flexures/tray');
     assert.deepEqual(t.filter((x) => x.code === 'fold.strain').map((x) => x.level), ['pass', 'pass', 'pass', 'pass']);

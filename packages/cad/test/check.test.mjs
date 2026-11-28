@@ -11,7 +11,7 @@ test('a raw number in a design fails the check', () => {
     cad('new', 'demo/block');
     const js = path.join(ws, 'projects/demo/objects/block.js');
     fs.writeFileSync(js, fs.readFileSync(js, 'utf8').replace('export function main', 'const sneaky = 17\nexport function main'));
-    assert.match(cad('check', 'demo/block'), /should be variables: line \d+: 17/);
+    cad.refused(/should be variables: line \d+: 17/, 'check', 'demo/block');
   } finally { done(); }
 });
 
@@ -31,7 +31,7 @@ test('findings as data (--json), values, and why a value is what it is', () => {
     const rules = (n) => [n, ...(n.reads || []).flatMap(rules)];
     assert.ok(rules(tree).some((n) => n.name.startsWith('x1c.') && n.kind), 'down to the printer rules, with their kind');
     assert.match(cad('why', `bathroom/soap-tray.${w.name}`), new RegExp(`^${w.name} = `));
-    const err = JSON.parse(cad('values', 'bathroom/soap-tray', 'nope', '--json'));
+    const err = JSON.parse(cad.refused('var.unknown', 'values', 'bathroom/soap-tray', 'nope', '--json'));
     assert.equal(err.error.code, 'var.unknown');
   } finally { done(); }
 });
@@ -53,7 +53,7 @@ test('schemas: every format checked up front, a typo named with its path', async
     assert.match(cad('check', 'bathroom/soap-tray'), /files match their schemas/);
     const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), j = JSON.parse(fs.readFileSync(f, 'utf8'));
     j.orientaton = 'typo'; fs.writeFileSync(f, JSON.stringify(j));
-    assert.match(cad('check', 'bathroom/soap-tray'), /orientaton: not allowed here \(did you mean "orientation"\?\)/);
+    cad.refused(/orientaton: not allowed here \(did you mean "orientation"\?\)/, 'check', 'bathroom/soap-tray');
   } finally { done(); }
 });
 
@@ -65,6 +65,6 @@ test('a check reads the object against its schema first; a measurement with no r
     assert.match(out, /! a variable has no rule saying why it is what it is: w/);
     const file = path.join(ws, 'projects/demo/objects/plain.json'), j = JSON.parse(fs.readFileSync(file, 'utf8'));
     j.variables.w.value = null; fs.writeFileSync(file, JSON.stringify(j));
-    assert.match(cad('check', 'demo/plain'), /variables\.w\.value: should be number or string or boolean or array or object, not null/);
+    cad.refused(/variables\.w\.value: should be number or string or boolean or array or object, not null/, 'check', 'demo/plain');
   } finally { done(); }
 });

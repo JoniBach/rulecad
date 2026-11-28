@@ -6,17 +6,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { workspace, object, run, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
+import { workspace, object, run, ok, BIN, ROOT_MODULES, CAD } from './helpers.mjs';
 
 test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
   const { ws, cad, done } = workspace();
   try {
     const vars = { w: { value: 10, unit: 'mm', rule: 'Width' } };
-    const tryIt = (name, body) => {
-      object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${body}\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n`);
-      return cad('check', `demo/${name}`);
-    };
-    assert.match(tryIt('fine', ''), /fits the bed/);
+    // tryIt: a design the sandbox refuses (the check exits 1), its output; builds: one it lets through, its output
+    const draw = (name, body) => object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${body}\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n`);
+    const tryIt = (name, body) => { draw(name, body); const r = cad.run('check', `demo/${name}`); assert.notEqual(r.status, 0, r.out); return r.out; };
+    const builds = (name, body) => { draw(name, body); return cad('check', `demo/${name}`); };
+    assert.match(builds('fine', ''), /fits the bed/);
     assert.match(tryIt('fs', "import fs from 'node:fs'"), /designs can't import "node:fs"/);
     assert.match(tryIt('net', "await fetch('https://example.com')"), /fetch is not defined/);
     assert.match(tryIt('dyn', "await import('node:child_process')"), /designs can't import "node:child_process"/);
@@ -26,9 +26,9 @@ test('sandbox: a design can make shapes, but not read or write files, reach the 
     fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false }));
     assert.match(tryIt('untrusted', "import fs from 'node:fs'"), /designs can't import "node:fs"/, 'a workspace that turns the sandbox off isn\'t believed until its user trusts it');
     assert.match(cad('trust'), /trusted .* for designs run outside the sandbox/);
-    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs, once its user says so');
+    assert.match(builds('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs, once its user says so');
     fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false, targets: { show: 'mine/show.mjs' } }));
-    assert.match(cad('show', 'demo/fine'), /asks for designs run outside the sandbox and the show target mine\/show\.mjs .* run cad trust once/, 'asking for more is asked again'); // (a design that builds in the sandbox too: this one's about the target, whether or not its build is cached)
+    cad.refused(/asks for designs run outside the sandbox and the show target mine\/show\.mjs .* run cad trust once/, 'show', 'demo/fine'); // (a design that builds in the sandbox too: this one's about the target, whether or not its build is cached) // asking for more is asked again
   } finally { done(); }
 });
 
@@ -42,7 +42,7 @@ export function main (v) {
   return v.ops.subtract(cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }), sphere({ radius: v.r, center: [0, 0, v.w], segments: v.n }))
 }
 `);
-    const j = JSON.parse(cad('check', 'demo/cut', '--json')), m = JSON.parse(execFileSync(process.execPath, [BIN, 'check', 'demo/cut', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_ENGINE: 'manifold' } }));
+    const j = JSON.parse(cad('check', 'demo/cut', '--json')), m = cad.with({ env: { CAD_ENGINE: 'manifold' } }).json('check', 'demo/cut', '--json');
     const size = (r) => r.findings.find((f) => f.code === 'print.bed').values.size, base = (r) => r.findings.find((f) => f.code === 'print.base').values.area;
     assert.deepEqual(size(j).map((x) => x.toFixed(2)), size(m).map((x) => x.toFixed(2)));
     assert.ok(Math.abs(base(j) - base(m)) < 0.5, 'the same footprint');
@@ -78,13 +78,15 @@ test('sandbox: the roads round the import hook are shut too, and the design sees
   const { ws, done } = workspace();
   try {
     const vars = { w: { value: 10, unit: 'mm', rule: 'Width' } };
-    const tryIt = (name, top, body) => {
+    // tryIt: a design the sandbox refuses (the check exits 1), its output; builds: one it lets through, its output
+    const draw = (name, top, body) => {
       object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${top}\nexport function main (v) {\n  ${body}\n  return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] })\n}\n`);
-      return run(ws, ['check', `demo/${name}`], { SECRET_TOKEN: 'tok123' }).out;
     };
+    const tryIt = (name, top, body) => { draw(name, top, body); const r = run(ws, ['check', `demo/${name}`], { SECRET_TOKEN: 'tok123' }); assert.notEqual(r.status, 0, r.out); return r.out; };
+    const builds = (name, top, body) => { draw(name, top, body); return ok(ws, ['check', `demo/${name}`], { SECRET_TOKEN: 'tok123' }); };
     assert.match(tryIt('builtin', '', "process.getBuiltinModule('node:fs')"), /getBuiltinModule is not a function/);
-    assert.match(tryIt('env', '', "if (process.env.SECRET_TOKEN || process.env.HOME) throw new Error('the environment leaked')"), /fits the bed/);
-    assert.match(tryIt('kill', '', "if (process.kill || process.binding) throw new Error('process can still reach out')"), /fits the bed/);
+    assert.match(builds('env', '', "if (process.env.SECRET_TOKEN || process.env.HOME) throw new Error('the environment leaked')"), /fits the bed/);
+    assert.match(builds('kill', '', "if (process.kill || process.binding) throw new Error('process can still reach out')"), /fits the bed/);
     // a node_modules folder inside the project is the design's own code, held to the same imports
     fs.mkdirSync(path.join(ws, 'projects/demo/node_modules'), { recursive: true });
     fs.writeFileSync(path.join(ws, 'projects/demo/node_modules/helper.mjs'), "export * as http from 'node:http'\n");
@@ -92,7 +94,7 @@ test('sandbox: the roads round the import hook are shut too, and the design sees
     // and a path out of the project is refused wherever it leads, the workspace's packages included
     assert.match(tryIt('leaves', "import * as ts from '../../../node_modules/typescript/lib/typescript.js'", ''), /it is outside the project/);
     fs.writeFileSync(path.join(ws, 'projects/demo/objects/half.js'), 'export const half = (x) => x / (1 + 1)\n');
-    assert.match(tryIt('own-file', "import { half } from './half.js'", 'half(v.w)'), /fits the bed/, 'its own files are still its own');
+    assert.match(builds('own-file', "import { half } from './half.js'", 'half(v.w)'), /fits the bed/, 'its own files are still its own');
   } finally { done(); }
 });
 
@@ -104,7 +106,7 @@ test('a node_modules link spelled through another link: the sandbox names the li
     fs.symlinkSync(real, alias, 'dir'); fs.symlinkSync(ROOT_MODULES, path.join(real, 'node_modules'), 'dir');
     fs.rmSync(path.join(ws, 'node_modules')); fs.symlinkSync(path.join(alias, 'node_modules'), path.join(ws, 'node_modules'), 'dir');
     cad('new', 'home/tray');
-    const out = cad('check', 'home/tray');
+    const out = cad.refused("the design's sandbox was refused", 'check', 'home/tray');
     assert.match(out, new RegExp(`sandbox was refused ${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, a link to ${real.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), out);
     assert.match(out, /Make that link with its real path/);
   } finally { done(); fs.rmSync(alias, { force: true }); fs.rmSync(real, { recursive: true, force: true }); }
