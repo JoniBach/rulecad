@@ -76,13 +76,42 @@ node scripts/release.mjs --dry-run   # what it would release, and the order to p
 node scripts/release.mjs             # versions, CHANGELOG sections, the notes removed, ranges raised, the lockfile
 ```
 
-and opens it as the release pull request. Merging it to `main` publishes: GitHub Actions tests it on Linux, macOS and
-Windows, then publishes every package whose version isn't on npm yet, with provenance. A package whose dependency's
-new minor its range no longer covers is released too, as following it.
+and opens it as the release pull request. A package whose dependency's new minor its range no longer covers is
+released too, as following it. Merging it to `main` publishes, in this order (`.github/workflows/publish.yml`):
+
+1. **The tests, on every platform.** The `test` workflow runs on the merge: Linux with Node 20 and 24, macOS, Windows,
+   the browser tests and the fresh install (the packages installed as a stranger installs them). Nothing is published
+   unless every job passes.
+2. **The plan.** When that run passes, the `publish` workflow starts. Its first job, which can only read, checks out
+   the commit that was tested and says which versions aren't on npm yet (`node scripts/publish-plan.mjs`). When none
+   is, the run ends there: "nothing new to publish". It also stands down when `main` has moved on since, because the
+   newer commit's own run publishes whatever is due.
+3. **Publishing.** Only then does the publish job run, in the GitHub environment `npm-publish`. It is the only job
+   that can publish to npm; it installs with `npm ci --ignore-scripts` (no dependency's install script runs there) and
+   runs no tests, since they have passed already. Each version goes out with provenance.
+4. **The GitHub Releases.** A last job, which can write to the repository but cannot publish, makes a release for each
+   version that went out, tagged at the tested commit.
+
+A **blocked release** starts again in one of these ways:
+
+- The tests failed or were cancelled: put the fault right in a pull request, or, for a passing test that failed by
+  chance, open the test run on `main` in the Actions tab and choose "Re-run failed jobs". When the run passes,
+  publishing follows on its own.
+- The publish run stopped part way (a time limit, npm unavailable): run it again from the Actions tab ("Re-run all
+  jobs"), or with `gh workflow run publish.yml` from `main`. Started by hand, it publishes only from `main`, and only a
+  commit whose test run passed. Whatever is already on npm, and every release already made, is left alone.
+- To see what a run would publish without publishing anything, start it on another branch:
+  `gh workflow run publish.yml --ref <branch>`. It runs the plan, and stops there.
 
 A **new package** has to be published once by hand first: npm only lets the workflow publish packages that already
 exist. The workflow notices one before publishing anything and prints the commands (publish it, run `npm trust` for
-it, run the workflow again). Run them one at a time: each asks for two-factor in the browser.
+it, run the workflow again). Run them one at a time: each asks for two-factor in the browser. `scripts/trust.sh`
+trusts the publish job only: the workflow file `publish.yml`, in the environment `npm-publish`.
+
+**Protecting `main`.** A ruleset in the repository's settings (Settings, Rules, Rulesets) lets a pull request merge
+only when the four `test` jobs have passed: `test (ubuntu-latest, 20)`, `test (ubuntu-latest, 24)`,
+`test (macos-latest, 24)` and `test (windows-latest, 24)`. A failed or cancelled one blocks the merge. Where the
+ruleset isn't set up yet, keep to the same rule by hand: never merge with a check that failed or was cancelled.
 
 ## Conduct
 
