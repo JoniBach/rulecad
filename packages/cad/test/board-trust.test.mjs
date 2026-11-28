@@ -10,10 +10,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { workspace } from './helpers.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/cad.mjs', import.meta.url));
 const LIB = (f) => pathToFileURL(fileURLToPath(new URL(`../lib/${f}`, import.meta.url))).href;
-const ROOT_MODULES = fileURLToPath(new URL('../../../node_modules', import.meta.url));
 
 // A board design that leaves a mark when it loads, so a test can tell whether it ran
 const BOARD = (mark) => `import fs from 'node:fs';
@@ -23,11 +23,9 @@ export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: 
 const BOARD_JSON = { name: 'b', title: 'Board', version: '0.1.0', engine: 'pcb', role: 'board', uses: ['jlcpcb'], parts: { board: { label: 'PCB' } },
   variables: { w: { value: 30, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, thickness: { value: 'jlcpcb.thickness', unit: 'mm', rule: 'Standard' } } };
 
-function workspace() {
-  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-board-'));
-  fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
-  fs.writeFileSync(path.join(ws, 'cad.config.json'), '{}');
-  fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction');
+// (helpers.mjs's workspace(), with a project for boards and a cad() that keeps the exit status, run with CAD_TRUST cleared)
+function boardWorkspace() {
+  const { ws } = workspace({});
   fs.mkdirSync(path.join(ws, 'projects/p/objects'), { recursive: true });
   fs.writeFileSync(path.join(ws, 'projects/p/project.json'), JSON.stringify({ name: 'p', objects: ['b'] }));
   const env = { ...process.env, CAD_WORKSPACE: ws, CAD_TRUSTED: path.join(ws, '.trusted.json'), CAD_TRUST: '', CAD_NO_CACHE: '1' };
@@ -40,7 +38,7 @@ function workspace() {
 }
 
 test('an untrusted board design is refused and runs nothing; cad trust lists it, and after that it builds', () => {
-  const w = workspace();
+  const w = boardWorkspace();
   try {
     const mark = path.join(w.ws, 'ran.txt');
     w.board('b', mark);
@@ -65,7 +63,7 @@ test('an untrusted board design is refused and runs nothing; cad trust lists it,
 });
 
 test('a workspace with no board design asks nothing for boards', () => {
-  const w = workspace();
+  const w = boardWorkspace();
   try {
     fs.writeFileSync(path.join(w.ws, 'projects/p/objects/plain.json'), JSON.stringify({ name: 'plain', version: '0.1.0', variables: {} }));
     assert.match(w.cad('trust').stdout, /nothing to trust/);
@@ -73,7 +71,7 @@ test('a workspace with no board design asks nothing for boards', () => {
 });
 
 test('asks() reads the objects once per run, and a board design that appears later is still asked about when it is built', () => {
-  const w = workspace();
+  const w = boardWorkspace();
   try {
     const mark = path.join(w.ws, 'ran.txt');
     const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -125,7 +123,7 @@ test('a design in a workspace held in memory is refused unless the caller passes
 
 // Ways round the gate found after it was written
 test('a trusted workspace does not run a board design from outside its folder', () => {
-  const w = workspace(), other = workspace();
+  const w = boardWorkspace(), other = boardWorkspace();
   try {
     w.board('b', path.join(w.ws, 'ran.txt'));
     assert.equal(w.cad('trust').status, 0);
@@ -151,7 +149,7 @@ test('a workspace in memory runs designs only for trusted: true itself, not a va
 });
 
 test('a board design linked into a trusted workspace from elsewhere is elsewhere', () => {
-  const w = workspace(), other = workspace();
+  const w = boardWorkspace(), other = boardWorkspace();
   try {
     w.board('b', path.join(w.ws, 'ran.txt'));
     assert.equal(w.cad('trust').status, 0);

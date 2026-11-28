@@ -9,16 +9,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { workspace } from './helpers.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/cad.mjs', import.meta.url));
 const LIB = (f) => pathToFileURL(fileURLToPath(new URL(`../lib/${f}`, import.meta.url))).href;
 
 // A workspace holding a module that leaves a mark when it loads, so a test can tell whether it ran
 const MODULE = (mark) => `import fs from 'node:fs';\nfs.writeFileSync(${JSON.stringify(mark)}, 'ran');\nexport async function show() {}\nexport async function shorten() { return 'id'; }\n`;
-function workspace(targets) {
-  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-target-'));
-  fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
-  fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ targets }));
+// (helpers.mjs's workspace(), with a probe and a cad() that throws, both run with CAD_TRUST cleared)
+function targetWorkspace(targets) {
+  const { ws } = workspace({ targets });
   const env = { ...process.env, CAD_WORKSPACE: ws, CAD_TRUSTED: path.join(ws, '.trusted.json'), CAD_TRUST: '' };
   // What the workspace asks for, and what loading its target does: { asks, code, message } (code null: it loaded)
   const probe = (kind) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -33,7 +33,7 @@ function workspace(targets) {
 }
 
 test('a target named without a slash or an extension is the workspace\'s code, asked about once', () => {
-  const w = workspace({ show: 'show' });
+  const w = targetWorkspace({ show: 'show' });
   try {
     const mark = path.join(w.ws, 'ran.txt');
     fs.writeFileSync(path.join(w.ws, 'show'), MODULE(mark)); // (an extensionless module at the workspace's root)
@@ -48,7 +48,7 @@ test('a target named without a slash or an extension is the workspace\'s code, a
 });
 
 test('a backslash path is the workspace\'s code, asked about once', () => {
-  const w = workspace({ show: 'helper\\show' });
+  const w = targetWorkspace({ show: 'helper\\show' });
   try {
     const r = w.probe('show');
     assert.deepEqual(r.asks, ['the show target helper\\show']);
@@ -58,7 +58,7 @@ test('a backslash path is the workspace\'s code, asked about once', () => {
 
 test('a "../" name that reaches one of the kit\'s own modules is not the kit\'s own target', () => {
   for (const name of ['../sandbox', '../targets/gist', 'targets/gist', 'gist.mjs', './gist']) {
-    const w = workspace({ show: name });
+    const w = targetWorkspace({ show: name });
     try {
       const before = w.probe('show');
       assert.deepEqual(before.asks, [`the show target ${name}`], name);
@@ -79,7 +79,7 @@ test('a target outside the workspace is asked about, and refused even once trust
   fs.writeFileSync(path.join(elsewhere, 'show.mjs'), MODULE(mark));
   try {
     for (const name of [path.join(elsewhere, 'show.mjs'), `../${path.basename(elsewhere)}/show.mjs`]) {
-      const w = workspace({ show: name });
+      const w = targetWorkspace({ show: name });
       try {
         const before = w.probe('show');
         assert.deepEqual(before.asks, [`the show target ${name}`]);
@@ -94,13 +94,13 @@ test('a target outside the workspace is asked about, and refused even once trust
 });
 
 test('the kit\'s own gist target, by its exact name, still runs without trust', () => {
-  const w = workspace({ shorten: 'gist' });
+  const w = targetWorkspace({ shorten: 'gist' });
   try {
     const r = w.probe('shorten');
     assert.deepEqual(r.asks, []);
     assert.equal(r.code, null, r.message);
     assert.match(w.cad('trust'), /asks for nothing outside the sandbox/);
   } finally { w.done(); }
-  const n = workspace({ shorten: 'toString' }); // (a name every object has is not one of the kit's)
+  const n = targetWorkspace({ shorten: 'toString' }); // (a name every object has is not one of the kit's)
   try { assert.equal(n.probe('shorten').code, 'workspace.untrusted'); } finally { n.done(); }
 });
