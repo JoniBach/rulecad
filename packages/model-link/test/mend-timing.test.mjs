@@ -4,7 +4,7 @@
 // it to the length of the edge, and check a mesh too big for the grid walk is still mended, in bounded time.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stl, threemf, mesh } from '@rulecad/model-link';
+import { stl, threemf, mesh, check, LIMITS } from '@rulecad/model-link';
 
 const time = async (f) => { const t0 = performance.now(); const out = await f(); return [performance.now() - t0, out]; };
 
@@ -94,4 +94,54 @@ test('with many loose corners elsewhere, the grid walk (slanted edge) and the bo
     assert.equal(out.tris.length, 3 + 4 + 3 + decoys.length, `${name}: the face along the edge is split at all three corners`);
     assert.equal(open(out).length, 3 * decoys.length, `${name}: only the far-off triangles are left open`);
   }
+});
+
+// Ways round the budget, found by attacking the fix
+
+test('thousands of tiny open triangles packed in one 1 mm cell still write in bounded time', async () => {
+  // Every edge's box is a cell or two, so counting cells alone let each edge look at all 18,000 loose corners there
+  // (19 s before; a few kilobytes as a link): the corners met in a cell are paid for too
+  const N = 6000, p = [], t = [];
+  for (let i = 0; i < N; i++) {
+    const x = (i % 30) * 30 + 10, y = (Math.floor(i / 30) % 30) * 30 + 10, z = Math.floor(i / 900) * 30 + 10; // in microns
+    p.push(x, y, z, x + 10, y, z, x, y + 10, z); t.push(3 * i, 3 * i + 1, 3 * i + 2);
+  }
+  const [ms, bytes] = await time(() => stl({ q: 0.001, p, t }));
+  assert.equal(bytes.length, 84 + 50 * 2 * N, 'every triangle written, and closed behind (each is a pinhole)');
+  assert.ok(ms < 5000, `STL took ${ms.toFixed(0)} ms`);
+});
+
+test('the parts of one file share one mend budget, so many parts made to be slow cannot each spend a budget of their own', async () => {
+  // 40 parts of 600 open triangles 10 m across: each part alone spends its whole budget (12 s before, for all 40)
+  const R = 600, P = 40, s = 1e4, p = [], t = [], parts = [];
+  for (let k = 0; k < P; k++) {
+    for (let i = 0; i < R; i++) { const n = p.length / 3; p.push(3 * i, 0, 5 * k, 3 * i + s, s, s + 5 * k, 3 * i, s, 5 * k); t.push(n, n + 1, n + 2); }
+    parts.push([`p${k}`, 'part', 'p', k * R, R]);
+  }
+  const m = { q: 1, p, t, parts };
+  const [a, bytes] = await time(() => stl(m));
+  assert.equal(bytes.length, 84 + 50 * R * P, 'every triangle written');
+  assert.ok(a < 7000, `STL took ${a.toFixed(0)} ms`);
+  const [b] = await time(() => threemf(m));
+  assert.ok(b < 7000, `3MF took ${b.toFixed(0)} ms`);
+});
+
+test('a link whose parts name more triangles than a link can hold, or more parts than an assembly can have, is refused', () => {
+  const m = { q: 1, p: [0, 0, 0, 1, 0, 0, 0, 1, 0], t: [0, 1, 2] };
+  const each = (n, count) => Array.from({ length: n }, (_, i) => [`p${i}`, 'part', 'p', 0, count]);
+  assert.deepEqual(check({ ...m, parts: each(2, 1) }), [], 'parts may share triangles');
+  // parts each naming every triangle, so the writers would write (and mend) the model over and over
+  const big = { q: 1, p: [0, 0, 0, 1, 0, 0, 0, 1, 0], t: Array.from({ length: 3 * 1000 }, (_, i) => i % 3) };
+  assert.deepEqual(check({ ...big, parts: each(400, 1000) }), []);
+  assert.deepEqual(check({ ...big, parts: each(401, 1000) }).map((f) => f.text), ['model too big for a link']);
+  // a long list of empty parts: the 3MF writer wrote every one's name and settings (a million took 41 s)
+  assert.deepEqual(check({ ...m, parts: each(LIMITS.places, 0) }), []);
+  assert.deepEqual(check({ ...m, parts: each(LIMITS.places + 1, 0) }).map((f) => f.text), ['model too big for a link']);
+});
+
+test('corners too far apart to measure are not taken for corners along every edge', () => {
+  // past about 1e154 mm the squared length overflows and every corner looked to lie on the line: two triangles came
+  // out as 400,000 (only a tool calling mesh() directly can pass such numbers: links and STL files cannot hold them)
+  const out = mesh([[[0, 0, 0], [1e308, 1e308, 1e308], [0, 1e308, 0]], [[-1e308, 0, 0], [1e308, 1e308, -1e308], [0, 1e300, 1]]]);
+  assert.equal(out.tris.length, 2);
 });

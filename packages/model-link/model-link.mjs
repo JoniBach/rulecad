@@ -143,6 +143,11 @@ function problems(m) {
   if (m.build != null && !plain(m.build)) return ['broken build page'];
   if (m.show != null && m.show !== 'built') return ['broken show'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
+  // parts may share triangles, but all of them together are held to the link's limit: a short list of parts each
+  // naming every triangle would otherwise make the file writers write (and mend) the model hundreds of times over.
+  // The list itself is held to an assembly's limit on places: a long list of empty parts made the 3MF writer write
+  // hundreds of megabytes of part names for nothing.
+  if (m.parts != null && (m.parts.length > LIMITS.places || m.parts.reduce((n, x) => n + x[4], 0) > LIMITS.triangles)) return ['model too big for a link'];
   return [];
 }
 
@@ -435,7 +440,8 @@ export function fromSTL(bytes) {
 // generator: the name the file says made it (rulecad by default)
 /** A binary STL of the printed parts (or those kept). @param {Model} m @param {Set<number> | ((part: any[], index: number) => boolean)} [keep] the parts to write: their places in partsOf(m), or a test of each @param {{ generator?: string }} [options] @returns {Uint8Array} */
 export function stl(m, keep, { generator = 'rulecad' } = {}) {
-  const tris = chosen(m, keep).flatMap((x) => { const { verts, tris: t } = mesh(triangles(m, x)); return t.map((ids) => ids.map((i) => verts[i])); }), buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
+  const picked = chosen(m, keep), work = { budget: 2e6 + 100 * picked.reduce((n, x) => n + x[4], 0) }; // one mend budget for the file
+  const tris = picked.flatMap((x) => { const { verts, tris: t } = mesh(triangles(m, x), work); return t.map((ids) => ids.map((i) => verts[i])); }), buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
   const head = `${generator} ${m.src || m.title || ''}`.slice(0, 80);
   for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i) & 0x7f);
   dv.setUint32(80, tris.length, true);
@@ -487,7 +493,10 @@ const num = (x) => String(Number(x.toFixed(5)));
 // and its repair can fill a legend's letters with sheets. So a triangle with a loose corner lying along its open edge is
 // split there, one corner at a time until none is left, and any pinhole still open (a loop of open edges less than a
 // millimetre round) is closed with a fan. Each part comes out as one closed body per piece (a keycap; each letter).
-export function mesh(tris) {
+// work: a mend budget shared by the parts of one file ({ budget }, spent as it goes), so a file of many parts cannot
+// spend a budget for each (stl, threemf and bambu3mf pass one); on its own a part gets a budget sized from it.
+/** @param {Triangle[]} tris @param {{ budget: number }} [work] @returns {{ verts: number[][], tris: number[][] }} */
+export function mesh(tris, work) {
   const MERGE = 1e-3, verts = [], index = new Map(), out = [];
   const key = (v) => v.map((c) => Math.round(c / MERGE)).join(',');
   const at = (v) => { // the same corner as one already seen within MERGE (it may sit across a rounding boundary)
@@ -513,7 +522,7 @@ export function mesh(tris) {
   // made to be slow (thousands of long open edges among thousands of loose corners) cannot freeze the writers: once
   // it is spent, the edges left are not mended and are written as they are.
   const TOL = 2e-3, CELL = 1, cell = (x) => Math.floor(x / CELL);
-  let budget = 2e6 + 100 * out.length; // cells and corners looked at, across all passes
+  let budget = work ? work.budget : 2e6 + 100 * out.length; // cells and corners looked at, across all passes
   for (let pass = 0; pass < 50; pass++) {
     const edges = new Set(); for (const [a, b, c] of out) edges.add(`${a},${b}`).add(`${b},${c}`).add(`${c},${a}`);
     const isOpen = (a, b) => !edges.has(`${b},${a}`), loose = new Set();
@@ -529,7 +538,8 @@ export function mesh(tris) {
     // The loose corner along a -> b nearest the line, if any
     const along = (a, b) => {
       const p = verts[a], q = verts[b], d = sub(q, p), len = Math.sqrt(dot(d, d));
-      let best = null;
+      if (!(len * len < Infinity)) return null; // corners too far apart to measure (or not numbers): every corner looked on the line
+      let best = null, spent = false;
       const consider = (i) => {
         if (i === a || i === b) return;
         const w = sub(verts[i], p), t = dot(w, d) / (len * len);
@@ -544,9 +554,13 @@ export function mesh(tris) {
       if (cost > budget) return null; // the budget is spent: this edge is left open
       budget -= cost;
       if (cost === looseList.length && cost < box && cost < walk) { for (const i of looseList) consider(i); return best; }
+      // The grid searches pay for each corner they find in a cell too: many loose corners packed in a few cells would
+      // otherwise cost every edge there all of them, with only its cells counted (a few kilobytes of tiny triangles in
+      // one cell froze the writers). If the budget runs out part way, the edge is left open.
+      const meet = (list) => { for (const i of list) { if (--budget < 0) { spent = true; return; } consider(i); } };
       if (box <= walk) { // a short or square-on edge: its box is fewer cells than the walk
-        for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) for (const i of grid.get(`${x},${y},${z}`) || []) consider(i);
-        return best;
+        for (let x = lo[0]; x <= hi[0] && !spent; x++) for (let y = lo[1]; y <= hi[1] && !spent; y++) for (let z = lo[2]; z <= hi[2] && !spent; z++) meet(grid.get(`${x},${y},${z}`) || []);
+        return spent ? null : best;
       }
       // Walk the cells the segment passes through (a 3D grid walk), looking in each and its 26 neighbours once
       const seen = new Set(), look = (c) => {
@@ -554,7 +568,7 @@ export function mesh(tris) {
           const k = `${c[0] + dx},${c[1] + dy},${c[2] + dz}`;
           if (seen.has(k)) continue;
           seen.add(k);
-          for (const i of grid.get(k) || []) consider(i);
+          if (!spent) meet(grid.get(k) || []);
         }
       };
       const c = [...from], step = d.map(Math.sign);
@@ -568,7 +582,7 @@ export function mesh(tris) {
         look(c);
       }
       look(to);
-      return best;
+      return spent ? null : best;
     };
     let split = 0;
     const n = out.length;
@@ -587,6 +601,7 @@ export function mesh(tris) {
     }
     if (!split) break;
   }
+  if (work) work.budget = budget;
   // What's left are pinholes: a sliver face the booleans lost, a loop of open edges a fraction of a millimetre round.
   // Close each with a fan.
   const kept = out.filter((ids) => area2(ids) > 1e-9), edges = new Set();
@@ -617,11 +632,12 @@ const NS = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xm
 /** @param {{ name: string, parts: { name: string, triangles: Triangle[], slot?: number }[] }[]} objects @param {{ centre?: [number, number], generator?: string, date?: string, title?: string }} [options] @returns {Promise<Uint8Array>} a .3mf (a zip) */
 export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad', date, title } = {}) {
   const files = {}, rels = [], resources = [], build = [], settings = [], instances = [];
+  const work = { budget: 2e6 + 100 * objects.reduce((n, o) => n + o.parts.reduce((k, p) => k + p.triangles.length, 0), 0) }; // one mend budget for the file
   let id = 0;
   objects.forEach((o, n) => {
     const path = `/3D/Objects/object_${n + 1}.model`, parts = o.parts.map((p) => ({ ...p, id: ++id }));
     files[path.slice(1)] = `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" ${NS}>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <resources>\n`
-      + parts.map((p) => `  <object id="${p.id}" p:UUID="${uuid(p.id, 1)}" type="model">${meshXml(mesh(p.triangles))}</object>\n`).join('') + ' </resources>\n <build/>\n</model>\n';
+      + parts.map((p) => `  <object id="${p.id}" p:UUID="${uuid(p.id, 1)}" type="model">${meshXml(mesh(p.triangles, work))}</object>\n`).join('') + ' </resources>\n <build/>\n</model>\n';
     rels.push(`<Relationship Target="${path}" Id="rel-${n + 1}" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>`);
     const parent = 100000 + n + 1;
     resources.push(`  <object id="${parent}" p:UUID="${uuid(n + 1, 0)}" type="model">\n   <components>\n`
