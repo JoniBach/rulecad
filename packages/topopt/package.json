@@ -12,7 +12,8 @@
     "topopt.d.mts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD-PARTY.md"
   ],
   "license": "MIT",
   "keywords": [

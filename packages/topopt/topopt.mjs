@@ -1010,6 +1010,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
  * The method of moving asymptotes (Svanberg 1987, as his 2007 mmasub and subsolv): one step of minimising f0(x)
  * subject to fi(x) ≤ 0, i = 1..m, xmin ≤ x ≤ xmax, from values and gradients at x. Each step solves a convex
  * approximation, separable in x, by a primal-dual interior-point method. Keeps its asymptotes between steps.
+ * mma, subsolve and gauss follow Svanberg's GPL-3.0-or-later MATLAB code, not only his papers: see THIRD-PARTY.md.
  * @param {{ n: number, m: number, xmin: Float64Array, xmax: Float64Array, move?: number }} o
  */
 export function mma({ n, m, xmin, xmax, move = 0.5 }) {

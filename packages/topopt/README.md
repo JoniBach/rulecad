@@ -186,7 +186,8 @@ result.stress;     // { peak, limit }: the largest stress in the result's solid 
 - **How:** each cell's stress at its centre, as if solid, gets its own limit, scaled by its density so an empty cell's
   limit vanishes (Senhora, Giraldo-Londoño, Menezes, Paulino 2020). An augmented Lagrangian keeps them all: every 5
   steps its multipliers are raised where a limit is broken, and its penalty grows. Each step is a step of the method
-  of moving asymptotes (`mma`, after Svanberg's 2007 code, also exported), and needs one more solve, for the adjoint.
+  of moving asymptotes (`mma`, after Svanberg's 2007 code, also exported; that code is under the GPL, see
+  [THIRD-PARTY.md](THIRD-PARTY.md)), and needs one more solve, for the adjoint.
 - **Cost:** about a thousand steps, each with two solves, against about two hundred with one for the stiffest layout.
   Start on coarse cells.
 - **Supports and loads:** every cell is limited, those where the part is held and loaded too, so give them some area
