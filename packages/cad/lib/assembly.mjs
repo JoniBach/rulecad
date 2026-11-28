@@ -766,8 +766,9 @@ export function overlap(ga, gb) {
   const fell = solid?.stats.fallbacks ?? 0;
   const v = Math.abs(jscad.measurements.measureVolume((solid ? solid.intersect : jscad.booleans.intersect)(ga, gb)));
   if (v < 1e-6) return 0;
-  // JSCAD's answer (no Manifold, or a shape Manifold couldn't read): only if their surfaces really cross, which fit
-  // says exactly (slower, so only here)
+  // JSCAD's answer (no Manifold, or a shape Manifold couldn't read): only if fit says they really run into each other
+  // (their surfaces cross, one is inside the other, or they share volume beside a face plane they share: slower, so
+  // only here)
   if (!solid || solid.stats.fallbacks > fell) { const faces = (g) => jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices); if (!overlapAt(faces(ga), faces(gb))) return 0; }
   return v;
 }
@@ -790,7 +791,9 @@ function pairOverlap(pa, pb) {
   if (!pa.hash || !pb.hash) return overlap(solidOf(pa), solidOf(pb));
   remembered ||= (() => { try { return JSON.parse(host.readText(OVERLAPS)); } catch { return {}; } })();
   const at = (p) => `${p.hash}@${Array.from(p.m || []).map((x) => Math.round(x * 1e6) / 1e6).join(',')}`;
-  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`crossing+tracks+${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
+  // (the words in front change whenever the measure does, so an answer remembered from before is measured again: flush
+  // overlaps, which fit once read as touching and were remembered as 0, came with #371)
+  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`flush+crossing+tracks+${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
   if (!(k in remembered)) { remembered[k] = overlap(solidOf(pa), solidOf(pb)); fresh++; }
   return remembered[k];
 }

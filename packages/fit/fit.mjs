@@ -132,7 +132,8 @@ export function closestAt(polysA, polysB, reach = 2) {
   };
   probe(A, B, true); probe(B, A, false); // (edges both ways are the same pairs)
   // Two solids that run into each other have no gap, however far their corners are from each other's faces (a peg
-  // through a plate, a cube wholly inside another): their surfaces cross, or one is inside the other
+  // through a plate, a cube wholly inside another, two boxes half into each other on one plane): their surfaces cross,
+  // one is inside the other, or they share volume next to a face plane they share
   const o = A.length && B.length && boxesMeet(bounds(A), bounds(B)) ? overlap(A, B) : null;
   if (o) return { gap: 0, at: o, overlap: true };
   return { gap: best, at };
@@ -165,7 +166,9 @@ function segments(a, b, c, d) {
 
 /**
  * Do two closed solids run into each other? Their surfaces cross (an edge of one passes through a face of the
- * other), or a corner of one lies inside the other. Where, or null.
+ * other), a corner of one lies inside the other, or a point just inside a face of one lies inside the other (solids
+ * that share face planes: side by side on one plane, or one placed twice). Faces that only touch are not an overlap.
+ * Where, or null.
  * @param {Face[]} polysA @param {Face[]} polysB
  * @returns {Point | null}
  */
@@ -191,7 +194,53 @@ function overlap(A, B) {
     for (const t of P) for (const v of t) if (v.every((c, k) => c > bx.lo[k] && c < bx.hi[k]) && inside(v, T)) return v;
     return null;
   };
-  return crossing(A, B) || crossing(B, A) || within(A, B) || within(B, A);
+  return crossing(A, B) || crossing(B, A) || within(A, B) || within(B, A) || flush(A, B) || flush(B, A);
+}
+// Solids that share face planes can overlap with neither test firing: two cubes side by side on one plane, half into
+// each other, or a part placed twice. Their edges lie in each other's faces (not through them) and their corners on
+// each other's surface (not inside). So a point just inside each face of P, its middle moved a hair against the face's
+// outward normal, is tested against T: inside T means the two share volume there. The hair is a tenth of the face's
+// inner radius, at most 0.001 mm and at least 0.000001 mm, so it stays inside P even where P is thin, and an overlap
+// thinner than it (rounding in a mesh) is still a touch. Faces that only meet have their points outside the other.
+function flush(P, T) {
+  // Which way is out: the corners say counter-clockwise from outside, but a mesh turned inside out is read as it is
+  // (its signed volume says which way it winds); an open surface, which has no inside, is left to the other tests
+  let vol = 0;
+  for (const [a, b, c] of P) vol += dot(a, cross(b, c));
+  if (!(Math.abs(vol) > 1e-12)) return null;
+  const out = Math.sign(vol), bx = bounds(T);
+  let ray = null; // (made when first needed: most faces of two touching parts are nowhere near the other)
+  for (const [a, b, c] of P) {
+    const n = cross(sub(b, a), sub(c, a)), twice = Math.hypot(n[0], n[1], n[2]); // twice the face's area
+    if (!(twice > 1e-12)) continue;
+    const rim = Math.hypot(...sub(b, a)) + Math.hypot(...sub(c, b)) + Math.hypot(...sub(a, c));
+    const hair = Math.min(1e-3, Math.max(1e-6, 0.1 * twice / rim)) * out / twice; // (twice / rim is the inner radius)
+    const p = [0, 1, 2].map((k) => (a[k] + b[k] + c[k]) / 3 - n[k] * hair);
+    if (p.every((x, k) => x > bx.lo[k] && x < bx.hi[k]) && (ray ||= rays(T))(p)) return p;
+  }
+  return null;
+}
+// inside(), for many points against one solid: the same ray from each point, through only the solid's faces that lie
+// across its path. The faces are sorted into a grid seen along the ray, so each point tests a few of them, not all
+const RAY = [1, 0.000317, 0.000137]; // an odd direction, so the ray misses the edges and corners of square shapes
+function rays(T) {
+  const len = Math.hypot(...RAY), d = RAY.map((x) => x / len), u0 = cross(d, [0, 0, 1]), ul = Math.hypot(...u0), u = u0.map((x) => x / ul), v = cross(d, u);
+  const flat = (p) => [dot(p, u), dot(p, v)];
+  const e = 1e-9; // (a little wider than each face, so a ray along a face's edge still meets it, as in inside())
+  const spans = T.map((t) => { const q = t.map(flat); return [Math.min(q[0][0], q[1][0], q[2][0]) - e, Math.max(q[0][0], q[1][0], q[2][0]) + e, Math.min(q[0][1], q[1][1], q[2][1]) - e, Math.max(q[0][1], q[1][1], q[2][1]) + e]; });
+  const sides = spans.map((s) => Math.max(s[1] - s[0], s[3] - s[2])).sort((x, y) => x - y), cell = Math.max(sides[Math.floor(sides.length / 2)] || 1, 1e-3);
+  const cells = new Map(), f = (x) => Math.floor(x / cell);
+  spans.forEach((s, n) => {
+    const i1 = f(s[1]), j1 = f(s[3]);
+    if ((i1 - f(s[0]) + 1) * (j1 - f(s[2]) + 1) > 64) { (cells.get('wide') || cells.set('wide', []).get('wide')).push(n); return; } // (a big face, a plate's beside a keycap's small ones: tested every time, not filed in thousands of cells)
+    for (let i = f(s[0]); i <= i1; i++) for (let j = f(s[2]); j <= j1; j++) { const k = `${i},${j}`; (cells.get(k) || cells.set(k, []).get(k)).push(n); }
+  });
+  return (p) => {
+    const [pu, pv] = flat(p);
+    let n = 0;
+    for (const list of [cells.get(`${f(pu)},${f(pv)}`), cells.get('wide')]) if (list) for (const i of list) { const s = spans[i]; if (pu >= s[0] && pu <= s[1] && pv >= s[2] && pv <= s[3] && crosses(p, RAY, T[i][0], T[i][1], T[i][2])) n++; }
+    return n % 2 === 1;
+  };
 }
 
 /**
@@ -202,9 +251,8 @@ function overlap(A, B) {
  */
 export function inside(p, faces) {
   if (!Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite)) throw new Error(`inside: the point is [x, y, z] in numbers (got ${JSON.stringify(p)})`);
-  const d = [1, 0.000317, 0.000137]; // an odd direction, so the ray misses the edges and corners of square shapes
   let n = 0;
-  for (const [a, b, c] of tris(faces)) if (crosses(p, d, a, b, c)) n++;
+  for (const [a, b, c] of tris(faces)) if (crosses(p, RAY, a, b, c)) n++;
   return n % 2 === 1;
 }
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
