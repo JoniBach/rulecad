@@ -50,15 +50,21 @@ export const printerOf = (project) => {
   return (f && host.exists(f) && readJson(f).printer) || config.printer;
 };
 
-// Trust: a workspace that turns the design sandbox off ("sandbox": false), or runs code of its own as a target (a
-// module path rather than one of rulecad's), runs that code in the tool's process. A workspace cloned from elsewhere
+// Trust: a workspace that turns the design sandbox off ("sandbox": false), or runs code of its own as a target (any
+// name but one of the kit's own, below), runs that code in the tool's process. A workspace cloned from elsewhere
 // could do that on its first command, so it is asked once: cad trust records this folder, with what it asked for, in
 // the user's own list (~/.config/rulecad/trusted.json, or $CAD_TRUSTED); asking for more later is asked again.
 import os from 'node:os';
 const TRUSTED = () => process.env.CAD_TRUSTED || path.join(os.homedir(), '.config', 'rulecad', 'trusted.json');
+// The kit's own targets, by exact name. A target is the kit's own only if its name is a key here, never because of
+// what its name looks like or because a file of that name happens to be in the kit: anything else in "targets" (a bare
+// name, a path with / or \, a ../ name that reaches one of the kit's modules) is the workspace's code, and asked about.
+export const OWN_TARGETS = Object.freeze(Object.assign(Object.create(null), { gist: new URL('./targets/gist.mjs', import.meta.url).href }));
+/** Whether a target name in cad.config.json is one of the kit's own (exactly a key of OWN_TARGETS). */
+export const isOwnTarget = (name) => typeof name === 'string' && Object.hasOwn(OWN_TARGETS, name);
 /** What this workspace asks to run outside the sandbox: [] when nothing. */
 export function asks(cfg = config) {
-  const own = Object.entries(cfg.targets || {}).filter(([, v]) => typeof v === 'string' && (v.includes('/') || v.endsWith('.mjs') || v.endsWith('.js'))).map(([k, v]) => `the ${k} target ${v}`);
+  const own = Object.entries(cfg.targets || {}).filter(([, v]) => v && !isOwnTarget(v)).map(([k, v]) => `the ${k} target ${typeof v === 'string' ? v : JSON.stringify(v)}`);
   return [...(cfg.sandbox === false ? ['designs run outside the sandbox'] : []), ...own].sort();
 }
 const trustList = () => { try { return JSON.parse(fs.readFileSync(TRUSTED(), 'utf8')); } catch { return {}; } };
